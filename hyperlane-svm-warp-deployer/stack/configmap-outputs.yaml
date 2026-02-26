@@ -1,0 +1,67 @@
+# ============================================================================
+# Output ConfigMaps — populated by the warp deployer job after deployment.
+#
+# These are created as empty templates so that other stacks (agents, warp-ui)
+# can reference them by name before the warp deployer runs. The job uses
+# `kubectl apply` to populate them with real data.
+# ============================================================================
+
+---
+# hyperlane-token-config
+#
+# Contains: token-config.json — warp route definition with deployed addresses.
+#
+# Schema:
+#   {
+#     "warpRoute": {
+#       "type": "collateral-and-synthetic",
+#       "tokenMint": string,             // Pre-existing SPL token mint (base58)
+#       "collateral": {
+#         "chain": string,               // Chain name (e.g. "gorchain")
+#         "domainId": number,            // Hyperlane domain ID
+#         "address": string,             // Deployed collateral token program (base58)
+#         "mailbox": string,             // Mailbox program on this chain (base58)
+#         "rpcUrl": string               // RPC endpoint for this chain
+#       },
+#       "synthetic": {
+#         "chain": string,               // Chain name (e.g. "solana")
+#         "domainId": number,            // Hyperlane domain ID
+#         "address": string,             // Deployed synthetic token program (base58)
+#         "mailbox": string,             // Mailbox program on this chain (base58)
+#         "rpcUrl": string               // RPC endpoint for this chain
+#       }
+#     }
+#   }
+#
+# Consumed by: Warp UI (hyperlane-warp-ui stack), Ops stack
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-token-config
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-warp-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-warp-deployer
+data: {}
+
+---
+# hyperlane-warp-deploy-outputs
+#
+# Contains: raw deployment output files from hyperlane-sealevel-client.
+# Files:
+#   collateral-deploy.json — raw output from collateral warp route deployment
+#   synthetic-deploy.json  — raw output from synthetic warp route deployment
+#
+# These are stored for debugging and operational reference. The canonical
+# warp route config is in hyperlane-token-config above.
+#
+# Consumed by: Ops (debugging), not required by other stacks
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-warp-deploy-outputs
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-warp-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-warp-deployer
+data: {}

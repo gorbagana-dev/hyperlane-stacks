@@ -1,0 +1,234 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: hyperlane-agents
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      # Validator (Gorchain)
+      - job_name: validator-gorchain
+        static_configs:
+          - targets: ['validator-gorchain:9090']
+            labels:
+              chain: gorchain
+              component: validator
+
+      # Validator (Solana)
+      - job_name: validator-solana
+        static_configs:
+          - targets: ['validator-solana:9090']
+            labels:
+              chain: solana
+              component: validator
+
+      # Relayer
+      - job_name: relayer
+        static_configs:
+          - targets: ['relayer:9091']
+            labels:
+              component: relayer
+
+      # Prometheus self
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+
+  # Alerting rules
+  alerts.yml: |
+    groups:
+      - name: hyperlane-agents
+        rules:
+          - alert: ValidatorNotSigning
+            expr: increase(hyperlane_checkpoint_latest_index[5m]) == 0
+            for: 10m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Validator {{ $labels.chain }} not signing checkpoints"
+              description: "Checkpoint index has not increased in 10 minutes."
+
+          - alert: RelayerDeliveryFailures
+            expr: increase(hyperlane_messages_delivery_failures_total[5m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Relayer experiencing delivery failures"
+              description: "{{ $value }} delivery failures in last 5 minutes."
+
+          - alert: WalletBalanceLow
+            expr: hyperlane_wallet_balance_sol < 1.0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "{{ $labels.wallet }} balance low on {{ $labels.chain }}"
+              description: "Balance is {{ $value }} SOL (threshold: 1.0)."
+
+          - alert: AgentDown
+            expr: up == 0
+            for: 3m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Agent {{ $labels.job }} is down"
+              description: "No metrics scraped from {{ $labels.instance }} for 3 minutes."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: hyperlane-svm-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/component: monitoring
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=30d
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+              readOnly: true
+            - name: config
+              mountPath: /etc/prometheus/rules/alerts.yml
+              subPath: alerts.yml
+              readOnly: true
+            - name: prometheus-data
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: hyperlane-agents
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+  type: ClusterIP
+---
+# Pushgateway for balance monitor CronJob metrics
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-pushgw
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: prometheus-pushgw
+    app.kubernetes.io/component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus-pushgw
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus-pushgw
+        app.kubernetes.io/component: monitoring
+    spec:
+      containers:
+        - name: pushgateway
+          image: prom/pushgateway:latest
+          ports:
+            - name: http
+              containerPort: 9091
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-pushgw
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: prometheus-pushgw
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    app.kubernetes.io/name: prometheus-pushgw
+  ports:
+    - name: http
+      port: 9091
+      targetPort: 9091
+  type: ClusterIP

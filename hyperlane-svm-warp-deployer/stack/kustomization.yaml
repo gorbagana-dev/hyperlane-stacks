@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: hyperlane-svm-warp-deployer
+
+commonLabels:
+  app.kubernetes.io/part-of: hyperlane-svm-bridge
+
+resources:
+  - rbac.yaml
+  - secrets.yaml
+  - configmap-inputs.yaml
+  - configmap-outputs.yaml
+  - job.yaml

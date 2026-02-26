@@ -1,0 +1,60 @@
+# Warp route configuration for the UI.
+# Token addresses are populated by the warp deployer and referenced via
+# the hyperlane-token-config ConfigMap. This ConfigMap provides the
+# warpRoutes.yaml consumed by the warp UI at runtime.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-warp-routes
+  labels:
+    app.kubernetes.io/name: hyperlane-warp-ui
+    app.kubernetes.io/component: config
+data:
+  warpRoutes.yaml: |
+    tokens:
+      - chainName: gorchain
+        standard: collateral
+        addressOrDenom: __WARP_COLLATERAL_ADDRESS__
+        collateralAddressOrDenom: __WARP_TOKEN_MINT__
+        connections:
+          - token: solanasvm|__WARP_SYNTHETIC_ADDRESS__
+        decimals: 9
+        symbol: __TOKEN_SYMBOL__
+        name: __TOKEN_NAME__
+      - chainName: solanasvm
+        standard: synthetic
+        addressOrDenom: __WARP_SYNTHETIC_ADDRESS__
+        connections:
+          - token: gorchain|__WARP_COLLATERAL_ADDRESS__
+        decimals: 9
+        symbol: __TOKEN_SYMBOL__
+        name: __TOKEN_NAME__
+  chains.yaml: |
+    gorchain:
+      name: gorchain
+      chainId: 99999
+      domainId: 99999
+      protocol: sealevel
+      rpcUrls:
+        - http: __GORCHAIN_RPC_URL__
+      nativeToken:
+        name: GOR
+        symbol: GOR
+        decimals: 9
+      blocks:
+        estimateBlockTime: 0.4
+        reorgPeriod: 0
+    solanasvm:
+      name: solanasvm
+      chainId: 99998
+      domainId: 99998
+      protocol: sealevel
+      rpcUrls:
+        - http: __SOLANA_RPC_URL__
+      nativeToken:
+        name: SOL
+        symbol: SOL
+        decimals: 9
+      blocks:
+        estimateBlockTime: 0.4
+        reorgPeriod: 0

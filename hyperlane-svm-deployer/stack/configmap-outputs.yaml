@@ -1,0 +1,168 @@
+# ============================================================================
+# Output ConfigMaps — populated by the deployer job after successful deployment.
+#
+# These are created as empty templates so that other stacks (agents, warp-deployer,
+# ops) can reference them by name before the deployer runs. The deployer job
+# uses `kubectl apply` to populate them with real data.
+# ============================================================================
+
+---
+# hyperlane-agent-config
+#
+# Contains: agent-config.json
+# Schema:
+#   {
+#     "chains": {
+#       "<chain-name>": {
+#         "name": string,              // Chain name (must match key)
+#         "chainId": number,           // Unique chain identifier
+#         "domainId": number,          // Hyperlane domain ID
+#         "protocol": "sealevel",      // Always "sealevel" for SVM chains
+#         "mailbox": string,           // Mailbox program address (base58)
+#         "interchainGasPaymaster": string, // IGP program address (base58)
+#         "validatorAnnounce": string, // Validator announce program address (base58)
+#         "merkleTreeHook": string,    // Merkle tree hook program address (base58)
+#         "rpcUrls": [{"http": string}], // HTTP RPC endpoint URLs
+#         "blocks": {
+#           "estimateBlockTime": number, // Seconds per block/slot (default: 0.4)
+#           "reorgPeriod": number        // Reorg period in blocks (0 for sealevel)
+#         },
+#         "index": {
+#           "from": number,   // Starting slot for indexing
+#           "chunk": number,  // Slots per query batch
+#           "mode": string    // "sequence" for sealevel
+#         },
+#         "nativeToken": {
+#           "decimals": number // Token decimals (9 for SOL)
+#         }
+#       }
+#     }
+#   }
+#
+# Consumed by: Validators, Relayer (hyperlane-svm-agents stack)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-agent-config
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-deployer
+data: {}
+
+---
+# hyperlane-gas-oracle-config
+#
+# Contains: gas-oracle-configs.json
+# Schema:
+#   [
+#     {
+#       "domain": number,                    // Remote domain ID
+#       "token_exchange_rate": number,        // Exchange rate (scaled integer)
+#       "gas_price": number,                  // Gas price (scaled integer)
+#       "token_decimals": number              // Destination token decimals
+#     }
+#   ]
+#
+# Initial values set by deployer during IGP configuration.
+# Updated periodically by gas oracle CronJob in the agents stack.
+#
+# Consumed by: Deployer (IGP configure), Gas oracle CronJob (agents stack)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-gas-oracle-config
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-deployer
+data: {}
+
+---
+# hyperlane-multisig-config
+#
+# Contains: per-chain multisig ISM configuration files
+# Files:
+#   gorchain-multisig.json
+#   solana-multisig.json
+#
+# Schema (per file):
+#   {
+#     "validators": [string],  // Array of validator addresses (H160 / 0x-prefixed hex)
+#     "threshold": number      // Number of signatures required
+#   }
+#
+# For v1: single validator (1-of-1) per chain. Each chain's file contains
+# the validator address that signs checkpoints for messages FROM that chain,
+# configured in the DESTINATION chain's Multisig ISM.
+#
+# Consumed by: Deployer (ISM configure), Ops stack (kill/restore)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-multisig-config
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-deployer
+data: {}
+
+---
+# hyperlane-registry
+#
+# Contains: metadata.yaml — chain registry metadata
+# Schema (YAML):
+#   chains:
+#     <chain-name>:
+#       name: string
+#       chainId: number
+#       domainId: number
+#       protocol: sealevel
+#       rpcUrls:
+#         - http: string
+#       nativeToken:
+#         name: string
+#         symbol: string
+#         decimals: number
+#
+# Consumed by: Deployer, CLI tools, Warp UI
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-registry
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-deployer
+data: {}
+
+---
+# hyperlane-program-ids
+#
+# Contains: per-chain deployed program addresses
+# Files:
+#   gorchain-program-ids.json
+#   solana-program-ids.json
+#
+# Schema (per file):
+#   {
+#     "mailbox": string,                    // Mailbox program ID (base58)
+#     "validator_announce": string,         // Validator announce program ID (base58)
+#     "interchain_gas_paymaster": string,   // IGP program ID (base58)
+#     "multisig_ism": string,              // Multisig ISM program ID (base58)
+#     "merkle_tree_hook": string           // Merkle tree hook program ID (base58)
+#   }
+#
+# This is the primary deployment artifact. All other stacks reference these
+# program IDs. The deployer also uses this for idempotency checks.
+#
+# Consumed by: Agents, Warp deployer, Ops stack
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hyperlane-program-ids
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: deployment-artifacts
+    app.kubernetes.io/managed-by: hyperlane-svm-deployer
+data: {}

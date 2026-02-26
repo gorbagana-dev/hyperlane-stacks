@@ -1,0 +1,15 @@
+{
+  "name": "hyperlane-gas-oracle",
+  "version": "1.0.0",
+  "description": "Automated gas oracle for Hyperlane SVM IGP — fetches prices, computes configs, signs via Privy",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@privy-io/server-auth": "^1.17.1",
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^6.0.0"
+  }
+}

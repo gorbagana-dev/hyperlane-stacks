@@ -1,0 +1,164 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: validator-solana
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: validator-solana
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/part-of: hyperlane-svm-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: validator-solana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: validator-solana
+        app.kubernetes.io/component: validator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+        # --- Hyperlane validator agent ---
+        - name: validator
+          image: gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0
+          args:
+            - validator
+            - --origin-chain-name
+            - solanatestnet
+            - --db
+            - /data/validator-solana
+            - --checkpointSyncer.type
+            - s3
+            - --checkpointSyncer.bucket
+            - hyperlane-validator-solana
+            - --checkpointSyncer.region
+            - us-east-1
+            - --validator.type
+            - aws
+            - --validator.id
+            - $(PRIVY_VALIDATOR_SOLANA_WALLET_ID)
+            - --validator.region
+            - us-east-1
+            - --metricsPort
+            - "9090"
+          env:
+            - name: AWS_ENDPOINT_URL_KMS
+              value: "http://localhost:9999"
+            - name: AWS_ENDPOINT_URL_S3
+              value: "http://minio:9000"
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: CONFIG_FILES
+              value: "/config/agent-config.json"
+            - name: PRIVY_VALIDATOR_SOLANA_WALLET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: privy-credentials
+                  key: PRIVY_VALIDATOR_SOLANA_WALLET_ID
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          volumeMounts:
+            - name: agent-config
+              mountPath: /config
+              readOnly: true
+            - name: validator-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            tcpSocket:
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+        # --- KMS proxy sidecar ---
+        - name: kms-proxy
+          image: git.vdb.to/laconicnetwork/hyperlane-kms-proxy:local
+          ports:
+            - name: kms
+              containerPort: 9999
+              protocol: TCP
+          env:
+            - name: KMS_PROXY_PORT
+              value: "9999"
+            - name: PRIVY_WALLET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: privy-credentials
+                  key: PRIVY_VALIDATOR_SOLANA_WALLET_ID
+          envFrom:
+            - secretRef:
+                name: privy-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            tcpSocket:
+              port: 9999
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket:
+              port: 9999
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+      volumes:
+        - name: agent-config
+          configMap:
+            name: agent-config
+        - name: validator-data
+          persistentVolumeClaim:
+            claimName: validator-solana-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: validator-solana-data
+  namespace: hyperlane-agents
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: validator-solana
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: validator-solana
+    app.kubernetes.io/component: validator
+spec:
+  selector:
+    app.kubernetes.io/name: validator-solana
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+  type: ClusterIP

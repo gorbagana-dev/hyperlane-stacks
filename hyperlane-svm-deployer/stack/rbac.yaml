@@ -1,0 +1,49 @@
+# ============================================================================
+# RBAC — ServiceAccount, Role, and RoleBinding for the deployer Job.
+#
+# The deployer job needs to create/update ConfigMaps in its namespace to
+# store deployment artifacts (program IDs, agent config, etc.) that are
+# consumed by the agents, warp-deployer, and ops stacks.
+# ============================================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hyperlane-deployer
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: rbac
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hyperlane-deployer
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: rbac
+rules:
+  # Create and update ConfigMaps for deployment artifacts
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  # Read secrets (for idempotency checks, not for creating new secrets)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hyperlane-deployer
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-deployer
+    app.kubernetes.io/component: rbac
+subjects:
+  - kind: ServiceAccount
+    name: hyperlane-deployer
+roleRef:
+  kind: Role
+  name: hyperlane-deployer
+  apiGroup: rbac.authorization.k8s.io

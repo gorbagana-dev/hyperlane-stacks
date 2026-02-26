@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gas-oracle
+  namespace: hyperlane-agents
+  labels:
+    app.kubernetes.io/name: gas-oracle
+    app.kubernetes.io/component: oracle
+    app.kubernetes.io/part-of: hyperlane-svm-agents
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gas-oracle
+            app.kubernetes.io/component: oracle
+        spec:
+          containers:
+            - name: gas-oracle
+              image: git.vdb.to/laconicnetwork/hyperlane-gas-oracle:local
+              envFrom:
+                - secretRef:
+                    name: privy-credentials
+                - configMapRef:
+                    name: chain-config
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+          restartPolicy: OnFailure

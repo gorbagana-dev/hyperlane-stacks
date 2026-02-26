@@ -1,0 +1,32 @@
+# Chain configurations with sentinel placeholders.
+# These are replaced at container start by entrypoint.sh.
+
+__GORCHAIN_CHAIN_NAME__:
+  chainId: __GORCHAIN_CHAIN_ID__
+  domainId: __GORCHAIN_DOMAIN_ID__
+  name: __GORCHAIN_CHAIN_NAME__
+  protocol: sealevel
+  rpcUrls:
+    - http: __GORCHAIN_RPC_URL__
+  nativeToken:
+    name: __GORCHAIN_NATIVE_TOKEN_NAME__
+    symbol: __GORCHAIN_NATIVE_TOKEN_SYMBOL__
+    decimals: __GORCHAIN_NATIVE_TOKEN_DECIMALS__
+  blocks:
+    estimateBlockTime: 0.4
+    reorgPeriod: 0
+
+__SOLANA_CHAIN_NAME__:
+  chainId: __SOLANA_CHAIN_ID__
+  domainId: __SOLANA_DOMAIN_ID__
+  name: __SOLANA_CHAIN_NAME__
+  protocol: sealevel
+  rpcUrls:
+    - http: __SOLANA_RPC_URL__
+  nativeToken:
+    name: __SOLANA_NATIVE_TOKEN_NAME__
+    symbol: __SOLANA_NATIVE_TOKEN_SYMBOL__
+    decimals: __SOLANA_NATIVE_TOKEN_DECIMALS__
+  blocks:
+    estimateBlockTime: 0.4
+    reorgPeriod: 0

@@ -1,0 +1,37 @@
+apiVersion: kustomize.build/v1beta1
+kind: Kustomization
+
+namespace: hyperlane-agents
+
+resources:
+  # Namespace
+  - namespace.yaml
+
+  # Secrets & ConfigMaps
+  - secrets.yaml
+  - configmap-agent.yaml
+  - configmap-chain.yaml
+
+  # Core agents
+  - validator-gorchain.yaml
+  - validator-solana.yaml
+  - relayer.yaml
+
+  # Storage
+  - minio.yaml
+
+  # CronJobs
+  - cronjob-gas-oracle.yaml
+  - cronjob-igp-fee-claim.yaml
+  - cronjob-balance-monitor.yaml
+
+  # Monitoring
+  - prometheus.yaml
+  - grafana.yaml
+
+  # Network policies
+  - network-policies.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: hyperlane-svm-agents
+  app.kubernetes.io/managed-by: kustomize

@@ -1,0 +1,123 @@
+---
+# Default deny all ingress within the namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: hyperlane-agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Allow validators to reach MinIO (S3 checkpoint storage)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-minio-from-agents
+  namespace: hyperlane-agents
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: validator
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: relayer
+      ports:
+        - port: 9000
+          protocol: TCP
+---
+# Allow Prometheus to scrape all agents
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: hyperlane-agents
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [validator, relayer]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9090
+          protocol: TCP
+        - port: 9091
+          protocol: TCP
+---
+# Allow Grafana to reach Prometheus
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-to-prometheus
+  namespace: hyperlane-agents
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - port: 9090
+          protocol: TCP
+---
+# Allow pushgateway from balance monitor
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pushgw-from-monitor
+  namespace: hyperlane-agents
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus-pushgw
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: wallet-balance-monitor
+      ports:
+        - port: 9091
+          protocol: TCP
+    # Also allow Prometheus to scrape pushgateway
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9091
+          protocol: TCP
+---
+# Allow all egress (agents need to reach external RPCs)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-egress
+  namespace: hyperlane-agents
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - {}

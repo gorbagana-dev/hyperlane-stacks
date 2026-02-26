@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hyperlane-warp-ui
+  labels:
+    app.kubernetes.io/name: hyperlane-warp-ui
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hyperlane-warp-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hyperlane-warp-ui
+    spec:
+      containers:
+        - name: warp-ui
+          image: hyperlane-warp-ui:local
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            # Chain RPC URLs — injected at container start, sed-replaced in built JS
+            - name: GORCHAIN_RPC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hyperlane-chain-config
+                  key: gorchain-rpc-url
+            - name: SOLANA_RPC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hyperlane-chain-config
+                  key: solana-rpc-url
+            # Domain IDs
+            - name: GORCHAIN_DOMAIN_ID
+              value: "99999"
+            - name: SOLANA_DOMAIN_ID
+              value: "99998"
+            # Chain names
+            - name: GORCHAIN_CHAIN_NAME
+              value: "gorchain"
+            - name: SOLANA_CHAIN_NAME
+              value: "solanasvm"
+            # Warp route token addresses (from warp deployer output)
+            - name: WARP_COLLATERAL_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: hyperlane-token-config
+                  key: collateral-address
+            - name: WARP_SYNTHETIC_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: hyperlane-token-config
+                  key: synthetic-address
+            # WalletConnect project ID
+            - name: NEXT_PUBLIC_WALLET_CONNECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: hyperlane-warp-ui-secrets
+                  key: walletconnect-project-id
+          volumeMounts:
+            - name: warp-routes
+              mountPath: /app/config/warp-routes
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: warp-routes
+          configMap:
+            name: hyperlane-warp-routes
