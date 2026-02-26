@@ -4,6 +4,5 @@ source ${CERC_CONTAINER_BASE_DIR}/build-base.sh
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 docker build -t laconicnetwork/hyperlane-gas-oracle:local \
-  -f ${SCRIPT_DIR}/../../../../hyperlane-gas-oracle/Dockerfile \
   ${build_command_args} \
-  ${SCRIPT_DIR}/../../../../hyperlane-gas-oracle
+  ~/cerc/hyperlane-stacks/hyperlane-gas-oracle

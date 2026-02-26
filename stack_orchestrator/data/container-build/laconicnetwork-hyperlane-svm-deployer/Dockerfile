@@ -1,13 +1,16 @@
 # hyperlane-svm-deployer
 # Multi-stage build from hyperlane-monorepo @ agents-v2.0.0
 # Produces: hyperlane-sealevel-client binary, .so program artifacts, solana-verify
+#
+# Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)
+# Invoked via: docker build -f <this-file> ~/cerc/hyperlane-monorepo
+# Note: build.sh copies entrypoint.sh into the build context before building.
 
 # ============================================================
 # Stage 1: Builder — compile sealevel-client and .so programs
 # ============================================================
 FROM ubuntu:22.04 AS builder
 
-ARG HYPERLANE_TAG=agents-v2.0.0
 ARG SOLANA_CLI_VERSION=1.18.18
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -35,12 +38,9 @@ RUN sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_CLI_VERSION}/install)
 # Install solana-verify for post-deploy hash verification
 RUN cargo install solana-verify --locked
 
-# Clone hyperlane-monorepo at the pinned tag
-WORKDIR /build
-RUN git clone --depth 1 --branch ${HYPERLANE_TAG} \
-    https://github.com/hyperlane-xyz/hyperlane-monorepo.git
-
+# Copy hyperlane-monorepo from build context (cloned to ~/cerc/ by laconic-so)
 WORKDIR /build/hyperlane-monorepo
+COPY . .
 
 # Install the Rust toolchain specified by the monorepo
 RUN rustup show
@@ -96,7 +96,7 @@ COPY --from=builder /root/.cargo/bin/solana-verify /usr/local/bin/
 # Copy .so program artifacts
 COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/deploy/*.so /opt/hyperlane/programs/
 
-# Copy entrypoint and supporting scripts
+# Copy entrypoint (placed into build context by build.sh)
 COPY entrypoint.sh /opt/hyperlane/entrypoint.sh
 RUN chmod +x /opt/hyperlane/entrypoint.sh
 

@@ -1,15 +1,17 @@
 # Stage 1: Build Next.js app with sentinel placeholders
+#
+# Build context: ~/cerc/hyperlane-warp-ui-template (cloned by laconic-so setup-repositories)
+# Invoked via: docker build -f <this-file> ~/cerc/hyperlane-warp-ui-template
+# Note: build.sh copies entrypoint.sh and configs/ into the build context before building.
+
 FROM node:20-alpine AS builder
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
 WORKDIR /app
 
-# Clone the warp UI template at pinned commit
-RUN apk add --no-cache git && \
-    git clone https://github.com/hyperlane-xyz/hyperlane-warp-ui-template.git . && \
-    git checkout 6227c04350c27c208c5512ef40776f8181ab022a && \
-    rm -rf .git
+# Copy warp UI template from build context (cloned to ~/cerc/ by laconic-so)
+COPY . .
 
 # Create placeholder chain config with sentinel values
 COPY configs/chains.yaml src/consts/chains.yaml
@@ -42,7 +44,7 @@ COPY --from=builder /app/node_modules node_modules
 COPY --from=builder /app/next.config.js next.config.js 2>/dev/null || true
 COPY --from=builder /app/next.config.mjs next.config.mjs 2>/dev/null || true
 
-# Copy entrypoint
+# Copy entrypoint (placed into build context by build.sh)
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
