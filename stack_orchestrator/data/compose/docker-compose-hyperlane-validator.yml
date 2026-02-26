@@ -6,19 +6,19 @@ services:
     command:
       - validator
       - --origin-chain-name
-      - gorchain
+      - ${ORIGIN_CHAIN_NAME}
       - --db
-      - /data/validator-gorchain
+      - /data/validator
       - --checkpointSyncer.type
       - s3
       - --checkpointSyncer.bucket
-      - hyperlane-validator-gorchain
+      - ${CHECKPOINT_BUCKET}
       - --checkpointSyncer.region
       - us-east-1
       - --validator.type
       - aws
       - --validator.id
-      - ${PRIVY_VALIDATOR_GORCHAIN_WALLET_ID}
+      - ${PRIVY_WALLET_ID}
       - --validator.region
       - us-east-1
       - --metricsPort
@@ -34,7 +34,7 @@ services:
       CONFIG_FILES: /config/agent-config.json
     volumes:
       - agent-config:/config:ro
-      - validator-gorchain-data:/data
+      - validator-data:/data
     ports:
       - "9090"
     healthcheck:
@@ -45,14 +45,15 @@ services:
       start_period: 30s
 
   kms-proxy:
-    image: git.vdb.to/laconicnetwork/hyperlane-kms-proxy:local
+    # TODO: use git.vdb.to/laconicnetwork/hyperlane-kms-proxy:tag once CI publish workflows are set up
+    image: laconicnetwork/hyperlane-kms-proxy:local
     restart: unless-stopped
     hostname: kms-proxy
     environment:
       KMS_PROXY_PORT: "9999"
       PRIVY_APP_ID: ${PRIVY_APP_ID}
       PRIVY_APP_SECRET: ${PRIVY_APP_SECRET}
-      PRIVY_WALLET_ID: ${PRIVY_VALIDATOR_GORCHAIN_WALLET_ID}
+      PRIVY_WALLET_ID: ${PRIVY_WALLET_ID}
     ports:
       - "9999"
     healthcheck:
@@ -66,4 +67,4 @@ volumes:
   # Config volume — becomes ConfigMap in k8s (contains "config" in name)
   agent-config:
   # Data volume — becomes PVC in k8s
-  validator-gorchain-data:
+  validator-data:

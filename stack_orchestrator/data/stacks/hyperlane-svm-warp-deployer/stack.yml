@@ -2,6 +2,8 @@ version: "1.1"
 name: hyperlane-svm-warp-deployer
 description: "Deploys Hyperlane warp route contracts for a specific token pair"
 repos:
-  - github.com/laconicnetwork/hyperlane-stacks
+  - github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0
+containers:
+  - laconicnetwork/hyperlane-svm-deployer
 pods:
   - hyperlane-svm-warp-deployer
