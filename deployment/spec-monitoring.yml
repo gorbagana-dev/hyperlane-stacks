@@ -1,5 +1,14 @@
-stack: hyperlane-monitoring
+# Hyperlane Monitoring - deployment spec
+# Prometheus, Grafana, pushgateway, and balance monitoring.
+stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
+config:
+  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
+  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
+  MONITORED_WALLETS_GORCHAIN: "REPLACE_WITH_GORCHAIN_WALLETS"
+  MONITORED_WALLETS_SOLANA: "REPLACE_WITH_SOLANA_WALLETS"
+  BALANCE_THRESHOLD_SOL: "1.0"
+  BALANCE_CHECK_INTERVAL: "300"
 network:
   ports:
     prometheus:
@@ -10,7 +19,7 @@ volumes:
   prometheus-data: 10Gi
   grafana-data: 2Gi
 configmaps:
-  prometheus-config: ./stack_orchestrator/data/config/prometheus-config
-  grafana-datasources-config: ./stack_orchestrator/data/config/grafana-datasources-config
-  grafana-dashboard-config: ./stack_orchestrator/data/config/grafana-dashboard-config
-  grafana-dashboards: ./stack_orchestrator/data/config/grafana-dashboards
+  prometheus-config: ./configmaps/prometheus-config
+  grafana-datasources-config: ./configmaps/grafana-datasources-config
+  grafana-dashboard-config: ./configmaps/grafana-dashboard-config
+  grafana-dashboards: ./configmaps/grafana-dashboards

@@ -4,21 +4,13 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 config:
-  # Token to bridge
   WARP_TOKEN_MINT: "REPLACE_WITH_TOKEN_MINT_ADDRESS"
-  # Chain roles
   COLLATERAL_CHAIN: gorchain
   SYNTHETIC_CHAIN: solana
-  # Domain IDs (must match core deployer config)
-  COLLATERAL_DOMAIN_ID: "REPLACE_WITH_COLLATERAL_DOMAIN_ID"
-  SYNTHETIC_DOMAIN_ID: "REPLACE_WITH_SYNTHETIC_DOMAIN_ID"
-  # RPC endpoints
   COLLATERAL_CHAIN_RPC_URL: "REPLACE_WITH_COLLATERAL_CHAIN_RPC_URL"
   SYNTHETIC_CHAIN_RPC_URL: "REPLACE_WITH_SYNTHETIC_CHAIN_RPC_URL"
-  # Key management
-  DEPLOYER_KEYPAIR: "REPLACE_WITH_DEPLOYER_KEYPAIR_JSON"
-  HARDWARE_WALLET_PUBKEY: ""
-  # Options
+  COLLATERAL_DOMAIN_ID: "99999"
+  SYNTHETIC_DOMAIN_ID: "99998"
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config

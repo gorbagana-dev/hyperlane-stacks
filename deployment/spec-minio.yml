@@ -1,10 +1,14 @@
-stack: hyperlane-minio
+# Hyperlane MinIO - deployment spec
+# S3-compatible storage for validator checkpoints.
+stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
+config:
+  MINIO_ROOT_USER: "REPLACE_WITH_MINIO_ROOT_USER"
+  MINIO_ROOT_PASSWORD: "REPLACE_WITH_MINIO_ROOT_PASSWORD"
 network:
   ports:
     minio:
       - "9000"
       - "9001"
 volumes:
-  minio-data: 5Gi
-configmaps: {}
+  minio-data: 10Gi

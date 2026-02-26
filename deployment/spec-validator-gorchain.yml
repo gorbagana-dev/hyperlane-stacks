@@ -1,16 +1,12 @@
+# Hyperlane Validator (Gorchain) - deployment spec
+# Runs a validator for Gorchain using the hyperlane-validator stack.
 stack: stack_orchestrator/data/stacks/hyperlane-validator-gorchain
 deploy-to: k8s-kind
-network:
-  ports:
-    validator:
-      - '9090'
+config:
+  ORIGIN_CHAIN_NAME: gorchain
+  CHECKPOINT_BUCKET: hyperlane-validator-gorchain
+  MINIO_ACCESS_KEY: "REPLACE_WITH_MINIO_ACCESS_KEY"
 volumes:
-  validator-gorchain-data: ./data/validator-gorchain-data
+  validator-gorchain-data: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
-config:
-  PRIVY_APP_ID: ''
-  PRIVY_APP_SECRET: ''
-  PRIVY_VALIDATOR_GORCHAIN_WALLET_ID: ''
-  MINIO_ACCESS_KEY: ''
-  MINIO_SECRET_KEY: ''

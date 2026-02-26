@@ -1,19 +1,14 @@
+# Hyperlane Relayer - deployment spec
+# Delivers cross-chain messages between Gorchain and Solana.
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
-network:
-  ports:
-    relayer:
-      - '9091'
+config:
+  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
+  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
+  MINIO_ACCESS_KEY: "REPLACE_WITH_MINIO_ACCESS_KEY"
 volumes:
-  relayer-data: ./data/relayer-data
+  relayer-data: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
-config:
-  RELAYER_KEY: ''
-  RELAYER_KEYPAIR_JSON: ''
-  MINIO_ACCESS_KEY: ''
-  MINIO_SECRET_KEY: ''
-  GORCHAIN_RPC_URL: ''
-  SOLANA_RPC_URL: ''
-  GORCHAIN_IGP_PROGRAM_ID: ''
-  SOLANA_IGP_PROGRAM_ID: ''

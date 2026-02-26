@@ -4,21 +4,10 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
 config:
-  # Chain configuration
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  GORCHAIN_DOMAIN_ID: "REPLACE_WITH_GORCHAIN_DOMAIN_ID"
-  SOLANA_DOMAIN_ID: "REPLACE_WITH_SOLANA_DOMAIN_ID"
-  GORCHAIN_CHAIN_ID: "REPLACE_WITH_GORCHAIN_CHAIN_ID"
-  SOLANA_CHAIN_ID: "REPLACE_WITH_SOLANA_CHAIN_ID"
-  # Key management
-  # Solana keypair JSON array, e.g. [174,47,154,...,119,35]
-  DEPLOYER_KEYPAIR: "REPLACE_WITH_DEPLOYER_KEYPAIR_JSON"
-  # Hardware wallet pubkey for ownership transfer (leave empty to skip)
-  HARDWARE_WALLET_PUBKEY: ""
-  # Privy oracle wallet pubkey for IGP ownership transfer (leave empty to skip)
-  IGP_ORACLE_WALLET_PUBKEY: ""
-  # Set to "true" to force re-deployment even if artifacts already exist
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
   FORCE_REDEPLOY: "false"
 configmaps:
   deployer-scripts-config: ./configmaps/deployer-scripts-config
