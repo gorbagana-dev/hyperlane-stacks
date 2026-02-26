@@ -1,0 +1,9 @@
+version: "1.1"
+name: hyperlane-validator
+description: "Hyperlane validator with Privy KMS proxy sidecar (one deployment per chain)"
+repos:
+  - git.vdb.to/LaconicNetwork/hyperlane-stacks
+containers:
+  - laconicnetwork/hyperlane-kms-proxy
+pods:
+  - hyperlane-validator

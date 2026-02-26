@@ -2,6 +2,8 @@ version: "1.1"
 name: hyperlane-svm-deployer
 description: "Deploys Hyperlane core contracts on Gorchain and Solana SVM chains"
 repos:
-  - github.com/laconicnetwork/hyperlane-stacks
+  - github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0
+containers:
+  - laconicnetwork/hyperlane-svm-deployer
 pods:
   - hyperlane-svm-deployer
