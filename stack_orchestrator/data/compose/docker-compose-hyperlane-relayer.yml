@@ -39,41 +39,21 @@ services:
       start_period: 30s
 
   igp-fee-claim:
-    image: git.vdb.to/laconicnetwork/hyperlane-svm-deployer:local
+    # TODO: use git.vdb.to/laconicnetwork/hyperlane-svm-deployer:tag once CI publish workflows are set up
+    image: laconicnetwork/hyperlane-svm-deployer:local
     restart: unless-stopped
     hostname: igp-fee-claim
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        echo "IGP fee claim sidecar starting (interval: 6h)..."
-        while true; do
-          echo "[$(date -u)] Claiming IGP fees on Gorchain..."
-          hyperlane-sealevel-client \
-            --url "$GORCHAIN_RPC_URL" \
-            igp claim \
-            --program-id "$GORCHAIN_IGP_PROGRAM_ID" \
-            --keypair /dev/stdin <<< "$$RELAYER_KEYPAIR_JSON" || \
-            echo "Warning: Gorchain fee claim failed"
-
-          echo "[$(date -u)] Claiming IGP fees on Solana..."
-          hyperlane-sealevel-client \
-            --url "$SOLANA_RPC_URL" \
-            igp claim \
-            --program-id "$SOLANA_IGP_PROGRAM_ID" \
-            --keypair /dev/stdin <<< "$$RELAYER_KEYPAIR_JSON" || \
-            echo "Warning: Solana fee claim failed"
-
-          echo "[$(date -u)] Fee claim cycle complete. Sleeping 6h..."
-          sleep 21600
-        done
+    command: ["/bin/bash", "/opt/scripts/claim-fees.sh"]
     environment:
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_IGP_PROGRAM_ID: ${GORCHAIN_IGP_PROGRAM_ID}
       SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
       RELAYER_KEYPAIR_JSON: ${RELAYER_KEYPAIR_JSON}
+    volumes:
+      - igp-fee-claim-scripts-config:/opt/scripts:ro
 
 volumes:
   agent-config:
   relayer-data:
+  igp-fee-claim-scripts-config:
