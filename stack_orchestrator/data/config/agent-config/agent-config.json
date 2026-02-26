@@ -1,0 +1,50 @@
+{
+  "chains": {
+    "gorchain": {
+      "name": "gorchain",
+      "chainId": 99999,
+      "domainId": 99999,
+      "protocol": "sealevel",
+      "mailbox": "GORCHAIN_MAILBOX_PLACEHOLDER",
+      "interchainGasPaymaster": "GORCHAIN_IGP_PLACEHOLDER",
+      "validatorAnnounce": "GORCHAIN_VALIDATOR_ANNOUNCE_PLACEHOLDER",
+      "merkleTreeHook": "GORCHAIN_MERKLE_TREE_HOOK_PLACEHOLDER",
+      "rpcUrls": [{"http": "GORCHAIN_RPC_URL_PLACEHOLDER"}],
+      "blocks": {
+        "estimateBlockTime": 0.4,
+        "reorgPeriod": 0
+      },
+      "index": {
+        "from": 0,
+        "chunk": 10000,
+        "mode": "sequence"
+      },
+      "nativeToken": {
+        "decimals": 9
+      }
+    },
+    "solanatestnet": {
+      "name": "solanatestnet",
+      "chainId": 1399811150,
+      "domainId": 1399811150,
+      "protocol": "sealevel",
+      "mailbox": "SOLANA_MAILBOX_PLACEHOLDER",
+      "interchainGasPaymaster": "SOLANA_IGP_PLACEHOLDER",
+      "validatorAnnounce": "SOLANA_VALIDATOR_ANNOUNCE_PLACEHOLDER",
+      "merkleTreeHook": "SOLANA_MERKLE_TREE_HOOK_PLACEHOLDER",
+      "rpcUrls": [{"http": "SOLANA_RPC_URL_PLACEHOLDER"}],
+      "blocks": {
+        "estimateBlockTime": 0.4,
+        "reorgPeriod": 0
+      },
+      "index": {
+        "from": 0,
+        "chunk": 10000,
+        "mode": "sequence"
+      },
+      "nativeToken": {
+        "decimals": 9
+      }
+    }
+  }
+}

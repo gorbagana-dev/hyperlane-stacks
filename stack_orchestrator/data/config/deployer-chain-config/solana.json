@@ -1,0 +1,8 @@
+{
+  "name": "solana",
+  "chainId": 0,
+  "domainId": 0,
+  "protocol": "sealevel",
+  "rpcUrls": [{"http": "REPLACE_WITH_SOLANA_RPC_URL"}],
+  "nativeToken": {"decimals": 9}
+}

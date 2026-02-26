@@ -1,0 +1,23 @@
+chains:
+  gorchain:
+    name: gorchain
+    chainId: 0
+    domainId: 0
+    protocol: sealevel
+    rpcUrls:
+      - http: "REPLACE_WITH_GORCHAIN_RPC_URL"
+    nativeToken:
+      name: GOR
+      symbol: GOR
+      decimals: 9
+  solana:
+    name: solana
+    chainId: 0
+    domainId: 0
+    protocol: sealevel
+    rpcUrls:
+      - http: "REPLACE_WITH_SOLANA_RPC_URL"
+    nativeToken:
+      name: SOL
+      symbol: SOL
+      decimals: 9

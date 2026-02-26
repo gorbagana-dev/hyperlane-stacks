@@ -1,0 +1,31 @@
+services:
+  gas-oracle:
+    image: git.vdb.to/laconicnetwork/hyperlane-gas-oracle:local
+    restart: unless-stopped
+    hostname: gas-oracle
+    environment:
+      # Enable continuous loop mode (vs one-shot CronJob mode)
+      RUN_LOOP: "true"
+      GAS_ORACLE_INTERVAL_MS: ${GAS_ORACLE_INTERVAL_MS:-900000}
+      # Privy credentials
+      PRIVY_APP_ID: ${PRIVY_APP_ID}
+      PRIVY_APP_SECRET: ${PRIVY_APP_SECRET}
+      PRIVY_ORACLE_WALLET_ID: ${PRIVY_ORACLE_WALLET_ID}
+      # Chain config
+      GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      GORCHAIN_IGP_PROGRAM_ID: ${GORCHAIN_IGP_PROGRAM_ID}
+      SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
+      GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
+      SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
+      # Price feed config
+      PRICE_FEED_URL: ${PRICE_FEED_URL:-https://api.coingecko.com/api/v3}
+      GORCHAIN_TOKEN_ID: ${GORCHAIN_TOKEN_ID:-solana}
+      SOLANA_TOKEN_ID: ${SOLANA_TOKEN_ID:-solana}
+      MAX_PRICE_DEVIATION: ${MAX_PRICE_DEVIATION:-0.5}
+      FALLBACK_GORCHAIN_PRICE_USD: ${FALLBACK_GORCHAIN_PRICE_USD:-0}
+      FALLBACK_SOLANA_PRICE_USD: ${FALLBACK_SOLANA_PRICE_USD:-0}
+      GORCHAIN_GAS_PRICE: ${GORCHAIN_GAS_PRICE:-1}
+      SOLANA_GAS_PRICE: ${SOLANA_GAS_PRICE:-1}
+
+volumes: {}

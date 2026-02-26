@@ -1,0 +1,19 @@
+stack: stack_orchestrator/data/stacks/hyperlane-relayer
+deploy-to: k8s-kind
+network:
+  ports:
+    relayer:
+      - '9091'
+volumes:
+  relayer-data: ./data/relayer-data
+configmaps:
+  agent-config: ./configmaps/agent-config
+config:
+  RELAYER_KEY: ''
+  RELAYER_KEYPAIR_JSON: ''
+  MINIO_ACCESS_KEY: ''
+  MINIO_SECRET_KEY: ''
+  GORCHAIN_RPC_URL: ''
+  SOLANA_RPC_URL: ''
+  GORCHAIN_IGP_PROGRAM_ID: ''
+  SOLANA_IGP_PROGRAM_ID: ''

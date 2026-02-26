@@ -1,0 +1,10 @@
+stack: hyperlane-minio
+deploy-to: k8s-kind
+network:
+  ports:
+    minio:
+      - "9000"
+      - "9001"
+volumes:
+  minio-data: 5Gi
+configmaps: {}

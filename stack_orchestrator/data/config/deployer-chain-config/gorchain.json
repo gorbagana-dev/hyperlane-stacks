@@ -1,0 +1,8 @@
+{
+  "name": "gorchain",
+  "chainId": 0,
+  "domainId": 0,
+  "protocol": "sealevel",
+  "rpcUrls": [{"http": "REPLACE_WITH_GORCHAIN_RPC_URL"}],
+  "nativeToken": {"decimals": 9}
+}

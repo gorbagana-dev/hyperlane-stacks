@@ -1,0 +1,7 @@
+version: "1.1"
+name: hyperlane-validator-solana
+description: "Hyperlane validator for Solana with Privy KMS proxy sidecar"
+repos:
+  - github.com/LaconicNetwork/hyperlane-stacks
+pods:
+  - hyperlane-validator-solana

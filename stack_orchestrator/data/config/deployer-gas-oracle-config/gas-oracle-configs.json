@@ -1,0 +1,8 @@
+[
+  {
+    "domain": 0,
+    "token_exchange_rate": 1000000000,
+    "gas_price": 1,
+    "token_decimals": 9
+  }
+]

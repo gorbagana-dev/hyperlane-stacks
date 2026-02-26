@@ -1,0 +1,4 @@
+{
+  "validators": ["REPLACE_WITH_GORCHAIN_VALIDATOR_ADDRESS"],
+  "threshold": 1
+}

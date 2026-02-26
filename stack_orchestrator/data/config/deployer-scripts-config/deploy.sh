@@ -1,0 +1,280 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "=== Hyperlane SVM Core Deployer ==="
+echo "Gorchain domain: ${GORCHAIN_DOMAIN_ID}"
+echo "Solana domain: ${SOLANA_DOMAIN_ID}"
+
+# -------------------------------------------------------
+# Idempotency check: if program-ids ConfigMap already has
+# data, a previous deploy succeeded. Skip unless FORCE_REDEPLOY=true.
+# -------------------------------------------------------
+if [ "${FORCE_REDEPLOY:-false}" != "true" ]; then
+  EXISTING=$(kubectl get configmap hyperlane-program-ids \
+    -o jsonpath='{.data.gorchain-program-ids\.json}' 2>/dev/null || echo "")
+  if [ -n "$EXISTING" ] && [ "$EXISTING" != "{}" ]; then
+    echo "Deployment artifacts already exist (hyperlane-program-ids ConfigMap has data)."
+    echo "Set FORCE_REDEPLOY=true to override. Exiting."
+    exit 0
+  fi
+fi
+
+# -------------------------------------------------------
+# Write deployer keypair to file (required by sealevel-client)
+# -------------------------------------------------------
+DEPLOYER_KEY_FILE="/tmp/deployer-keypair.json"
+echo "${DEPLOYER_KEYPAIR}" > "${DEPLOYER_KEY_FILE}"
+chmod 600 "${DEPLOYER_KEY_FILE}"
+
+# -------------------------------------------------------
+# Prepare working directories
+# -------------------------------------------------------
+WORK_DIR="/tmp/hyperlane-deploy"
+mkdir -p "${WORK_DIR}/output"
+
+# -------------------------------------------------------
+# Mount config files from ConfigMaps
+# -------------------------------------------------------
+CHAIN_CONFIG_DIR="/config/chains"
+GAS_ORACLE_CONFIG="/config/gas-oracle/gas-oracle-configs.json"
+MULTISIG_CONFIG_DIR="/config/multisig"
+REGISTRY_DIR="/config/registry"
+
+# -------------------------------------------------------
+# Deploy core contracts on Gorchain
+# -------------------------------------------------------
+echo ""
+echo "=== Deploying core contracts on Gorchain (domain ${GORCHAIN_DOMAIN_ID}) ==="
+hyperlane-sealevel-client --url "${GORCHAIN_RPC_URL}" \
+  core deploy \
+  --keypair "${DEPLOYER_KEY_FILE}" \
+  --chain-config "${CHAIN_CONFIG_DIR}/gorchain.json" \
+  --gas-oracle-config "${GAS_ORACLE_CONFIG}" \
+  --multisig-config "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" \
+  --built-so-dir /hyperlane/sealevel-programs \
+  --chain gorchain \
+  --output "${WORK_DIR}/output/gorchain-program-ids.json"
+
+echo ""
+echo "=== Deploying core contracts on Solana (domain ${SOLANA_DOMAIN_ID}) ==="
+hyperlane-sealevel-client --url "${SOLANA_RPC_URL}" \
+  core deploy \
+  --keypair "${DEPLOYER_KEY_FILE}" \
+  --chain-config "${CHAIN_CONFIG_DIR}/solana.json" \
+  --gas-oracle-config "${GAS_ORACLE_CONFIG}" \
+  --multisig-config "${MULTISIG_CONFIG_DIR}/solana-multisig.json" \
+  --built-so-dir /hyperlane/sealevel-programs \
+  --chain solana \
+  --output "${WORK_DIR}/output/solana-program-ids.json"
+
+# -------------------------------------------------------
+# Post-deploy program hash verification
+# -------------------------------------------------------
+echo ""
+echo "=== Verifying deployed program hashes ==="
+VERIFY_FAILED=0
+for CHAIN_OUTPUT in gorchain solana; do
+  if [ "$CHAIN_OUTPUT" = "gorchain" ]; then
+    RPC_URL="${GORCHAIN_RPC_URL}"
+  else
+    RPC_URL="${SOLANA_RPC_URL}"
+  fi
+
+  for PROGRAM in mailbox validator_announce interchain_gas_paymaster multisig_ism; do
+    SO_FILE="/hyperlane/sealevel-programs/hyperlane_sealevel_${PROGRAM}.so"
+    if [ ! -f "$SO_FILE" ]; then
+      continue
+    fi
+    PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${WORK_DIR}/output/${CHAIN_OUTPUT}-program-ids.json" 2>/dev/null || true)
+    if [ -z "$PROGRAM_ID" ]; then
+      continue
+    fi
+    LOCAL_HASH=$(solana-verify get-executable-hash "$SO_FILE" 2>/dev/null || echo "unknown")
+    ONCHAIN_HASH=$(solana-verify get-program-hash -u "$RPC_URL" "$PROGRAM_ID" 2>/dev/null || echo "unknown")
+    if [ "$LOCAL_HASH" != "$ONCHAIN_HASH" ]; then
+      echo "ERROR: Hash mismatch for ${PROGRAM} on ${CHAIN_OUTPUT}!"
+      echo "  Local:   ${LOCAL_HASH}"
+      echo "  On-chain: ${ONCHAIN_HASH}"
+      VERIFY_FAILED=1
+    else
+      echo "OK: ${PROGRAM} on ${CHAIN_OUTPUT} hash verified (${LOCAL_HASH})"
+    fi
+  done
+done
+if [ "$VERIFY_FAILED" -ne 0 ]; then
+  echo "FATAL: Program hash verification failed. Aborting."
+  exit 1
+fi
+
+# -------------------------------------------------------
+# Transfer ownership to hardware wallet
+# -------------------------------------------------------
+if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
+  echo ""
+  echo "=== Transferring program ownership to hardware wallet ==="
+  echo "Hardware wallet pubkey: ${HARDWARE_WALLET_PUBKEY}"
+
+  for CHAIN_OUTPUT in gorchain solana; do
+    if [ "$CHAIN_OUTPUT" = "gorchain" ]; then
+      RPC_URL="${GORCHAIN_RPC_URL}"
+    else
+      RPC_URL="${SOLANA_RPC_URL}"
+    fi
+
+    # Transfer upgrade authority for all programs
+    for PROGRAM in mailbox validator_announce interchain_gas_paymaster multisig_ism; do
+      PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${WORK_DIR}/output/${CHAIN_OUTPUT}-program-ids.json" 2>/dev/null || true)
+      if [ -n "$PROGRAM_ID" ]; then
+        echo "Transferring upgrade authority for ${PROGRAM} (${PROGRAM_ID}) on ${CHAIN_OUTPUT}..."
+        solana program set-upgrade-authority "$PROGRAM_ID" \
+          --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
+          --keypair "${DEPLOYER_KEY_FILE}" \
+          --url "$RPC_URL" || echo "WARNING: Failed to transfer authority for ${PROGRAM} on ${CHAIN_OUTPUT}"
+      fi
+    done
+
+    # Transfer account ownership (mailbox, ISM, validator announce)
+    for PROGRAM in mailbox multisig_ism validator_announce; do
+      PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${WORK_DIR}/output/${CHAIN_OUTPUT}-program-ids.json" 2>/dev/null || true)
+      if [ -n "$PROGRAM_ID" ]; then
+        hyperlane-sealevel-client --url "$RPC_URL" \
+          core transfer-ownership \
+          --keypair "${DEPLOYER_KEY_FILE}" \
+          --program-id "$PROGRAM_ID" \
+          --new-owner "${HARDWARE_WALLET_PUBKEY}" 2>/dev/null || \
+          echo "WARNING: transfer-ownership for ${PROGRAM} on ${CHAIN_OUTPUT} may not be supported"
+      fi
+    done
+
+    # Transfer IGP ownership to oracle wallet (if configured)
+    if [ -n "${IGP_ORACLE_WALLET_PUBKEY:-}" ]; then
+      IGP_ID=$(jq -r ".interchain_gas_paymaster // empty" "${WORK_DIR}/output/${CHAIN_OUTPUT}-program-ids.json" 2>/dev/null || true)
+      if [ -n "$IGP_ID" ]; then
+        echo "Transferring IGP account ownership to oracle wallet on ${CHAIN_OUTPUT}..."
+        hyperlane-sealevel-client --url "$RPC_URL" \
+          igp transfer-ownership \
+          --keypair "${DEPLOYER_KEY_FILE}" \
+          --program-id "$IGP_ID" \
+          --new-owner "${IGP_ORACLE_WALLET_PUBKEY}" 2>/dev/null || \
+          echo "WARNING: IGP ownership transfer on ${CHAIN_OUTPUT} may not be supported"
+      fi
+    fi
+  done
+fi
+
+# -------------------------------------------------------
+# Build agent-config.json from deployed program IDs
+# -------------------------------------------------------
+echo ""
+echo "=== Building agent-config.json ==="
+
+GORCHAIN_PROGRAMS="${WORK_DIR}/output/gorchain-program-ids.json"
+SOLANA_PROGRAMS="${WORK_DIR}/output/solana-program-ids.json"
+
+cat > "${WORK_DIR}/output/agent-config.json" <<AGENT_EOF
+{
+  "chains": {
+    "gorchain": {
+      "name": "gorchain",
+      "chainId": ${GORCHAIN_CHAIN_ID},
+      "domainId": ${GORCHAIN_DOMAIN_ID},
+      "protocol": "sealevel",
+      "mailbox": "$(jq -r '.mailbox' "$GORCHAIN_PROGRAMS")",
+      "interchainGasPaymaster": "$(jq -r '.interchain_gas_paymaster' "$GORCHAIN_PROGRAMS")",
+      "validatorAnnounce": "$(jq -r '.validator_announce' "$GORCHAIN_PROGRAMS")",
+      "merkleTreeHook": "$(jq -r '.merkle_tree_hook // .mailbox' "$GORCHAIN_PROGRAMS")",
+      "rpcUrls": [{"http": "${GORCHAIN_RPC_URL}"}],
+      "blocks": {
+        "estimateBlockTime": 0.4,
+        "reorgPeriod": 0
+      },
+      "index": {
+        "from": 0,
+        "chunk": 10000,
+        "mode": "sequence"
+      },
+      "nativeToken": {
+        "decimals": 9
+      }
+    },
+    "solana": {
+      "name": "solana",
+      "chainId": ${SOLANA_CHAIN_ID},
+      "domainId": ${SOLANA_DOMAIN_ID},
+      "protocol": "sealevel",
+      "mailbox": "$(jq -r '.mailbox' "$SOLANA_PROGRAMS")",
+      "interchainGasPaymaster": "$(jq -r '.interchain_gas_paymaster' "$SOLANA_PROGRAMS")",
+      "validatorAnnounce": "$(jq -r '.validator_announce' "$SOLANA_PROGRAMS")",
+      "merkleTreeHook": "$(jq -r '.merkle_tree_hook // .mailbox' "$SOLANA_PROGRAMS")",
+      "rpcUrls": [{"http": "${SOLANA_RPC_URL}"}],
+      "blocks": {
+        "estimateBlockTime": 0.4,
+        "reorgPeriod": 0
+      },
+      "index": {
+        "from": 0,
+        "chunk": 10000,
+        "mode": "sequence"
+      },
+      "nativeToken": {
+        "decimals": 9
+      }
+    }
+  }
+}
+AGENT_EOF
+
+# -------------------------------------------------------
+# Write deployment artifacts to k8s ConfigMaps
+# -------------------------------------------------------
+echo ""
+echo "=== Writing deployment artifacts to Kubernetes ConfigMaps ==="
+
+# Program IDs ConfigMap
+kubectl create configmap hyperlane-program-ids \
+  --from-file="gorchain-program-ids.json=${WORK_DIR}/output/gorchain-program-ids.json" \
+  --from-file="solana-program-ids.json=${WORK_DIR}/output/solana-program-ids.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Agent config ConfigMap
+kubectl create configmap hyperlane-agent-config \
+  --from-file="agent-config.json=${WORK_DIR}/output/agent-config.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Gas oracle config (copy from input)
+kubectl create configmap hyperlane-gas-oracle-config \
+  --from-file="gas-oracle-configs.json=${GAS_ORACLE_CONFIG}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Multisig config
+kubectl create configmap hyperlane-multisig-config \
+  --from-file="gorchain-multisig.json=${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" \
+  --from-file="solana-multisig.json=${MULTISIG_CONFIG_DIR}/solana-multisig.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Registry metadata
+kubectl create configmap hyperlane-registry \
+  --from-file="${REGISTRY_DIR}/" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Label all output ConfigMaps
+for CM in hyperlane-program-ids hyperlane-agent-config hyperlane-gas-oracle-config hyperlane-multisig-config hyperlane-registry; do
+  kubectl label configmap "$CM" \
+    app.kubernetes.io/managed-by=hyperlane-svm-deployer \
+    app.kubernetes.io/component=deployment-artifacts \
+    --overwrite
+done
+
+# -------------------------------------------------------
+# Clean up deployer keypair
+# -------------------------------------------------------
+rm -f "${DEPLOYER_KEY_FILE}"
+
+echo ""
+echo "=== Deployment complete ==="
+echo "Artifacts written to ConfigMaps:"
+echo "  - hyperlane-program-ids"
+echo "  - hyperlane-agent-config"
+echo "  - hyperlane-gas-oracle-config"
+echo "  - hyperlane-multisig-config"
+echo "  - hyperlane-registry"

@@ -1,0 +1,43 @@
+# Hyperlane Warp UI deployment spec
+stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
+deploy-to: k8s-kind
+network:
+  http-proxy:
+    - host-name: bridge.example.com
+      routes:
+        - path: /
+          proxy-to: warp-ui:3000
+  acme-email: admin@example.com
+  ports:
+    warp-ui:
+      - '3000'
+volumes:
+  warp-routes-config:
+configmaps:
+  warp-routes-config: ./data/config/warp-routes-config
+config:
+  # Chain RPC URLs
+  GORCHAIN_RPC_URL: https://rpc.gorchain.example.com
+  SOLANA_RPC_URL: https://api.mainnet-beta.solana.com
+  # Domain and chain IDs
+  GORCHAIN_DOMAIN_ID: '99999'
+  SOLANA_DOMAIN_ID: '99998'
+  GORCHAIN_CHAIN_ID: '99999'
+  SOLANA_CHAIN_ID: '99998'
+  # Chain names
+  GORCHAIN_CHAIN_NAME: gorchain
+  SOLANA_CHAIN_NAME: solanasvm
+  # Native tokens
+  GORCHAIN_NATIVE_TOKEN_NAME: GOR
+  GORCHAIN_NATIVE_TOKEN_SYMBOL: GOR
+  GORCHAIN_NATIVE_TOKEN_DECIMALS: '9'
+  SOLANA_NATIVE_TOKEN_NAME: SOL
+  SOLANA_NATIVE_TOKEN_SYMBOL: SOL
+  SOLANA_NATIVE_TOKEN_DECIMALS: '9'
+  # Warp route addresses (from warp deployer output)
+  WARP_COLLATERAL_ADDRESS: REPLACE_WITH_COLLATERAL_ADDRESS
+  WARP_SYNTHETIC_ADDRESS: REPLACE_WITH_SYNTHETIC_ADDRESS
+  TOKEN_SYMBOL: USDC
+  TOKEN_NAME: USD Coin
+  # WalletConnect
+  NEXT_PUBLIC_WALLET_CONNECT_ID: REPLACE_WITH_WALLETCONNECT_PROJECT_ID

@@ -1,0 +1,7 @@
+version: "1.1"
+name: hyperlane-relayer
+description: "Hyperlane relayer with IGP fee claim sidecar"
+repos:
+  - github.com/LaconicNetwork/hyperlane-stacks
+pods:
+  - hyperlane-relayer

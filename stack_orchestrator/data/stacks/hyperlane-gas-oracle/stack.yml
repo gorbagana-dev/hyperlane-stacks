@@ -1,0 +1,7 @@
+version: "1.1"
+name: hyperlane-gas-oracle
+description: "Hyperlane gas oracle — fetches prices, updates IGP configs via Privy"
+repos:
+  - github.com/LaconicNetwork/hyperlane-stacks
+pods:
+  - hyperlane-gas-oracle

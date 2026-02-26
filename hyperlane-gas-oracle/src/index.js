@@ -7,7 +7,8 @@
  * SetGasOracleConfigs transactions to the Sealevel IGP program on
  * both chains (Gorchain and Solana) via Privy server wallet signing.
  *
- * Designed to run as a k8s CronJob.
+ * Designed to run as a k8s CronJob (one-shot) or as a long-running
+ * service with RUN_LOOP=true (for stack-orchestrator deployments).
  */
 
 import { Connection } from "@solana/web3.js";
@@ -133,7 +134,23 @@ async function submitGasOracleUpdate({
   }
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+if (process.env.RUN_LOOP === "true") {
+  const interval = parseInt(process.env.GAS_ORACLE_INTERVAL_MS || "900000", 10);
+  console.log(`Loop mode enabled (interval: ${interval}ms / ${interval / 60000}min)`);
+  const loop = async () => {
+    while (true) {
+      try {
+        await main();
+      } catch (err) {
+        console.error("Error in gas oracle update (will retry):", err.message);
+      }
+      await new Promise((r) => setTimeout(r, interval));
+    }
+  };
+  loop();
+} else {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}

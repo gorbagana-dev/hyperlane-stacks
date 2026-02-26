@@ -1,0 +1,47 @@
+services:
+  warp-ui:
+    image: git.vdb.to/laconicnetwork/hyperlane-warp-ui:local
+    restart: unless-stopped
+    environment:
+      # Chain RPC URLs — entrypoint.sh replaces sentinel placeholders in built JS
+      GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      # Domain IDs
+      GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
+      SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
+      # Chain IDs
+      GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID:-99999}
+      SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID:-99998}
+      # Chain names
+      GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
+      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solanasvm}
+      # Native token config
+      GORCHAIN_NATIVE_TOKEN_NAME: ${GORCHAIN_NATIVE_TOKEN_NAME:-GOR}
+      GORCHAIN_NATIVE_TOKEN_SYMBOL: ${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}
+      GORCHAIN_NATIVE_TOKEN_DECIMALS: ${GORCHAIN_NATIVE_TOKEN_DECIMALS:-9}
+      SOLANA_NATIVE_TOKEN_NAME: ${SOLANA_NATIVE_TOKEN_NAME:-SOL}
+      SOLANA_NATIVE_TOKEN_SYMBOL: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
+      SOLANA_NATIVE_TOKEN_DECIMALS: ${SOLANA_NATIVE_TOKEN_DECIMALS:-9}
+      # Warp route token addresses (from warp deployer output)
+      WARP_COLLATERAL_ADDRESS: ${WARP_COLLATERAL_ADDRESS}
+      WARP_SYNTHETIC_ADDRESS: ${WARP_SYNTHETIC_ADDRESS}
+      WARP_TOKEN_MINT: ${WARP_TOKEN_MINT:-}
+      TOKEN_SYMBOL: ${TOKEN_SYMBOL:-USDC}
+      TOKEN_NAME: ${TOKEN_NAME:-USD Coin}
+      # WalletConnect
+      NEXT_PUBLIC_WALLET_CONNECT_ID: ${NEXT_PUBLIC_WALLET_CONNECT_ID:-}
+    volumes:
+      # Config volume — becomes ConfigMap in k8s (contains "config" in name)
+      - warp-routes-config:/app/config/warp-routes:ro
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  # Config volume — becomes ConfigMap in k8s
+  warp-routes-config:

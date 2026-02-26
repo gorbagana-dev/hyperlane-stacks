@@ -1,0 +1,16 @@
+stack: stack_orchestrator/data/stacks/hyperlane-validator-solana
+deploy-to: k8s-kind
+network:
+  ports:
+    validator:
+      - '9090'
+volumes:
+  validator-solana-data: ./data/validator-solana-data
+configmaps:
+  agent-config: ./configmaps/agent-config
+config:
+  PRIVY_APP_ID: ''
+  PRIVY_APP_SECRET: ''
+  PRIVY_VALIDATOR_SOLANA_WALLET_ID: ''
+  MINIO_ACCESS_KEY: ''
+  MINIO_SECRET_KEY: ''

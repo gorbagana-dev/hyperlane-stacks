@@ -1,0 +1,16 @@
+stack: hyperlane-monitoring
+deploy-to: k8s-kind
+network:
+  ports:
+    prometheus:
+      - "9090"
+    grafana:
+      - "3000"
+volumes:
+  prometheus-data: 10Gi
+  grafana-data: 2Gi
+configmaps:
+  prometheus-config: ./stack_orchestrator/data/config/prometheus-config
+  grafana-datasources-config: ./stack_orchestrator/data/config/grafana-datasources-config
+  grafana-dashboard-config: ./stack_orchestrator/data/config/grafana-dashboard-config
+  grafana-dashboards: ./stack_orchestrator/data/config/grafana-dashboards

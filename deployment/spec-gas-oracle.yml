@@ -1,0 +1,13 @@
+stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
+deploy-to: k8s-kind
+config:
+  PRIVY_APP_ID: ''
+  PRIVY_APP_SECRET: ''
+  PRIVY_ORACLE_WALLET_ID: ''
+  GORCHAIN_RPC_URL: ''
+  SOLANA_RPC_URL: ''
+  GORCHAIN_IGP_PROGRAM_ID: ''
+  SOLANA_IGP_PROGRAM_ID: ''
+  GORCHAIN_DOMAIN_ID: ''
+  SOLANA_DOMAIN_ID: ''
+  GAS_ORACLE_INTERVAL_MS: '900000'

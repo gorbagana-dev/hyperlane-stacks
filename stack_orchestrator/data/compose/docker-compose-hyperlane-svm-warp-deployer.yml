@@ -1,0 +1,26 @@
+services:
+  warp-deployer:
+    image: git.vdb.to/laconicnetwork/hyperlane-svm-deployer:local
+    restart: "no"
+    command: ["/bin/bash", "/opt/scripts/deploy.sh"]
+    environment:
+      # Warp route configuration
+      WARP_TOKEN_MINT: ${WARP_TOKEN_MINT}
+      COLLATERAL_CHAIN: ${COLLATERAL_CHAIN:-gorchain}
+      SYNTHETIC_CHAIN: ${SYNTHETIC_CHAIN:-solana}
+      COLLATERAL_DOMAIN_ID: ${COLLATERAL_DOMAIN_ID}
+      SYNTHETIC_DOMAIN_ID: ${SYNTHETIC_DOMAIN_ID}
+      COLLATERAL_CHAIN_RPC_URL: ${COLLATERAL_CHAIN_RPC_URL}
+      SYNTHETIC_CHAIN_RPC_URL: ${SYNTHETIC_CHAIN_RPC_URL}
+      # Key management
+      DEPLOYER_KEYPAIR: ${DEPLOYER_KEYPAIR}
+      HARDWARE_WALLET_PUBKEY: ${HARDWARE_WALLET_PUBKEY:-}
+      # Options
+      FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
+    volumes:
+      - warp-deployer-scripts-config:/opt/scripts:ro
+      - warp-deployer-token-config:/config/token:ro
+
+volumes:
+  warp-deployer-scripts-config:
+  warp-deployer-token-config:
