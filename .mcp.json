@@ -1,0 +1,51 @@
+{
+  "mcpServers": {
+    "exophial": {
+      "command": "/home/dev/.local/share/uv/tools/exophial/bin/python3",
+      "args": [
+        "-m",
+        "exophial.mcp_server"
+      ],
+      "autoApprove": [
+        "tool_list_tasks",
+        "tool_get_task",
+        "tool_create_task",
+        "tool_restart_task",
+        "tool_remove_task",
+        "tool_remove_tasks",
+        "tool_list_plans",
+        "tool_get_plan",
+        "tool_restart_plan",
+        "tool_cancel_plan",
+        "tool_remove_plan",
+        "tool_remove_plans",
+        "tool_list_templates",
+        "tool_add_spec_to_project",
+        "tool_get_status",
+        "tool_get_escalations",
+        "tool_list_projects",
+        "tool_get_project",
+        "tool_create_project",
+        "tool_update_spec",
+        "tool_move_project_spec",
+        "tool_get_spec",
+        "tool_file_bug",
+        "tool_list_bugs",
+        "tool_get_bug",
+        "tool_update_bug",
+        "tool_generate_fix_spec",
+        "tool_restart_worker",
+        "tool_create_worker",
+        "tool_destroy_worker",
+        "tool_enforce_layout",
+        "tool_tmux_layout",
+        "tool_tmux_swap",
+        "tool_tmux_move",
+        "tool_tmux_rotate",
+        "tool_send_keys",
+        "tool_clear_worker",
+        "tool_reload_server"
+      ]
+    }
+  }
+}
