@@ -1,0 +1,110 @@
+- name: Hyperlane ownership verification
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    job_name: "hyperlane-verify-ownership-{{ lookup('pipe', 'date +%s') }}"
+    script_configmap_name: "{{ job_name }}-script"
+    image: "laconicnetwork/hyperlane-svm-deployer:local"
+
+  pre_tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - gorchain_rpc_url | length > 0
+          - solana_rpc_url | length > 0
+          - hardware_wallet_pubkey | length > 0
+          - igp_oracle_pubkey | length > 0
+        fail_msg: "Required variables not set. Check group_vars/all.yml"
+
+    - name: Check cluster connectivity
+      kubernetes.core.k8s_info:
+        kind: Namespace
+        name: "{{ namespace }}"
+      register: ns_check
+
+    - name: Check program-ids ConfigMap exists
+      kubernetes.core.k8s_info:
+        kind: ConfigMap
+        name: hyperlane-program-ids
+        namespace: "{{ namespace }}"
+      register: program_ids_cm
+      failed_when: program_ids_cm.resources | length == 0
+
+  tasks:
+    - name: Create script ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ script_configmap_name }}"
+            namespace: "{{ namespace }}"
+          data:
+            verify-ownership.sh: "{{ lookup('file', '../scripts/verify-ownership.sh') }}"
+
+    - name: Create verify-ownership Job
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('template', '../templates/verify-ownership-job.yml.j2') }}"
+
+    - name: Wait for Job completion
+      kubernetes.core.k8s_info:
+        kind: Job
+        name: "{{ job_name }}"
+        namespace: "{{ namespace }}"
+      register: job_status
+      until: >-
+        (job_status.resources[0].status.succeeded | default(0)) > 0 or
+        (job_status.resources[0].status.failed | default(0)) > 0
+      retries: 60
+      delay: 5
+
+    - name: Get Job pod name
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - "job-name={{ job_name }}"
+      register: job_pod
+
+    - name: Print Job logs
+      ansible.builtin.command:
+        cmd: >-
+          kubectl --kubeconfig {{ kubeconfig_path }}
+          logs {{ job_pod.resources[0].metadata.name }}
+          -n {{ namespace }}
+      register: job_logs
+
+    - name: Display logs
+      ansible.builtin.debug:
+        var: job_logs.stdout_lines
+
+    - name: Fail if Job failed
+      ansible.builtin.fail:
+        msg: "Ownership verification failed. Review logs above for details."
+      when: (job_status.resources[0].status.failed | default(0)) > 0
+
+    - name: Verification passed
+      ansible.builtin.debug:
+        msg: "All ownership checks passed."
+      when: (job_status.resources[0].status.succeeded | default(0)) > 0
+
+  post_tasks:
+    - name: Clean up Job
+      kubernetes.core.k8s:
+        state: absent
+        kind: Job
+        name: "{{ job_name }}"
+        namespace: "{{ namespace }}"
+        delete_options:
+          propagationPolicy: Background
+
+    - name: Clean up script ConfigMap
+      kubernetes.core.k8s:
+        state: absent
+        kind: ConfigMap
+        name: "{{ script_configmap_name }}"
+        namespace: "{{ namespace }}"

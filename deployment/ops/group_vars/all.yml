@@ -1,0 +1,24 @@
+# Cluster
+kubeconfig_path: "~/.kube/config"
+namespace: default
+
+# Chain config
+gorchain_rpc_url: ""
+solana_rpc_url: ""
+gorchain_domain_id: 99999
+solana_domain_id: 99998
+
+# Wallets
+hardware_wallet_pubkey: ""
+
+# Teardown-specific
+treasury_address: ""
+dry_run: true
+confirm_teardown: false
+
+# Restore-specific
+gorchain_validator_address: ""
+solana_validator_address: ""
+
+# Verify-ownership-specific
+igp_oracle_pubkey: ""

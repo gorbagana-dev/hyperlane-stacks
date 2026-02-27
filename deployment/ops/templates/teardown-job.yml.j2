@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ job_name }}"
+  namespace: "{{ namespace }}"
+  labels:
+    app.kubernetes.io/name: hyperlane-svm-ops
+    app.kubernetes.io/component: teardown
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: teardown
+          image: "{{ image }}"
+          command: ["/bin/bash", "/opt/scripts/teardown.sh"]
+          env:
+            - name: GORCHAIN_RPC_URL
+              value: "{{ gorchain_rpc_url }}"
+            - name: SOLANA_RPC_URL
+              value: "{{ solana_rpc_url }}"
+            - name: HARDWARE_WALLET_PUBKEY
+              value: "{{ hardware_wallet_pubkey }}"
+            - name: TREASURY_ADDRESS
+              value: "{{ treasury_address }}"
+            - name: DRY_RUN
+              value: "{{ dry_run | string | lower }}"
+            - name: CONFIRM_TEARDOWN
+              value: "{{ 'yes' if (not dry_run and confirm_teardown) else 'no' }}"
+          volumeMounts:
+            - name: program-ids
+              mountPath: /config/program-ids
+              readOnly: true
+            - name: scripts
+              mountPath: /opt/scripts
+              readOnly: true
+            - name: output
+              mountPath: /output
+      volumes:
+        - name: program-ids
+          configMap:
+            name: hyperlane-program-ids
+        - name: scripts
+          configMap:
+            name: "{{ script_configmap_name }}"
+        - name: output
+          emptyDir: {}

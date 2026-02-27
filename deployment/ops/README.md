@@ -1,110 +1,115 @@
-# Hyperlane SVM Ops — Raw Kubernetes Job Manifests
+# Hyperlane SVM Ops -- Ansible Playbooks
 
-Operational jobs that don't fit the Stack Orchestrator model (they're one-time k8s Jobs requiring hardware wallet signing, not long-running services). Apply directly with `kubectl`.
+Operational playbooks for Hyperlane bridge management. Each playbook creates a k8s Job on the target cluster, waits for completion, retrieves outputs (unsigned transactions), and cleans up automatically.
 
 ## Prerequisites
 
-- Core deployer has run and `hyperlane-program-ids` ConfigMap exists
-- Hardware wallet (Ledger) connected with Solana app
+- Python 3 with Ansible installed (`pip install ansible`)
+- `kubernetes.core` Ansible collection (`ansible-galaxy collection install kubernetes.core`)
+- `kubectl` CLI configured with cluster access
+- Hardware wallet (Ledger) connected with Solana app (for signing)
 - `solana` CLI installed locally
-- Edit the `env` section in each job YAML to set your values before applying
-
-## Jobs
-
-### kill-switch-job.yaml — Emergency Kill Switch
-
-Reconfigures Multisig ISM to null validator (`0x000...000`) on both chains, making message delivery impossible even by third-party relayers. Scales agents to 0.
-
-### restore-job.yaml — Restore After Kill Switch
-
-Reconfigures ISM back to real validator addresses. Operator must scale agents back up manually after signing and submitting.
-
-### teardown-job.yaml — Full Bridge Teardown
-
-Closes all programs, recovers rent deposits (~10-30 SOL per program), transfers funds to treasury. **DRY_RUN=true by default** — runs in read-only mode first.
-
-### verify-ownership-job.yaml — Ownership Verification
-
-Read-only check that all programs have correct upgrade authority (hardware wallet) and IGP account ownership (oracle wallet). No signing required.
-
-## Operator Workflow
-
-All jobs that modify on-chain state (kill, restore, teardown) follow the same pattern:
-
-### 1. Edit and apply the job
-
-```bash
-# Edit env vars in the YAML first, then:
-kubectl create -f ops/kill-switch-job.yaml
-```
-
-### 2. Wait for completion
-
-```bash
-kubectl wait --for=condition=complete job/kill-switch --timeout=120s
-```
-
-### 3. Copy unsigned transactions
-
-```bash
-# Find the pod name
-POD=$(kubectl get pods -l job-name=kill-switch -o jsonpath='{.items[0].metadata.name}')
-
-# Copy unsigned txs to local directory
-kubectl cp ${POD}:/output/ ./unsigned-txs/
-```
-
-### 4. Review each transaction
-
-```bash
-cat unsigned-txs/*.summary.txt
-```
-
-Each `.summary.txt` describes exactly what the transaction does, which program it targets, and who must sign it.
-
-### 5. Sign with hardware wallet
-
-```bash
-solana sign-offloaded-transaction unsigned-txs/kill-gorchain-01.json \
-  --signer usb://ledger
-```
-
-The Ledger will display the transaction details for review before signing.
-
-### 6. Submit signed transaction
-
-```bash
-solana send-signed-transaction unsigned-txs/kill-gorchain-01.json \
-  --url https://your-gorchain-rpc.example.com
-```
-
-### 7. Repeat for all transaction files
-
-Process each `.json` file in order. The `.summary.txt` files indicate the correct RPC URL for each chain.
-
-### 8. Clean up
-
-```bash
-# Delete completed job
-kubectl delete job kill-switch
-
-# Or let it auto-clean (ttlSecondsAfterFinished: 86400 = 24h)
-```
+- Core deployer has run and `hyperlane-program-ids` ConfigMap exists in the target namespace
 
 ## Configuration
 
-All jobs read program IDs from the `hyperlane-program-ids` ConfigMap created by the core deployer. Env vars are set directly in the YAML — edit before applying:
+Edit `group_vars/all.yml` to set your environment-specific values:
 
 | Variable | Description | Used by |
 |----------|-------------|---------|
-| `GORCHAIN_RPC_URL` | Gorchain RPC endpoint | All jobs |
-| `SOLANA_RPC_URL` | Solana RPC endpoint | All jobs |
-| `HARDWARE_WALLET_PUBKEY` | Hardware wallet Solana pubkey | All jobs |
-| `GORCHAIN_DOMAIN_ID` | Gorchain Hyperlane domain ID | kill, restore |
-| `SOLANA_DOMAIN_ID` | Solana Hyperlane domain ID | kill, restore |
-| `GORCHAIN_VALIDATOR_ADDRESS` | Gorchain validator H160 address | restore |
-| `SOLANA_VALIDATOR_ADDRESS` | Solana validator H160 address | restore |
-| `TREASURY_ADDRESS` | Address to receive recovered funds | teardown |
-| `IGP_ORACLE_PUBKEY` | Privy oracle wallet pubkey | verify |
-| `DRY_RUN` | `true`/`false` (default: `true`) | teardown |
-| `CONFIRM_TEARDOWN` | Must be `yes` when DRY_RUN=false | teardown |
+| `kubeconfig_path` | Path to kubeconfig file | All playbooks |
+| `namespace` | Kubernetes namespace | All playbooks |
+| `gorchain_rpc_url` | Gorchain RPC endpoint | All playbooks |
+| `solana_rpc_url` | Solana RPC endpoint | All playbooks |
+| `gorchain_domain_id` | Gorchain Hyperlane domain ID (default: 99999) | kill-switch, restore |
+| `solana_domain_id` | Solana Hyperlane domain ID (default: 99998) | kill-switch, restore |
+| `hardware_wallet_pubkey` | Hardware wallet Solana pubkey | All playbooks |
+| `treasury_address` | Address to receive recovered funds | teardown |
+| `dry_run` | `true`/`false` (default: `true`) | teardown |
+| `confirm_teardown` | Must be `true` when dry_run is false | teardown |
+| `gorchain_validator_address` | Gorchain validator H160 address | restore |
+| `solana_validator_address` | Solana validator H160 address | restore |
+| `igp_oracle_pubkey` | Privy oracle wallet pubkey | verify-ownership |
+
+## Playbooks
+
+### teardown.yml -- Full Bridge Teardown
+
+Closes all programs, recovers rent deposits, transfers funds to treasury. Runs in dry-run mode by default.
+
+```bash
+# Dry run (default)
+ansible-playbook playbooks/teardown.yml
+
+# Real execution
+ansible-playbook playbooks/teardown.yml -e dry_run=false -e confirm_teardown=true
+
+# Override specific vars
+ansible-playbook playbooks/teardown.yml -e treasury_address=<addr> -e gorchain_rpc_url=<url>
+```
+
+### kill-switch.yml -- Emergency Kill Switch
+
+Reconfigures Multisig ISM to null validator on both chains, making message delivery impossible. Scales agents to 0 as a pre-task.
+
+```bash
+ansible-playbook playbooks/kill-switch.yml
+```
+
+### restore.yml -- Restore After Kill Switch
+
+Reconfigures ISM back to real validator addresses. Post-signing instructions include kubectl scale commands to bring agents back up.
+
+```bash
+ansible-playbook playbooks/restore.yml \
+  -e gorchain_validator_address=<addr> \
+  -e solana_validator_address=<addr>
+```
+
+### verify-ownership.yml -- Ownership Verification
+
+Read-only check that all programs have correct upgrade authority and IGP account ownership. No signing required.
+
+```bash
+ansible-playbook playbooks/verify-ownership.yml
+```
+
+## Signing Workflow
+
+All playbooks that modify on-chain state (teardown, kill-switch, restore) produce unsigned transactions that must be signed with a hardware wallet:
+
+1. Run the playbook -- it creates a k8s Job, waits for completion, and copies unsigned transactions locally
+2. Review the `.summary.txt` files for per-transaction details
+3. Sign each transaction:
+   ```bash
+   solana sign-offloaded-transaction <output-dir>/<file>.json --signer usb://ledger
+   ```
+4. Submit each signed transaction:
+   ```bash
+   solana send-signed-transaction <output-dir>/<file>.json --url <RPC_URL>
+   ```
+5. Process all `.json` files in order
+
+## Directory Structure
+
+```
+deployment/ops/
+  ansible.cfg                          # Ansible configuration
+  inventory/hosts.yml                  # Localhost inventory
+  group_vars/all.yml                   # Shared variables
+  playbooks/
+    teardown.yml                       # Full bridge teardown
+    kill-switch.yml                    # Emergency kill switch
+    restore.yml                        # Restore after kill switch
+    verify-ownership.yml               # Ownership verification
+  scripts/
+    teardown.sh                        # Teardown job script
+    kill-switch.sh                     # Kill switch job script
+    restore.sh                         # Restore job script
+    verify-ownership.sh                # Verification job script
+  templates/
+    teardown-job.yml.j2                # Teardown k8s Job template
+    kill-switch-job.yml.j2             # Kill switch k8s Job template
+    restore-job.yml.j2                 # Restore k8s Job template
+    verify-ownership-job.yml.j2        # Verification k8s Job template
+```
