@@ -1,12 +1,18 @@
 # Hyperlane Validator (Solana) - deployment spec
 # Runs a validator for Solana testnet using the hyperlane-validator stack.
-stack: stack_orchestrator/data/stacks/hyperlane-validator-solana
+stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 config:
   ORIGIN_CHAIN_NAME: solanatestnet
   CHECKPOINT_BUCKET: hyperlane-validator-solana
-  MINIO_ACCESS_KEY: "REPLACE_WITH_MINIO_ACCESS_KEY"
 volumes:
   validator-solana-data: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
+secrets:
+  hyperlane-validator-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - PRIVY_WALLET_ID
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY

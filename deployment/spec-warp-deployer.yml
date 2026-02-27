@@ -15,3 +15,7 @@ config:
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
   warp-deployer-token-config: ./configmaps/warp-deployer-token-config
+secrets:
+  hyperlane-warp-deployer-secrets:
+    - DEPLOYER_KEYPAIR
+    - HARDWARE_WALLET_PUBKEY

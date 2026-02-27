@@ -18,14 +18,12 @@ services:
       # Gas enforcement: None — Sealevel process_estimate_costs returns
       # hardcoded zeros, making OnChainFeeQuoting non-functional
       HYP_BASE_GASPAYMENTENFORCEMENT: '[{"type": "none"}]'
-      # Relayer signing keys (hex 0x...)
-      HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY: ${RELAYER_KEY}
-      HYP_BASE_CHAINS_SOLANATESTNET_SIGNER_KEY: ${RELAYER_KEY}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY, HYP_BASE_CHAINS_SOLANATESTNET_SIGNER_KEY
+      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
       # MinIO for reading validator checkpoints
       AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
       AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
     volumes:
       - agent-config:/config:ro
       - relayer-data:/data
@@ -49,7 +47,8 @@ services:
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_IGP_PROGRAM_ID: ${GORCHAIN_IGP_PROGRAM_ID}
       SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
-      RELAYER_KEYPAIR_JSON: ${RELAYER_KEYPAIR_JSON}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # RELAYER_KEYPAIR_JSON
     volumes:
       - igp-fee-claim-scripts-config:/opt/scripts:ro
 

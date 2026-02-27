@@ -13,9 +13,7 @@ services:
       SYNTHETIC_DOMAIN_ID: ${SYNTHETIC_DOMAIN_ID}
       COLLATERAL_CHAIN_RPC_URL: ${COLLATERAL_CHAIN_RPC_URL}
       SYNTHETIC_CHAIN_RPC_URL: ${SYNTHETIC_CHAIN_RPC_URL}
-      # Key management
-      DEPLOYER_KEYPAIR: ${DEPLOYER_KEYPAIR}
-      HARDWARE_WALLET_PUBKEY: ${HARDWARE_WALLET_PUBKEY:-}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # Options
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
     volumes:

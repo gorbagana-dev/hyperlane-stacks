@@ -37,7 +37,8 @@ services:
     hostname: grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # GF_SECURITY_ADMIN_PASSWORD
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-datasources-config:/etc/grafana/provisioning/datasources:ro

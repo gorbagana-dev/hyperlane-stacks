@@ -10,3 +10,8 @@ config:
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
   GAS_ORACLE_INTERVAL_MS: "900000"
+secrets:
+  hyperlane-gas-oracle-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - PRIVY_ORACLE_WALLET_ID

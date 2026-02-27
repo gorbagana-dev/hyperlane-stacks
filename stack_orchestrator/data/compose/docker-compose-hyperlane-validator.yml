@@ -29,8 +29,8 @@ services:
       # MinIO for checkpoint storage (cross-stack, k8s service DNS)
       AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
       AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
       CONFIG_FILES: /config/agent-config.json
     volumes:
       - agent-config:/config:ro
@@ -51,9 +51,8 @@ services:
     hostname: kms-proxy
     environment:
       KMS_PROXY_PORT: "9999"
-      PRIVY_APP_ID: ${PRIVY_APP_ID}
-      PRIVY_APP_SECRET: ${PRIVY_APP_SECRET}
-      PRIVY_WALLET_ID: ${PRIVY_WALLET_ID}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_WALLET_ID
     ports:
       - "9999"
     healthcheck:
