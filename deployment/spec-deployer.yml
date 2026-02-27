@@ -1,8 +1,3 @@
-# Secrets (set via k8s Secret, not in config):
-#   DEPLOYER_KEYPAIR              — JSON array of deployer secret key bytes
-#   HARDWARE_WALLET_PUBKEY        — Pubkey to receive program ownership (optional)
-#   IGP_ORACLE_WALLET_PUBKEY      — Pubkey for IGP oracle ownership (optional)
-#
 # Hyperlane SVM Core Deployer - deployment spec
 # Deploys Hyperlane core contracts on both chains, writes artifacts to ConfigMaps.
 # Run ONCE before deploying agent stacks.
@@ -22,3 +17,12 @@ configmaps:
   deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
   deployer-multisig-config: ./configmaps/deployer-multisig-config
   deployer-registry-config: ./configmaps/deployer-registry-config
+secrets:
+  # Create before deploying: kubectl create secret generic hyperlane-deployer-secrets \
+  #   --from-literal=DEPLOYER_KEYPAIR='[<byte array>]' \
+  #   --from-literal=HARDWARE_WALLET_PUBKEY='<pubkey>' \
+  #   --from-literal=IGP_ORACLE_WALLET_PUBKEY='<pubkey>'
+  hyperlane-deployer-secrets:
+    - DEPLOYER_KEYPAIR
+    - HARDWARE_WALLET_PUBKEY
+    - IGP_ORACLE_WALLET_PUBKEY

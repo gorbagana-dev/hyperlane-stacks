@@ -12,10 +12,8 @@ services:
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
       GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
       SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
-      # Key management
-      DEPLOYER_KEYPAIR: ${DEPLOYER_KEYPAIR}
-      HARDWARE_WALLET_PUBKEY: ${HARDWARE_WALLET_PUBKEY:-}
-      IGP_ORACLE_WALLET_PUBKEY: ${IGP_ORACLE_WALLET_PUBKEY:-}
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_WALLET_PUBKEY
       # Options
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
     volumes:

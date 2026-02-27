@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust toolchain (version from monorepo rust-toolchain.toml)
+# Install Rust toolchain (version pinned in rust/sealevel/rust-toolchain)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
 ENV PATH="/root/.cargo/bin:${PATH}"
 
@@ -40,12 +40,11 @@ RUN cargo install solana-verify --locked
 
 # Copy required directories from build context (cloned by laconic-so)
 WORKDIR /build/hyperlane-monorepo
-COPY rust-toolchain.toml ./rust-toolchain.toml
 COPY rust/ ./rust/
 COPY entrypoint.sh ./entrypoint.sh
 
-# Install the Rust toolchain specified by the monorepo
-RUN rustup show
+# Install the Rust toolchain specified by rust/sealevel/rust-toolchain
+RUN cd rust/sealevel && rustup show
 
 # Run cargo-audit on sealevel dependencies
 RUN cargo install cargo-audit --locked && \
