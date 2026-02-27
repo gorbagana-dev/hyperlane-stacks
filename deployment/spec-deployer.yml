@@ -1,3 +1,8 @@
+# Secrets (set via k8s Secret, not in config):
+#   DEPLOYER_KEYPAIR              — JSON array of deployer secret key bytes
+#   HARDWARE_WALLET_PUBKEY        — Pubkey to receive program ownership (optional)
+#   IGP_ORACLE_WALLET_PUBKEY      — Pubkey for IGP oracle ownership (optional)
+#
 # Hyperlane SVM Core Deployer - deployment spec
 # Deploys Hyperlane core contracts on both chains, writes artifacts to ConfigMaps.
 # Run ONCE before deploying agent stacks.
@@ -8,6 +13,8 @@ config:
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
   FORCE_REDEPLOY: "false"
 configmaps:
   deployer-scripts-config: ./configmaps/deployer-scripts-config

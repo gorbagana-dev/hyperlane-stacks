@@ -38,9 +38,11 @@ RUN sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_CLI_VERSION}/install)
 # Install solana-verify for post-deploy hash verification
 RUN cargo install solana-verify --locked
 
-# Copy hyperlane-monorepo from build context (cloned to ~/cerc/ by laconic-so)
+# Copy required directories from build context (cloned by laconic-so)
 WORKDIR /build/hyperlane-monorepo
-COPY . .
+COPY rust-toolchain.toml ./rust-toolchain.toml
+COPY rust/ ./rust/
+COPY entrypoint.sh ./entrypoint.sh
 
 # Install the Rust toolchain specified by the monorepo
 RUN rustup show
@@ -53,16 +55,8 @@ RUN cargo install cargo-audit --locked && \
 RUN cd rust/sealevel \
     && cargo build --release --locked --bin hyperlane-sealevel-client
 
-# Build all .so program artifacts via Solana BPF toolchain
-RUN cd rust/sealevel \
-    && cargo build-sbf --manifest-path programs/mailbox/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/validator-announce/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/ism/multisig-ism-message-id/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/hyperlane-sealevel-igp/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/hpl-hook-merkle-tree/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/hyperlane-sealevel-token/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/hyperlane-sealevel-token-native/Cargo.toml \
-    && cargo build-sbf --manifest-path programs/hyperlane-sealevel-token-collateral/Cargo.toml
+# Build all .so program artifacts via the monorepo's build script
+RUN cd rust/sealevel/programs && ./build-programs.sh
 
 # ============================================================
 # Stage 2: Runtime — minimal image with binaries only

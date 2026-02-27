@@ -51,7 +51,7 @@ hyperlane-sealevel-client --url "${GORCHAIN_RPC_URL}" \
   --chain-config "${CHAIN_CONFIG_DIR}/gorchain.json" \
   --gas-oracle-config "${GAS_ORACLE_CONFIG}" \
   --multisig-config "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" \
-  --built-so-dir /hyperlane/sealevel-programs \
+  --built-so-dir /opt/hyperlane/programs \
   --chain gorchain \
   --output "${WORK_DIR}/output/gorchain-program-ids.json"
 
@@ -63,7 +63,7 @@ hyperlane-sealevel-client --url "${SOLANA_RPC_URL}" \
   --chain-config "${CHAIN_CONFIG_DIR}/solana.json" \
   --gas-oracle-config "${GAS_ORACLE_CONFIG}" \
   --multisig-config "${MULTISIG_CONFIG_DIR}/solana-multisig.json" \
-  --built-so-dir /hyperlane/sealevel-programs \
+  --built-so-dir /opt/hyperlane/programs \
   --chain solana \
   --output "${WORK_DIR}/output/solana-program-ids.json"
 
@@ -81,7 +81,7 @@ for CHAIN_OUTPUT in gorchain solana; do
   fi
 
   for PROGRAM in mailbox validator_announce interchain_gas_paymaster multisig_ism; do
-    SO_FILE="/hyperlane/sealevel-programs/hyperlane_sealevel_${PROGRAM}.so"
+    SO_FILE="/opt/hyperlane/programs/hyperlane_sealevel_${PROGRAM}.so"
     if [ ! -f "$SO_FILE" ]; then
       continue
     fi
