@@ -45,9 +45,6 @@ pytest -v test_deployer.py
 # Run only warp deployer tests
 pytest -v test_warp_deployer.py
 
-# Verbose subprocess output (streams laconic-so, kubectl, etc. to terminal)
-pytest -v --verbose-cmds
-
 # Exclude slow tests
 pytest -v -m "not slow"
 ```

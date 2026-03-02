@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -103,24 +102,12 @@ def assert_contains(haystack: str, needle: str, msg: str = "assert_contains fail
 
 
 # ---------------------------------------------------------------------------
-# Verbose mode — when True, subprocess output streams to terminal
-# ---------------------------------------------------------------------------
-VERBOSE = False
-
-
-def set_verbose(enabled: bool) -> None:
-    global VERBOSE  # noqa: PLW0603
-    VERBOSE = enabled
-
-
-# ---------------------------------------------------------------------------
 # Subprocess wrapper
 # ---------------------------------------------------------------------------
 def run_cmd(
     args: list[str],
     *,
     check: bool = True,
-    capture_output: bool | None = None,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     quiet: bool = False,
@@ -128,34 +115,15 @@ def run_cmd(
     if not quiet:
         log_info(f"Running: {' '.join(str(a) for a in args)}")
 
-    # Default: capture output unless verbose mode is on
-    if capture_output is None:
-        capture_output = not VERBOSE
-
     try:
-        if capture_output:
-            result = subprocess.run(
-                args,
-                check=check,
-                capture_output=True,
-                text=True,
-                cwd=cwd,
-                env=env,
-            )
-        else:
-            # Stream to the real terminal fds, bypassing pytest's capture.
-            # sys.__stdout__/__stderr__ are the original streams before
-            # pytest redirects sys.stdout/sys.stderr.
-            result = subprocess.run(
-                args,
-                check=check,
-                stdout=sys.__stdout__,
-                stderr=sys.__stderr__,
-                text=True,
-                cwd=cwd,
-                env=env,
-            )
-        return result
+        return subprocess.run(
+            args,
+            check=check,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            env=env,
+        )
     except subprocess.CalledProcessError as exc:
         log_error(f"Command failed (rc={exc.returncode}): {' '.join(str(a) for a in args)}")
         if exc.stdout:
