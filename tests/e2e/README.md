@@ -21,7 +21,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 ## Running locally
 
 ```bash
-# Full run (creates cluster, starts chains, builds images, runs tests, tears down)
+# Full run (builds images, creates cluster, starts chains, runs tests, tears down)
 cd tests/e2e && pytest -v
 
 # Skip cluster creation (reuse an existing kind cluster)
@@ -44,6 +44,9 @@ pytest -v test_deployer.py
 
 # Run only warp deployer tests
 pytest -v test_warp_deployer.py
+
+# Verbose subprocess output (streams laconic-so, kubectl, etc. to terminal)
+pytest -v --verbose-cmds
 
 # Exclude slow tests
 pytest -v -m "not slow"
@@ -73,8 +76,10 @@ tests/e2e/
 
 ## How it works
 
-1. **Session fixtures** create a kind cluster and install cert-manager for TLS (`kind_cluster` fixture)
-2. **Chain nodes** start a Solana test validator on the host (`chain_nodes` fixture)
-3. **Deployer deployment** exposes host chain nodes to the cluster via k8s Service+Endpoints, generates test keypairs, funds wallets, and starts the deployer stack (`deployer_deployment` fixture)
+1. **Image build** builds container images before anything else to avoid resource contention (`deployer_image` fixture)
+2. **Keypair generation** creates test Ed25519 + secp256k1 keypairs (`keypairs` fixture)
+3. **Kind cluster** creates the cluster and installs cert-manager for TLS (`kind_cluster` fixture)
+4. **Chain nodes** start a Solana test validator on the host (`chain_nodes` fixture)
+5. **Deployer deployment** exposes host chain nodes to the cluster via k8s Service+Endpoints, funds wallets, creates secrets, and starts the deployer stack (`deployer_deployment` fixture)
 4. **Test functions** wait for deployer pods to complete and verify ConfigMap outputs
 5. **Teardown** is handled automatically by fixture finalizers -- stopping stacks, chain nodes, and destroying the kind cluster (unless `--skip-cleanup` is passed)

@@ -12,7 +12,7 @@ from lib.cluster import (
     destroy_kind_cluster,
     install_cert_manager,
 )
-from lib.common import E2E_DIR
+from lib.common import E2E_DIR, set_verbose
 from lib.deploy import (
     DeploymentInfo,
     build_deployer_image,
@@ -49,6 +49,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--skip-build", action="store_true", default=False, help="Skip container image builds (assume cached)"
     )
     parser.addoption("--skip-cleanup", action="store_true", default=False, help="Don't tear down after tests")
+    parser.addoption("--verbose-cmds", action="store_true", default=False, help="Stream subprocess output to terminal")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if config.getoption("--verbose-cmds", default=False):
+        set_verbose(True)
 
 
 # ---------------------------------------------------------------------------
