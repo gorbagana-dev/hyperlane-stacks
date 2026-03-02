@@ -16,6 +16,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: pip install pytest
+
       - name: Install kind
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
@@ -45,8 +53,7 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          chmod +x ./tests/e2e/run.sh
-          ./tests/e2e/run.sh
+          cd tests/e2e && pytest -v --timeout=1800
 
       - name: Upload logs on failure
         if: failure()

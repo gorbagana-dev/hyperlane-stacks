@@ -1,0 +1,212 @@
+"""Keypair generation and funding for Hyperlane e2e tests."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from .common import E2E_DIR, log_error, log_info, run_cmd
+
+KEYS_DIR = E2E_DIR / ".keys"
+
+
+@dataclass
+class KeypairSet:
+    keys_dir: Path
+
+    # Ed25519 (Solana) paths
+    deployer_path: Path
+    hardware_wallet_path: Path
+    igp_oracle_path: Path
+
+    # Ed25519 derived values
+    deployer_pubkey: str
+    deployer_keypair: str
+    hardware_wallet_pubkey: str
+    igp_oracle_pubkey: str
+
+    # secp256k1 paths
+    gorchain_validator_path: Path
+    solana_validator_path: Path
+
+    # secp256k1 derived values
+    gorchain_validator_address: str
+    solana_validator_address: str
+
+
+def _solana_keygen(output: Path) -> None:
+    run_cmd([
+        "solana-keygen", "new",
+        "--no-bip39-passphrase",
+        "-o", str(output),
+        "--force",
+    ])
+
+
+def _solana_pubkey(keypair_path: Path) -> str:
+    result = run_cmd(["solana-keygen", "pubkey", str(keypair_path)], quiet=True)
+    return result.stdout.strip()
+
+
+def _cast_wallet_new(output: Path) -> dict[str, str]:
+    result = run_cmd(["cast", "wallet", "new", "--json"], quiet=True)
+    data = json.loads(result.stdout)
+    output.write_text(result.stdout)
+    return data
+
+
+def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
+    if keys_dir is None:
+        keys_dir = KEYS_DIR
+
+    log_info("Generating test keypairs...")
+    keys_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- Ed25519 keypairs (Solana format) ---
+
+    deployer_path = keys_dir / "deployer.json"
+    log_info("  Generating deployer keypair...")
+    _solana_keygen(deployer_path)
+    deployer_pubkey = _solana_pubkey(deployer_path)
+    deployer_keypair = deployer_path.read_text().strip()
+
+    hw_path = keys_dir / "hardware-wallet.json"
+    log_info("  Generating hardware wallet keypair...")
+    _solana_keygen(hw_path)
+    hw_pubkey = _solana_pubkey(hw_path)
+
+    oracle_path = keys_dir / "igp-oracle.json"
+    log_info("  Generating IGP oracle keypair...")
+    _solana_keygen(oracle_path)
+    oracle_pubkey = _solana_pubkey(oracle_path)
+
+    # --- secp256k1 keypairs (for validator signing) ---
+
+    gorchain_val_path = keys_dir / "gorchain-validator.json"
+    log_info("  Generating Gorchain validator secp256k1 key...")
+    gorchain_data = _cast_wallet_new(gorchain_val_path)
+    gorchain_address = gorchain_data["address"]
+
+    solana_val_path = keys_dir / "solana-validator.json"
+    log_info("  Generating Solana validator secp256k1 key...")
+    solana_data = _cast_wallet_new(solana_val_path)
+    solana_address = solana_data["address"]
+
+    keypair_set = KeypairSet(
+        keys_dir=keys_dir,
+        deployer_path=deployer_path,
+        hardware_wallet_path=hw_path,
+        igp_oracle_path=oracle_path,
+        deployer_pubkey=deployer_pubkey,
+        deployer_keypair=deployer_keypair,
+        hardware_wallet_pubkey=hw_pubkey,
+        igp_oracle_pubkey=oracle_pubkey,
+        gorchain_validator_path=gorchain_val_path,
+        solana_validator_path=solana_val_path,
+        gorchain_validator_address=gorchain_address,
+        solana_validator_address=solana_address,
+    )
+
+    log_info("Test keypairs generated:")
+    log_info(f"  Deployer pubkey:            {deployer_pubkey}")
+    log_info(f"  Hardware wallet pubkey:     {hw_pubkey}")
+    log_info(f"  IGP oracle pubkey:          {oracle_pubkey}")
+    log_info(f"  Gorchain validator (H160):  {gorchain_address}")
+    log_info(f"  Solana validator (H160):    {solana_address}")
+
+    return keypair_set
+
+
+def fund_wallets(
+    keypair_set: KeypairSet | None = None,
+    keys_dir: Path | None = None,
+    gorchain_rpc: str = "http://localhost:8899",
+    solana_rpc: str = "http://localhost:18899",
+) -> None:
+    log_info("Funding test wallets...")
+
+    if keys_dir is None:
+        keys_dir = KEYS_DIR
+
+    deployer_pubkey = _solana_pubkey(keys_dir / "deployer.json")
+    hw_pubkey = _solana_pubkey(keys_dir / "hardware-wallet.json")
+    oracle_pubkey = _solana_pubkey(keys_dir / "igp-oracle.json")
+
+    # Fund on Solana test validator
+    log_info(f"  Funding wallets on Solana ({solana_rpc})...")
+    for amount, pubkey, label in [
+        ("100", deployer_pubkey, "deployer"),
+        ("1", hw_pubkey, "hardware wallet"),
+        ("1", oracle_pubkey, "IGP oracle"),
+    ]:
+        result = run_cmd(
+            ["solana", "airdrop", amount, pubkey, "--url", solana_rpc],
+            check=False,
+        )
+        if result.returncode != 0:
+            log_error(f"Airdrop to {label} on Solana failed")
+
+    # Fund on Gorchain (if available)
+    log_info(f"  Funding wallets on Gorchain ({gorchain_rpc})...")
+    for amount, pubkey, label in [
+        ("100", deployer_pubkey, "deployer"),
+        ("1", hw_pubkey, "hardware wallet"),
+        ("1", oracle_pubkey, "IGP oracle"),
+    ]:
+        result = run_cmd(
+            ["solana", "airdrop", amount, pubkey, "--url", gorchain_rpc],
+            check=False,
+        )
+        if result.returncode != 0:
+            log_error(f"Airdrop to {label} on Gorchain failed (gorchain may not be running)")
+
+    log_info("Wallet funding complete")
+
+
+def create_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
+    log_info(f"Creating deployer secrets in namespace {namespace}...")
+
+    # Generate yaml via dry-run, then apply (idempotent)
+    gen = run_cmd([
+        "kubectl", "create", "secret", "generic", "hyperlane-deployer-secrets",
+        "-n", namespace,
+        f"--from-literal=DEPLOYER_KEYPAIR={keypair_set.deployer_keypair}",
+        f"--from-literal=HARDWARE_WALLET_PUBKEY={keypair_set.hardware_wallet_pubkey}",
+        f"--from-literal=IGP_ORACLE_PUBKEY={keypair_set.igp_oracle_pubkey}",
+        f"--from-literal=GORCHAIN_VALIDATOR_ADDRESS={keypair_set.gorchain_validator_address}",
+        f"--from-literal=SOLANA_VALIDATOR_ADDRESS={keypair_set.solana_validator_address}",
+        "--dry-run=client", "-o", "yaml",
+    ])
+
+    import subprocess as _sp
+
+    _sp.run(
+        ["kubectl", "apply", "-f", "-"],
+        input=gen.stdout,
+        text=True,
+        check=True,
+    )
+    log_info("Deployer secrets created")
+
+
+def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
+    log_info(f"Creating warp deployer secrets in namespace {namespace}...")
+
+    gen = run_cmd([
+        "kubectl", "create", "secret", "generic", "hyperlane-warp-deployer-secrets",
+        "-n", namespace,
+        f"--from-literal=DEPLOYER_KEYPAIR={keypair_set.deployer_keypair}",
+        f"--from-literal=HARDWARE_WALLET_PUBKEY={keypair_set.hardware_wallet_pubkey}",
+        "--dry-run=client", "-o", "yaml",
+    ])
+
+    import subprocess as _sp
+
+    _sp.run(
+        ["kubectl", "apply", "-f", "-"],
+        input=gen.stdout,
+        text=True,
+        check=True,
+    )
+    log_info("Warp deployer secrets created")
