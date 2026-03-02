@@ -31,6 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Set a default Rust toolchain so cargo is available for global installs
+RUN rustup default stable
+
 # Install Solana CLI
 RUN sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_CLI_VERSION}/install)" && \
     mv /root/.local/share/solana/install/active_release/bin/* /usr/local/bin/
