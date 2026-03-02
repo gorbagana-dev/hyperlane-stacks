@@ -79,7 +79,7 @@ def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session")
-def chain_nodes(request: pytest.FixtureRequest, kind_cluster: None) -> Generator[None, None, None]:
+def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
     skip_setup = request.config.getoption("--skip-chain-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
@@ -98,7 +98,8 @@ def chain_nodes(request: pytest.FixtureRequest, kind_cluster: None) -> Generator
 
 
 @pytest.fixture(scope="session")
-def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+def deployer_image(request: pytest.FixtureRequest) -> None:
+    """Build container images before starting the cluster or chain nodes to avoid resource contention."""
     if not request.config.getoption("--skip-build"):
         log.info("Building deployer container image...")
         build_deployer_image()
@@ -115,10 +116,10 @@ def keypairs() -> KeypairSet:
 @pytest.fixture(scope="session")
 def deployer_deployment(
     request: pytest.FixtureRequest,
-    kind_cluster: None,
-    chain_nodes: None,
     deployer_image: None,
     keypairs: KeypairSet,
+    kind_cluster: None,
+    chain_nodes: None,
 ) -> Generator[DeploymentInfo, None, None]:
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
