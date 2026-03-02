@@ -6,7 +6,6 @@ Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce
 
 - A running `k8s-kind` cluster
 - `laconic-so` (stack-orchestrator) installed
-- `hyperlane-minio` stack deployed (validators need S3 storage)
 
 ## 1. Setup repositories
 
@@ -43,17 +42,13 @@ config:
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
   FORCE_REDEPLOY: "false"
-configmaps:
-  deployer-scripts-config: ./configmaps/deployer-scripts-config
-  deployer-chain-config: ./configmaps/deployer-chain-config
-  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
-  deployer-multisig-config: ./configmaps/deployer-multisig-config
-  deployer-registry-config: ./configmaps/deployer-registry-config
 secrets:
   hyperlane-deployer-secrets:
     - DEPLOYER_KEYPAIR
     - HARDWARE_WALLET_PUBKEY
-    - IGP_ORACLE_WALLET_PUBKEY
+    - IGP_ORACLE_PUBKEY
+    - GORCHAIN_VALIDATOR_ADDRESS
+    - SOLANA_VALIDATOR_ADDRESS
 ```
 
 Then create the deployment directory:
@@ -64,19 +59,7 @@ laconic-so --stack hyperlane-svm-deployer deploy create --spec-file deployer-spe
 
 This applies RBAC (via `deploy/commands.py`) granting the pod's ServiceAccount permission to create ConfigMaps.
 
-## 4. Populate config files
-
-The `deploy create` step copies default config templates from `stack_orchestrator/data/config/` into `deployer-deployment/configmaps/`. Edit them before starting:
-
-| ConfigMap directory | Contents |
-|---|---|
-| `deployer-scripts-config/` | `deploy.sh` — the main deployment script (usually no edits needed) |
-| `deployer-chain-config/` | `gorchain.json`, `solana.json` — chain metadata for sealevel-client |
-| `deployer-gas-oracle-config/` | `gas-oracle-configs.json` — initial IGP gas oracle parameters |
-| `deployer-multisig-config/` | `gorchain-multisig.json`, `solana-multisig.json` — validator sets and thresholds |
-| `deployer-registry-config/` | Hyperlane registry metadata |
-
-## 5. Create secrets
+## 4. Create secrets
 
 The `secrets:` section in the spec references a k8s Secret by name. SO mounts it as environment variables in the pod automatically, but **you must create the Secret yourself** before starting the deployment:
 
@@ -84,35 +67,40 @@ The `secrets:` section in the spec references a k8s Secret by name. SO mounts it
 kubectl create secret generic hyperlane-deployer-secrets \
   --from-literal=DEPLOYER_KEYPAIR='[<byte array>]' \
   --from-literal=HARDWARE_WALLET_PUBKEY='<pubkey>' \
-  --from-literal=IGP_ORACLE_WALLET_PUBKEY='<pubkey>'
+  --from-literal=IGP_ORACLE_PUBKEY='<pubkey>' \
+  --from-literal=GORCHAIN_VALIDATOR_ADDRESS='<H160 address>' \
+  --from-literal=SOLANA_VALIDATOR_ADDRESS='<H160 address>'
 ```
 
 | Secret key | Description |
 |---|---|
 | `DEPLOYER_KEYPAIR` | JSON array of deployer secret key bytes (required) |
 | `HARDWARE_WALLET_PUBKEY` | Pubkey to receive program upgrade authority (optional) |
-| `IGP_ORACLE_WALLET_PUBKEY` | Pubkey for IGP oracle account ownership (optional) |
+| `IGP_ORACLE_PUBKEY` | Pubkey for IGP oracle account ownership (optional) |
+| `GORCHAIN_VALIDATOR_ADDRESS` | H160 (Ethereum-format) address for Gorchain validator ISM (optional) |
+| `SOLANA_VALIDATOR_ADDRESS` | H160 (Ethereum-format) address for Solana validator ISM (optional) |
 
-## 6. Start deployment
+## 5. Start deployment
 
 ```bash
 laconic-so deployment --dir deployer-deployment start
 ```
 
-The pod runs `deploy.sh` which:
+The pod runs `entrypoint.sh` which:
 
 1. Checks idempotency — skips if `hyperlane-program-ids` ConfigMap already exists (override with `FORCE_REDEPLOY=true`)
 2. Deploys core contracts on both chains via `hyperlane-sealevel-client`
 3. Verifies deployed program hashes against local `.so` files using `solana-verify`
 4. Transfers program upgrade authority to `HARDWARE_WALLET_PUBKEY`
-5. Transfers IGP account ownership to `IGP_ORACLE_WALLET_PUBKEY`
-6. Builds `agent-config.json` from deployed program IDs
-7. Writes artifacts to k8s ConfigMaps: `hyperlane-program-ids`, `hyperlane-agent-config`, `hyperlane-gas-oracle-config`, `hyperlane-multisig-config`, `hyperlane-registry`
-8. Shreds and deletes the deployer keypair from the pod
+5. Transfers IGP account ownership to `IGP_ORACLE_PUBKEY`
+6. Configures 1-of-1 multisig ISM with validator addresses
+7. Builds `agent-config.json` from deployed program IDs
+8. Writes artifacts to k8s ConfigMaps: `hyperlane-program-ids`, `hyperlane-agent-config`, `hyperlane-gas-oracle-config`, `hyperlane-multisig-config`, `hyperlane-registry`
+9. Shreds and deletes the deployer keypair from the pod
 
 The container exits after completion (`restart: "no"`).
 
-## 7. Verify
+## 6. Verify
 
 ```bash
 # Check pod completed successfully
