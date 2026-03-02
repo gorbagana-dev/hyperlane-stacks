@@ -1,0 +1,55 @@
+# host-chain-services.yaml — k8s Services + Endpoints pointing to host chain nodes
+# Template variables: ${HOST_IP}, ${NAMESPACE}
+# Applied by cluster.sh:apply_host_chain_services()
+
+---
+# Gorchain RPC Service (headless, no selector — manually managed Endpoints)
+apiVersion: v1
+kind: Service
+metadata:
+  name: gorchain-rpc
+  namespace: ${NAMESPACE}
+spec:
+  ports:
+    - port: 8899
+      targetPort: 8899
+      protocol: TCP
+---
+# Gorchain RPC Endpoints — points to host IP
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: gorchain-rpc
+  namespace: ${NAMESPACE}
+subsets:
+  - addresses:
+      - ip: "${HOST_IP}"
+    ports:
+      - port: 8899
+        protocol: TCP
+
+---
+# Solana RPC Service (headless, no selector — manually managed Endpoints)
+apiVersion: v1
+kind: Service
+metadata:
+  name: solana-rpc
+  namespace: ${NAMESPACE}
+spec:
+  ports:
+    - port: 18899
+      targetPort: 18899
+      protocol: TCP
+---
+# Solana RPC Endpoints — points to host IP
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: solana-rpc
+  namespace: ${NAMESPACE}
+subsets:
+  - addresses:
+      - ip: "${HOST_IP}"
+    ports:
+      - port: 18899
+        protocol: TCP

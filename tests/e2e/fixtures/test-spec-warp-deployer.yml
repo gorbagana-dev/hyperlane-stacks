@@ -1,0 +1,14 @@
+stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
+deploy-to: k8s-kind
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
+  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+secrets:
+  hyperlane-warp-deployer-secrets:
+    - DEPLOYER_KEYPAIR
+    - HARDWARE_WALLET_PUBKEY
