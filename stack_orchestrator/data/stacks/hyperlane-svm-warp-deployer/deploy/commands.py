@@ -16,13 +16,11 @@ def create(context: DeploymentContext, extra_args):
     """
     import subprocess
 
-    namespace = "default"
-
     # Apply RBAC manifests — reuses the same Role as the core deployer
     # (both need ConfigMap read/write in the same namespace)
     rbac_path = Path(__file__).parent / "rbac.yaml"
     result = subprocess.run(
-        ["kubectl", "apply", "-f", str(rbac_path), "-n", namespace],
+        ["kubectl", "apply", "-f", str(rbac_path)],
         capture_output=True,
         text=True,
     )

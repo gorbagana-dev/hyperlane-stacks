@@ -80,7 +80,7 @@ hyperlane-sealevel-client --url "${COLLATERAL_RPC_URL}" \
   --remote-domain "${SYNTHETIC_DOMAIN_ID}" \
   --mailbox "${COLLATERAL_MAILBOX}" \
   --token-config /config/token/token-config.json \
-  --built-so-dir /hyperlane/sealevel-programs \
+  --built-so-dir /opt/hyperlane/programs \
   --program-ids "${WORK_DIR}/${COLLATERAL_CHAIN}-program-ids.json" \
   --output "${WORK_DIR}/output/collateral-deploy.json"
 
@@ -104,7 +104,7 @@ hyperlane-sealevel-client --url "${SYNTHETIC_RPC_URL}" \
   --remote-domain "${COLLATERAL_DOMAIN_ID}" \
   --mailbox "${SYNTHETIC_MAILBOX}" \
   --token-config /config/token/token-config.json \
-  --built-so-dir /hyperlane/sealevel-programs \
+  --built-so-dir /opt/hyperlane/programs \
   --program-ids "${WORK_DIR}/${SYNTHETIC_CHAIN}-program-ids.json" \
   --output "${WORK_DIR}/output/synthetic-deploy.json"
 
@@ -120,7 +120,7 @@ echo "=== Verifying deployed warp route program hashes ==="
 VERIFY_FAILED=0
 
 for SO_NAME in hyperlane_sealevel_token hyperlane_sealevel_token_native hyperlane_sealevel_token_collateral; do
-  SO_FILE="/hyperlane/sealevel-programs/${SO_NAME}.so"
+  SO_FILE="/opt/hyperlane/programs/${SO_NAME}.so"
   [ -f "$SO_FILE" ] || continue
 
   if [ -n "${COLLATERAL_TOKEN_ADDRESS}" ]; then
