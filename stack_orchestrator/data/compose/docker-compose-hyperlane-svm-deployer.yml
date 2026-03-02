@@ -3,29 +3,14 @@ services:
     # TODO: use git.vdb.to/laconicnetwork/hyperlane-svm-deployer:tag once CI publish workflows are set up
     image: laconicnetwork/hyperlane-svm-deployer:local
     restart: "no"
-    command: ["/bin/bash", "/opt/scripts/deploy.sh"]
     environment:
-      # Chain configuration
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
       GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
       SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
-      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
-      # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_WALLET_PUBKEY
-      # Options
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
-    volumes:
-      - deployer-scripts-config:/opt/scripts:ro
-      - deployer-chain-config:/config/chains:ro
-      - deployer-gas-oracle-config:/config/gas-oracle:ro
-      - deployer-multisig-config:/config/multisig:ro
-      - deployer-registry-config:/config/registry:ro
-
-volumes:
-  deployer-scripts-config:
-  deployer-chain-config:
-  deployer-gas-oracle-config:
-  deployer-multisig-config:
-  deployer-registry-config:
+      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY
+      # GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS

@@ -11,18 +11,16 @@ config:
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
   FORCE_REDEPLOY: "false"
-configmaps:
-  deployer-scripts-config: ./configmaps/deployer-scripts-config
-  deployer-chain-config: ./configmaps/deployer-chain-config
-  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
-  deployer-multisig-config: ./configmaps/deployer-multisig-config
-  deployer-registry-config: ./configmaps/deployer-registry-config
 secrets:
   # Create before deploying: kubectl create secret generic hyperlane-deployer-secrets \
   #   --from-literal=DEPLOYER_KEYPAIR='[<byte array>]' \
   #   --from-literal=HARDWARE_WALLET_PUBKEY='<pubkey>' \
-  #   --from-literal=IGP_ORACLE_WALLET_PUBKEY='<pubkey>'
+  #   --from-literal=IGP_ORACLE_PUBKEY='<pubkey>' \
+  #   --from-literal=GORCHAIN_VALIDATOR_ADDRESS='<H160 address>' \
+  #   --from-literal=SOLANA_VALIDATOR_ADDRESS='<H160 address>'
   hyperlane-deployer-secrets:
     - DEPLOYER_KEYPAIR
     - HARDWARE_WALLET_PUBKEY
-    - IGP_ORACLE_WALLET_PUBKEY
+    - IGP_ORACLE_PUBKEY
+    - GORCHAIN_VALIDATOR_ADDRESS
+    - SOLANA_VALIDATOR_ADDRESS
