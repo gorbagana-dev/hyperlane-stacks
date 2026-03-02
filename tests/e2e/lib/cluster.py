@@ -23,36 +23,61 @@ def create_kind_cluster(config_path: Path | None = None) -> None:
     if config_path is None:
         config_path = E2E_DIR / "fixtures" / "kind-config.yaml"
 
-    run_cmd([
-        "kind", "create", "cluster",
-        "--name", KIND_CLUSTER_NAME,
-        "--config", str(config_path),
-        "--wait", "120s",
-    ])
+    run_cmd(
+        [
+            "kind",
+            "create",
+            "cluster",
+            "--name",
+            KIND_CLUSTER_NAME,
+            "--config",
+            str(config_path),
+            "--wait",
+            "120s",
+        ]
+    )
     log_info(f"Kind cluster '{KIND_CLUSTER_NAME}' created")
 
-    run_cmd([
-        "kubectl", "wait", "--for=condition=Ready",
-        "pods", "--all", "-n", "kube-system", "--timeout=120s",
-    ])
+    run_cmd(
+        [
+            "kubectl",
+            "wait",
+            "--for=condition=Ready",
+            "pods",
+            "--all",
+            "-n",
+            "kube-system",
+            "--timeout=120s",
+        ]
+    )
     log_info("Kind cluster system pods are ready")
 
 
 def install_cert_manager() -> None:
     log_info("Installing cert-manager...")
 
-    run_cmd([
-        "kubectl", "apply", "-f",
-        "https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml",
-    ])
+    run_cmd(
+        [
+            "kubectl",
+            "apply",
+            "-f",
+            "https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml",
+        ]
+    )
 
     log_info("Waiting for cert-manager pods to be ready...")
     for deployment in ("cert-manager", "cert-manager-webhook", "cert-manager-cainjector"):
-        run_cmd([
-            "kubectl", "wait", "--for=condition=Available",
-            f"deployment/{deployment}",
-            "-n", "cert-manager", "--timeout=120s",
-        ])
+        run_cmd(
+            [
+                "kubectl",
+                "wait",
+                "--for=condition=Available",
+                f"deployment/{deployment}",
+                "-n",
+                "cert-manager",
+                "--timeout=120s",
+            ]
+        )
 
     # Give webhooks a moment to register
     time.sleep(5)
@@ -69,10 +94,16 @@ def create_selfsigned_issuer(fixture_path: Path | None = None) -> None:
 
 def apply_host_chain_services(namespace: str, fixture_path: Path | None = None) -> None:
     log_info("Detecting host IP for kind network...")
-    result = run_cmd([
-        "docker", "network", "inspect", "kind",
-        "-f", "{{range .IPAM.Config}}{{.Gateway}}{{end}}",
-    ])
+    result = run_cmd(
+        [
+            "docker",
+            "network",
+            "inspect",
+            "kind",
+            "-f",
+            "{{range .IPAM.Config}}{{.Gateway}}{{end}}",
+        ]
+    )
     host_ip = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
 
     if not host_ip:
@@ -102,13 +133,7 @@ def apply_rbac(namespace: str) -> None:
     log_info(f"Applying RBAC to namespace {namespace}...")
 
     rbac_source = (
-        REPO_ROOT
-        / "stack_orchestrator"
-        / "data"
-        / "stacks"
-        / "hyperlane-svm-deployer"
-        / "deploy"
-        / "rbac.yaml"
+        REPO_ROOT / "stack_orchestrator" / "data" / "stacks" / "hyperlane-svm-deployer" / "deploy" / "rbac.yaml"
     )
 
     content = rbac_source.read_text()

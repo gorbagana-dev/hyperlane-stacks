@@ -20,7 +20,9 @@ WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
 def _kubectl_get_configmap(namespace: str, name: str) -> dict:
     result = subprocess.run(
         ["kubectl", "-n", namespace, "get", "configmap", name, "-o", "json"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return json.loads(result.stdout)
 
@@ -28,11 +30,19 @@ def _kubectl_get_configmap(namespace: str, name: str) -> dict:
 def _wait_for_pod_phase(namespace: str, label: str, phase: str, timeout: int) -> None:
     subprocess.run(
         [
-            "kubectl", "wait", "--for=jsonpath={.status.phase}=" + phase,
-            "-n", namespace, "-l", label,
-            f"--timeout={timeout}s", "pod",
+            "kubectl",
+            "wait",
+            "--for=jsonpath={.status.phase}=" + phase,
+            "-n",
+            namespace,
+            "-l",
+            label,
+            f"--timeout={timeout}s",
+            "pod",
         ],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -41,7 +51,8 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
     while time.monotonic() < deadline:
         result = subprocess.run(
             ["kubectl", "-n", namespace, "get", "configmap", name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0:
             return
@@ -52,7 +63,8 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
 def _dump_pod_logs(namespace: str, label: str) -> None:
     result = subprocess.run(
         ["kubectl", "logs", "-n", namespace, "-l", label, "--tail=200"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.stdout:
         log.info("--- Pod logs (%s) ---\n%s", label, result.stdout)
@@ -62,7 +74,9 @@ def _create_spl_token() -> str:
     """Create a test SPL token on the local Solana validator and return the mint address."""
     result = subprocess.run(
         ["spl-token", "create-token", "--url", "http://localhost:18899"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     output = result.stdout + result.stderr
 
@@ -87,6 +101,7 @@ def _patch_warp_spec(token_mint: str) -> Path:
 # ---------------------------------------------------------------------------
 # Module-scoped fixture: deploy the warp stack once for all warp tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def warp_deployment(
@@ -131,9 +146,9 @@ def warp_deployment(
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.slow
 class TestWarpDeployer:
-
     def test_warp_deployer_completes(self, warp_deployment: dict) -> None:
         ns = warp_deployment["namespace"]
         try:
@@ -155,8 +170,7 @@ class TestWarpDeployer:
         assert isinstance(parsed, dict), "token-config is not a JSON object"
 
         config_mint = parsed.get("warpRoute", {}).get("tokenMint", "")
-        assert config_mint == token_mint, \
-            f"token-config has wrong token mint: expected {token_mint}, got {config_mint}"
+        assert config_mint == token_mint, f"token-config has wrong token mint: expected {token_mint}, got {config_mint}"
 
     def test_warp_deploy_outputs(self, warp_deployment: dict) -> None:
         ns = warp_deployment["namespace"]

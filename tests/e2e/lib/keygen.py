@@ -36,12 +36,16 @@ class KeypairSet:
 
 
 def _solana_keygen(output: Path) -> None:
-    run_cmd([
-        "solana-keygen", "new",
-        "--no-bip39-passphrase",
-        "-o", str(output),
-        "--force",
-    ])
+    run_cmd(
+        [
+            "solana-keygen",
+            "new",
+            "--no-bip39-passphrase",
+            "-o",
+            str(output),
+            "--force",
+        ]
+    )
 
 
 def _solana_pubkey(keypair_path: Path) -> str:
@@ -168,16 +172,25 @@ def create_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
     log_info(f"Creating deployer secrets in namespace {namespace}...")
 
     # Generate yaml via dry-run, then apply (idempotent)
-    gen = run_cmd([
-        "kubectl", "create", "secret", "generic", "hyperlane-deployer-secrets",
-        "-n", namespace,
-        f"--from-literal=DEPLOYER_KEYPAIR={keypair_set.deployer_keypair}",
-        f"--from-literal=HARDWARE_WALLET_PUBKEY={keypair_set.hardware_wallet_pubkey}",
-        f"--from-literal=IGP_ORACLE_PUBKEY={keypair_set.igp_oracle_pubkey}",
-        f"--from-literal=GORCHAIN_VALIDATOR_ADDRESS={keypair_set.gorchain_validator_address}",
-        f"--from-literal=SOLANA_VALIDATOR_ADDRESS={keypair_set.solana_validator_address}",
-        "--dry-run=client", "-o", "yaml",
-    ])
+    gen = run_cmd(
+        [
+            "kubectl",
+            "create",
+            "secret",
+            "generic",
+            "hyperlane-deployer-secrets",
+            "-n",
+            namespace,
+            f"--from-literal=DEPLOYER_KEYPAIR={keypair_set.deployer_keypair}",
+            f"--from-literal=HARDWARE_WALLET_PUBKEY={keypair_set.hardware_wallet_pubkey}",
+            f"--from-literal=IGP_ORACLE_PUBKEY={keypair_set.igp_oracle_pubkey}",
+            f"--from-literal=GORCHAIN_VALIDATOR_ADDRESS={keypair_set.gorchain_validator_address}",
+            f"--from-literal=SOLANA_VALIDATOR_ADDRESS={keypair_set.solana_validator_address}",
+            "--dry-run=client",
+            "-o",
+            "yaml",
+        ]
+    )
 
     import subprocess as _sp
 
@@ -193,13 +206,22 @@ def create_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
 def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
     log_info(f"Creating warp deployer secrets in namespace {namespace}...")
 
-    gen = run_cmd([
-        "kubectl", "create", "secret", "generic", "hyperlane-warp-deployer-secrets",
-        "-n", namespace,
-        f"--from-literal=DEPLOYER_KEYPAIR={keypair_set.deployer_keypair}",
-        f"--from-literal=HARDWARE_WALLET_PUBKEY={keypair_set.hardware_wallet_pubkey}",
-        "--dry-run=client", "-o", "yaml",
-    ])
+    gen = run_cmd(
+        [
+            "kubectl",
+            "create",
+            "secret",
+            "generic",
+            "hyperlane-warp-deployer-secrets",
+            "-n",
+            namespace,
+            f"--from-literal=DEPLOYER_KEYPAIR={keypair_set.deployer_keypair}",
+            f"--from-literal=HARDWARE_WALLET_PUBKEY={keypair_set.hardware_wallet_pubkey}",
+            "--dry-run=client",
+            "-o",
+            "yaml",
+        ]
+    )
 
     import subprocess as _sp
 

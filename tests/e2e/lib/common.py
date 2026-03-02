@@ -7,8 +7,9 @@ import logging
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -109,8 +110,8 @@ def run_cmd(
     *,
     check: bool = True,
     capture_output: bool = True,
-    cwd: Optional[Path] = None,
-    env: Optional[dict[str, str]] = None,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
     quiet: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     if not quiet:
@@ -144,7 +145,7 @@ def wait_for(
     description: str = "",
 ) -> Any:
     deadline = time.time() + timeout
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     while True:
         try:
             result = fn()
@@ -170,19 +171,21 @@ def wait_for_pod_phase(
     phase: str,
     timeout: int = 600,
 ) -> None:
-    log_info(
-        f"Waiting for pod ({label_selector}) in {namespace} "
-        f"to reach phase {phase} (timeout {timeout}s)..."
-    )
+    log_info(f"Waiting for pod ({label_selector}) in {namespace} to reach phase {phase} (timeout {timeout}s)...")
 
     deadline = time.time() + timeout
     while True:
         result = run_cmd(
             [
-                "kubectl", "get", "pods",
-                "-n", namespace,
-                "-l", label_selector,
-                "-o", "jsonpath={.items[0].status.phase}",
+                "kubectl",
+                "get",
+                "pods",
+                "-n",
+                namespace,
+                "-l",
+                label_selector,
+                "-o",
+                "jsonpath={.items[0].status.phase}",
             ],
             check=False,
             quiet=True,
@@ -203,9 +206,7 @@ def wait_for_pod_phase(
             raise RuntimeError(f"Pod ({label_selector}) entered Failed phase")
 
         if time.time() >= deadline:
-            log_error(
-                f"Timed out waiting for pod ({label_selector}) — current phase: {current_phase}"
-            )
+            log_error(f"Timed out waiting for pod ({label_selector}) — current phase: {current_phase}")
             run_cmd(
                 ["kubectl", "describe", "pods", "-n", namespace, "-l", label_selector],
                 check=False,
@@ -240,9 +241,14 @@ def wait_for_configmap(namespace: str, name: str, timeout: int = 120) -> None:
     def _check() -> bool:
         result = run_cmd(
             [
-                "kubectl", "get", "configmap", name,
-                "-n", namespace,
-                "-o", "jsonpath={.data}",
+                "kubectl",
+                "get",
+                "configmap",
+                name,
+                "-n",
+                namespace,
+                "-o",
+                "jsonpath={.data}",
             ],
             check=False,
             quiet=True,
@@ -265,8 +271,8 @@ def kubectl_json(args: list[str]) -> dict[str, Any]:
 # Namespace helper
 # ---------------------------------------------------------------------------
 def get_namespace(
-    deploy_namespace: Optional[str] = None,
-    cluster_id: Optional[str] = None,
+    deploy_namespace: str | None = None,
+    cluster_id: str | None = None,
 ) -> str:
     if deploy_namespace:
         return deploy_namespace

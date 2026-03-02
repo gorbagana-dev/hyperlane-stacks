@@ -1,32 +1,31 @@
 import logging
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
-from pathlib import Path
 
-from lib.common import E2E_DIR, REPO_ROOT
+from lib.chain import start_solana_test_validator, stop_solana_test_validator
 from lib.cluster import (
-    create_kind_cluster,
-    install_cert_manager,
-    create_selfsigned_issuer,
     apply_host_chain_services,
     apply_rbac,
+    create_kind_cluster,
+    create_selfsigned_issuer,
     destroy_kind_cluster,
+    install_cert_manager,
 )
-from lib.chain import start_solana_test_validator, stop_solana_test_validator
+from lib.common import E2E_DIR
 from lib.deploy import (
+    DeploymentInfo,
     build_deployer_image,
     deploy_prepare,
     deploy_start,
     stop_stack,
-    DeploymentInfo,
 )
 from lib.keygen import (
-    generate_test_keypairs,
-    fund_wallets,
+    KeypairSet,
     create_deployer_secrets,
     create_warp_deployer_secrets,
-    KeypairSet,
+    fund_wallets,
+    generate_test_keypairs,
 )
 
 log = logging.getLogger(__name__)
@@ -38,20 +37,24 @@ FIXTURE_SPEC = E2E_DIR / "fixtures" / "test-spec-deployer.yml"
 # Custom CLI options
 # ---------------------------------------------------------------------------
 
+
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--skip-cluster-setup", action="store_true", default=False,
-                     help="Skip kind cluster creation (reuse existing)")
-    parser.addoption("--skip-chain-setup", action="store_true", default=False,
-                     help="Skip starting chain nodes (assume running)")
-    parser.addoption("--skip-build", action="store_true", default=False,
-                     help="Skip container image builds (assume cached)")
-    parser.addoption("--skip-cleanup", action="store_true", default=False,
-                     help="Don't tear down after tests")
+    parser.addoption(
+        "--skip-cluster-setup", action="store_true", default=False, help="Skip kind cluster creation (reuse existing)"
+    )
+    parser.addoption(
+        "--skip-chain-setup", action="store_true", default=False, help="Skip starting chain nodes (assume running)"
+    )
+    parser.addoption(
+        "--skip-build", action="store_true", default=False, help="Skip container image builds (assume cached)"
+    )
+    parser.addoption("--skip-cleanup", action="store_true", default=False, help="Don't tear down after tests")
 
 
 # ---------------------------------------------------------------------------
 # Session-scoped fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:

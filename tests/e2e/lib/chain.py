@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import shutil
-import signal
 import subprocess
 from pathlib import Path
-from typing import Optional
 
-from .common import E2E_DIR, log_info, run_cmd, wait_for_rpc_health
+from .common import log_info, wait_for_rpc_health
 
 SOLANA_LEDGER_DIR = Path("/tmp/solana-test-ledger")
 
@@ -23,8 +21,10 @@ def start_solana_test_validator(port: int = 18899) -> subprocess.Popen[str]:
     proc = subprocess.Popen(
         [
             "solana-test-validator",
-            "--ledger", str(SOLANA_LEDGER_DIR),
-            "--rpc-port", str(port),
+            "--ledger",
+            str(SOLANA_LEDGER_DIR),
+            "--rpc-port",
+            str(port),
             "--quiet",
         ],
         stdout=subprocess.DEVNULL,
@@ -36,7 +36,7 @@ def start_solana_test_validator(port: int = 18899) -> subprocess.Popen[str]:
     return proc
 
 
-def stop_solana_test_validator(proc: Optional[subprocess.Popen[str]]) -> None:
+def stop_solana_test_validator(proc: subprocess.Popen[str] | None) -> None:
     log_info("Stopping Solana test validator...")
 
     if proc is not None:

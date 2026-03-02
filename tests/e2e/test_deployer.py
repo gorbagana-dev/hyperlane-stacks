@@ -15,7 +15,9 @@ CONFIGMAP_TIMEOUT = 30
 def _kubectl_get_configmap(namespace: str, name: str) -> dict:
     result = subprocess.run(
         ["kubectl", "-n", namespace, "get", "configmap", name, "-o", "json"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return json.loads(result.stdout)
 
@@ -24,11 +26,19 @@ def _wait_for_pod_phase(namespace: str, label: str, phase: str, timeout: int) ->
     """Wait for a pod matching *label* to reach the given phase."""
     subprocess.run(
         [
-            "kubectl", "wait", "--for=jsonpath={.status.phase}=" + phase,
-            "-n", namespace, "-l", label,
-            f"--timeout={timeout}s", "pod",
+            "kubectl",
+            "wait",
+            "--for=jsonpath={.status.phase}=" + phase,
+            "-n",
+            namespace,
+            "-l",
+            label,
+            f"--timeout={timeout}s",
+            "pod",
         ],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -40,7 +50,8 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
     while time.monotonic() < deadline:
         result = subprocess.run(
             ["kubectl", "-n", namespace, "get", "configmap", name],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0:
             return
@@ -51,7 +62,8 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
 def _dump_pod_logs(namespace: str, label: str) -> None:
     result = subprocess.run(
         ["kubectl", "logs", "-n", namespace, "-l", label, "--tail=200"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.stdout:
         log.info("--- Pod logs (%s) ---\n%s", label, result.stdout)
@@ -61,9 +73,9 @@ def _dump_pod_logs(namespace: str, label: str) -> None:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.slow
 class TestDeployer:
-
     def test_deployer_pod_succeeds(self, deployer_deployment: DeploymentInfo) -> None:
         ns = deployer_deployment.namespace
         try:
@@ -79,10 +91,12 @@ class TestDeployer:
         cm = _kubectl_get_configmap(ns, "hyperlane-program-ids")
         data = cm.get("data", {})
 
-        assert "gorchain-program-ids.json" in data and data["gorchain-program-ids.json"], \
+        assert "gorchain-program-ids.json" in data and data["gorchain-program-ids.json"], (
             "program-ids missing gorchain data"
-        assert "solanasvm-program-ids.json" in data and data["solanasvm-program-ids.json"], \
+        )
+        assert "solanasvm-program-ids.json" in data and data["solanasvm-program-ids.json"], (
             "program-ids missing solana data"
+        )
 
     def test_agent_config_configmap(self, deployer_deployment: DeploymentInfo) -> None:
         ns = deployer_deployment.namespace

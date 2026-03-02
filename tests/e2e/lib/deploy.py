@@ -6,7 +6,6 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from .common import E2E_DIR, REPO_ROOT, fail_exit, log_info, run_cmd
 
@@ -66,8 +65,8 @@ def build_deployer_image(stack_name: str = "hyperlane-svm-deployer") -> None:
 def deploy_prepare(
     stack_name: str,
     spec_file: Path,
-    deploy_dir: Optional[Path] = None,
-    cluster_id: Optional[str] = None,
+    deploy_dir: Path | None = None,
+    cluster_id: str | None = None,
 ) -> DeploymentInfo:
     if deploy_dir is None:
         deploy_dir = DEPLOY_DIR / stack_name
@@ -80,10 +79,17 @@ def deploy_prepare(
     # Generate default spec, then overwrite with our fixture
     init_spec = deploy_dir / "spec.yml"
     log_info("Running deploy init...")
-    run_cmd([
-        "laconic-so", "--stack", str(stack_path),
-        "deploy", "init", "--output", str(init_spec),
-    ])
+    run_cmd(
+        [
+            "laconic-so",
+            "--stack",
+            str(stack_path),
+            "deploy",
+            "init",
+            "--output",
+            str(init_spec),
+        ]
+    )
 
     # Overwrite with our pre-configured test spec (resolving stack path)
     prepare_spec(spec_file, init_spec)
@@ -95,21 +101,25 @@ def deploy_prepare(
 
     # Create deployment directory from spec
     log_info("Running deploy create...")
-    run_cmd([
-        "laconic-so", "--stack", str(stack_path),
-        "deploy", "create",
-        "--spec-file", str(init_spec),
-        "--deployment-dir", str(deploy_dir),
-    ])
+    run_cmd(
+        [
+            "laconic-so",
+            "--stack",
+            str(stack_path),
+            "deploy",
+            "create",
+            "--spec-file",
+            str(init_spec),
+            "--deployment-dir",
+            str(deploy_dir),
+        ]
+    )
 
     # Extract cluster-id from the created deployment
     resolved_cluster_id = cluster_id or get_cluster_id(deploy_dir)
     namespace = f"laconic-{resolved_cluster_id}"
 
-    log_info(
-        f"Stack '{stack_name}' prepared — "
-        f"cluster-id: {resolved_cluster_id}, namespace: {namespace}"
-    )
+    log_info(f"Stack '{stack_name}' prepared — cluster-id: {resolved_cluster_id}, namespace: {namespace}")
 
     return DeploymentInfo(
         deploy_dir=deploy_dir,
@@ -130,8 +140,8 @@ def deploy_start(deploy_dir: Path, first: bool = False) -> None:
 def deploy_stack(
     stack_name: str,
     spec_file: Path,
-    deploy_dir: Optional[Path] = None,
-    cluster_id: Optional[str] = None,
+    deploy_dir: Path | None = None,
+    cluster_id: str | None = None,
     first: bool = False,
 ) -> DeploymentInfo:
     info = deploy_prepare(stack_name, spec_file, deploy_dir, cluster_id)
@@ -139,7 +149,7 @@ def deploy_stack(
     return info
 
 
-def stop_stack(stack_name: str, deploy_dir: Optional[Path] = None) -> None:
+def stop_stack(stack_name: str, deploy_dir: Path | None = None) -> None:
     if deploy_dir is None:
         deploy_dir = DEPLOY_DIR / stack_name
 
@@ -150,8 +160,13 @@ def stop_stack(stack_name: str, deploy_dir: Optional[Path] = None) -> None:
     log_info(f"Stopping stack '{stack_name}'...")
     run_cmd(
         [
-            "laconic-so", "deployment", "--dir", str(deploy_dir),
-            "stop", "--delete-volumes", "--skip-cluster-management",
+            "laconic-so",
+            "deployment",
+            "--dir",
+            str(deploy_dir),
+            "stop",
+            "--delete-volumes",
+            "--skip-cluster-management",
         ],
         check=False,
     )
