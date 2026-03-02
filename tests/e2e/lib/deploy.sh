@@ -12,26 +12,56 @@ mkdir -p "${DEPLOY_DIR}"
 _FIRST_DEPLOY="${_FIRST_DEPLOY:-true}"
 
 # ---------------------------------------------------------------------------
+# _resolve_stack_path — resolve stack name to absolute path
+#   $1: stack name (e.g. hyperlane-svm-deployer)
+# ---------------------------------------------------------------------------
+_resolve_stack_path() {
+    local stack_name="$1"
+    echo "${REPO_ROOT}/stack_orchestrator/data/stacks/${stack_name}"
+}
+
+# ---------------------------------------------------------------------------
 # build_deployer_image — build the deployer container image
 # ---------------------------------------------------------------------------
 build_deployer_image() {
+    local stack_path
+    stack_path="$(_resolve_stack_path "hyperlane-svm-deployer")"
+
     log_info "Building deployer container image..."
 
     log_info "Setting up repositories..."
-    laconic-so setup-repositories \
-        --include github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0
+    laconic-so --stack "${stack_path}" setup-repositories
 
     log_info "Building container image..."
-    laconic-so build-containers \
-        --include laconicnetwork/hyperlane-svm-deployer
+    laconic-so --stack "${stack_path}" build-containers
 
     log_info "Deployer image built successfully"
 }
 
 # ---------------------------------------------------------------------------
+# _prepare_spec — copy a spec fixture and resolve the stack path to absolute
+#   $1: source spec file
+#   $2: destination spec file
+#
+# Replaces relative stack: paths with absolute paths based on REPO_ROOT.
+# ---------------------------------------------------------------------------
+_prepare_spec() {
+    local src="$1"
+    local dst="$2"
+
+    cp "${src}" "${dst}"
+
+    # Convert relative stack path to absolute
+    # e.g. "stack: stack_orchestrator/..." → "stack: /abs/path/stack_orchestrator/..."
+    if grep -q '^stack: stack_orchestrator/' "${dst}"; then
+        sed -i "s|^stack: stack_orchestrator/|stack: ${REPO_ROOT}/stack_orchestrator/|" "${dst}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # so_deploy_prepare — init + create a stack (does NOT start pods)
 #   $1: stack-name (used as deployment directory name)
-#   $2: spec-file path
+#   $2: spec-file path (fixture)
 #
 # After first call, exports CLUSTER_ID and DEPLOY_NAMESPACE.
 # ---------------------------------------------------------------------------
@@ -39,26 +69,31 @@ so_deploy_prepare() {
     local stack_name="$1"
     local spec_file="$2"
     local deploy_dir="${DEPLOY_DIR}/${stack_name}"
+    local stack_path
+    stack_path="$(_resolve_stack_path "${stack_name}")"
 
     log_info "Preparing stack '${stack_name}' from spec '${spec_file}'..."
 
     mkdir -p "${deploy_dir}"
 
-    # Initialize deployment
+    # Generate default spec, then overwrite with our fixture
     log_info "Running deploy init..."
-    laconic-so deploy init \
-        --output "${deploy_dir}" \
-        --spec-file "${spec_file}"
+    local init_spec="${deploy_dir}/spec.yml"
+    laconic-so --stack "${stack_path}" deploy init --output "${init_spec}"
 
-    # If not the first deploy, patch cluster-id to reuse existing cluster
+    # Overwrite with our pre-configured test spec (resolving stack path)
+    _prepare_spec "${spec_file}" "${init_spec}"
+
+    # If not the first deploy, inject cluster-id into the spec
     if [[ "${_FIRST_DEPLOY}" != "true" && -n "${CLUSTER_ID:-}" ]]; then
         log_info "Patching cluster-id to ${CLUSTER_ID} for shared cluster..."
-        patch_cluster_id "${deploy_dir}" "${CLUSTER_ID}"
+        patch_cluster_id "${init_spec}" "${CLUSTER_ID}"
     fi
 
-    # Create deployment (sets up k8s resources, kind cluster on first run)
+    # Create deployment directory from spec
     log_info "Running deploy create..."
-    laconic-so deploy create \
+    laconic-so --stack "${stack_path}" deploy create \
+        --spec-file "${init_spec}" \
         --deployment-dir "${deploy_dir}"
 
     # If first deploy, extract cluster-id and namespace
@@ -77,7 +112,7 @@ so_deploy_prepare() {
 # ---------------------------------------------------------------------------
 # so_deploy_start — start a previously prepared stack
 #   $1: stack-name
-#   $2: (optional) "first" if this is the first stack (creates cluster)
+#   $2: (optional) "first" — omit --skip-cluster-management for the first stack
 # ---------------------------------------------------------------------------
 so_deploy_start() {
     local stack_name="$1"
@@ -86,15 +121,17 @@ so_deploy_start() {
 
     log_info "Starting stack '${stack_name}'..."
     if [[ "${is_first}" == "first" ]]; then
+        # First stack: let SO create the kind cluster, load images, install ingress
         laconic-so deployment --dir "${deploy_dir}" start
     else
+        # Subsequent stacks: skip cluster creation, deploy into existing cluster
         laconic-so deployment --dir "${deploy_dir}" start --skip-cluster-management
     fi
     log_info "Stack '${stack_name}' started"
 }
 
 # ---------------------------------------------------------------------------
-# so_deploy_stack — prepare + start a stack in one call (for non-first stacks)
+# so_deploy_stack — prepare + start a stack in one call
 #   $1: stack-name
 #   $2: spec-file path
 # ---------------------------------------------------------------------------
@@ -120,7 +157,8 @@ so_stop_stack() {
     fi
 
     log_info "Stopping stack '${stack_name}'..."
-    laconic-so deployment --dir "${deploy_dir}" stop --delete-volumes 2>/dev/null || true
+    laconic-so deployment --dir "${deploy_dir}" stop \
+        --delete-volumes --skip-cluster-management 2>/dev/null || true
     log_info "Stack '${stack_name}' stopped"
 }
 
@@ -147,28 +185,23 @@ get_cluster_id() {
 }
 
 # ---------------------------------------------------------------------------
-# patch_cluster_id — overwrite cluster-id in a deployment.yml
-#   $1: deployment directory
+# patch_cluster_id — inject or overwrite cluster-id in a spec/deployment file
+#   $1: file path (spec.yml or deployment.yml)
 #   $2: cluster-id
 # ---------------------------------------------------------------------------
 patch_cluster_id() {
-    local deploy_dir="$1"
+    local file="$1"
     local cluster_id="$2"
-    local deployment_yml="${deploy_dir}/deployment.yml"
 
-    if [[ ! -f "${deployment_yml}" ]]; then
-        # The file may not exist yet before deploy create — patch the spec instead
-        local spec_file="${deploy_dir}/spec.yml"
-        if [[ -f "${spec_file}" ]]; then
-            if grep -q 'cluster-id:' "${spec_file}"; then
-                sed -i "s/cluster-id:.*/cluster-id: ${cluster_id}/" "${spec_file}"
-            else
-                echo "cluster-id: ${cluster_id}" >> "${spec_file}"
-            fi
-        fi
-        return 0
+    if [[ ! -f "${file}" ]]; then
+        fail_exit "Cannot patch cluster-id: file not found: ${file}"
     fi
 
-    sed -i "s/cluster-id:.*/cluster-id: ${cluster_id}/" "${deployment_yml}"
-    log_info "Patched cluster-id to ${cluster_id} in ${deployment_yml}"
+    if grep -q 'cluster-id:' "${file}"; then
+        sed -i "s/cluster-id:.*/cluster-id: ${cluster_id}/" "${file}"
+    else
+        echo "cluster-id: ${cluster_id}" >> "${file}"
+    fi
+
+    log_info "Patched cluster-id to ${cluster_id} in ${file}"
 }
