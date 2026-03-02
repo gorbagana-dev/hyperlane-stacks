@@ -86,7 +86,12 @@ kubectl create secret generic hyperlane-deployer-secrets \
 laconic-so deployment --dir deployer-deployment start
 ```
 
-The pod runs `entrypoint.sh` which:
+> **Note:** The deploy script (`deploy.sh`) is ConfigMap-mounted via the
+> `deployer-scripts-config` volume, not baked into the container image.
+> Script changes do not require a container rebuild -- update the ConfigMap
+> and restart the pod.
+
+The pod runs `deploy.sh` which:
 
 1. Checks idempotency — skips if `hyperlane-program-ids` ConfigMap already exists (override with `FORCE_REDEPLOY=true`)
 2. Deploys core contracts on both chains via `hyperlane-sealevel-client`

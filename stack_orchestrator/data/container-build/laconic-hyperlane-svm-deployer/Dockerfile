@@ -4,7 +4,7 @@
 #
 # Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)
 # Invoked via: docker build -f <this-file> ~/cerc/hyperlane-monorepo
-# Note: build.sh copies entrypoint.sh into the build context before building.
+# Note: deploy script is ConfigMap-mounted at runtime, not baked into the image.
 
 # ============================================================
 # Stage 1: Builder — compile sealevel-client and .so programs
@@ -44,8 +44,6 @@ RUN cargo install solana-verify --locked
 # Copy required directories from build context (cloned by laconic-so)
 WORKDIR /build/hyperlane-monorepo
 COPY rust/ ./rust/
-COPY entrypoint.sh ./entrypoint.sh
-
 # Install the Rust toolchain specified by rust/sealevel/rust-toolchain
 RUN cd rust/sealevel && rustup show
 
@@ -92,10 +90,6 @@ COPY --from=builder /root/.cargo/bin/solana-verify /usr/local/bin/
 # Copy .so program artifacts
 COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/deploy/*.so /opt/hyperlane/programs/
 
-# Copy entrypoint (placed into build context by build.sh)
-COPY entrypoint.sh /opt/hyperlane/entrypoint.sh
-RUN chmod +x /opt/hyperlane/entrypoint.sh
-
 WORKDIR /opt/hyperlane
 
-ENTRYPOINT ["/opt/hyperlane/entrypoint.sh"]
+CMD ["echo", "No script mounted. Override command to run a deploy script."]

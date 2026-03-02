@@ -3,6 +3,8 @@ services:
     # TODO: use git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:tag for production
     image: laconic/hyperlane-svm-deployer:local
     restart: "no"
+    entrypoint: ["/bin/bash"]
+    command: ["/bin/bash", "/opt/scripts/deploy.sh"]
     environment:
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}
@@ -14,3 +16,8 @@ services:
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY
       # GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
+    volumes:
+      - deployer-scripts-config:/opt/scripts:ro
+
+volumes:
+  deployer-scripts-config:
