@@ -1,7 +1,6 @@
 services:
   warp-deployer:
-    # TODO: use git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:tag for production
-    image: laconic/hyperlane-svm-deployer:local
+    image: git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest
     restart: "no"
     entrypoint: ["/bin/bash"]
     command: ["/bin/bash", "/opt/scripts/deploy.sh"]

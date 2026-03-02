@@ -30,14 +30,14 @@ pytest -v --skip-cluster-setup
 # Skip chain node startup (Solana/Gorchain already running externally)
 pytest -v --skip-chain-setup
 
-# Skip image builds (use cached Docker images)
-pytest -v --skip-build
+# Build images from source instead of using published images
+pytest -v --build-from-source
 
 # Keep everything running after tests (for debugging)
 pytest -v --skip-cleanup
 
-# Iterative development: reuse cluster + chains + images
-pytest -v --skip-cluster-setup --skip-chain-setup --skip-build --skip-cleanup
+# Iterative development: reuse cluster + chains
+pytest -v --skip-cluster-setup --skip-chain-setup --skip-cleanup
 
 # Run only core deployer tests
 pytest -v test_deployer.py
@@ -76,7 +76,7 @@ tests/e2e/
 
 ## How it works
 
-1. **Image build** builds container images before anything else to avoid resource contention (`deployer_image` fixture)
+1. **Image setup** uses published container images by default; pass `--build-from-source` to build locally (`deployer_image` fixture)
 2. **Keypair generation** creates test Ed25519 + secp256k1 keypairs (`keypairs` fixture)
 3. **Kind cluster** creates the cluster and installs cert-manager for TLS (`kind_cluster` fixture)
 4. **Chain nodes** start a Solana test validator on the host (`chain_nodes` fixture)

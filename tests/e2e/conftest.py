@@ -15,7 +15,6 @@ from lib.cluster import (
 from lib.common import E2E_DIR, set_verbose
 from lib.deploy import (
     DeploymentInfo,
-    build_deployer_image,
     deploy_prepare,
     deploy_start,
     stop_stack,
@@ -46,7 +45,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--skip-chain-setup", action="store_true", default=False, help="Skip starting chain nodes (assume running)"
     )
     parser.addoption(
-        "--skip-build", action="store_true", default=False, help="Skip container image builds (assume cached)"
+        "--build-from-source", action="store_true", default=False, help="Build container images from source instead of using published images"
     )
     parser.addoption("--skip-cleanup", action="store_true", default=False, help="Don't tear down after tests")
     parser.addoption("--verbose-cmds", action="store_true", default=False, help="Stream subprocess output to terminal")
@@ -105,12 +104,13 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
 @pytest.fixture(scope="session")
 def deployer_image(request: pytest.FixtureRequest) -> None:
-    """Build container images before starting the cluster or chain nodes to avoid resource contention."""
-    if not request.config.getoption("--skip-build"):
-        log.info("Building deployer container image...")
+    """Build container images from source if --build-from-source is passed."""
+    if request.config.getoption("--build-from-source"):
+        from lib.deploy import build_deployer_image
+        log.info("Building deployer container image from source...")
         build_deployer_image()
     else:
-        log.info("Skipping image build (--skip-build)")
+        log.info("Using published deployer image (pass --build-from-source to build locally)")
 
 
 @pytest.fixture(scope="session")

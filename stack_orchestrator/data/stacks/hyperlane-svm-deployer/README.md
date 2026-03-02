@@ -7,7 +7,7 @@ Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce
 - A running `k8s-kind` cluster
 - `laconic-so` (stack-orchestrator) installed
 
-## 1. Setup repositories
+## 1. Setup repositories (optional — for development only)
 
 ```bash
 laconic-so --stack hyperlane-svm-deployer setup-repositories
@@ -15,13 +15,16 @@ laconic-so --stack hyperlane-svm-deployer setup-repositories
 
 Clones `hyperlane-monorepo@agents-v2.0.0` to `~/cerc/hyperlane-monorepo`.
 
-## 2. Build container
+## 2. Build container (optional — for development only)
+
+The stack uses the published image `git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest` by default. To build from source instead:
 
 ```bash
+laconic-so --stack hyperlane-svm-deployer setup-repositories
 laconic-so --stack hyperlane-svm-deployer build-containers
 ```
 
-Builds `laconic/hyperlane-svm-deployer:local` — a multi-stage image containing `hyperlane-sealevel-client`, compiled `.so` program artifacts, `solana-verify`, and `kubectl`.
+This builds `laconic/hyperlane-svm-deployer:local` — a multi-stage image containing `hyperlane-sealevel-client`, compiled `.so` program artifacts, `solana-verify`, and `kubectl`.
 
 ## 3. Create deployment
 

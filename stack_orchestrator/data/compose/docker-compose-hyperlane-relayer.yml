@@ -37,8 +37,7 @@ services:
       start_period: 30s
 
   igp-fee-claim:
-    # TODO: use git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:tag for production
-    image: laconic/hyperlane-svm-deployer:local
+    image: git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest
     restart: unless-stopped
     hostname: igp-fee-claim
     command: ["/bin/bash", "/opt/scripts/claim-fees.sh"]
