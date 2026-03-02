@@ -1,0 +1,61 @@
+# TODO: Change trigger to run on releases instead of textfile changes
+name: Build and Publish Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'trigger-publish.txt'
+  workflow_dispatch:
+
+env:
+  REGISTRY: git.vdb.to
+  REGISTRY_ORG: laconicnetwork
+  IMAGE_NAME: laconic/hyperlane-svm-deployer
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to registry
+        run: echo ${{ secrets.CICD_PUBLISH_TOKEN }} | docker login https://git.vdb.to -u laconiccicd --password-stdin
+
+      - name: Install laconic-so
+        run: |
+          mkdir -p ~/bin
+          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          chmod +x ~/bin/laconic-so
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Setup repositories
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-svm-deployer setup-repositories
+
+      - name: Build container image
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-svm-deployer build-containers
+
+      - name: Generate image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Tag and push image
+        run: |
+          LOCAL_IMAGE="${IMAGE_NAME}:local"
+          REMOTE_TAG="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:latest"
+
+          docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
+          docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
+
+          docker push "${REMOTE_TAG}"
+          docker push "${REMOTE_LATEST}"
+
+          echo "Published: ${REMOTE_TAG}"
+          echo "Published: ${REMOTE_LATEST}"
