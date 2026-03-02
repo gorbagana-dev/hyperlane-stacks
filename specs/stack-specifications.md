@@ -63,10 +63,10 @@ The architecture doc (`docs/architecture-decisions.md`) describes 5 logical stac
 
 | # | Stack | repos: | containers: | pods: |
 |---|-------|--------|-------------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconicnetwork/hyperlane-svm-deployer` | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconicnetwork/hyperlane-svm-deployer` | `hyperlane-svm-warp-deployer` |
+| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-svm-warp-deployer` |
 | 3 | `hyperlane-validator` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconicnetwork/hyperlane-kms-proxy` | `hyperlane-validator` |
-| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconicnetwork/hyperlane-svm-deployer` | `hyperlane-relayer` |
+| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-relayer` |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` |
 | 6 | `hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconicnetwork/hyperlane-gas-oracle` | `hyperlane-gas-oracle` |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` |
@@ -95,7 +95,7 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| deployer | `laconicnetwork/hyperlane-svm-deployer:local` | `restart: "no"`, mounts deploy script + config templates |
+| deployer | `laconic/hyperlane-svm-deployer:local` | `restart: "no"`, mounts deploy script + config templates |
 
 ### ConfigMaps (input)
 - `deployer-scripts-config` — deploy.sh entrypoint
@@ -135,7 +135,7 @@ One-time Job that deploys warp route contracts (collateral on one chain, synthet
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| warp-deployer | `laconicnetwork/hyperlane-svm-deployer:local` | Same deployer image, different entrypoint script |
+| warp-deployer | `laconic/hyperlane-svm-deployer:local` | Same deployer image, different entrypoint script |
 
 ### Dependencies
 - Requires Stack 1 (core deployer) to have run first
@@ -215,7 +215,7 @@ Delivers cross-chain messages between Gorchain and Solana. Includes an IGP fee c
 | Service | Image | Notes |
 |---------|-------|-------|
 | relayer | `gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
-| igp-fee-claim | `laconicnetwork/hyperlane-svm-deployer:local` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
+| igp-fee-claim | `laconic/hyperlane-svm-deployer:local` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
 
 ### IGP Fee Claim Sidecar
 Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fees.sh`. Mounted as ConfigMap volume. Claims accumulated IGP fees on both chains using the relayer key for tx fees (permissionless operation).
@@ -352,7 +352,7 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `laconicnetwork/hyperlane-svm-deployer` | `laconicnetwork-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify` |
+| `laconic/hyperlane-svm-deployer` | `laconic-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify` |
 | `laconicnetwork/hyperlane-kms-proxy` | `laconicnetwork-hyperlane-kms-proxy` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `laconicnetwork/hyperlane-gas-oracle` | `laconicnetwork-hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
 | `laconicnetwork/hyperlane-warp-ui` | `laconicnetwork-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
@@ -364,7 +364,7 @@ Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-clo
 Each container-build dir is self-contained with its Dockerfile and any supporting files (entrypoint scripts, config templates):
 
 ```
-container-build/laconicnetwork-hyperlane-svm-deployer/
+container-build/laconic-hyperlane-svm-deployer/
   build.sh          # runs: docker build -f Dockerfile -t ...:local ~/cerc/hyperlane-monorepo
   Dockerfile        # COPY from ~/cerc/hyperlane-monorepo (no internal git clone)
   entrypoint.sh     # copied into image at build time

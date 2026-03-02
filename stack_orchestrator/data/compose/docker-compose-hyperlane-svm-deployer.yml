@@ -1,7 +1,7 @@
 services:
   deployer:
-    # TODO: use git.vdb.to/laconicnetwork/hyperlane-svm-deployer:tag once CI publish workflows are set up
-    image: laconicnetwork/hyperlane-svm-deployer:local
+    # TODO: use git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:tag for production
+    image: laconic/hyperlane-svm-deployer:local
     restart: "no"
     environment:
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}

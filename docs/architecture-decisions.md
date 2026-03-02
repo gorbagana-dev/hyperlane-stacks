@@ -114,9 +114,9 @@ All images use the same Hyperlane version: **`agents-v2.0.0`**
 |-----------|-------|--------|
 | Validator | `gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>` (tag: `agents-v2.0.0`) | Upstream pre-built, pinned by digest (see `versions.json`) |
 | Relayer | `gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>` (tag: `agents-v2.0.0`) | Upstream pre-built, pinned by digest (see `versions.json`) |
-| Deployer | `git.vdb.to/laconicnetwork/hyperlane-svm-deployer:local` | Custom build from `agents-v2.0.0` tag |
-| Warp Deployer | `git.vdb.to/laconicnetwork/hyperlane-svm-deployer:local` | Same image as deployer |
-| Ops jobs | `git.vdb.to/laconicnetwork/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
+| Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Custom build from `agents-v2.0.0` tag |
+| Warp Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer |
+| Ops jobs | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `git.vdb.to/laconicnetwork/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
 | Gas Oracle | `git.vdb.to/laconicnetwork/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
 | Warp UI | `git.vdb.to/laconicnetwork/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `6227c04` |

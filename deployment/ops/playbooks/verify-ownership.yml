@@ -6,7 +6,7 @@
   vars:
     job_name: "hyperlane-verify-ownership-{{ lookup('pipe', 'date +%s') }}"
     script_configmap_name: "{{ job_name }}-script"
-    image: "laconicnetwork/hyperlane-svm-deployer:local"
+    image: "laconic/hyperlane-svm-deployer:local"
 
   pre_tasks:
     - name: Validate required variables

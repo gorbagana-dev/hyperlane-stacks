@@ -21,7 +21,7 @@ Clones `hyperlane-monorepo@agents-v2.0.0` to `~/cerc/hyperlane-monorepo`.
 laconic-so --stack hyperlane-svm-deployer build-containers
 ```
 
-Builds `laconicnetwork/hyperlane-svm-deployer:local` — a multi-stage image containing `hyperlane-sealevel-client`, compiled `.so` program artifacts, `solana-verify`, and `kubectl`.
+Builds `laconic/hyperlane-svm-deployer:local` — a multi-stage image containing `hyperlane-sealevel-client`, compiled `.so` program artifacts, `solana-verify`, and `kubectl`.
 
 ## 3. Create deployment
 

@@ -301,10 +301,10 @@ For the deployer: `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` â†
 laconic-so --stack stack_orchestrator/data/stacks/hyperlane-svm-deployer build-containers
 ```
 
-This runs `container-build/laconicnetwork-hyperlane-svm-deployer/build.sh`, which:
+This runs `container-build/laconic-hyperlane-svm-deployer/build.sh`, which:
 - Copies `entrypoint.sh` into the monorepo build context
 - Runs `docker build` with the monorepo as context
-- Produces `laconicnetwork/hyperlane-svm-deployer:local`
+- Produces `laconic/hyperlane-svm-deployer:local`
 
 Images are cached in Docker's local image store. Subsequent runs skip building if the image exists.
 
@@ -411,7 +411,7 @@ tests/
  9. Fund test wallets on both chains (solana airdrop)
 10. Create + apply k8s Secrets from generated keypairs
 11. Build container images (or verify cached):
-    - laconicnetwork/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
+    - laconic/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
     - laconicnetwork/hyperlane-kms-proxy:local (mock, from tests/e2e/mock-kms-proxy/)
     - laconicnetwork/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
     - laconicnetwork/hyperlane-warp-ui:local (from hyperlane-warp-ui source)

@@ -4,6 +4,6 @@ description: "Hyperlane relayer with IGP fee claim sidecar"
 repos:
   - github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0
 containers:
-  - laconicnetwork/hyperlane-svm-deployer
+  - laconic/hyperlane-svm-deployer
 pods:
   - hyperlane-relayer
