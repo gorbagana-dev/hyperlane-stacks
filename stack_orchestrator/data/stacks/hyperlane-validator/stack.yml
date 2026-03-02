@@ -4,6 +4,6 @@ description: "Hyperlane validator with Privy KMS proxy sidecar (one deployment p
 repos:
   - git.vdb.to/LaconicNetwork/hyperlane-stacks
 containers:
-  - laconicnetwork/hyperlane-kms-proxy
+  - laconic/hyperlane-kms-proxy
 pods:
   - hyperlane-validator

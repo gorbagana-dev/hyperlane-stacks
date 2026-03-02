@@ -1,7 +1,7 @@
 services:
   warp-ui:
-    # TODO: use git.vdb.to/laconicnetwork/hyperlane-warp-ui:tag once CI publish workflows are set up
-    image: laconicnetwork/hyperlane-warp-ui:local
+    # TODO: use git.vdb.to/laconic/hyperlane-warp-ui:tag once CI publish workflows are set up
+    image: laconic/hyperlane-warp-ui:local
     restart: unless-stopped
     environment:
       # Chain RPC URLs — entrypoint.sh replaces sentinel placeholders in built JS

@@ -117,9 +117,9 @@ All images use the same Hyperlane version: **`agents-v2.0.0`**
 | Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Custom build from `agents-v2.0.0` tag |
 | Warp Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
-| KMS Proxy | `git.vdb.to/laconicnetwork/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
-| Gas Oracle | `git.vdb.to/laconicnetwork/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
-| Warp UI | `git.vdb.to/laconicnetwork/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `6227c04` |
+| KMS Proxy | `git.vdb.to/laconic/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
+| Gas Oracle | `git.vdb.to/laconic/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
+| Warp UI | `git.vdb.to/laconic/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `6227c04` |
 | MinIO | `minio/minio` (upstream) | S3-compatible checkpoint storage |
 | Prometheus | `prom/prometheus` (upstream) | Metrics collection |
 | Grafana | `grafana/grafana` (upstream) | Dashboards and alerting |

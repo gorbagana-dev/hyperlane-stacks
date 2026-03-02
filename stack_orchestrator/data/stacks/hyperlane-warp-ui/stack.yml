@@ -4,6 +4,6 @@ description: "Hyperlane Warp UI — browser-based bridge UI for cross-chain toke
 repos:
   - github.com/hyperlane-xyz/hyperlane-warp-ui-template
 containers:
-  - laconicnetwork/hyperlane-warp-ui
+  - laconic/hyperlane-warp-ui
 pods:
   - hyperlane-warp-ui

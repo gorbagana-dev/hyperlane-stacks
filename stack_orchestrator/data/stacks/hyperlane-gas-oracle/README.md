@@ -14,7 +14,7 @@ Periodically updates IGP (Interchain Gas Paymaster) gas oracle configurations on
 laconic-so --stack hyperlane-gas-oracle build-containers
 ```
 
-Builds `laconicnetwork/hyperlane-gas-oracle:local`.
+Builds `laconic/hyperlane-gas-oracle:local`.
 
 ## 2. Create deployment
 

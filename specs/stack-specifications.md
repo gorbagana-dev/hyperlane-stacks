@@ -65,12 +65,12 @@ The architecture doc (`docs/architecture-decisions.md`) describes 5 logical stac
 |---|-------|--------|-------------|-------|
 | 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-svm-deployer` |
 | 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-svm-warp-deployer` |
-| 3 | `hyperlane-validator` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconicnetwork/hyperlane-kms-proxy` | `hyperlane-validator` |
+| 3 | `hyperlane-validator` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-kms-proxy` | `hyperlane-validator` |
 | 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-relayer` |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` |
-| 6 | `hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconicnetwork/hyperlane-gas-oracle` | `hyperlane-gas-oracle` |
+| 6 | `hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-gas-oracle` | `hyperlane-gas-oracle` |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` |
-| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `laconicnetwork/hyperlane-warp-ui` | `hyperlane-warp-ui` |
+| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `laconic/hyperlane-warp-ui` | `hyperlane-warp-ui` |
 
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
 - Stacks 1, 2, and 4 share the same repo/container (deployer image) and are independently buildable.
@@ -166,7 +166,7 @@ Single parameterized compose file. All chain-specific values come from env vars 
 | Service | Image | Notes |
 |---------|-------|-------|
 | validator | `gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0` | CLI args from env vars, metrics on :9090 |
-| kms-proxy | `laconicnetwork/hyperlane-kms-proxy:local` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
+| kms-proxy | `laconic/hyperlane-kms-proxy:local` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
 
 Validator command uses env vars for all chain-specific args:
 - `--origin-chain-name ${ORIGIN_CHAIN_NAME}`
@@ -267,7 +267,7 @@ Periodically fetches token prices and updates IGP gas oracle configurations on b
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| gas-oracle | `laconicnetwork/hyperlane-gas-oracle:local` | Node.js, loop mode via `RUN_LOOP=true` |
+| gas-oracle | `laconic/hyperlane-gas-oracle:local` | Node.js, loop mode via `RUN_LOOP=true` |
 
 ### Config (spec.yml)
 `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID`, `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GAS_ORACLE_INTERVAL_MS` (default 900000)
@@ -322,7 +322,7 @@ Browser-based bridge UI (Next.js) for cross-chain token transfers.
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| warp-ui | `laconicnetwork/hyperlane-warp-ui:local` | Port 3000, sentinel placeholder substitution at startup |
+| warp-ui | `laconic/hyperlane-warp-ui:local` | Port 3000, sentinel placeholder substitution at startup |
 
 ### Ingress
 HTTP proxy routes host → warp-ui:3000 via Caddy ingress controller with automatic ACME TLS.
@@ -353,9 +353,9 @@ Summary of custom images and their SO build pipeline:
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
 | `laconic/hyperlane-svm-deployer` | `laconic-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify` |
-| `laconicnetwork/hyperlane-kms-proxy` | `laconicnetwork-hyperlane-kms-proxy` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
-| `laconicnetwork/hyperlane-gas-oracle` | `laconicnetwork-hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
-| `laconicnetwork/hyperlane-warp-ui` | `laconicnetwork-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
+| `laconic/hyperlane-kms-proxy` | `laconic-hyperlane-kms-proxy` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
+| `laconic/hyperlane-gas-oracle` | `laconic-hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
+| `laconic/hyperlane-warp-ui` | `laconic-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
 
 Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-cloned repo in `~/cerc/` as build context. Build scripts must NOT use relative paths back to the repo tree — components may move to different repos.
 
@@ -369,16 +369,16 @@ container-build/laconic-hyperlane-svm-deployer/
   Dockerfile        # COPY from ~/cerc/hyperlane-monorepo (no internal git clone)
   entrypoint.sh     # copied into image at build time
 
-container-build/laconicnetwork-hyperlane-warp-ui/
+container-build/laconic-hyperlane-warp-ui/
   build.sh          # runs: docker build -f Dockerfile -t ...:local ~/cerc/hyperlane-warp-ui-template
   Dockerfile        # COPY from ~/cerc/hyperlane-warp-ui-template (no internal git clone)
   entrypoint.sh     # sentinel substitution + Next.js start
   configs/          # chains.yaml, warpRoutes.yaml, .env.sentinel — placeholder configs
 
-container-build/laconicnetwork-hyperlane-kms-proxy/
+container-build/laconic-hyperlane-kms-proxy/
   build.sh          # runs: docker build -t ...:local ~/cerc/hyperlane-stacks/hyperlane-kms-proxy
 
-container-build/laconicnetwork-hyperlane-gas-oracle/
+container-build/laconic-hyperlane-gas-oracle/
   build.sh          # runs: docker build -t ...:local ~/cerc/hyperlane-stacks/hyperlane-gas-oracle
 ```
 
@@ -442,7 +442,7 @@ Both validator spec files reference the same stack (`stack_orchestrator/data/sta
 
 ## Compose File Conventions
 
-- **Image tags**: Use `laconicnetwork/name:local` (what `build-containers` produces). Add comment noting future published version: `# TODO: use git.vdb.to/laconicnetwork/name:tag once CI publish workflows are set up`
+- **Image tags**: Use `laconic/name:local` (what `build-containers` produces). Add comment noting future published version: `# TODO: use git.vdb.to/laconic/name:tag once CI publish workflows are set up`
 - **Inline scripts**: No multi-line inline scripts in compose files. Extract to shell scripts in `stack_orchestrator/data/config/{name}-scripts-config/` dirs. Mount as ConfigMap volumes. Reference via `command: ["/bin/bash", "/opt/scripts/script.sh"]`.
 - **Environment variables**: All deployment-specific values come from env vars (set via spec.yml config). Compose files use `${VAR}` syntax.
 - **Volumes**: Named volumes with `config` in the name → ConfigMaps in k8s. Other named volumes → PVCs.

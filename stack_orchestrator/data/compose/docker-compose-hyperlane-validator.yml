@@ -45,8 +45,8 @@ services:
       start_period: 30s
 
   kms-proxy:
-    # TODO: use git.vdb.to/laconicnetwork/hyperlane-kms-proxy:tag once CI publish workflows are set up
-    image: laconicnetwork/hyperlane-kms-proxy:local
+    # TODO: use git.vdb.to/laconic/hyperlane-kms-proxy:tag once CI publish workflows are set up
+    image: laconic/hyperlane-kms-proxy:local
     restart: unless-stopped
     hostname: kms-proxy
     environment:

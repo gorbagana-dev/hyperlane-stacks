@@ -55,7 +55,7 @@ spec:
         spec:
           containers:
           - name: gas-oracle
-            image: git.vdb.to/laconicnetwork/hyperlane-gas-oracle:local
+            image: git.vdb.to/laconic/hyperlane-gas-oracle:local
             envFrom:
             - secretRef:
                 name: privy-oracle-credentials

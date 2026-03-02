@@ -412,9 +412,9 @@ tests/
 10. Create + apply k8s Secrets from generated keypairs
 11. Build container images (or verify cached):
     - laconic/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
-    - laconicnetwork/hyperlane-kms-proxy:local (mock, from tests/e2e/mock-kms-proxy/)
-    - laconicnetwork/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
-    - laconicnetwork/hyperlane-warp-ui:local (from hyperlane-warp-ui source)
+    - laconic/hyperlane-kms-proxy:local (mock, from tests/e2e/mock-kms-proxy/)
+    - laconic/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
+    - laconic/hyperlane-warp-ui:local (from hyperlane-warp-ui source)
     - minio/minio, gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0 (pulled)
 12. Load images into kind cluster:
     kind load docker-image <image> --name hyperlane-e2e
@@ -586,7 +586,7 @@ The mock handles:
 
 **Test image swap:** SO doesn't support per-service image overrides. The mock is built with the same image name as the real KMS proxy:
 ```bash
-docker build -t laconicnetwork/hyperlane-kms-proxy:local tests/e2e/mock-kms-proxy/
+docker build -t laconic/hyperlane-kms-proxy:local tests/e2e/mock-kms-proxy/
 ```
 This makes it a drop-in replacement — the validator compose file and stack definition are used as-is. The mock image just needs to be built *after* (or instead of) the real KMS proxy image during test setup.
 

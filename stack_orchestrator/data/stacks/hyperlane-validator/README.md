@@ -17,7 +17,7 @@ Each deployment runs two containers: the Hyperlane validator agent and a KMS pro
 laconic-so --stack hyperlane-validator build-containers
 ```
 
-Builds `laconicnetwork/hyperlane-kms-proxy:local` -- the Privy-to-AWS-KMS bridge sidecar. The validator image (`gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0`) is pulled from upstream.
+Builds `laconic/hyperlane-kms-proxy:local` -- the Privy-to-AWS-KMS bridge sidecar. The validator image (`gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0`) is pulled from upstream.
 
 ## 2. Deploy for Gorchain
 

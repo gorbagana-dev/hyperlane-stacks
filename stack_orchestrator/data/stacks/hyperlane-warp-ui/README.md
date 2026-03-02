@@ -14,7 +14,7 @@ Browser-based bridge UI for cross-chain token transfers using Hyperlane warp rou
 laconic-so --stack hyperlane-warp-ui build-containers
 ```
 
-Builds `laconicnetwork/hyperlane-warp-ui:local`.
+Builds `laconic/hyperlane-warp-ui:local`.
 
 ## 2. Create deployment
 

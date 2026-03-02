@@ -7,7 +7,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cp ${SCRIPT_DIR}/entrypoint.sh ${CERC_REPO_BASE_DIR}/hyperlane-warp-ui-template/entrypoint.sh
 cp -r ${SCRIPT_DIR}/configs ${CERC_REPO_BASE_DIR}/hyperlane-warp-ui-template/configs
 
-docker build -t laconicnetwork/hyperlane-warp-ui:local \
+docker build -t laconic/hyperlane-warp-ui:local \
   -f ${SCRIPT_DIR}/Dockerfile \
   ${build_command_args} \
   ${CERC_REPO_BASE_DIR}/hyperlane-warp-ui-template

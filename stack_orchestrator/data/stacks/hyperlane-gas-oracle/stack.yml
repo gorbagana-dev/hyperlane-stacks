@@ -4,6 +4,6 @@ description: "Hyperlane gas oracle — fetches prices, updates IGP configs via P
 repos:
   - git.vdb.to/LaconicNetwork/hyperlane-stacks
 containers:
-  - laconicnetwork/hyperlane-gas-oracle
+  - laconic/hyperlane-gas-oracle
 pods:
   - hyperlane-gas-oracle

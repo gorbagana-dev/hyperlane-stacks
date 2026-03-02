@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'trigger-publish.txt'
+      - '.github/trigger-publish.txt'
   workflow_dispatch:
 
 env:
