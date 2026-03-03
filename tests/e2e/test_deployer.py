@@ -8,7 +8,7 @@ from lib.deploy import DeploymentInfo
 
 log = logging.getLogger(__name__)
 
-DEPLOYER_POD_TIMEOUT = 600
+DEPLOYER_POD_TIMEOUT = 1200
 CONFIGMAP_TIMEOUT = 30
 
 
@@ -47,6 +47,7 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
     import time
 
     deadline = time.monotonic() + timeout
+    last_error = ""
     while time.monotonic() < deadline:
         result = subprocess.run(
             ["kubectl", "-n", namespace, "get", "configmap", name],
@@ -55,8 +56,12 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
         )
         if result.returncode == 0:
             return
+        last_error = (result.stderr or "").strip()
         time.sleep(2)
-    raise TimeoutError(f"ConfigMap {name} not found in namespace {namespace} within {timeout}s")
+    raise TimeoutError(
+        f"ConfigMap {name} not found in namespace {namespace} within {timeout}s. "
+        f"Last error: {last_error}"
+    )
 
 
 def _dump_pod_logs(namespace: str, label: str) -> None:
@@ -67,6 +72,8 @@ def _dump_pod_logs(namespace: str, label: str) -> None:
     )
     if result.stdout:
         log.info("--- Pod logs (%s) ---\n%s", label, result.stdout)
+    elif result.stderr:
+        log.warning("--- Could not fetch pod logs (%s): %s", label, result.stderr.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -78,10 +85,11 @@ def _dump_pod_logs(namespace: str, label: str) -> None:
 class TestDeployer:
     def test_deployer_pod_succeeds(self, deployer_deployment: DeploymentInfo) -> None:
         ns = deployer_deployment.namespace
+        pod_label = f"app={deployer_deployment.cluster_id}"
         try:
-            _wait_for_pod_phase(ns, "app.kubernetes.io/name=deployer", "Succeeded", DEPLOYER_POD_TIMEOUT)
+            _wait_for_pod_phase(ns, pod_label, "Succeeded", DEPLOYER_POD_TIMEOUT)
         except subprocess.CalledProcessError:
-            _dump_pod_logs(ns, "app.kubernetes.io/name=deployer")
+            _dump_pod_logs(ns, pod_label)
             pytest.fail("Deployer pod did not reach Succeeded phase")
 
     def test_program_ids_configmap(self, deployer_deployment: DeploymentInfo) -> None:

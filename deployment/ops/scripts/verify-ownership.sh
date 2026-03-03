@@ -49,23 +49,17 @@ verify_chain() {
   done
 
   # Verify IGP account ownership -> oracle wallet
+  # WARNING: `igp get-owner` does not exist as a hyperlane-sealevel-client subcommand.
+  # There is no known CLI command to query IGP account ownership directly.
+  # The `igp query` subcommand may provide this info, but its output format is unverified.
+  # For now, this check is skipped. Verify IGP ownership manually or via on-chain inspection.
   local igp_id
   igp_id="$(jq -r '.igp // .interchain_gas_paymaster // empty' "${programs_file}")"
   if [[ -n "${igp_id}" && -n "${IGP_ORACLE_PUBKEY:-}" ]]; then
-    log "  Checking IGP account owner..."
-    local igp_owner
-    igp_owner="$(hyperlane-sealevel-client --url "${rpc_url}" \
-      igp get-owner --program-id "${igp_id}" 2>/dev/null || echo "ERROR")"
-
-    if echo "${igp_owner}" | grep -q "${IGP_ORACLE_PUBKEY}"; then
-      log "  PASS: ${chain_name}/igp account owner = ${IGP_ORACLE_PUBKEY}"
-      PASS=$((PASS + 1))
-    else
-      log "  FAIL: ${chain_name}/igp account owner"
-      log "    Expected: ${IGP_ORACLE_PUBKEY}"
-      log "    Actual:   ${igp_owner}"
-      FAIL=$((FAIL + 1))
-    fi
+    log "  SKIP: ${chain_name}/igp account owner check — no CLI command available to query IGP ownership"
+    log "    IGP program: ${igp_id}"
+    log "    Expected owner: ${IGP_ORACLE_PUBKEY}"
+    log "    Verify manually with: hyperlane-sealevel-client --url ${rpc_url} igp query --program-id ${igp_id}"
   fi
 }
 

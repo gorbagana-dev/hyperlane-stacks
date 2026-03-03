@@ -56,61 +56,78 @@ DEPLOYER_KEY_FILE="/tmp/deployer-keypair.json"
 echo "${DEPLOYER_KEYPAIR}" > "${DEPLOYER_KEY_FILE}"
 chmod 600 "${DEPLOYER_KEY_FILE}"
 
+# Create Solana CLI config (required by hyperlane-sealevel-client even when --keypair is set)
+mkdir -p /root/.config/solana/cli
+cat > /root/.config/solana/cli/config.yml <<SOLCFG
+json_rpc_url: "${COLLATERAL_CHAIN_RPC_URL}"
+websocket_url: ""
+keypair_path: "${DEPLOYER_KEY_FILE}"
+commitment: finalized
+SOLCFG
+
 WORK_DIR="/tmp/hyperlane-warp-deploy"
-mkdir -p "${WORK_DIR}/output"
+ENVIRONMENTS_DIR="${WORK_DIR}/environments"
+ENVIRONMENT="e2e"
+REGISTRY_DIR="/config/registry"
+mkdir -p "${ENVIRONMENTS_DIR}" "${WORK_DIR}/output"
 
 # Write program IDs to files for the CLI
 echo "$COLLATERAL_PROGRAMS" > "${WORK_DIR}/${COLLATERAL_CHAIN}-program-ids.json"
 echo "$SYNTHETIC_PROGRAMS" > "${WORK_DIR}/${SYNTHETIC_CHAIN}-program-ids.json"
 
 # -------------------------------------------------------
-# Deploy collateral token on the collateral chain
+# Deploy collateral warp route on the collateral chain
 # -------------------------------------------------------
 echo ""
 echo "=== Deploying collateral warp route on ${COLLATERAL_CHAIN} ==="
-COLLATERAL_RPC_URL="${COLLATERAL_CHAIN_RPC_URL}"
 
-hyperlane-sealevel-client --url "${COLLATERAL_RPC_URL}" \
-  warp-route deploy \
+hyperlane-sealevel-client \
+  --url "${COLLATERAL_CHAIN_RPC_URL}" \
   --keypair "${DEPLOYER_KEY_FILE}" \
-  --warp-route-type collateral \
-  --token-mint "${WARP_TOKEN_MINT}" \
-  --chain "${COLLATERAL_CHAIN}" \
-  --remote-chain "${SYNTHETIC_CHAIN}" \
-  --remote-domain "${SYNTHETIC_DOMAIN_ID}" \
-  --mailbox "${COLLATERAL_MAILBOX}" \
-  --token-config /config/token/token-config.json \
+  warp-route deploy \
+  --environment "${ENVIRONMENT}" \
+  --environments-dir "${ENVIRONMENTS_DIR}" \
   --built-so-dir /opt/hyperlane/programs \
-  --program-ids "${WORK_DIR}/${COLLATERAL_CHAIN}-program-ids.json" \
-  --output "${WORK_DIR}/output/collateral-deploy.json"
+  --warp-route-name "${COLLATERAL_CHAIN}-collateral" \
+  --token-config-file /config/token/token-config.json \
+  --registry "${REGISTRY_DIR}"
 
-COLLATERAL_TOKEN_ADDRESS=$(jq -r '.token // .program_id // .collateral_address' \
-  "${WORK_DIR}/output/collateral-deploy.json")
-echo "Collateral token program: ${COLLATERAL_TOKEN_ADDRESS}"
+echo "Collateral warp route deployed on ${COLLATERAL_CHAIN}"
 
 # -------------------------------------------------------
-# Deploy synthetic token on the synthetic chain
+# Deploy synthetic warp route on the synthetic chain
 # -------------------------------------------------------
 echo ""
 echo "=== Deploying synthetic warp route on ${SYNTHETIC_CHAIN} ==="
-SYNTHETIC_RPC_URL="${SYNTHETIC_CHAIN_RPC_URL}"
 
-hyperlane-sealevel-client --url "${SYNTHETIC_RPC_URL}" \
-  warp-route deploy \
+hyperlane-sealevel-client \
+  --url "${SYNTHETIC_CHAIN_RPC_URL}" \
   --keypair "${DEPLOYER_KEY_FILE}" \
-  --warp-route-type synthetic \
-  --chain "${SYNTHETIC_CHAIN}" \
-  --remote-chain "${COLLATERAL_CHAIN}" \
-  --remote-domain "${COLLATERAL_DOMAIN_ID}" \
-  --mailbox "${SYNTHETIC_MAILBOX}" \
-  --token-config /config/token/token-config.json \
+  warp-route deploy \
+  --environment "${ENVIRONMENT}" \
+  --environments-dir "${ENVIRONMENTS_DIR}" \
   --built-so-dir /opt/hyperlane/programs \
-  --program-ids "${WORK_DIR}/${SYNTHETIC_CHAIN}-program-ids.json" \
-  --output "${WORK_DIR}/output/synthetic-deploy.json"
+  --warp-route-name "${SYNTHETIC_CHAIN}-synthetic" \
+  --token-config-file /config/token/token-config.json \
+  --registry "${REGISTRY_DIR}"
 
-SYNTHETIC_TOKEN_ADDRESS=$(jq -r '.token // .program_id // .synthetic_address' \
-  "${WORK_DIR}/output/synthetic-deploy.json")
-echo "Synthetic token program: ${SYNTHETIC_TOKEN_ADDRESS}"
+echo "Synthetic warp route deployed on ${SYNTHETIC_CHAIN}"
+
+# -------------------------------------------------------
+# Collect deployment output
+# The CLI writes output to: {environments-dir}/{environment}/warp-routes/
+# -------------------------------------------------------
+echo ""
+echo "=== Checking deployment outputs ==="
+WARP_OUTPUT_DIR="${ENVIRONMENTS_DIR}/${ENVIRONMENT}/warp-routes"
+if [ -d "${WARP_OUTPUT_DIR}" ]; then
+  echo "Warp route deployment outputs:"
+  ls -la "${WARP_OUTPUT_DIR}/"
+else
+  echo "WARNING: Expected output directory ${WARP_OUTPUT_DIR} not found."
+  echo "Checking environment dir for output files..."
+  find "${ENVIRONMENTS_DIR}" -name "*.json" -type f 2>/dev/null || true
+fi
 
 # -------------------------------------------------------
 # Post-deploy program hash verification
@@ -123,12 +140,11 @@ for SO_NAME in hyperlane_sealevel_token hyperlane_sealevel_token_native hyperlan
   SO_FILE="/opt/hyperlane/programs/${SO_NAME}.so"
   [ -f "$SO_FILE" ] || continue
 
-  if [ -n "${COLLATERAL_TOKEN_ADDRESS}" ]; then
-    LOCAL_HASH=$(solana-verify get-executable-hash "$SO_FILE" 2>/dev/null || echo "")
-    ONCHAIN_HASH=$(solana-verify get-program-hash -u "${COLLATERAL_RPC_URL}" "${COLLATERAL_TOKEN_ADDRESS}" 2>/dev/null || echo "")
-    if [ -n "$LOCAL_HASH" ] && [ -n "$ONCHAIN_HASH" ] && [ "$LOCAL_HASH" != "$ONCHAIN_HASH" ]; then
-      echo "WARNING: Hash mismatch for ${SO_NAME} on ${COLLATERAL_CHAIN} (may be expected if different program)"
-    fi
+  # Note: We'd need the deployed program addresses from the CLI output
+  # to verify hashes. This section is best-effort.
+  LOCAL_HASH=$(solana-verify get-executable-hash "$SO_FILE" 2>/dev/null || echo "")
+  if [ -n "$LOCAL_HASH" ]; then
+    echo "Local hash for ${SO_NAME}: ${LOCAL_HASH}"
   fi
 done
 
@@ -143,24 +159,15 @@ fi
 if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
   echo ""
   echo "=== Transferring warp route ownership to hardware wallet ==="
+  echo "NOTE: Transfer of warp route program ownership requires the deployed"
+  echo "program addresses from the CLI output. This may need manual steps."
 
-  if [ -n "${COLLATERAL_TOKEN_ADDRESS}" ]; then
-    echo "Transferring collateral token upgrade authority on ${COLLATERAL_CHAIN}..."
-    solana program set-upgrade-authority "${COLLATERAL_TOKEN_ADDRESS}" \
-      --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
-      --keypair "${DEPLOYER_KEY_FILE}" \
-      --url "${COLLATERAL_RPC_URL}" || \
-      echo "WARNING: Failed to transfer collateral token authority"
-  fi
-
-  if [ -n "${SYNTHETIC_TOKEN_ADDRESS}" ]; then
-    echo "Transferring synthetic token upgrade authority on ${SYNTHETIC_CHAIN}..."
-    solana program set-upgrade-authority "${SYNTHETIC_TOKEN_ADDRESS}" \
-      --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
-      --keypair "${DEPLOYER_KEY_FILE}" \
-      --url "${SYNTHETIC_RPC_URL}" || \
-      echo "WARNING: Failed to transfer synthetic token authority"
-  fi
+  # Transfer upgrade authority via solana CLI (if program addresses are known)
+  # The warp-route deploy output should contain the deployed program IDs.
+  # TODO: Parse warp-route deploy output for program addresses and transfer
+  # upgrade authority automatically.
+  echo "WARNING: Automatic warp route ownership transfer not yet implemented."
+  echo "Use 'solana program set-upgrade-authority' manually with the deployed program IDs."
 fi
 
 # -------------------------------------------------------
@@ -177,16 +184,14 @@ cat > "${WORK_DIR}/output/token-config.json" <<TOKEN_EOF
     "collateral": {
       "chain": "${COLLATERAL_CHAIN}",
       "domainId": ${COLLATERAL_DOMAIN_ID},
-      "address": "${COLLATERAL_TOKEN_ADDRESS}",
       "mailbox": "${COLLATERAL_MAILBOX}",
-      "rpcUrl": "${COLLATERAL_RPC_URL}"
+      "rpcUrl": "${COLLATERAL_CHAIN_RPC_URL}"
     },
     "synthetic": {
       "chain": "${SYNTHETIC_CHAIN}",
       "domainId": ${SYNTHETIC_DOMAIN_ID},
-      "address": "${SYNTHETIC_TOKEN_ADDRESS}",
       "mailbox": "${SYNTHETIC_MAILBOX}",
-      "rpcUrl": "${SYNTHETIC_RPC_URL}"
+      "rpcUrl": "${SYNTHETIC_CHAIN_RPC_URL}"
     }
   }
 }
@@ -202,17 +207,34 @@ kubectl create configmap hyperlane-token-config \
   --from-file="token-config.json=${WORK_DIR}/output/token-config.json" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create configmap hyperlane-warp-deploy-outputs \
-  --from-file="collateral-deploy.json=${WORK_DIR}/output/collateral-deploy.json" \
-  --from-file="synthetic-deploy.json=${WORK_DIR}/output/synthetic-deploy.json" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Copy any warp-route deploy outputs to ConfigMap if available
+if [ -d "${WARP_OUTPUT_DIR}" ]; then
+  WARP_FILES_ARGS=""
+  for f in "${WARP_OUTPUT_DIR}"/*.json; do
+    [ -f "$f" ] || continue
+    BASENAME=$(basename "$f")
+    WARP_FILES_ARGS="${WARP_FILES_ARGS} --from-file=${BASENAME}=${f}"
+  done
+  if [ -n "${WARP_FILES_ARGS}" ]; then
+    kubectl create configmap hyperlane-warp-deploy-outputs \
+      ${WARP_FILES_ARGS} \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+fi
 
-for CM in hyperlane-token-config hyperlane-warp-deploy-outputs; do
+for CM in hyperlane-token-config; do
   kubectl label configmap "$CM" \
     app.kubernetes.io/managed-by=hyperlane-svm-warp-deployer \
     app.kubernetes.io/component=deployment-artifacts \
     --overwrite
 done
+
+if kubectl get configmap hyperlane-warp-deploy-outputs >/dev/null 2>&1; then
+  kubectl label configmap hyperlane-warp-deploy-outputs \
+    app.kubernetes.io/managed-by=hyperlane-svm-warp-deployer \
+    app.kubernetes.io/component=deployment-artifacts \
+    --overwrite
+fi
 
 # -------------------------------------------------------
 # Clean up deployer keypair
@@ -221,9 +243,9 @@ rm -f "${DEPLOYER_KEY_FILE}"
 
 echo ""
 echo "=== Warp route deployment complete ==="
-echo "Collateral (${COLLATERAL_CHAIN}): ${COLLATERAL_TOKEN_ADDRESS}"
-echo "Synthetic (${SYNTHETIC_CHAIN}): ${SYNTHETIC_TOKEN_ADDRESS}"
+echo "Collateral chain: ${COLLATERAL_CHAIN}"
+echo "Synthetic chain: ${SYNTHETIC_CHAIN}"
 echo ""
 echo "Artifacts written to ConfigMaps:"
 echo "  - hyperlane-token-config"
-echo "  - hyperlane-warp-deploy-outputs"
+echo "  - hyperlane-warp-deploy-outputs (if deploy produced output files)"

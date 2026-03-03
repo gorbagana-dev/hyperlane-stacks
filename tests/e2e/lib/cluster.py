@@ -92,6 +92,18 @@ def create_selfsigned_issuer(fixture_path: Path | None = None) -> None:
     log_info("Self-signed ClusterIssuer created")
 
 
+def create_namespace(namespace: str) -> None:
+    log_info(f"Creating namespace {namespace}...")
+    result = run_cmd(["kubectl", "create", "namespace", namespace], check=False)
+    if result.returncode == 0:
+        log_info(f"Namespace {namespace} created")
+    elif "AlreadyExists" in (result.stderr or ""):
+        log_info(f"Namespace {namespace} already exists")
+    else:
+        from .common import fail_exit
+        fail_exit(f"Failed to create namespace {namespace}: {result.stderr}")
+
+
 def apply_host_chain_services(namespace: str, fixture_path: Path | None = None) -> None:
     log_info("Detecting host IP for kind network...")
     result = run_cmd(
@@ -101,13 +113,19 @@ def apply_host_chain_services(namespace: str, fixture_path: Path | None = None) 
             "inspect",
             "kind",
             "-f",
-            "{{range .IPAM.Config}}{{.Gateway}}{{end}}",
+            '{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}}\n{{end}}{{end}}',
         ]
     )
-    host_ip = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    # Pick the first IPv4 address (skip IPv6 lines containing ':')
+    host_ip = ""
+    for line in result.stdout.strip().splitlines():
+        line = line.strip()
+        if line and ":" not in line:
+            host_ip = line
+            break
 
     if not host_ip:
-        fail_exit("Could not detect host IP from kind network")
+        fail_exit(f"Could not detect IPv4 host IP from kind network. Raw output: {result.stdout.strip()}")
 
     log_info(f"Host IP: {host_ip}")
 
@@ -118,14 +136,7 @@ def apply_host_chain_services(namespace: str, fixture_path: Path | None = None) 
     template = fixture_path.read_text()
     rendered = template.replace("${HOST_IP}", host_ip).replace("${NAMESPACE}", namespace)
 
-    import subprocess as _sp
-
-    _sp.run(
-        ["kubectl", "apply", "-f", "-"],
-        input=rendered,
-        text=True,
-        check=True,
-    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=rendered)
     log_info("Host chain services applied")
 
 
@@ -139,14 +150,7 @@ def apply_rbac(namespace: str) -> None:
     content = rbac_source.read_text()
     rendered = content.replace("namespace: default", f"namespace: {namespace}")
 
-    import subprocess as _sp
-
-    _sp.run(
-        ["kubectl", "apply", "-n", namespace, "-f", "-"],
-        input=rendered,
-        text=True,
-        check=True,
-    )
+    run_cmd(["kubectl", "apply", "-n", namespace, "-f", "-"], input_text=rendered)
     log_info(f"RBAC applied to namespace {namespace}")
 
 

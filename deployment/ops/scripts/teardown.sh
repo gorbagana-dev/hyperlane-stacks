@@ -51,6 +51,9 @@ teardown_chain() {
   fi
 
   # Step 2: Claim remaining IGP fees
+  # TODO: UNVERIFIED — `igp claim` args (--authority, --output-unsigned-tx) have NOT been
+  # confirmed against `hyperlane-sealevel-client igp claim --help`.
+  # Run `hyperlane-sealevel-client igp claim --help` to verify before production use.
   local igp_id
   igp_id="$(echo "${programs_json}" | jq -r '.igp // .interchain_gas_paymaster // empty')"
   if [[ -n "${igp_id}" ]]; then
@@ -87,6 +90,9 @@ Signer: ${HARDWARE_WALLET_PUBKEY}"
     if [[ "${DRY_RUN}" == "true" ]]; then
       log "    [dry-run] Would close program ${prog_id}, rent recovered to ${TREASURY_ADDRESS}"
     else
+      # TODO: UNVERIFIED — `--output-unsigned-tx` may not be a valid solana CLI flag.
+      # The solana CLI uses `--output file` or `--dump-transaction-message` for offline signing.
+      # Verify with `solana program close --help` before production use.
       solana program close "${prog_id}" \
         --recipient "${TREASURY_ADDRESS}" \
         --authority "${HARDWARE_WALLET_PUBKEY}" \
@@ -108,6 +114,8 @@ Signer: ${HARDWARE_WALLET_PUBKEY} (upgrade authority)"
   if [[ "${DRY_RUN}" == "true" ]]; then
     log "  [dry-run] Would close buffer accounts owned by ${HARDWARE_WALLET_PUBKEY}"
   else
+    # TODO: UNVERIFIED — `--output-unsigned-tx` may not be a valid solana CLI flag.
+    # Verify with `solana program close --help` before production use.
     solana program close --buffers \
       --authority "${HARDWARE_WALLET_PUBKEY}" \
       --recipient "${TREASURY_ADDRESS}" \

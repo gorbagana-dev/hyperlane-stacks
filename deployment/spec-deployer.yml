@@ -3,6 +3,8 @@
 # Run ONCE before deploying agent stacks.
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"

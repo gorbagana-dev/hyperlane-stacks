@@ -1,5 +1,5 @@
 # hyperlane-svm-deployer
-# Multi-stage build from hyperlane-monorepo @ agents-v2.0.0
+# Multi-stage build from hyperlane-monorepo @ @hyperlane-xyz/core@10.2.0 (16c056a09)
 # Produces: hyperlane-sealevel-client binary, .so program artifacts, solana-verify
 #
 # Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)
@@ -11,7 +11,7 @@
 # ============================================================
 FROM ubuntu:22.04 AS builder
 
-ARG SOLANA_CLI_VERSION=1.18.18
+ARG SOLANA_CLI_VERSION=3.0.14
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
@@ -63,7 +63,7 @@ RUN cd rust/sealevel/programs && ./build-programs.sh
 # ============================================================
 FROM ubuntu:22.04 AS runtime
 
-ARG SOLANA_CLI_VERSION=1.18.18
+ARG SOLANA_CLI_VERSION=3.0.14
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

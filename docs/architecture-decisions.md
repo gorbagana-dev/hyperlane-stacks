@@ -208,7 +208,8 @@ The **program owner key** is held on a hardware wallet and controls all post-dep
 
 ### Funding
 
-- **Hot deployer keypair:** Must be pre-funded externally on both chains before deployment. Needs ~30+ SOL per chain upfront (includes recoverable rent deposits for program accounts; net non-recoverable cost is ~5-6 SOL per chain).
+- **Hot deployer keypair:** Must be pre-funded externally on both chains before deployment. Needs **~50+ SOL per chain** upfront. Each program deploy requires ~1.3 SOL rent for the program account plus a ~1.3 SOL buffer account, and the deployer deploys 7 programs per chain (mailbox, validator_announce, IGP, multisig_ism, token, token_collateral, token_native). The CLI retries failed deploys with increasing compute unit prices, which adds fees. Most rent is recoverable if programs are later closed (see teardown). Net non-recoverable cost is ~5-6 SOL per chain in transaction fees.
+  - **TODO (production):** On real chains, the deployer must be funded manually before running the deployer stack. The deploy spec should document the exact funding amount needed and include a pre-flight balance check in the deploy script that fails early with a clear message if the deployer balance is insufficient. Consider splitting deploys across multiple transactions with balance checks between programs.
 - **Hardware wallet:** Does not need funding (only signs authority transactions, fees paid by other keys or can be funded minimally for post-deploy ops).
 - **Validator keys (Privy):** Must be funded on their respective chains for validator announce transactions. Fund the Privy wallet's Solana address (derived from the secp256k1 key via Ed25519 conversion).
 - **IGP oracle key (Privy):** Must be funded on both chains for `SetGasOracleConfigs` transaction fees (minimal — a few transactions per day).

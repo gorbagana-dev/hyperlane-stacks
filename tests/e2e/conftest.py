@@ -3,11 +3,18 @@ from collections.abc import Generator
 
 import pytest
 
-from lib.chain import start_solana_test_validator, stop_solana_test_validator
+from lib.chain import (
+    build_gorchain_images,
+    start_gorchain_stack,
+    start_solana_test_validator,
+    stop_gorchain_stack,
+    stop_solana_test_validator,
+)
 from lib.cluster import (
     apply_host_chain_services,
     apply_rbac,
     create_kind_cluster,
+    create_namespace,
     create_selfsigned_issuer,
     destroy_kind_cluster,
     install_cert_manager,
@@ -45,7 +52,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--skip-chain-setup", action="store_true", default=False, help="Skip starting chain nodes (assume running)"
     )
     parser.addoption(
-        "--build-from-source", action="store_true", default=False, help="Build container images from source instead of using published images"
+        "--build-from-source", action="store_true", default=False,
+        help="Build container images from source instead of using published images"
     )
     parser.addoption("--skip-cleanup", action="store_true", default=False, help="Don't tear down after tests")
 
@@ -82,18 +90,26 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
     skip_setup = request.config.getoption("--skip-chain-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
+    gorchain_deploy_dir = E2E_DIR / ".deployments" / "gorchain"
+
     if not skip_setup:
-        log.info("Starting Solana test validator...")
-        proc = start_solana_test_validator()
+        log.info("Starting Gorchain stack via laconic-so...")
+        start_gorchain_stack(gorchain_deploy_dir)
+        log.info("Starting Solana test validator (port 18899)...")
+        solana_proc = start_solana_test_validator(port=18899, name="solana")
     else:
         log.info("Skipping chain setup (--skip-chain-setup)")
-        proc = None
+        solana_proc = None
 
     yield
 
-    if not skip_cleanup and proc is not None:
-        log.info("Stopping Solana test validator...")
-        stop_solana_test_validator(proc)
+    if not skip_cleanup:
+        if solana_proc is not None:
+            log.info("Stopping Solana test validator...")
+            stop_solana_test_validator(solana_proc, name="solana")
+        if not skip_setup:
+            log.info("Stopping Gorchain stack...")
+            stop_gorchain_stack(gorchain_deploy_dir)
 
 
 @pytest.fixture(scope="session")
@@ -108,6 +124,16 @@ def deployer_image(request: pytest.FixtureRequest) -> None:
 
 
 @pytest.fixture(scope="session")
+def gorchain_images(request: pytest.FixtureRequest) -> None:
+    """Fetch gorchain-stacks and build container images."""
+    if request.config.getoption("--skip-chain-setup"):
+        log.info("Skipping gorchain image build (--skip-chain-setup)")
+        return
+    log.info("Building gorchain container images...")
+    build_gorchain_images()
+
+
+@pytest.fixture(scope="session")
 def keypairs() -> KeypairSet:
     log.info("Generating test keypairs...")
     return generate_test_keypairs()
@@ -117,6 +143,7 @@ def keypairs() -> KeypairSet:
 def deployer_deployment(
     request: pytest.FixtureRequest,
     deployer_image: None,
+    gorchain_images: None,
     keypairs: KeypairSet,
     kind_cluster: None,
     chain_nodes: None,
@@ -126,6 +153,13 @@ def deployer_deployment(
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare("hyperlane-svm-deployer", FIXTURE_SPEC)
     namespace = deploy_info.namespace
+
+    # TODO: revisit — manually creating the namespace is a workaround because
+    # laconic-so only creates it during deploy start, but we need it earlier
+    # for host-chain-services, RBAC, and secrets. Consider reordering or
+    # letting laconic-so handle this.
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     log.info("Applying host-chain-services to namespace %s...", namespace)
     apply_host_chain_services(namespace)

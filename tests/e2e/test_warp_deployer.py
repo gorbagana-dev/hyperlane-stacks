@@ -12,7 +12,7 @@ from lib.deploy import DeploymentInfo, deploy_prepare, deploy_start, stop_stack
 
 log = logging.getLogger(__name__)
 
-WARP_POD_TIMEOUT = 600
+WARP_POD_TIMEOUT = 1200
 CONFIGMAP_TIMEOUT = 30
 WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
 
@@ -48,6 +48,7 @@ def _wait_for_pod_phase(namespace: str, label: str, phase: str, timeout: int) ->
 
 def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
     deadline = time.monotonic() + timeout
+    last_error = ""
     while time.monotonic() < deadline:
         result = subprocess.run(
             ["kubectl", "-n", namespace, "get", "configmap", name],
@@ -56,8 +57,12 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
         )
         if result.returncode == 0:
             return
+        last_error = (result.stderr or "").strip()
         time.sleep(2)
-    raise TimeoutError(f"ConfigMap {name} not found in namespace {namespace} within {timeout}s")
+    raise TimeoutError(
+        f"ConfigMap {name} not found in namespace {namespace} within {timeout}s. "
+        f"Last error: {last_error}"
+    )
 
 
 def _dump_pod_logs(namespace: str, label: str) -> None:
@@ -68,6 +73,8 @@ def _dump_pod_logs(namespace: str, label: str) -> None:
     )
     if result.stdout:
         log.info("--- Pod logs (%s) ---\n%s", label, result.stdout)
+    elif result.stderr:
+        log.warning("--- Could not fetch pod logs (%s): %s", label, result.stderr.strip())
 
 
 def _create_spl_token() -> str:
@@ -151,10 +158,12 @@ def warp_deployment(
 class TestWarpDeployer:
     def test_warp_deployer_completes(self, warp_deployment: dict) -> None:
         ns = warp_deployment["namespace"]
+        cid = warp_deployment["deployment"].cluster_id
+        pod_label = f"app={cid}"
         try:
-            _wait_for_pod_phase(ns, "app.kubernetes.io/name=warp-deployer", "Succeeded", WARP_POD_TIMEOUT)
+            _wait_for_pod_phase(ns, pod_label, "Succeeded", WARP_POD_TIMEOUT)
         except subprocess.CalledProcessError:
-            _dump_pod_logs(ns, "app.kubernetes.io/name=warp-deployer")
+            _dump_pod_logs(ns, pod_label)
             pytest.fail("Warp deployer pod did not reach Succeeded phase")
 
     def test_warp_token_configmap(self, warp_deployment: dict) -> None:

@@ -14,6 +14,15 @@ SOLANA_ISM_ID="$(jq -r '.multisig_ism_message_id // .multisig_ism // .ism' /conf
 log "Gorchain ISM: ${GORCHAIN_ISM_ID}"
 log "Solana ISM:   ${SOLANA_ISM_ID}"
 
+# =======================================================
+# WARNING: The `multisig-ism-message-id` subcommand args below are UNVERIFIED.
+# The flags --authority, --domain, --validators, --threshold, and
+# --output-unsigned-tx have NOT been confirmed against `hyperlane-sealevel-client --help`.
+# The old subcommand name `multisig-ism set` was changed to `multisig-ism-message-id`
+# but the exact subcommand and arguments need verification before production use.
+# TODO: Run `hyperlane-sealevel-client multisig-ism-message-id --help` to verify.
+# =======================================================
+
 # Step 1: Scale agents to 0 (best-effort — may not have RBAC)
 log "Scaling agent deployments to 0..."
 for deploy in hyperlane-validator-gorchain hyperlane-validator-solana hyperlane-relayer; do
@@ -25,8 +34,9 @@ done
 # Step 2: Build unsigned ISM reconfiguration transactions
 # Gorchain — set validators to null for messages FROM Solana
 log "Building unsigned tx: reconfigure ISM on Gorchain..."
+# TODO: UNVERIFIED — subcommand and args need confirmation from --help
 ${CLIENT} --url "${GORCHAIN_RPC_URL}" \
-  multisig-ism set \
+  multisig-ism-message-id set \
   --program-id "${GORCHAIN_ISM_ID}" \
   --authority "${HARDWARE_WALLET_PUBKEY}" \
   --domain "${SOLANA_DOMAIN_ID}" \
@@ -50,8 +60,9 @@ SUMMARY
 
 # Solana — set validators to null for messages FROM Gorchain
 log "Building unsigned tx: reconfigure ISM on Solana..."
+# TODO: UNVERIFIED — subcommand and args need confirmation from --help
 ${CLIENT} --url "${SOLANA_RPC_URL}" \
-  multisig-ism set \
+  multisig-ism-message-id set \
   --program-id "${SOLANA_ISM_ID}" \
   --authority "${HARDWARE_WALLET_PUBKEY}" \
   --domain "${GORCHAIN_DOMAIN_ID}" \

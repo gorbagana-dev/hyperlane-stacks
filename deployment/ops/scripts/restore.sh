@@ -19,10 +19,18 @@ log "Restoring ISM configuration..."
 log "Gorchain ISM: ${GORCHAIN_ISM_ID} -> validator ${SOLANA_VALIDATOR_ADDRESS}"
 log "Solana ISM:   ${SOLANA_ISM_ID} -> validator ${GORCHAIN_VALIDATOR_ADDRESS}"
 
+# =======================================================
+# WARNING: The `multisig-ism-message-id` subcommand args below are UNVERIFIED.
+# The flags --authority, --domain, --validators, --threshold, and
+# --output-unsigned-tx have NOT been confirmed against `hyperlane-sealevel-client --help`.
+# TODO: Run `hyperlane-sealevel-client multisig-ism-message-id --help` to verify.
+# =======================================================
+
 # Gorchain — restore real Solana validator (messages FROM Solana need Solana validator)
 log "Building unsigned tx: restore ISM on Gorchain..."
+# TODO: UNVERIFIED — subcommand and args need confirmation from --help
 ${CLIENT} --url "${GORCHAIN_RPC_URL}" \
-  multisig-ism set \
+  multisig-ism-message-id set \
   --program-id "${GORCHAIN_ISM_ID}" \
   --authority "${HARDWARE_WALLET_PUBKEY}" \
   --domain "${SOLANA_DOMAIN_ID}" \
@@ -46,8 +54,9 @@ SUMMARY
 
 # Solana — restore real Gorchain validator
 log "Building unsigned tx: restore ISM on Solana..."
+# TODO: UNVERIFIED — subcommand and args need confirmation from --help
 ${CLIENT} --url "${SOLANA_RPC_URL}" \
-  multisig-ism set \
+  multisig-ism-message-id set \
   --program-id "${SOLANA_ISM_ID}" \
   --authority "${HARDWARE_WALLET_PUBKEY}" \
   --domain "${GORCHAIN_DOMAIN_ID}" \

@@ -14,7 +14,7 @@ Deploys warp route contracts (collateral lock + synthetic mint) for a specific t
 laconic-so --stack hyperlane-svm-warp-deployer setup-repositories
 ```
 
-Clones `hyperlane-monorepo@agents-v2.0.0` to `~/cerc/hyperlane-monorepo`.
+Clones `hyperlane-monorepo` at `@hyperlane-xyz/core@10.2.0` (`16c056a09`) to `~/cerc/hyperlane-monorepo`.
 
 ## 2. Build container
 

@@ -13,6 +13,7 @@ DEPLOY_DIR = E2E_DIR / ".deployments"
 DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 
 
+
 @dataclass
 class DeploymentInfo:
     deploy_dir: Path
@@ -59,6 +60,7 @@ def build_deployer_image(stack_name: str = "hyperlane-svm-deployer") -> None:
     log_info("Deployer image built successfully")
 
 
+
 # ---------------------------------------------------------------------------
 # Deploy lifecycle
 # ---------------------------------------------------------------------------
@@ -74,10 +76,15 @@ def deploy_prepare(
     stack_path = resolve_stack_path(stack_name)
 
     log_info(f"Preparing stack '{stack_name}' from spec '{spec_file}'...")
-    deploy_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate default spec, then overwrite with our fixture
-    init_spec = deploy_dir / "spec.yml"
+    # Clean up stale deployment directory from a previous run
+    if deploy_dir.exists():
+        log_info(f"Removing stale deployment directory: {deploy_dir}")
+        shutil.rmtree(deploy_dir)
+
+    # Write spec file outside deploy_dir — deploy create expects the dir not to exist
+    init_spec = DEPLOY_DIR / f"{stack_name}-spec.yml"
+    DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
     log_info("Running deploy init...")
     run_cmd(
         [

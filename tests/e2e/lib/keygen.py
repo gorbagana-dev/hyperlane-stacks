@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .common import E2E_DIR, log_error, log_info, run_cmd
+from .common import E2E_DIR, log_info, run_cmd
 
 KEYS_DIR = E2E_DIR / ".keys"
 
@@ -56,6 +56,9 @@ def _solana_pubkey(keypair_path: Path) -> str:
 def _cast_wallet_new(output: Path) -> dict[str, str]:
     result = run_cmd(["cast", "wallet", "new", "--json"], quiet=True)
     data = json.loads(result.stdout)
+    # cast wallet new --json returns a list of wallets; take the first one
+    if isinstance(data, list):
+        data = data[0]
     output.write_text(result.stdout)
     return data
 
@@ -122,6 +125,17 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     return keypair_set
 
 
+def _airdrop(amount_sol: int, pubkey: str, rpc: str, label: str) -> None:
+    """Airdrop SOL in chunks of 10 (gorchain faucet --per-request-cap 10)."""
+    remaining = amount_sol
+    chunk = 10
+    while remaining > 0:
+        this_drop = min(chunk, remaining)
+        run_cmd(["solana", "airdrop", str(this_drop), pubkey, "--url", rpc])
+        remaining -= this_drop
+    log_info(f"    {label}: funded {amount_sol} SOL")
+
+
 def fund_wallets(
     keypair_set: KeypairSet | None = None,
     keys_dir: Path | None = None,
@@ -137,33 +151,11 @@ def fund_wallets(
     hw_pubkey = _solana_pubkey(keys_dir / "hardware-wallet.json")
     oracle_pubkey = _solana_pubkey(keys_dir / "igp-oracle.json")
 
-    # Fund on Solana test validator
-    log_info(f"  Funding wallets on Solana ({solana_rpc})...")
-    for amount, pubkey, label in [
-        ("100", deployer_pubkey, "deployer"),
-        ("1", hw_pubkey, "hardware wallet"),
-        ("1", oracle_pubkey, "IGP oracle"),
-    ]:
-        result = run_cmd(
-            ["solana", "airdrop", amount, pubkey, "--url", solana_rpc],
-            check=False,
-        )
-        if result.returncode != 0:
-            log_error(f"Airdrop to {label} on Solana failed")
-
-    # Fund on Gorchain (if available)
-    log_info(f"  Funding wallets on Gorchain ({gorchain_rpc})...")
-    for amount, pubkey, label in [
-        ("100", deployer_pubkey, "deployer"),
-        ("1", hw_pubkey, "hardware wallet"),
-        ("1", oracle_pubkey, "IGP oracle"),
-    ]:
-        result = run_cmd(
-            ["solana", "airdrop", amount, pubkey, "--url", gorchain_rpc],
-            check=False,
-        )
-        if result.returncode != 0:
-            log_error(f"Airdrop to {label} on Gorchain failed (gorchain may not be running)")
+    for rpc, chain_name in [(solana_rpc, "Solana"), (gorchain_rpc, "Gorchain")]:
+        log_info(f"  Funding wallets on {chain_name} ({rpc})...")
+        _airdrop(100, deployer_pubkey, rpc, "deployer")
+        _airdrop(1, hw_pubkey, rpc, "hardware wallet")
+        _airdrop(1, oracle_pubkey, rpc, "IGP oracle")
 
     log_info("Wallet funding complete")
 
@@ -192,14 +184,7 @@ def create_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
         ]
     )
 
-    import subprocess as _sp
-
-    _sp.run(
-        ["kubectl", "apply", "-f", "-"],
-        input=gen.stdout,
-        text=True,
-        check=True,
-    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
     log_info("Deployer secrets created")
 
 
@@ -223,12 +208,5 @@ def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> Non
         ]
     )
 
-    import subprocess as _sp
-
-    _sp.run(
-        ["kubectl", "apply", "-f", "-"],
-        input=gen.stdout,
-        text=True,
-        check=True,
-    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
     log_info("Warp deployer secrets created")

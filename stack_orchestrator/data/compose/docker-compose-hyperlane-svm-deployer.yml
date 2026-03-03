@@ -3,7 +3,7 @@ services:
     image: git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest
     restart: "no"
     entrypoint: ["/bin/bash"]
-    command: ["/bin/bash", "/opt/scripts/deploy.sh"]
+    command: ["/opt/scripts/deploy.sh"]
     environment:
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}

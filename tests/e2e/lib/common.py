@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -111,6 +112,7 @@ def run_cmd(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     quiet: bool = False,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if not quiet:
         log_info(f"Running: {' '.join(str(a) for a in args)}")
@@ -123,6 +125,7 @@ def run_cmd(
             text=True,
             cwd=cwd,
             env=env,
+            input=input_text,
         )
     except subprocess.CalledProcessError as exc:
         log_error(f"Command failed (rc={exc.returncode}): {' '.join(str(a) for a in args)}")
@@ -172,6 +175,7 @@ def wait_for_pod_phase(
     log_info(f"Waiting for pod ({label_selector}) in {namespace} to reach phase {phase} (timeout {timeout}s)...")
 
     deadline = time.time() + timeout
+    last_kubectl_error = ""
     while True:
         result = run_cmd(
             [
@@ -188,6 +192,17 @@ def wait_for_pod_phase(
             check=False,
             quiet=True,
         )
+
+        if result.returncode != 0:
+            last_kubectl_error = (result.stderr or result.stdout or "").strip()
+            if time.time() >= deadline:
+                raise TimeoutError(
+                    f"Timed out after {timeout}s waiting for pod ({label_selector}). "
+                    f"kubectl kept failing: {last_kubectl_error}"
+                )
+            time.sleep(5)
+            continue
+
         current_phase = result.stdout.strip()
 
         if current_phase == phase:
@@ -196,20 +211,24 @@ def wait_for_pod_phase(
 
         if current_phase == "Failed":
             log_error(f"Pod ({label_selector}) entered Failed phase")
-            run_cmd(
+            logs = run_cmd(
                 ["kubectl", "logs", "-n", namespace, "-l", label_selector, "--tail=50"],
                 check=False,
                 quiet=True,
             )
+            if logs.stdout:
+                log_error(f"Pod logs:\n{logs.stdout}")
             raise RuntimeError(f"Pod ({label_selector}) entered Failed phase")
 
         if time.time() >= deadline:
             log_error(f"Timed out waiting for pod ({label_selector}) — current phase: {current_phase}")
-            run_cmd(
+            describe = run_cmd(
                 ["kubectl", "describe", "pods", "-n", namespace, "-l", label_selector],
                 check=False,
                 quiet=True,
             )
+            if describe.stdout:
+                log_error(f"Pod describe:\n{describe.stdout}")
             raise TimeoutError(
                 f"Timed out after {timeout}s waiting for pod ({label_selector}) "
                 f"to reach {phase}, current: {current_phase}"
@@ -221,15 +240,17 @@ def wait_for_pod_phase(
 def wait_for_rpc_health(url: str, timeout: int = 120) -> None:
     log_info(f"Waiting for RPC health at {url} (timeout {timeout}s)...")
 
+    health_url = url.rstrip("/") + "/health"
+
     def _check() -> bool:
         result = run_cmd(
-            ["curl", "-sf", url, "-o", "/dev/null"],
+            ["curl", "-sf", health_url, "-o", "/dev/null"],
             check=False,
             quiet=True,
         )
         return result.returncode == 0
 
-    wait_for(_check, timeout=timeout, interval=5, description=f"RPC health at {url}")
+    wait_for(_check, timeout=timeout, interval=5, description=f"RPC health at {health_url}")
     log_info(f"RPC at {url} is healthy")
 
 

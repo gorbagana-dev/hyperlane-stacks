@@ -2,8 +2,11 @@ version: "1.1"
 name: hyperlane-relayer
 description: "Hyperlane relayer with IGP fee claim sidecar"
 repos:
-  - github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0
-containers:
-  - laconic/hyperlane-svm-deployer
+  # @hyperlane-xyz/core@10.2.0 — includes Solana SDK v3.x migration
+  - github.com/hyperlane-xyz/hyperlane-monorepo@16c056a09af862b3ce9e14bd3b5b8034750af9d0
+# containers is commented out so deploy-start won't kind-load the image;
+# k8s pulls it from the registry instead. Uncomment for local builds.
+# containers:
+#   - laconic/hyperlane-svm-deployer
 pods:
   - hyperlane-relayer

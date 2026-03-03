@@ -1,5 +1,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
