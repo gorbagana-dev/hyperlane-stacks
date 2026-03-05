@@ -42,13 +42,14 @@ The Hyperlane team publishes pre-built agent images. No custom build needed for 
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
-**No existing image.** Must build from hyperlane-monorepo at tag `agents-v2.0.0`.
+**No existing image.** Must build from hyperlane-monorepo at `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`).
 
-- Base image: Ubuntu 22.04 (newer Hyperlane releases use a Solana CLI version that doesn't have the libssl1.1 dependency)
-- Source: hyperlane-monorepo at tag `agents-v2.0.0`
+- Base image: Ubuntu 22.04
+- Source: hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`)
 - Multi-stage Docker build: builder stage compiles, runtime stage copies binaries
 - Produces: `hyperlane-sealevel-client` binary + `.so` program files (mailbox, IGP, ISM, validator announce, token, token-native, token-collateral)
-- Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`)
+- Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 3.0.14
+- **Solana CLI 3.x note:** Program deployment ownership transfer requires the `--skip-new-upgrade-authority-signer-check` flag (added in Solana CLI 2.x+), which bypasses the requirement for the new authority to co-sign the transfer
 - **No patches applied at build time.** The `localnet5.patch` from hyperlane-demo only contains runtime configuration files (agent-config.json, gas-oracle-configs.json, multisig-config.json, metadata.yaml, token-config.json) — all with placeholder values. These are injected at runtime via k8s ConfigMaps.
 
 **Rationale:** Build-time compilation produces a self-contained image with fast startup. Runtime compilation would add 20+ minutes to every container start.
@@ -106,7 +107,7 @@ Next.js inlines `NEXT_PUBLIC_*` environment variables and YAML configs at `pnpm 
 
 ### Version Pinning
 
-All images use the same Hyperlane version: **`agents-v2.0.0`**
+Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`) with Solana CLI **3.0.14**. Agent images (validator, relayer) still use upstream **`agents-v2.0.0`** tag.
 
 **Registry:** `git.vdb.to/laconicnetwork` (private Gitea registry)
 
@@ -114,7 +115,7 @@ All images use the same Hyperlane version: **`agents-v2.0.0`**
 |-----------|-------|--------|
 | Validator | `gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>` (tag: `agents-v2.0.0`) | Upstream pre-built, pinned by digest (see `versions.json`) |
 | Relayer | `gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>` (tag: `agents-v2.0.0`) | Upstream pre-built, pinned by digest (see `versions.json`) |
-| Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Custom build from `agents-v2.0.0` tag |
+| Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Custom build from `@hyperlane-xyz/core@10.2.0` (commit `16c056a`), Solana CLI 3.0.14 |
 | Warp Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `git.vdb.to/laconic/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
@@ -353,12 +354,22 @@ Both jobs require the ISM owner key (hardware wallet). Jobs generate unsigned tr
 
 ## Process Management
 
-**Decision:** Standard Kubernetes liveness/readiness probes, `restartPolicy: Always`.
+**Decision:** Two process management modes based on workload type.
+
+**Long-running agents (validators, relayer, gas oracle, monitoring):** Standard Kubernetes Deployments with `restartPolicy: Always`.
 
 - Liveness probes: HTTP health endpoint or TCP check on metrics port
 - Readiness probes: Same mechanism
 - Resource limits: TBD during implementation (CPU, memory, disk)
 - Automatic restart on crash with k8s default backoff
+
+**One-shot deployers (svm-deployer, warp-deployer):** Kubernetes Jobs with `restartPolicy: Never` and `backoffLimit: 0`.
+
+- Deployers are run-once containers that exit on completion — using Deployments caused CrashLoopBackOff as k8s tried to restart completed containers
+- stack.yml uses `jobs:` instead of `pods:` for deployer stacks; compose files live in `compose-jobs/` instead of `compose/`
+- laconic-so supports k8s Jobs in the k8s-kind path via BatchV1Api (`_create_jobs()`)
+- Deploy scripts are mounted via ConfigMap volumes at `/opt/scripts/` rather than baked into the Docker image, allowing script iteration without image rebuilds
+- E2E tests use `kubectl wait --for=condition=complete job/<name>` instead of polling container exit codes
 
 ---
 

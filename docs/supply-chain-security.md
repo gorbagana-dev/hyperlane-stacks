@@ -39,7 +39,7 @@ image: gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0
 
 **Decision:** All Rust builds use `--locked` flag.
 
-- The `Cargo.lock` file from the hyperlane-monorepo at tag `agents-v2.0.0` is committed and used as-is
+- The `Cargo.lock` file from the hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`) is committed and used as-is
 - `cargo build --release --locked` ensures no dependency resolution drift
 - If `Cargo.lock` doesn't match `Cargo.toml`, the build fails rather than silently resolving different versions
 
@@ -112,10 +112,11 @@ Maintain a `versions.json` file in the repo that records all pinned versions and
 
 ```json
 {
-  "hyperlane_tag": "agents-v2.0.0",
+  "hyperlane_deployer_source": "@hyperlane-xyz/core@10.2.0 (commit 16c056a09af862b3ce9e14bd3b5b8034750af9d0)",
+  "hyperlane_agent_tag": "agents-v2.0.0",
   "agent_image": "gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>",
   "ubuntu_base": "ubuntu:22.04@sha256:<digest>",
-  "solana_cli": "1.18.18",
+  "solana_cli": "3.0.14",
   "rust_version": "<from monorepo rust-toolchain.toml>",
   "warp_ui_repo": "hyperlane-xyz/hyperlane-warp-ui-template",
   "warp_ui_commit": "6227c04350c27c208c5512ef40776f8181ab022a"

@@ -10,6 +10,7 @@ Stack-orchestrator (`laconic-so`) deploys containerized applications via three b
 - `repos:` — Git repositories cloned by `laconic-so setup-repositories` to `~/cerc/`. Used as build context for container images. Format: `host/org/repo@branch`. The `build.sh` scripts reference cloned source via `~/cerc/{repo-name}/`.
 - `containers:` — Image names built by `laconic-so build-containers`. Each name maps to a `container-build/{name-with-slashes-replaced-by-hyphens}/build.sh` script. Also determines which images get loaded into Kind via `kind load docker-image`.
 - `pods:` — List of pod names, each mapping to `compose/docker-compose-{pod-name}.yml`. All services in all pods become containers in ONE k8s Deployment (single Pod).
+- `jobs:` — List of job names, each mapping to `compose-jobs/docker-compose-{job-name}.yml`. Jobs become k8s Jobs (restartPolicy: Never, backoffLimit: 0) instead of Deployments — appropriate for one-shot containers that should not restart on completion or failure.
 
 **spec.yml** controls deployment configuration:
 - `stack:` — Reference to the stack (path or name)
@@ -61,20 +62,22 @@ The architecture doc (`docs/architecture-decisions.md`) describes 5 logical stac
 
 ### stack.yml Summary
 
-| # | Stack | repos: | containers: | pods: |
-|---|-------|--------|-------------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-svm-warp-deployer` |
-| 3 | `hyperlane-validator` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-kms-proxy` | `hyperlane-validator` |
-| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | `laconic/hyperlane-svm-deployer` | `hyperlane-relayer` |
-| 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` |
-| 6 | `hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-gas-oracle` | `hyperlane-gas-oracle` |
-| 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` |
-| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `laconic/hyperlane-warp-ui` | `hyperlane-warp-ui` |
+| # | Stack | repos: | containers: | pods: | jobs: |
+|---|-------|--------|-------------|-------|-------|
+| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `laconic/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `laconic/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
+| 3 | `hyperlane-validator` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-kms-proxy` | `hyperlane-validator` | — |
+| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `laconic/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
+| 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` | — |
+| 6 | `hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
+| 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` | — |
+| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `laconic/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
 
+- Stacks 1 and 2 use `jobs:` (not `pods:`) because deployers are one-shot containers — k8s Jobs (restartPolicy: Never, backoffLimit: 0) prevent CrashLoopBackOff that occurs when Deployments restart completed containers. Their compose files live in `compose-jobs/` instead of `compose/`.
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
 - Stacks 1, 2, and 4 share the same repo/container (deployer image) and are independently buildable.
 - Stack 7 balance-monitor will use a lightweight image (not the heavy deployer image).
+- The deployer image is built from `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`), not the older `agents-v2.0.0` tag.
 
 ---
 
@@ -84,11 +87,11 @@ The architecture doc (`docs/architecture-decisions.md`) describes 5 logical stac
 One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator Announce, Merkle Tree Hook) on both Gorchain (domain 99999) and Solana (domain 99998).
 
 ### How It Works
-1. Container starts with `restart: "no"` — runs once, exits
-2. Entrypoint script (`deployer-scripts-config/deploy.sh`) checks idempotency sentinel
-3. Deploys programs on both chains via `hyperlane-sealevel-client`
+1. Stack uses `jobs:` in stack.yml — runs as a k8s Job (restartPolicy: Never, backoffLimit: 0) instead of a Deployment, preventing CrashLoopBackOff after completion
+2. Deploy script (`deploy.sh`) is mounted via ConfigMap volume at `/opt/scripts/` rather than baked into the Docker image — allows script updates without rebuilding the image
+3. Deploys programs on both chains via `hyperlane-sealevel-client` (from `@hyperlane-xyz/core@10.2.0`)
 4. Verifies on-chain program hashes via `solana-verify`
-5. Transfers ownership: program authority → hardware wallet, IGP → Privy oracle
+5. Transfers ownership: program authority → hardware wallet (uses `--skip-new-upgrade-authority-signer-check` flag required by Solana CLI 3.x), IGP → Privy oracle
 6. Writes deployment artifacts as k8s ConfigMaps via kubectl (requires RBAC)
 7. Discards hot deployer key
 
@@ -127,7 +130,7 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 One-time Job that deploys warp route contracts (collateral on one chain, synthetic on the other) for a specific SPL token pair.
 
 ### How It Works
-1. Same run-once pattern as core deployer
+1. Same `jobs:` pattern as core deployer — runs as a k8s Job with ConfigMap-mounted deploy script at `/opt/scripts/`
 2. Reads `hyperlane-program-ids` ConfigMap (created by Stack 1) for mailbox addresses
 3. Deploys collateral + synthetic warp route programs
 4. Writes `hyperlane-token-config` ConfigMap with warp route addresses
@@ -331,7 +334,7 @@ HTTP proxy routes host → warp-ui:3000 via Caddy ingress controller with automa
 
 ## Ops Directory (Not a Stack)
 
-On-demand k8s Jobs applied manually with `kubectl`. These don't fit the SO model (no Job support).
+On-demand k8s Jobs applied manually with `kubectl`. These are standalone Job manifests rather than SO-managed stacks.
 
 | Job | Purpose | Signing |
 |-----|---------|---------|
@@ -352,7 +355,7 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `laconic/hyperlane-svm-deployer` | `laconic-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify` |
+| `laconic/hyperlane-svm-deployer` | `laconic-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
 | `laconic/hyperlane-kms-proxy` | `laconic-hyperlane-kms-proxy` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `laconic/hyperlane-gas-oracle` | `laconic-hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
 | `laconic/hyperlane-warp-ui` | `laconic-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
@@ -442,8 +445,9 @@ Both validator spec files reference the same stack (`stack_orchestrator/data/sta
 
 ## Compose File Conventions
 
+- **Directory layout**: Long-running services use `compose/docker-compose-{pod-name}.yml` (referenced by `pods:` in stack.yml). One-shot deployers use `compose-jobs/docker-compose-{job-name}.yml` (referenced by `jobs:` in stack.yml).
 - **Image tags**: Use `laconic/name:local` (what `build-containers` produces). Add comment noting future published version: `# TODO: use git.vdb.to/laconic/name:tag once CI publish workflows are set up`
-- **Inline scripts**: No multi-line inline scripts in compose files. Extract to shell scripts in `stack_orchestrator/data/config/{name}-scripts-config/` dirs. Mount as ConfigMap volumes. Reference via `command: ["/bin/bash", "/opt/scripts/script.sh"]`.
+- **Inline scripts**: No multi-line inline scripts in compose files. Extract to shell scripts in `stack_orchestrator/data/config/{name}-scripts-config/` dirs. Mount as ConfigMap volumes at `/opt/scripts/`. Reference via `command: ["/bin/bash", "/opt/scripts/script.sh"]`.
 - **Environment variables**: All deployment-specific values come from env vars (set via spec.yml config). Compose files use `${VAR}` syntax.
 - **Volumes**: Named volumes with `config` in the name → ConfigMaps in k8s. Other named volumes → PVCs.
 
