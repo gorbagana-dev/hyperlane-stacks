@@ -57,19 +57,19 @@ if not _logger.handlers:
 
 
 def log_info(msg: str) -> None:
-    _logger.info(msg)
+    _logger.info(msg, stacklevel=2)
 
 
 def log_error(msg: str) -> None:
-    _logger.error(msg)
+    _logger.error(msg, stacklevel=2)
 
 
 def log_pass(msg: str) -> None:
-    _logger.log(PASS_LEVEL, msg)
+    _logger.log(PASS_LEVEL, msg, stacklevel=2)
 
 
 def log_fail(msg: str) -> None:
-    _logger.log(FAIL_LEVEL, msg)
+    _logger.log(FAIL_LEVEL, msg, stacklevel=2)
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +103,43 @@ def assert_contains(haystack: str, needle: str, msg: str = "assert_contains fail
 
 
 # ---------------------------------------------------------------------------
+# File helpers
+# ---------------------------------------------------------------------------
+def force_rmtree(path: Path) -> None:
+    """Remove a directory tree, using sudo if normal removal fails.
+
+    Docker containers (via laconic-so) create root-owned files inside
+    deployment directories. Plain shutil.rmtree fails on those.
+    """
+    import shutil
+
+    try:
+        shutil.rmtree(path)
+    except PermissionError:
+        log_info(f"Permission denied removing {path}, retrying with sudo...")
+        subprocess.run(["sudo", "rm", "-rf", str(path)], check=True)
+
+
+# ---------------------------------------------------------------------------
 # Subprocess wrapper
 # ---------------------------------------------------------------------------
+_SECRET_PATTERNS = ("KEYPAIR=", "PRIVATE_KEY=", "SECRET=")
+
+
+def _redact_args(args: list[str]) -> str:
+    """Join args for logging, redacting values that look like secrets."""
+    parts = []
+    for a in args:
+        s = str(a)
+        for pat in _SECRET_PATTERNS:
+            if pat in s:
+                idx = s.index(pat) + len(pat)
+                s = s[:idx] + "<REDACTED>"
+                break
+        parts.append(s)
+    return " ".join(parts)
+
+
 def run_cmd(
     args: list[str],
     *,
@@ -115,7 +150,7 @@ def run_cmd(
     input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if not quiet:
-        log_info(f"Running: {' '.join(str(a) for a in args)}")
+        _logger.info("Running: %s", _redact_args(args), stacklevel=2)
 
     try:
         return subprocess.run(

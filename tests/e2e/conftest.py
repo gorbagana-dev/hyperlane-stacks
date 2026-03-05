@@ -24,6 +24,7 @@ from lib.deploy import (
     DeploymentInfo,
     deploy_prepare,
     deploy_start,
+    prefetch_deployer_image,
     stop_stack,
 )
 from lib.keygen import (
@@ -113,14 +114,15 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session")
-def deployer_image(request: pytest.FixtureRequest) -> None:
-    """Build container images from source if --build-from-source is passed."""
+def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+    """Build or pre-fetch the deployer image and load it into the kind cluster."""
     if request.config.getoption("--build-from-source"):
         from lib.deploy import build_deployer_image
         log.info("Building deployer container image from source...")
         build_deployer_image()
     else:
-        log.info("Using published deployer image (pass --build-from-source to build locally)")
+        log.info("Pre-fetching published deployer image into kind cluster...")
+        prefetch_deployer_image()
 
 
 @pytest.fixture(scope="session")

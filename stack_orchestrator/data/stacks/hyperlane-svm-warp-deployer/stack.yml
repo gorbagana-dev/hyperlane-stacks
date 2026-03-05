@@ -8,5 +8,5 @@ repos:
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:
 #   - laconic/hyperlane-svm-deployer
-pods:
+jobs:
   - hyperlane-svm-warp-deployer

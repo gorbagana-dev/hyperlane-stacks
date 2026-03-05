@@ -11,6 +11,7 @@ volumes:
   relayer-data: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
+  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
 secrets:
   hyperlane-relayer-secrets:
     - HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY

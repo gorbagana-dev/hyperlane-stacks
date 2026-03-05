@@ -1,6 +1,7 @@
 import json
 import logging
 import subprocess
+import time
 
 import pytest
 
@@ -8,7 +9,7 @@ from lib.deploy import DeploymentInfo
 
 log = logging.getLogger(__name__)
 
-DEPLOYER_POD_TIMEOUT = 1200
+DEPLOYER_JOB_TIMEOUT = 1200
 CONFIGMAP_TIMEOUT = 30
 
 
@@ -22,30 +23,66 @@ def _kubectl_get_configmap(namespace: str, name: str) -> dict:
     return json.loads(result.stdout)
 
 
-def _wait_for_pod_phase(namespace: str, label: str, phase: str, timeout: int) -> None:
-    """Wait for a pod matching *label* to reach the given phase."""
-    subprocess.run(
+def _wait_for_job_complete(namespace: str, job_name: str, timeout: int) -> None:
+    """Wait for a k8s Job to complete successfully.
+
+    Uses kubectl wait --for=condition=complete, falling back to polling
+    if the Job hasn't been created yet.
+    """
+    deadline = time.monotonic() + timeout
+
+    # First wait for the Job to exist
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["kubectl", "-n", namespace, "get", "job", job_name],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            break
+        time.sleep(5)
+    else:
+        raise TimeoutError(
+            f"Job {job_name} not found in namespace {namespace} within {timeout}s"
+        )
+
+    # Now wait for completion
+    remaining = int(deadline - time.monotonic())
+    if remaining <= 0:
+        remaining = 1
+    result = subprocess.run(
         [
-            "kubectl",
-            "wait",
-            "--for=jsonpath={.status.phase}=" + phase,
-            "-n",
-            namespace,
-            "-l",
-            label,
-            f"--timeout={timeout}s",
-            "pod",
+            "kubectl", "wait",
+            "--for=condition=complete",
+            f"--timeout={remaining}s",
+            "-n", namespace,
+            f"job/{job_name}",
         ],
-        check=True,
         capture_output=True,
         text=True,
     )
+    if result.returncode != 0:
+        # Check if the job failed
+        status_result = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "get", "job", job_name,
+                "-o", "jsonpath={.status.conditions[?(@.type=='Failed')].status}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if status_result.stdout.strip() == "True":
+            raise RuntimeError(
+                f"Job {job_name} failed. stderr: {result.stderr.strip()}"
+            )
+        raise TimeoutError(
+            f"Job {job_name} did not complete within {remaining}s. "
+            f"stderr: {result.stderr.strip()}"
+        )
 
 
 def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
     """Poll until a ConfigMap exists (kubectl wait does not support ConfigMaps)."""
-    import time
-
     deadline = time.monotonic() + timeout
     last_error = ""
     while time.monotonic() < deadline:
@@ -64,16 +101,16 @@ def _wait_for_configmap(namespace: str, name: str, timeout: int) -> None:
     )
 
 
-def _dump_pod_logs(namespace: str, label: str) -> None:
+def _dump_job_logs(namespace: str, job_name: str) -> None:
     result = subprocess.run(
-        ["kubectl", "logs", "-n", namespace, "-l", label, "--tail=200"],
+        ["kubectl", "logs", "-n", namespace, f"job/{job_name}", "--tail=200"],
         capture_output=True,
         text=True,
     )
     if result.stdout:
-        log.info("--- Pod logs (%s) ---\n%s", label, result.stdout)
+        log.info("--- Job logs (%s) ---\n%s", job_name, result.stdout)
     elif result.stderr:
-        log.warning("--- Could not fetch pod logs (%s): %s", label, result.stderr.strip())
+        log.warning("--- Could not fetch job logs (%s): %s", job_name, result.stderr.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -83,14 +120,14 @@ def _dump_pod_logs(namespace: str, label: str) -> None:
 
 @pytest.mark.slow
 class TestDeployer:
-    def test_deployer_pod_succeeds(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_deployer_job_succeeds(self, deployer_deployment: DeploymentInfo) -> None:
         ns = deployer_deployment.namespace
-        pod_label = f"app={deployer_deployment.cluster_id}"
+        job_name = f"{deployer_deployment.cluster_id}-job-hyperlane-svm-deployer"
         try:
-            _wait_for_pod_phase(ns, pod_label, "Succeeded", DEPLOYER_POD_TIMEOUT)
-        except subprocess.CalledProcessError:
-            _dump_pod_logs(ns, pod_label)
-            pytest.fail("Deployer pod did not reach Succeeded phase")
+            _wait_for_job_complete(ns, job_name, DEPLOYER_JOB_TIMEOUT)
+        except (TimeoutError, RuntimeError, subprocess.CalledProcessError):
+            _dump_job_logs(ns, job_name)
+            pytest.fail("Deployer job did not complete successfully")
 
     def test_program_ids_configmap(self, deployer_deployment: DeploymentInfo) -> None:
         ns = deployer_deployment.namespace
@@ -102,7 +139,7 @@ class TestDeployer:
         assert "gorchain-program-ids.json" in data and data["gorchain-program-ids.json"], (
             "program-ids missing gorchain data"
         )
-        assert "solanasvm-program-ids.json" in data and data["solanasvm-program-ids.json"], (
+        assert "solana-program-ids.json" in data and data["solana-program-ids.json"], (
             "program-ids missing solana data"
         )
 

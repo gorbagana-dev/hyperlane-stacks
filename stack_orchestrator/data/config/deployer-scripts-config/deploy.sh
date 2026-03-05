@@ -161,6 +161,7 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
         echo "Transferring upgrade authority for ${PROGRAM} (${PROGRAM_ID}) on ${CHAIN_OUTPUT}..."
         solana program set-upgrade-authority "$PROGRAM_ID" \
           --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
+          --skip-new-upgrade-authority-signer-check \
           --keypair "${DEPLOYER_KEY_FILE}" \
           --url "$RPC_URL" || echo "WARNING: Failed to transfer upgrade authority for ${PROGRAM} on ${CHAIN_OUTPUT}"
       fi
@@ -284,21 +285,33 @@ kubectl create configmap hyperlane-agent-config \
   --from-file="agent-config.json=${WORK_DIR}/agent-config.json" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Gas oracle config (copy from input)
-kubectl create configmap hyperlane-gas-oracle-config \
-  --from-file="gas-oracle-configs.json=${GAS_ORACLE_CONFIG}" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Gas oracle config (copy from input, skip if not mounted)
+if [ -f "${GAS_ORACLE_CONFIG}" ]; then
+  kubectl create configmap hyperlane-gas-oracle-config \
+    --from-file="gas-oracle-configs.json=${GAS_ORACLE_CONFIG}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "WARNING: Gas oracle config not found at ${GAS_ORACLE_CONFIG}, skipping ConfigMap"
+fi
 
-# Multisig config
-kubectl create configmap hyperlane-multisig-config \
-  --from-file="gorchain-multisig.json=${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" \
-  --from-file="solana-multisig.json=${MULTISIG_CONFIG_DIR}/solana-multisig.json" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Multisig config (skip if not mounted)
+if [ -f "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" ]; then
+  kubectl create configmap hyperlane-multisig-config \
+    --from-file="gorchain-multisig.json=${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" \
+    --from-file="solana-multisig.json=${MULTISIG_CONFIG_DIR}/solana-multisig.json" \
+    --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "WARNING: Multisig config not found at ${MULTISIG_CONFIG_DIR}/, skipping ConfigMap"
+fi
 
-# Registry metadata
-kubectl create configmap hyperlane-registry \
-  --from-file="${REGISTRY_DIR}/" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Registry metadata (skip if not mounted)
+if [ -d "${REGISTRY_DIR}" ] && [ -n "$(ls -A "${REGISTRY_DIR}/" 2>/dev/null)" ]; then
+  kubectl create configmap hyperlane-registry \
+    --from-file="${REGISTRY_DIR}/" \
+    --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "WARNING: Registry config not found at ${REGISTRY_DIR}/, skipping ConfigMap"
+fi
 
 # Label all output ConfigMaps
 for CM in hyperlane-program-ids hyperlane-agent-config hyperlane-gas-oracle-config hyperlane-multisig-config hyperlane-registry; do

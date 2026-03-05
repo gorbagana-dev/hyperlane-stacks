@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .common import log_info, run_cmd, wait_for_rpc_health
+from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
 LEDGER_BASE = Path("/tmp")
 
@@ -144,7 +144,7 @@ def start_gorchain_stack(deploy_dir: Path) -> None:
 
     if deploy_dir.exists():
         log_info(f"Removing stale gorchain deployment directory: {deploy_dir}")
-        shutil.rmtree(deploy_dir)
+        force_rmtree(deploy_dir)
 
     spec_file = deploy_dir.parent / "gorchain-spec.yml"
 

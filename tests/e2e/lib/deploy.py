@@ -7,10 +7,12 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from .common import E2E_DIR, REPO_ROOT, fail_exit, log_info, run_cmd
+from .common import E2E_DIR, REPO_ROOT, fail_exit, force_rmtree, log_info, run_cmd
 
 DEPLOY_DIR = E2E_DIR / ".deployments"
 DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
+
+DEPLOYER_IMAGE = "git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest"
 
 
 
@@ -60,6 +62,16 @@ def build_deployer_image(stack_name: str = "hyperlane-svm-deployer") -> None:
     log_info("Deployer image built successfully")
 
 
+def prefetch_deployer_image(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull the published deployer image and load it into the kind cluster."""
+    log_info(f"Pulling deployer image {DEPLOYER_IMAGE}...")
+    run_cmd(["docker", "pull", DEPLOYER_IMAGE])
+
+    log_info(f"Loading deployer image into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", DEPLOYER_IMAGE, "--name", cluster_name])
+
+    log_info("Deployer image loaded into kind cluster")
+
 
 # ---------------------------------------------------------------------------
 # Deploy lifecycle
@@ -78,9 +90,10 @@ def deploy_prepare(
     log_info(f"Preparing stack '{stack_name}' from spec '{spec_file}'...")
 
     # Clean up stale deployment directory from a previous run
+    # (Docker containers create root-owned files, so may need sudo)
     if deploy_dir.exists():
         log_info(f"Removing stale deployment directory: {deploy_dir}")
-        shutil.rmtree(deploy_dir)
+        force_rmtree(deploy_dir)
 
     # Write spec file outside deploy_dir — deploy create expects the dir not to exist
     init_spec = DEPLOY_DIR / f"{stack_name}-spec.yml"
