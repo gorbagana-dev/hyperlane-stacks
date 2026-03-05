@@ -347,45 +347,30 @@ Rather than running the full SO workflow per-stack, use pre-populated test spec 
 ```
 tests/
 ├── e2e/
-│   ├── run.sh                      # Main test runner (all phases)
+│   ├── conftest.py                   # Session-scoped fixtures (cluster, chains, keys, deployment)
 │   ├── lib/
-│   │   ├── common.sh               # Shared utilities (logging, assertions, waits)
-│   │   ├── cluster.sh              # Kind cluster create/teardown + TLS setup
-│   │   ├── chain.sh                # Gorchain + Solana validator lifecycle
-│   │   ├── deploy.sh               # Stack deployment helpers (SO wrappers)
-│   │   └── keygen.sh               # Keypair generation, funding, secret creation
-│   ├── tests/
-│   │   ├── test-deployer.sh           # Core deployer deploy + verify ConfigMaps
-│   │   ├── test-warp-deployer.sh      # Warp deployer deploy + verify warp routes
-│   │   ├── test-minio.sh             # MinIO deploy + verify buckets
-│   │   ├── test-validators.sh        # Both validators deploy + verify metrics
-│   │   ├── test-relayer.sh           # Relayer deploy + verify metrics
-│   │   ├── test-gas-oracle.sh        # Gas oracle deploy + verify
-│   │   ├── test-monitoring.sh        # Monitoring deploy + verify Grafana/Prometheus
-│   │   ├── test-warp-ui.sh           # Warp UI deploy + verify TLS ingress
-│   │   ├── test-program-ids.sh       # Verify all program IDs on both chains
-│   │   ├── test-authorities.sh       # Verify program authorities/owners
-│   │   ├── test-configmaps.sh        # Verify deployer-created ConfigMaps
-│   │   ├── test-ism-config.sh        # Verify multisig ISM validator sets
-│   │   ├── test-transfer-sol2gor.sh  # Solana → Gorchain warp transfer
-│   │   ├── test-transfer-gor2sol.sh  # Gorchain → Solana warp transfer
-│   │   └── test-relay-metrics.sh     # Verify relayer processed messages
-│   ├── mock-kms-proxy/              # Mock AWS KMS proxy for validator signing
-│   │   ├── Dockerfile
-│   │   ├── main.go                  # Implements Sign, GetPublicKey, DescribeKey
-│   │   └── test-key.json            # secp256k1 test private key
+│   │   ├── common.py                 # Shared utilities (logging, assertions, waits, kubectl helpers)
+│   │   ├── cluster.py                # Kind cluster create/teardown + TLS setup
+│   │   ├── chain.py                  # Gorchain + Solana validator lifecycle
+│   │   ├── deploy.py                 # Stack deployment helpers (SO wrappers)
+│   │   └── keygen.py                 # Keypair generation, funding, secret creation
+│   ├── test_deployer.py              # Core deployer: Job completion + ConfigMap verification
+│   ├── test_warp_deployer.py         # Warp deployer: token creation, Job completion, ConfigMaps
+│   ├── test_validators.py            # Both validators deploy + verify metrics
+│   ├── test_relayer.py               # Relayer deploy + verify metrics
+│   ├── test_gas_oracle.py            # Gas oracle deploy + verify
+│   ├── test_minio.py                 # MinIO deploy + verify buckets
+│   ├── test_monitoring.py            # Monitoring deploy + verify Grafana/Prometheus
+│   ├── test_warp_ui.py               # Warp UI deploy + verify TLS ingress
+│   ├── test_program_ids.py           # Verify all program IDs on both chains
+│   ├── test_authorities.py           # Verify program authorities/owners
+│   ├── test_transfer.py              # Cross-chain warp route transfers
 │   └── fixtures/
 │       ├── kind-config.yaml
-│       ├── cert-manager.yaml           # ClusterIssuer + namespace
-│       ├── host-chain-services.yaml    # k8s Service+Endpoints for host RPC access
-│       ├── test-spec-*.yml             # Pre-populated spec files for each stack
-│       └── test-secrets/               # k8s Secret manifests (test values)
-│           ├── deployer-secrets.yaml
-│           ├── minio-secrets.yaml
-│           ├── validator-secrets.yaml
-│           ├── relayer-secrets.yaml
-│           ├── gas-oracle-secrets.yaml
-│           └── monitoring-secrets.yaml
+│       ├── cert-manager-issuer.yaml
+│       ├── host-chain-services.yaml
+│       ├── test-spec-deployer.yml
+│       └── test-spec-warp-deployer.yml
 ```
 
 ## Phase 1: Deploy + Health
@@ -419,8 +404,17 @@ tests/
 12. Load images into kind cluster:
     kind load docker-image <image> --name hyperlane-e2e
 13. Deploy stacks in order:
-    a. hyperlane-svm-deployer   → verify: deployer pod completed (exit 0), ConfigMaps created
-    b. hyperlane-svm-warp-deployer → verify: warp deployer completed, warp ConfigMaps exist
+    a. hyperlane-svm-deployer   → verify: deployer Job completed, ConfigMaps created
+    b. hyperlane-svm-warp-deployer → verify: warp deployer Job completed, warp ConfigMaps exist
+       Warp deployer test flow:
+       i.   Create SPL token on Solana test validator (spl-token create-token --decimals 6)
+       ii.  Create token account for deployer wallet (spl-token create-account <mint>)
+       iii. Mint test supply (1,000,000 USDC = 1,000,000,000,000 base units with 6 decimals)
+       iv.  Patch token-config.json in deployment configmap dir with actual mint address,
+            name="USDC", symbol="USDC", decimals=6
+       v.   Patch warp spec with token mint address
+       vi.  Deploy warp stack
+       vii. Verify: Job completed, ConfigMaps created (hyperlane-token-config, hyperlane-warp-deploy-outputs)
     c. hyperlane-minio          → verify: minio pods running, S3 API responding, buckets created
     d. hyperlane-validator (gorchain) → verify: pod running, metrics on :9090, checkpoint writes to MinIO
     e. hyperlane-validator (solana)   → verify: same checks
@@ -444,17 +438,19 @@ This avoids needing `solana` CLI inside the cluster.
 ### Assertions per Stack
 
 **hyperlane-svm-deployer:**
-- Pod phase = Succeeded (container exit code 0)
+- Job completes successfully (`kubectl wait --for=condition=complete`)
 - `kubectl logs` show "Deployment complete on both chains!"
-- ConfigMaps created by entrypoint.sh:
-  - `hyperlane-program-ids` — keys: `gorchain/program-ids.json`, `solanasvm/program-ids.json`
+- ConfigMaps created by deploy.sh:
+  - `hyperlane-program-ids` — keys: `gorchain-program-ids.json`, `solana-program-ids.json`
   - `hyperlane-agent-config` — key: `agent-config.json` (valid JSON with both chain configs)
   - `hyperlane-gas-oracle-config` — per-chain gas oracle configs
   - `hyperlane-multisig-config` — per-chain multisig configs
 
 **hyperlane-svm-warp-deployer:**
-- Pod phase = Succeeded
-- Warp route ConfigMaps exist with collateral + synthetic addresses
+- Job completes successfully (`kubectl wait --for=condition=complete`)
+- `hyperlane-token-config` ConfigMap exists with correct token mint and warp route metadata
+- `hyperlane-warp-deploy-outputs` ConfigMap exists with deployment artifacts
+- Warp route direction: USDC collateral on Solana (domain 99998) → synthetic USDC on Gorchain (domain 99999)
 
 **hyperlane-minio:**
 - Pod phase = Running
@@ -507,7 +503,7 @@ Runs after Phase 1 completes. Uses `solana` CLI on the host against localhost RP
 **test-configmaps.sh:**
 - `hyperlane-program-ids` has entries for both chains, each with: mailbox, igp, multisig_ism_message_id, validator_announce, merkle_tree_hook
 - `hyperlane-agent-config` is valid JSON, contains both chain configs with correct RPC URLs and program addresses
-- Warp route ConfigMaps have collateral address (solana) and synthetic address (gorchain)
+- Warp route ConfigMaps have collateral address (Solana, domain 99998) and synthetic address (Gorchain, domain 99999)
 
 **test-ism-config.sh:**
 - Query multisig ISM on each chain (via `hyperlane-sealevel-client` or RPC account data parsing)
@@ -519,17 +515,18 @@ Runs after Phase 1 completes. Uses `solana` CLI on the host against localhost RP
 Runs after Phase 2. Executes actual cross-chain warp route transfers.
 
 ### Setup
+- The warp deployer has already deployed the warp route with the USDC token mint (created during Phase 1, step 13b)
 - Create and fund test sender wallets on both chains (`solana airdrop`)
-- Mint test SPL tokens on Solana for warp route collateral:
+- Create token account for the TEST SENDER wallet (not the deployer) and mint test supply:
   ```bash
-  # Create test token mint
-  spl-token create-token --url http://localhost:18899 --decimals 6
-  # Create token account for sender
-  spl-token create-account <mint-address> --url http://localhost:18899
-  # Mint test tokens
-  spl-token mint <mint-address> 1000000000 --url http://localhost:18899
+  # Create token account for the test sender wallet
+  spl-token create-account <mint-address> --url http://localhost:18899 --owner <sender-keypair>
+  # Mint test USDC to the sender (1,000,000 USDC = 1,000,000,000,000 base units with 6 decimals)
+  spl-token mint <mint-address> 1000000 --url http://localhost:18899 -- <sender-token-account>
   ```
-- The warp deployer must have used this token mint address in its config
+- Transfer directions:
+  - **Solana -> Gorchain**: Locks collateral USDC on Solana, mints synthetic USDC on Gorchain
+  - **Gorchain -> Solana**: Burns synthetic USDC on Gorchain, unlocks collateral USDC on Solana
 
 ### Tests
 
@@ -631,6 +628,24 @@ secrets:
     - SOLANA_VALIDATOR_ADDRESS
 ```
 
+```yaml
+# test-spec-warp-deployer.yml
+stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
+deploy-to: k8s-kind
+config:
+  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+  COLLATERAL_CHAIN: solana
+  SYNTHETIC_CHAIN: gorchain
+  COLLATERAL_CHAIN_RPC_URL: "http://solana-rpc:18899"
+  SYNTHETIC_CHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  COLLATERAL_DOMAIN_ID: "99998"
+  SYNTHETIC_DOMAIN_ID: "99999"
+  FORCE_REDEPLOY: "false"
+secrets:
+  hyperlane-deployer-secrets:
+    - DEPLOYER_KEYPAIR
+```
+
 ## Test Runner
 
 ### Usage
@@ -699,7 +714,7 @@ rm -rf /tmp/hyperlane-e2e-keys /tmp/solana-test-ledger
 
 1. **Privy in tests:** Using mock KMS proxy + local oracle signing for e2e tests. If real Privy test credentials become available, swap to real Privy integration (configuration-only change — replace mock image with real KMS proxy, inject Privy env vars).
 
-2. **Entrypoint strategy:** Use `entrypoint.sh` (env-var-driven), not `deploy.sh` (config-file-driven). This means the ConfigMap volumes for chain-config, multisig-config, gas-oracle-config are unused by the deployer — entrypoint.sh generates all configs inline from environment variables and creates k8s ConfigMaps directly via kubectl.
+2. **Deploy script strategy:** The deployer uses a ConfigMap-mounted `deploy.sh` at `/opt/scripts/deploy.sh` (env-var-driven). The deployer scripts are mounted via ConfigMap volumes, not baked into the image. This means the ConfigMap volumes for chain-config, multisig-config, gas-oracle-config are unused by the deployer — deploy.sh generates all configs inline from environment variables and creates k8s ConfigMaps directly via kubectl.
 
 3. **Assertion scripts run on host:** All test assertions use `solana` CLI and `kubectl` from the host machine. On-chain queries hit chain RPC directly via localhost. k8s queries use kubectl. No need for solana CLI inside the cluster.
 

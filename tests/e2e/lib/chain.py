@@ -12,7 +12,7 @@ from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
 LEDGER_BASE = Path("/tmp")
 
-GORCHAIN_STACKS_REPO = "git.vdb.to/LaconicNetwork/gorchain-stacks@update-repo-url"
+GORCHAIN_STACKS_REPO = "git.vdb.to/LaconicNetwork/gorchain-stacks"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
 
 
@@ -120,25 +120,17 @@ def fetch_gorchain_stack() -> Path:
     return stack_path
 
 
-def build_gorchain_images() -> None:
-    """Fetch gorchain-stacks and build container images via laconic-so."""
-    stack_path = fetch_gorchain_stack()
-
-    log_info("Setting up gorchain repositories...")
-    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories", "--git-ssh"])
-
-    log_info("Building gorchain container images...")
-    run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
-
-    log_info("Gorchain images built successfully")
+def pull_gorchain_images() -> None:
+    """Fetch the gorchain-stacks repo (images are published, no local build needed)."""
+    fetch_gorchain_stack()
+    log_info("Gorchain stack fetched (using published images)")
 
 
 def start_gorchain_stack(deploy_dir: Path) -> None:
     """Deploy and start gorchain via laconic-so.
 
     Follows the same pattern as gorchain-stacks/tests: deploy init/create,
-    write config.env, then start. Images must already be built via
-    build_gorchain_images().
+    write config.env, then start. Uses published images from git.vdb.to.
     """
     stack_path = fetch_gorchain_stack()
 

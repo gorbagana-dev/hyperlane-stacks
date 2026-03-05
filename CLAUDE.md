@@ -1,0 +1,130 @@
+# CLAUDE.md — hyperlane-stacks
+
+## Project overview
+
+Multi-component Hyperlane SVM bridge deployment system using laconic-so
+(stack-orchestrator). 8 stacks: 2 deployer Jobs, 6 long-running Pods.
+Two SVM chains: **Gorchain** (custom) and **Solana**.
+
+## Repository layout
+
+```
+stack_orchestrator/data/
+  stacks/              # Stack definitions (stack.yml per stack)
+  compose/             # Compose files for Pods
+  compose-jobs/        # Compose files for Jobs
+  config/              # ConfigMap source dirs (scripts, templates, static config)
+  container-build/     # Dockerfiles
+
+deployment/            # Production deployment specs + ops playbooks
+  spec-*.yml           # One per stack, user-facing config entrypoint
+  ops/                 # Ansible playbooks + shell scripts
+
+tests/e2e/             # Python + pytest E2E tests
+  fixtures/            # Kind config, test specs, k8s manifests
+  lib/                 # Shared test utilities (cluster, chain, deploy, keygen)
+
+docs/                  # Architecture decisions, ops decisions, security, gaps
+specs/                 # Detailed specifications (stacks, e2e tests, ansible)
+
+hyperlane-gas-oracle/  # Node.js gas oracle service
+hyperlane-kms-proxy/   # Go KMS proxy sidecar
+```
+
+## Keep in sync — CRITICAL
+
+These groups of files must stay consistent. When changing one, update all:
+
+### 1. Compose ↔ Deployment specs ↔ Test fixtures
+
+| Compose file | Deployment spec | Test fixture |
+|---|---|---|
+| `compose-jobs/docker-compose-hyperlane-svm-deployer.yml` | `deployment/spec-deployer.yml` | `tests/e2e/fixtures/test-spec-deployer.yml` |
+| `compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | `deployment/spec-warp-deployer.yml` | `tests/e2e/fixtures/test-spec-warp-deployer.yml` |
+| `compose/docker-compose-hyperlane-validator.yml` | `deployment/spec-validator-{gorchain,solana}.yml` | — |
+| `compose/docker-compose-hyperlane-relayer.yml` | `deployment/spec-relayer.yml` | — |
+| `compose/docker-compose-hyperlane-gas-oracle.yml` | `deployment/spec-gas-oracle.yml` | — |
+| `compose/docker-compose-hyperlane-monitoring.yml` | `deployment/spec-monitoring.yml` | — |
+| `compose/docker-compose-hyperlane-warp-ui.yml` | `deployment/spec-warp-ui.yml` | — |
+| `compose/docker-compose-hyperlane-minio.yml` | `deployment/spec-minio.yml` | — |
+
+When you add/remove/rename an env var or configmap in a compose file:
+- Update the corresponding `deployment/spec-*.yml`
+- Update the corresponding `tests/e2e/fixtures/test-spec-*.yml` (if it exists)
+- Update the test code in `tests/e2e/test_*.py` if affected
+
+### 2. Config dirs ↔ Compose volumes ↔ Stack definitions
+
+Each configmap referenced in a compose `volumes:` section must have:
+- A source directory under `stack_orchestrator/data/config/`
+- A matching entry in the stack's `stack.yml` (under `configmaps:` or volumes)
+- A matching entry in each deployment spec and test fixture that uses it
+
+### 3. Deploy scripts ↔ Compose env vars
+
+The scripts in `config/*-scripts-config/` consume env vars injected by compose.
+If a script references `${SOME_VAR}`, the compose file must pass it through
+in its `environment:` block (and the spec must include it in `config:`).
+
+### 4. Documentation
+
+When making structural changes, update:
+- `specs/stack-specifications.md` — detailed per-stack specs
+- `specs/e2e-test-spec.md` — E2E test plan and infrastructure
+- `docs/architecture-decisions.md` — if architectural patterns change
+
+## Config patterns
+
+### Environment variables
+
+- **Chain-specific vars** are canonical: `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`,
+  `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GORCHAIN_CHAIN_ID`, `SOLANA_CHAIN_ID`
+- **Derived vars** (e.g. `COLLATERAL_CHAIN_RPC_URL`) use compose-level defaults:
+  `${COLLATERAL_CHAIN_RPC_URL:-${SOLANA_RPC_URL}}` — users only set chain-specific vars
+- Deployment specs should use chain-specific vars, not derived vars
+
+### Templates (envsubst)
+
+- Template files use `.tmpl` extension and `${VAR}` placeholder syntax
+- Deploy scripts render them at runtime via `envsubst`
+- Examples: `metadata.yaml.tmpl`, `token-config.json.tmpl`
+- ConfigMaps flatten directories; scripts reconstruct needed dir structures at runtime
+  (e.g. `mkdir -p /tmp/registry/chains && envsubst < .tmpl > .../chains/metadata.yaml`)
+
+### Secrets
+
+- Created by operator via `kubectl create secret generic`
+- Referenced in spec files under `secrets:`, injected as env vars
+- Never committed to the repo
+
+## Deployment order
+
+1. `hyperlane-minio` (no deps)
+2. `hyperlane-svm-deployer` (Job — creates program-ids, agent-config ConfigMaps)
+3. `hyperlane-svm-warp-deployer` (Job — reads program-ids, creates token-config)
+4. `hyperlane-validator` × 2 (gorchain + solana, reads agent-config)
+5. `hyperlane-relayer` (reads agent-config, needs MinIO)
+6. `hyperlane-gas-oracle` (reads IGP program IDs)
+7. `hyperlane-monitoring` (anytime)
+8. `hyperlane-warp-ui` (reads warp route addresses)
+
+## E2E tests
+
+- Python 3.10+, pytest, ruff linter (see `pyproject.toml`)
+- Deployer Jobs use `_wait_for_job_complete()`, not pod-phase waiting
+- Test chains run on host: gorchain (:8899), solana (:18899)
+- In-cluster DNS: `gorchain-rpc:8899`, `solana-rpc:18899`
+- Test specs use `REPLACE_AT_RUNTIME` placeholders patched by test code
+- SPL token lifecycle: create-token → create-account → mint
+
+## Stack orchestrator conventions
+
+- Volume names containing "config" → k8s ConfigMap; others → PVC
+- Image names: `laconic/hyperlane-*` (not `laconicnetwork/`)
+- `deploy/commands.py` in stack dirs: post-create hooks (RBAC, services)
+- `stack.yml` `jobs:` for one-shot deployers, `pods:` for long-running services
+
+## Git workflow
+
+- Never amend pushed commits — create new commits instead
+- Separate commits by concern (spec updates, stack fixes, tests, docs)

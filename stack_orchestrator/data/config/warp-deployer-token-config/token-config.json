@@ -1,8 +1,0 @@
-{
-  "type": "collateral",
-  "token": "REPLACE_WITH_TOKEN_MINT_ADDRESS",
-  "name": "REPLACE_WITH_TOKEN_NAME",
-  "symbol": "REPLACE_WITH_TOKEN_SYMBOL",
-  "decimals": 6,
-  "totalSupply": 0
-}

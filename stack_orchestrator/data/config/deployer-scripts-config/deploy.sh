@@ -52,6 +52,21 @@ REGISTRY_DIR="/config/registry"
 MULTISIG_CONFIG_DIR="/config/multisig"
 
 # -------------------------------------------------------
+# Render config templates via envsubst
+# -------------------------------------------------------
+echo ""
+echo "=== Rendering config templates ==="
+RENDERED_REGISTRY_DIR="${WORK_DIR}/registry"
+mkdir -p "${RENDERED_REGISTRY_DIR}"
+if [ -f "${REGISTRY_DIR}/metadata.yaml.tmpl" ]; then
+  envsubst < "${REGISTRY_DIR}/metadata.yaml.tmpl" > "${RENDERED_REGISTRY_DIR}/metadata.yaml"
+  echo "Registry rendered at ${RENDERED_REGISTRY_DIR}/metadata.yaml"
+elif [ -f "${REGISTRY_DIR}/metadata.yaml" ]; then
+  cp "${REGISTRY_DIR}/metadata.yaml" "${RENDERED_REGISTRY_DIR}/metadata.yaml"
+  echo "Registry copied (no template) at ${RENDERED_REGISTRY_DIR}/metadata.yaml"
+fi
+
+# -------------------------------------------------------
 # Deploy core contracts on Gorchain
 # -------------------------------------------------------
 echo ""
@@ -304,13 +319,13 @@ else
   echo "WARNING: Multisig config not found at ${MULTISIG_CONFIG_DIR}/, skipping ConfigMap"
 fi
 
-# Registry metadata (skip if not mounted)
-if [ -d "${REGISTRY_DIR}" ] && [ -n "$(ls -A "${REGISTRY_DIR}/" 2>/dev/null)" ]; then
+# Registry metadata (rendered from template)
+if [ -f "${RENDERED_REGISTRY_DIR}/metadata.yaml" ]; then
   kubectl create configmap hyperlane-registry \
-    --from-file="${REGISTRY_DIR}/" \
+    --from-file="${RENDERED_REGISTRY_DIR}/" \
     --dry-run=client -o yaml | kubectl apply -f -
 else
-  echo "WARNING: Registry config not found at ${REGISTRY_DIR}/, skipping ConfigMap"
+  echo "WARNING: Registry config not found, skipping ConfigMap"
 fi
 
 # Label all output ConfigMaps

@@ -4,7 +4,7 @@ from collections.abc import Generator
 import pytest
 
 from lib.chain import (
-    build_gorchain_images,
+    pull_gorchain_images,
     start_gorchain_stack,
     start_solana_test_validator,
     stop_gorchain_stack,
@@ -127,12 +127,12 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 
 @pytest.fixture(scope="session")
 def gorchain_images(request: pytest.FixtureRequest) -> None:
-    """Fetch gorchain-stacks and build container images."""
+    """Fetch gorchain-stacks repo (published images are used, no local build)."""
     if request.config.getoption("--skip-chain-setup"):
-        log.info("Skipping gorchain image build (--skip-chain-setup)")
+        log.info("Skipping gorchain stack fetch (--skip-chain-setup)")
         return
-    log.info("Building gorchain container images...")
-    build_gorchain_images()
+    log.info("Fetching gorchain stack definition...")
+    pull_gorchain_images()
 
 
 @pytest.fixture(scope="session")

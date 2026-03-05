@@ -1,13 +1,21 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 config:
+  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+  WARP_ROUTE_NAME: "USDC-solana-gorchain"
+  COLLATERAL_CHAIN: solana
+  SYNTHETIC_CHAIN: gorchain
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
-  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+  FORCE_REDEPLOY: "false"
+configmaps:
+  warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
+  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
+  warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
 secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR

@@ -3,6 +3,8 @@ set -euo pipefail
 
 echo "=== Hyperlane SVM Warp Route Deployer ==="
 echo "Token mint: ${WARP_TOKEN_MINT}"
+echo "Warp route name: ${WARP_ROUTE_NAME}"
+
 echo "Collateral chain: ${COLLATERAL_CHAIN} (domain ${COLLATERAL_DOMAIN_ID})"
 echo "Synthetic chain: ${SYNTHETIC_CHAIN} (domain ${SYNTHETIC_DOMAIN_ID})"
 
@@ -68,7 +70,6 @@ SOLCFG
 WORK_DIR="/tmp/hyperlane-warp-deploy"
 ENVIRONMENTS_DIR="${WORK_DIR}/environments"
 ENVIRONMENT="e2e"
-REGISTRY_DIR="/config/registry"
 mkdir -p "${ENVIRONMENTS_DIR}" "${WORK_DIR}/output"
 
 # Write program IDs to files for the CLI
@@ -76,42 +77,41 @@ echo "$COLLATERAL_PROGRAMS" > "${WORK_DIR}/${COLLATERAL_CHAIN}-program-ids.json"
 echo "$SYNTHETIC_PROGRAMS" > "${WORK_DIR}/${SYNTHETIC_CHAIN}-program-ids.json"
 
 # -------------------------------------------------------
-# Deploy collateral warp route on the collateral chain
+# Render config templates via envsubst
+# The ConfigMap mounts contain .tmpl files with ${VAR} placeholders.
+# envsubst substitutes them with env vars from the spec config.
 # -------------------------------------------------------
 echo ""
-echo "=== Deploying collateral warp route on ${COLLATERAL_CHAIN} ==="
+echo "=== Rendering config templates ==="
+
+# Registry: CLI expects {registry}/chains/metadata.yaml
+REGISTRY_DIR="/tmp/registry"
+mkdir -p "${REGISTRY_DIR}/chains"
+envsubst < /config/registry/metadata.yaml.tmpl > "${REGISTRY_DIR}/chains/metadata.yaml"
+echo "Registry rendered at ${REGISTRY_DIR}/chains/metadata.yaml"
+
+# Token config
+envsubst < /config/token/token-config.json.tmpl > "${WORK_DIR}/token-config.json"
+echo "Token config rendered at ${WORK_DIR}/token-config.json"
+
+# -------------------------------------------------------
+# Deploy warp routes (single invocation for all chains)
+# -------------------------------------------------------
+echo ""
+echo "=== Deploying warp routes ==="
 
 hyperlane-sealevel-client \
-  --url "${COLLATERAL_CHAIN_RPC_URL}" \
   --keypair "${DEPLOYER_KEY_FILE}" \
   warp-route deploy \
   --environment "${ENVIRONMENT}" \
   --environments-dir "${ENVIRONMENTS_DIR}" \
   --built-so-dir /opt/hyperlane/programs \
-  --warp-route-name "${COLLATERAL_CHAIN}-collateral" \
-  --token-config-file /config/token/token-config.json \
-  --registry "${REGISTRY_DIR}"
+  --warp-route-name "${WARP_ROUTE_NAME}" \
+  --token-config-file "${WORK_DIR}/token-config.json" \
+  --registry "${REGISTRY_DIR}" \
+  --ata-payer-funding-amount 1000000000
 
-echo "Collateral warp route deployed on ${COLLATERAL_CHAIN}"
-
-# -------------------------------------------------------
-# Deploy synthetic warp route on the synthetic chain
-# -------------------------------------------------------
-echo ""
-echo "=== Deploying synthetic warp route on ${SYNTHETIC_CHAIN} ==="
-
-hyperlane-sealevel-client \
-  --url "${SYNTHETIC_CHAIN_RPC_URL}" \
-  --keypair "${DEPLOYER_KEY_FILE}" \
-  warp-route deploy \
-  --environment "${ENVIRONMENT}" \
-  --environments-dir "${ENVIRONMENTS_DIR}" \
-  --built-so-dir /opt/hyperlane/programs \
-  --warp-route-name "${SYNTHETIC_CHAIN}-synthetic" \
-  --token-config-file /config/token/token-config.json \
-  --registry "${REGISTRY_DIR}"
-
-echo "Synthetic warp route deployed on ${SYNTHETIC_CHAIN}"
+echo "Warp routes deployed"
 
 # -------------------------------------------------------
 # Collect deployment output

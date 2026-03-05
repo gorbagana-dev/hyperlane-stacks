@@ -69,6 +69,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    gettext-base \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
