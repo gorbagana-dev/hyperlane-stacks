@@ -7,6 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from .cluster import KIND_CLUSTER_NAME
 from .common import E2E_DIR, REPO_ROOT, fail_exit, force_rmtree, log_info, run_cmd
 
 DEPLOY_DIR = E2E_DIR / ".deployments"
@@ -114,11 +115,6 @@ def deploy_prepare(
     # Overwrite with our pre-configured test spec (resolving stack path)
     prepare_spec(spec_file, init_spec)
 
-    # If a cluster_id was provided, inject it into the spec
-    if cluster_id:
-        log_info(f"Patching cluster-id to {cluster_id} for shared cluster...")
-        patch_cluster_id(init_spec, cluster_id)
-
     # Create deployment directory from spec
     log_info("Running deploy create...")
     run_cmd(
@@ -135,8 +131,16 @@ def deploy_prepare(
         ]
     )
 
-    # Extract cluster-id from the created deployment
-    resolved_cluster_id = cluster_id or get_cluster_id(deploy_dir)
+    # Patch cluster-id in deployment.yml AFTER deploy create.
+    # deploy create generates a random cluster-id, but SO uses it to construct
+    # the kube context as "kind-{cluster-id}". We must set it to the actual
+    # Kind cluster name so that --skip-cluster-management works (SO won't
+    # discover the cluster itself when that flag is set).
+    resolved_cluster_id = cluster_id or KIND_CLUSTER_NAME
+    deployment_yml = deploy_dir / "deployment.yml"
+    log_info(f"Patching cluster-id to {resolved_cluster_id} in {deployment_yml}...")
+    patch_cluster_id(deployment_yml, resolved_cluster_id)
+
     namespace = f"laconic-{resolved_cluster_id}"
 
     log_info(f"Stack '{stack_name}' prepared — cluster-id: {resolved_cluster_id}, namespace: {namespace}")
@@ -148,12 +152,12 @@ def deploy_prepare(
     )
 
 
-def deploy_start(deploy_dir: Path, first: bool = False) -> None:
+def deploy_start(deploy_dir: Path) -> None:
     log_info(f"Starting deployment in {deploy_dir}...")
-    cmd = ["laconic-so", "deployment", "--dir", str(deploy_dir), "start"]
-    if not first:
-        cmd.append("--skip-cluster-management")
-    run_cmd(cmd)
+    run_cmd([
+        "laconic-so", "deployment", "--dir", str(deploy_dir),
+        "start", "--skip-cluster-management",
+    ])
     log_info(f"Deployment in {deploy_dir} started")
 
 
@@ -162,10 +166,9 @@ def deploy_stack(
     spec_file: Path,
     deploy_dir: Path | None = None,
     cluster_id: str | None = None,
-    first: bool = False,
 ) -> DeploymentInfo:
     info = deploy_prepare(stack_name, spec_file, deploy_dir, cluster_id)
-    deploy_start(info.deploy_dir, first=first)
+    deploy_start(info.deploy_dir)
     return info
 
 

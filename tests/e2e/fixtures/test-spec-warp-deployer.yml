@@ -11,6 +11,14 @@ config:
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_IS_TESTNET: "true"
+  SOLANA_IS_TESTNET: "true"
+  # Derived vars — SO k8s path doesn't support nested ${VAR:-${OTHER}} defaults
+  COLLATERAL_CHAIN_RPC_URL: "http://solana-rpc:18899"
+  COLLATERAL_DOMAIN_ID: "99998"
+  SYNTHETIC_CHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SYNTHETIC_DOMAIN_ID: "99999"
+  WARP_TOKEN_METADATA_URI: ""
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config

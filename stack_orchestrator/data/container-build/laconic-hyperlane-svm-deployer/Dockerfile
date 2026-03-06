@@ -58,6 +58,16 @@ RUN cd rust/sealevel \
 # Build all .so program artifacts via the monorepo's build script
 RUN cd rust/sealevel/programs && ./build-programs.sh
 
+# Pre-install spl-token-cli (hyperlane fork) — the warp-route deploy
+# command calls install_spl_token_cli() which expects rustup at runtime.
+# Building it here avoids needing rustup/cargo in the runtime image.
+RUN rustup toolchain install 1.76.0 && \
+    cargo +1.76.0 install spl-token-cli \
+      --git https://github.com/hyperlane-xyz/solana-program-library \
+      --branch dan/create-token-for-mint \
+      --rev e101cca \
+      --locked
+
 # ============================================================
 # Stage 2: Runtime — minimal image with binaries only
 # ============================================================
@@ -87,6 +97,19 @@ COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/release/hyper
 
 # Copy solana-verify
 COPY --from=builder /root/.cargo/bin/solana-verify /usr/local/bin/
+
+# Copy pre-built spl-token binary (hyperlane fork, built in builder stage).
+# The warp-route deploy command calls install_spl_token_cli() which
+# unconditionally runs rustup + cargo install. We provide shims that
+# exit 0 so the function succeeds without needing the full Rust toolchain.
+# spl-token binary must be at $HOME/.cargo/bin/spl-token — the sealevel
+# client hardcodes this path (warp_route.rs:296).
+RUN mkdir -p /root/.cargo/bin
+COPY --from=builder /root/.cargo/bin/spl-token /root/.cargo/bin/spl-token
+# install_spl_token_cli() unconditionally runs rustup + cargo install before
+# every warp deploy. Shims that exit 0 let it pass without the full toolchain.
+RUN printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/rustup && chmod +x /usr/local/bin/rustup && \
+    printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/cargo && chmod +x /usr/local/bin/cargo
 
 # Copy .so program artifacts
 COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/deploy/*.so /opt/hyperlane/programs/

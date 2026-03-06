@@ -4,7 +4,7 @@ from collections.abc import Generator
 import pytest
 
 from lib.chain import (
-    pull_gorchain_images,
+    is_solana_validator_running,
     start_gorchain_stack,
     start_solana_test_validator,
     stop_gorchain_stack,
@@ -19,11 +19,13 @@ from lib.cluster import (
     destroy_kind_cluster,
     install_cert_manager,
 )
-from lib.common import E2E_DIR
+from lib.common import E2E_DIR, wait_for_job_complete
 from lib.deploy import (
+    DEPLOY_DIR,
     DeploymentInfo,
     deploy_prepare,
     deploy_start,
+    get_cluster_id,
     prefetch_deployer_image,
     stop_stack,
 )
@@ -57,6 +59,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Build container images from source instead of using published images"
     )
     parser.addoption("--skip-cleanup", action="store_true", default=False, help="Don't tear down after tests")
+    parser.addoption(
+        "--skip-core-deploy", action="store_true", default=False,
+        help="Skip core deployer (reuse existing deployment from a previous --skip-cleanup run)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -93,21 +99,31 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
     gorchain_deploy_dir = E2E_DIR / ".deployments" / "gorchain"
 
+    started_solana = False
     if not skip_setup:
         log.info("Starting Gorchain stack via laconic-so...")
         start_gorchain_stack(gorchain_deploy_dir)
         log.info("Starting Solana test validator (port 18899)...")
-        solana_proc = start_solana_test_validator(port=18899, name="solana")
+        start_solana_test_validator(port=18899, name="solana")
+        started_solana = True
     else:
         log.info("Skipping chain setup (--skip-chain-setup)")
-        solana_proc = None
+        if is_solana_validator_running(port=18899):
+            log.info("Solana test validator already running on :18899")
+        else:
+            pytest.exit(
+                "Solana test validator not running on :18899. "
+                "Cannot use --skip-chain-setup without a running validator "
+                "(it preserves state across pytest runs via start_new_session).",
+                returncode=1,
+            )
 
     yield
 
     if not skip_cleanup:
-        if solana_proc is not None:
+        if started_solana:
             log.info("Stopping Solana test validator...")
-            stop_solana_test_validator(solana_proc, name="solana")
+            stop_solana_test_validator(port=18899, name="solana")
         if not skip_setup:
             log.info("Stopping Gorchain stack...")
             stop_gorchain_stack(gorchain_deploy_dir)
@@ -126,16 +142,6 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 
 
 @pytest.fixture(scope="session")
-def gorchain_images(request: pytest.FixtureRequest) -> None:
-    """Fetch gorchain-stacks repo (published images are used, no local build)."""
-    if request.config.getoption("--skip-chain-setup"):
-        log.info("Skipping gorchain stack fetch (--skip-chain-setup)")
-        return
-    log.info("Fetching gorchain stack definition...")
-    pull_gorchain_images()
-
-
-@pytest.fixture(scope="session")
 def keypairs() -> KeypairSet:
     log.info("Generating test keypairs...")
     return generate_test_keypairs()
@@ -145,12 +151,23 @@ def keypairs() -> KeypairSet:
 def deployer_deployment(
     request: pytest.FixtureRequest,
     deployer_image: None,
-    gorchain_images: None,
     keypairs: KeypairSet,
     kind_cluster: None,
     chain_nodes: None,
 ) -> Generator[DeploymentInfo, None, None]:
     skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_core_deploy = request.config.getoption("--skip-core-deploy")
+
+    if skip_core_deploy:
+        # Reuse existing deployment from a previous run (requires --skip-cleanup).
+        # The Solana test validator runs detached (start_new_session) so it
+        # survives Ctrl+C — deployed programs and funded wallets persist.
+        deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
+        cluster_id = get_cluster_id(deploy_dir)
+        namespace = f"laconic-{cluster_id}"
+        log.info("Reusing existing core deployment (cluster-id: %s, namespace: %s)", cluster_id, namespace)
+        yield DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace)
+        return
 
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare("hyperlane-svm-deployer", FIXTURE_SPEC)
@@ -179,7 +196,12 @@ def deployer_deployment(
     fund_wallets(keypair_set=keypairs, gorchain_rpc="http://localhost:8899", solana_rpc="http://localhost:18899")
 
     log.info("Starting deployer stack...")
-    deploy_start(deploy_info.deploy_dir, first=True)
+    deploy_start(deploy_info.deploy_dir)
+
+    log.info("Waiting for deployer job to complete...")
+    job_name = f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer"
+    wait_for_job_complete(namespace, job_name)
+    log.info("Core deployer job complete, artifacts available")
 
     yield deploy_info
 

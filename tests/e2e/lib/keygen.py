@@ -63,9 +63,58 @@ def _cast_wallet_new(output: Path) -> dict[str, str]:
     return data
 
 
+def _load_existing_keypairs(keys_dir: Path) -> KeypairSet | None:
+    """Try to load previously generated keypairs. Returns None if any are missing."""
+    deployer_path = keys_dir / "deployer.json"
+    hw_path = keys_dir / "hardware-wallet.json"
+    oracle_path = keys_dir / "igp-oracle.json"
+    gorchain_val_path = keys_dir / "gorchain-validator.json"
+    solana_val_path = keys_dir / "solana-validator.json"
+
+    ed25519_files = [deployer_path, hw_path, oracle_path]
+    secp_files = [gorchain_val_path, solana_val_path]
+
+    if not all(f.is_file() for f in ed25519_files + secp_files):
+        return None
+
+    gorchain_data = json.loads(gorchain_val_path.read_text())
+    solana_data = json.loads(solana_val_path.read_text())
+    if isinstance(gorchain_data, list):
+        gorchain_data = gorchain_data[0]
+    if isinstance(solana_data, list):
+        solana_data = solana_data[0]
+
+    return KeypairSet(
+        keys_dir=keys_dir,
+        deployer_path=deployer_path,
+        hardware_wallet_path=hw_path,
+        igp_oracle_path=oracle_path,
+        deployer_pubkey=_solana_pubkey(deployer_path),
+        deployer_keypair=deployer_path.read_text().strip(),
+        hardware_wallet_pubkey=_solana_pubkey(hw_path),
+        igp_oracle_pubkey=_solana_pubkey(oracle_path),
+        gorchain_validator_path=gorchain_val_path,
+        solana_validator_path=solana_val_path,
+        gorchain_validator_address=gorchain_data["address"],
+        solana_validator_address=solana_data["address"],
+    )
+
+
 def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     if keys_dir is None:
         keys_dir = KEYS_DIR
+
+    # Reuse existing keypairs if all files are present (important for
+    # --skip-core-deploy where k8s secrets already reference the old keys)
+    existing = _load_existing_keypairs(keys_dir)
+    if existing:
+        log_info(f"Reusing existing keypairs from {keys_dir}")
+        log_info(f"  Deployer pubkey:            {existing.deployer_pubkey}")
+        log_info(f"  Hardware wallet pubkey:     {existing.hardware_wallet_pubkey}")
+        log_info(f"  IGP oracle pubkey:          {existing.igp_oracle_pubkey}")
+        log_info(f"  Gorchain validator (H160):  {existing.gorchain_validator_address}")
+        log_info(f"  Solana validator (H160):    {existing.solana_validator_address}")
+        return existing
 
     log_info("Generating test keypairs...")
     keys_dir.mkdir(parents=True, exist_ok=True)

@@ -12,6 +12,8 @@ config:
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_IS_TESTNET: "true"
+  SOLANA_IS_TESTNET: "true"
   FORCE_REDEPLOY: "false"
 secrets:
   hyperlane-deployer-secrets:

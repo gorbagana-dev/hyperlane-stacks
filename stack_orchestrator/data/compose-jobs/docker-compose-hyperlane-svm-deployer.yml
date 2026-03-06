@@ -11,6 +11,8 @@ services:
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
       GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
       SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
+      GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
+      SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY

@@ -22,6 +22,11 @@ services:
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
       SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
+      GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
+      SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
+      # Synthetic token metadata URI (required when isTestnet=false)
+      # Must point to JSON with name, symbol, description, image matching token config
+      WARP_TOKEN_METADATA_URI: ${WARP_TOKEN_METADATA_URI:-}
       # Options
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
     volumes:

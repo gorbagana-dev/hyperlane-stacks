@@ -12,19 +12,36 @@ from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
 LEDGER_BASE = Path("/tmp")
 
-GORCHAIN_STACKS_REPO = "git.vdb.to/LaconicNetwork/gorchain-stacks"
+GORCHAIN_STACKS_REPO = "git.vdb.to/LaconicNetwork/gorchain-stacks@main"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
 
 
-def _kill_stray_validator(port: int) -> None:
-    """Kill a leftover solana-test-validator bound to the given port."""
+def _is_port_open(port: int) -> bool:
+    """Check if something is listening on the given port."""
+    result = subprocess.run(
+        ["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def _kill_by_port(port: int) -> None:
+    """Kill all processes bound to the given port."""
     result = subprocess.run(
         ["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True,
     )
     if result.returncode == 0 and result.stdout.strip():
         for pid in result.stdout.strip().split("\n"):
-            log_info(f"Killing stray process on port {port} (PID {pid})")
+            log_info(f"Killing process on port {port} (PID {pid})")
             subprocess.run(["kill", pid], capture_output=True)
+
+
+def is_solana_validator_running(port: int = 18899) -> bool:
+    """Check if a Solana test validator is healthy on the given port."""
+    result = subprocess.run(
+        ["curl", "-sf", f"http://localhost:{port}/health", "-o", "/dev/null"],
+        capture_output=True,
+    )
+    return result.returncode == 0
 
 
 def start_solana_test_validator(
@@ -33,10 +50,10 @@ def start_solana_test_validator(
     gossip_port: int = 18001,
     dynamic_port_range: str = "19050-19075",
     name: str = "solana",
-) -> subprocess.Popen[str]:
+) -> None:
     log_info(f"Starting {name} test validator on port {port}...")
 
-    _kill_stray_validator(port)
+    _kill_by_port(port)
 
     ledger_dir = LEDGER_BASE / f"test-ledger-{name}"
     if ledger_dir.exists():
@@ -45,8 +62,9 @@ def start_solana_test_validator(
     stderr_log = LEDGER_BASE / f"test-validator-{name}.stderr"
     stderr_fh = stderr_log.open("w")
 
-    # Use non-default ports for gossip, faucet, and dynamic range to avoid
-    # conflicts with gorchain running on the host (ports 8001, 9050-9075, 9900).
+    # start_new_session=True detaches the validator from pytest's process
+    # group so Ctrl+C doesn't kill it. This preserves chain state (deployed
+    # programs, accounts, balances) across pytest re-runs.
     proc = subprocess.Popen(
         [
             "solana-test-validator",
@@ -64,8 +82,9 @@ def start_solana_test_validator(
         ],
         stdout=subprocess.DEVNULL,
         stderr=stderr_fh,
+        start_new_session=True,
     )
-    log_info(f"{name} test validator started (PID {proc.pid})")
+    log_info(f"{name} test validator started (PID {proc.pid}, detached)")
 
     # Give the process a moment to fail on startup (e.g. port conflicts)
     time.sleep(2)
@@ -80,25 +99,12 @@ def start_solana_test_validator(
     stderr_fh.close()
 
     wait_for_rpc_health(f"http://localhost:{port}", timeout=60)
-    return proc
 
 
-def stop_solana_test_validator(proc: subprocess.Popen[str] | None, name: str = "solana") -> None:
-    log_info(f"Stopping {name} test validator...")
-
-    if proc is not None:
-        try:
-            proc.terminate()
-            proc.wait(timeout=10)
-            log_info(f"{name} test validator stopped (PID {proc.pid})")
-        except ProcessLookupError:
-            log_info(f"{name} test validator process already exited")
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            log_info(f"{name} test validator killed (PID {proc.pid})")
-    else:
-        log_info(f"No {name} test validator process provided")
+def stop_solana_test_validator(port: int = 18899, name: str = "solana") -> None:
+    """Kill the Solana test validator by port and clean up its ledger."""
+    log_info(f"Stopping {name} test validator on port {port}...")
+    _kill_by_port(port)
 
     ledger_dir = LEDGER_BASE / f"test-ledger-{name}"
     if ledger_dir.exists():
@@ -118,12 +124,6 @@ def fetch_gorchain_stack() -> Path:
     if not stack_path.is_dir():
         raise RuntimeError(f"Gorchain stack not found at {stack_path}")
     return stack_path
-
-
-def pull_gorchain_images() -> None:
-    """Fetch the gorchain-stacks repo (images are published, no local build needed)."""
-    fetch_gorchain_stack()
-    log_info("Gorchain stack fetched (using published images)")
 
 
 def start_gorchain_stack(deploy_dir: Path) -> None:

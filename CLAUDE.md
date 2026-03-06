@@ -77,6 +77,8 @@ When making structural changes, update:
 
 ### Environment variables
 
+- **No nested defaults in k8s**: Compose `${VAR:-${OTHER}}` doesn't work in
+  SO's k8s path. All vars must be set explicitly in spec `config:`.
 - **Chain-specific vars** are canonical: `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`,
   `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GORCHAIN_CHAIN_ID`, `SOLANA_CHAIN_ID`
 - **Derived vars** (e.g. `COLLATERAL_CHAIN_RPC_URL`) use compose-level defaults:
@@ -119,10 +121,31 @@ When making structural changes, update:
 
 ## Stack orchestrator conventions
 
-- Volume names containing "config" → k8s ConfigMap; others → PVC
 - Image names: `laconic/hyperlane-*` (not `laconicnetwork/`)
 - `deploy/commands.py` in stack dirs: post-create hooks (RBAC, services)
 - `stack.yml` `jobs:` for one-shot deployers, `pods:` for long-running services
+- **Check SO source code** (`../stack-orchestrator/`) for deployment lifecycle questions.
+  Don't guess how laconic-so works — read `stack_orchestrator/deploy/` source.
+- **ConfigMap lifecycle** (3 places must agree):
+  1. **Compose file** — RO named volumes with "config" in the name become ConfigMaps.
+     `deploy init` auto-discovers these and writes `configmaps:` to the spec.
+  2. **Spec file** — `configmaps:` maps volume names to paths (`./configmaps/{name}`).
+     `deploy create` reads spec keys, finds source dirs via
+     `resolve_config_dir(stack, key)` → `data/config/{key}/`, copies to
+     `{deploy_dir}/configmaps/{key}/`.
+  3. **`data/config/{volume-name}/`** — source directory. Must exist and match
+     the volume name exactly. Each stack must use unique volume names because
+     SO calls `create_namespaced_config_map` without idempotency — sharing a
+     name across stacks in the same namespace causes 409 AlreadyExists.
+  At `deploy start`, SO reads files from `{deploy_dir}/configmaps/{name}/`,
+  creates k8s ConfigMap objects, and mounts them into pods/jobs.
+- **cluster-id lifecycle**: `deploy create` generates random `laconic-{hex}` in
+  `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
+  Patch `deployment.yml` (not the spec) after create.
+- **`--skip-cluster-management`**: Without it, SO calls `create_cluster()` which
+  discovers existing Kind clusters (safe for start) but `down()` calls
+  `destroy_cluster()` (dangerous for stop). Always use the flag, and set
+  cluster-id to the actual Kind cluster name so the context resolves correctly.
 
 ## Git workflow
 

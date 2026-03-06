@@ -314,6 +314,69 @@ def wait_for_configmap(namespace: str, name: str, timeout: int = 120) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Job helpers
+# ---------------------------------------------------------------------------
+def wait_for_job_complete(namespace: str, job_name: str, timeout: int = 1200) -> None:
+    """Wait for a k8s Job to complete successfully.
+
+    Polls until the Job resource exists, then uses ``kubectl wait``
+    for the ``complete`` condition. Raises on failure or timeout.
+    """
+    log_info(f"Waiting for Job {job_name} in {namespace} (timeout {timeout}s)...")
+    deadline = time.monotonic() + timeout
+
+    # Wait for the Job to exist
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["kubectl", "-n", namespace, "get", "job", job_name],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            break
+        time.sleep(5)
+    else:
+        raise TimeoutError(f"Job {job_name} not found in namespace {namespace} within {timeout}s")
+
+    # Wait for completion
+    remaining = max(int(deadline - time.monotonic()), 1)
+    result = subprocess.run(
+        [
+            "kubectl", "wait", "--for=condition=complete",
+            f"--timeout={remaining}s", "-n", namespace, f"job/{job_name}",
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        status_result = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "get", "job", job_name,
+                "-o", "jsonpath={.status.conditions[?(@.type=='Failed')].status}",
+            ],
+            capture_output=True, text=True,
+        )
+        if status_result.stdout.strip() == "True":
+            dump_job_logs(namespace, job_name)
+            raise RuntimeError(f"Job {job_name} failed. stderr: {result.stderr.strip()}")
+        dump_job_logs(namespace, job_name)
+        raise TimeoutError(
+            f"Job {job_name} did not complete within {remaining}s. stderr: {result.stderr.strip()}"
+        )
+    log_info(f"Job {job_name} completed successfully")
+
+
+def dump_job_logs(namespace: str, job_name: str) -> None:
+    """Dump the last 200 lines of a Job's pod logs."""
+    result = subprocess.run(
+        ["kubectl", "logs", "-n", namespace, f"job/{job_name}", "--tail=200"],
+        capture_output=True, text=True,
+    )
+    if result.stdout:
+        log_info(f"--- Job logs ({job_name}) ---\n{result.stdout}")
+    elif result.stderr:
+        log_error(f"Could not fetch job logs ({job_name}): {result.stderr.strip()}")
+
+
+# ---------------------------------------------------------------------------
 # kubectl helper
 # ---------------------------------------------------------------------------
 def kubectl_json(args: list[str]) -> dict[str, Any]:
