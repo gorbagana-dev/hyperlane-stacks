@@ -239,9 +239,10 @@ cat > "${WORK_DIR}/agent-config.json" <<AGENT_EOF
       "domainId": ${GORCHAIN_DOMAIN_ID},
       "protocol": "sealevel",
       "mailbox": "$(jq -r '.mailbox' "$GORCHAIN_PROGRAMS")",
-      "interchainGasPaymaster": "$(jq -r '.interchain_gas_paymaster' "$GORCHAIN_PROGRAMS")",
+      "interchainGasPaymaster": "$(jq -r '.overhead_igp_account' "$GORCHAIN_PROGRAMS")",
+      "interchainSecurityModule": "$(jq -r '.multisig_ism_message_id' "$GORCHAIN_PROGRAMS")",
       "validatorAnnounce": "$(jq -r '.validator_announce' "$GORCHAIN_PROGRAMS")",
-      "merkleTreeHook": "$(jq -r '.merkle_tree_hook // .mailbox' "$GORCHAIN_PROGRAMS")",
+      "merkleTreeHook": "$(jq -r '.mailbox' "$GORCHAIN_PROGRAMS")",
       "rpcUrls": [{"http": "${GORCHAIN_RPC_URL}"}],
       "blocks": {
         "estimateBlockTime": 0.4,
@@ -262,9 +263,10 @@ cat > "${WORK_DIR}/agent-config.json" <<AGENT_EOF
       "domainId": ${SOLANA_DOMAIN_ID},
       "protocol": "sealevel",
       "mailbox": "$(jq -r '.mailbox' "$SOLANA_PROGRAMS")",
-      "interchainGasPaymaster": "$(jq -r '.interchain_gas_paymaster' "$SOLANA_PROGRAMS")",
+      "interchainGasPaymaster": "$(jq -r '.overhead_igp_account' "$SOLANA_PROGRAMS")",
+      "interchainSecurityModule": "$(jq -r '.multisig_ism_message_id' "$SOLANA_PROGRAMS")",
       "validatorAnnounce": "$(jq -r '.validator_announce' "$SOLANA_PROGRAMS")",
-      "merkleTreeHook": "$(jq -r '.merkle_tree_hook // .mailbox' "$SOLANA_PROGRAMS")",
+      "merkleTreeHook": "$(jq -r '.mailbox' "$SOLANA_PROGRAMS")",
       "rpcUrls": [{"http": "${SOLANA_RPC_URL}"}],
       "blocks": {
         "estimateBlockTime": 0.4,
@@ -309,14 +311,19 @@ else
   echo "WARNING: Gas oracle config not found at ${GAS_ORACLE_CONFIG}, skipping ConfigMap"
 fi
 
-# Multisig config (skip if not mounted)
-if [ -f "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" ]; then
+# Multisig config — render templates via envsubst (validator addresses come from secrets)
+RENDERED_MULTISIG_DIR="${WORK_DIR}/multisig"
+mkdir -p "${RENDERED_MULTISIG_DIR}"
+if [ -f "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json.tmpl" ]; then
+  envsubst < "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json.tmpl" > "${RENDERED_MULTISIG_DIR}/gorchain-multisig.json"
+  envsubst < "${MULTISIG_CONFIG_DIR}/solana-multisig.json.tmpl" > "${RENDERED_MULTISIG_DIR}/solana-multisig.json"
+  echo "Multisig configs rendered at ${RENDERED_MULTISIG_DIR}/"
   kubectl create configmap hyperlane-multisig-config \
-    --from-file="gorchain-multisig.json=${MULTISIG_CONFIG_DIR}/gorchain-multisig.json" \
-    --from-file="solana-multisig.json=${MULTISIG_CONFIG_DIR}/solana-multisig.json" \
+    --from-file="gorchain-multisig.json=${RENDERED_MULTISIG_DIR}/gorchain-multisig.json" \
+    --from-file="solana-multisig.json=${RENDERED_MULTISIG_DIR}/solana-multisig.json" \
     --dry-run=client -o yaml | kubectl apply -f -
 else
-  echo "WARNING: Multisig config not found at ${MULTISIG_CONFIG_DIR}/, skipping ConfigMap"
+  echo "WARNING: Multisig config templates not found at ${MULTISIG_CONFIG_DIR}/, skipping ConfigMap"
 fi
 
 # Registry metadata (rendered from template)

@@ -63,6 +63,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--skip-core-deploy", action="store_true", default=False,
         help="Skip core deployer (reuse existing deployment from a previous --skip-cleanup run)"
     )
+    parser.addoption(
+        "--skip-warp-deploy", action="store_true", default=False,
+        help="Skip warp deployer (reuse existing warp deployment from a previous --skip-cleanup run)"
+    )
 
 
 # ---------------------------------------------------------------------------

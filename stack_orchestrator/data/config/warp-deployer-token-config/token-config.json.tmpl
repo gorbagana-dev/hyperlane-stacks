@@ -1,16 +1,20 @@
 {
-  "solana": {
+  "${COLLATERAL_CHAIN}": {
     "type": "collateral",
     "token": "${WARP_TOKEN_MINT}",
     "name": "USDC",
     "symbol": "USDC",
-    "decimals": 6
+    "decimals": 6,
+    "interchainSecurityModule": "${COLLATERAL_ISM}",
+    "interchainGasPaymaster": "${COLLATERAL_IGP}"
   },
-  "gorchain": {
+  "${SYNTHETIC_CHAIN}": {
     "type": "synthetic",
     "name": "USDC",
     "symbol": "USDC",
     "decimals": 6,
-    "uri": "${WARP_TOKEN_METADATA_URI}"
+    "uri": "${WARP_TOKEN_METADATA_URI}",
+    "interchainSecurityModule": "${SYNTHETIC_ISM}",
+    "interchainGasPaymaster": "${SYNTHETIC_IGP}"
   }
 }

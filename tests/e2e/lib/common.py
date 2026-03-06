@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import sys
 import time
@@ -397,3 +398,114 @@ def get_namespace(
         return f"laconic-{cluster_id}"
     fail_exit("Neither deploy_namespace nor cluster_id is provided")
     return ""  # unreachable, keeps type checker happy
+
+
+# ---------------------------------------------------------------------------
+# Chain config (shared across all test modules)
+# ---------------------------------------------------------------------------
+CHAINS = {
+    "gorchain": {"domain_id": 99999, "rpc": "http://localhost:8899"},
+    "solana": {"domain_id": 99998, "rpc": "http://localhost:18899"},
+}
+
+CONFIGMAP_TIMEOUT = 30
+
+
+# ---------------------------------------------------------------------------
+# ConfigMap helpers
+# ---------------------------------------------------------------------------
+_BASE58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+
+
+def is_base58_pubkey(value: str) -> bool:
+    """Check if a string looks like a valid Solana base58 public key."""
+    return bool(_BASE58_RE.match(value))
+
+
+def get_configmap_data(namespace: str, name: str) -> dict[str, str]:
+    """Fetch a ConfigMap and return its .data dict."""
+    cm = kubectl_json(["-n", namespace, "get", "configmap", name])
+    return cm.get("data", {})
+
+
+def get_configmap_json(namespace: str, name: str, key: str) -> Any:
+    """Fetch a ConfigMap, parse one data key as JSON."""
+    data = get_configmap_data(namespace, name)
+    raw = data.get(key, "")
+    assert raw, f"ConfigMap {name} key '{key}' is empty"
+    return json.loads(raw)
+
+
+# ---------------------------------------------------------------------------
+# On-chain verification helpers
+# ---------------------------------------------------------------------------
+def assert_program_on_chain(
+    chain_name: str,
+    rpc: str,
+    addr: str,
+    *,
+    label: str = "",
+    keypair_path: str | None = None,
+) -> None:
+    """Assert a Solana program exists on-chain via ``solana program show``."""
+    from .keygen import KEYS_DIR
+
+    keypair = keypair_path or str(KEYS_DIR / "deployer.json")
+    display = f"{label} ({addr})" if label else addr
+
+    result = run_cmd(
+        [
+            "solana", "program", "show", addr,
+            "--url", rpc,
+            "--keypair", keypair,
+            "--output", "json",
+        ],
+        check=False,
+        quiet=True,
+    )
+    assert result.returncode == 0, (
+        f"{chain_name}: program {display} not found on-chain. "
+        f"stderr: {result.stderr.strip()}"
+    )
+    log_info(f"{chain_name}: {display} verified on-chain")
+
+
+def run_deployer_cli(
+    *args: str,
+    keypair_path: str | None = None,
+    rpc: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run a ``hyperlane-sealevel-client`` command via docker run.
+
+    Uses the deployer image with ``--network host`` so it can reach local
+    RPC endpoints. Creates a minimal Solana CLI config inside the container
+    (the client unconditionally loads it even when --keypair is set).
+    Returns the CompletedProcess (caller should check returncode).
+    """
+    from .deploy import DEPLOYER_IMAGE
+    from .keygen import KEYS_DIR
+
+    keypair = keypair_path or str(KEYS_DIR / "deployer.json")
+    cli_args = " ".join(str(a) for a in args)
+
+    # The sealevel client always loads /root/.config/solana/cli/config.yml
+    # at startup (even when --keypair and --url are explicit). Write a
+    # minimal config so the container doesn't panic on missing file.
+    setup = (
+        "mkdir -p /root/.config/solana/cli && "
+        "printf 'json_rpc_url: \"%s\"\\nwebsocket_url: \"\"\\n"
+        "keypair_path: \"/tmp/key.json\"\\ncommitment: finalized\\n' "
+        f"'{rpc}' > /root/.config/solana/cli/config.yml"
+    )
+    shell_cmd = f"{setup} && hyperlane-sealevel-client --keypair /tmp/key.json --url {rpc} {cli_args}"
+
+    return run_cmd(
+        [
+            "docker", "run", "--rm", "--network", "host",
+            "--entrypoint", "sh",
+            "-v", f"{keypair}:/tmp/key.json:ro",
+            DEPLOYER_IMAGE,
+            "-c", shell_cmd,
+        ],
+        check=False,
+    )

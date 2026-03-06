@@ -31,11 +31,18 @@ fi
 
 echo "Core program IDs found for both chains."
 
-# Extract mailbox addresses from core deployment
-COLLATERAL_MAILBOX=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.mailbox')
-SYNTHETIC_MAILBOX=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.mailbox')
+# Extract addresses from core deployment for use by envsubst in templates
+export COLLATERAL_MAILBOX=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.mailbox')
+export SYNTHETIC_MAILBOX=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.mailbox')
+export COLLATERAL_ISM=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.multisig_ism_message_id')
+export COLLATERAL_IGP=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.overhead_igp_account')
+export SYNTHETIC_ISM=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.multisig_ism_message_id')
+export SYNTHETIC_IGP=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.overhead_igp_account')
+
 echo "Collateral mailbox (${COLLATERAL_CHAIN}): ${COLLATERAL_MAILBOX}"
 echo "Synthetic mailbox (${SYNTHETIC_CHAIN}): ${SYNTHETIC_MAILBOX}"
+echo "Collateral ISM: ${COLLATERAL_ISM}, IGP: ${COLLATERAL_IGP}"
+echo "Synthetic  ISM: ${SYNTHETIC_ISM}, IGP: ${SYNTHETIC_IGP}"
 
 # -------------------------------------------------------
 # Idempotency check: skip if token-config already populated
@@ -72,9 +79,12 @@ ENVIRONMENTS_DIR="${WORK_DIR}/environments"
 ENVIRONMENT="e2e"
 mkdir -p "${ENVIRONMENTS_DIR}" "${WORK_DIR}/output"
 
-# Write program IDs to files for the CLI
-echo "$COLLATERAL_PROGRAMS" > "${WORK_DIR}/${COLLATERAL_CHAIN}-program-ids.json"
-echo "$SYNTHETIC_PROGRAMS" > "${WORK_DIR}/${SYNTHETIC_CHAIN}-program-ids.json"
+# Write core program IDs where the CLI expects them:
+#   {environments_dir}/{environment}/{chain}/core/program-ids.json
+mkdir -p "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${COLLATERAL_CHAIN}/core"
+mkdir -p "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${SYNTHETIC_CHAIN}/core"
+echo "$COLLATERAL_PROGRAMS" > "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${COLLATERAL_CHAIN}/core/program-ids.json"
+echo "$SYNTHETIC_PROGRAMS" > "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${SYNTHETIC_CHAIN}/core/program-ids.json"
 
 # -------------------------------------------------------
 # Render config templates via envsubst
@@ -90,9 +100,15 @@ mkdir -p "${REGISTRY_DIR}/chains"
 envsubst < /config/registry/metadata.yaml.tmpl > "${REGISTRY_DIR}/chains/metadata.yaml"
 echo "Registry rendered at ${REGISTRY_DIR}/chains/metadata.yaml"
 
-# Token config
-envsubst < /config/token/token-config.json.tmpl > "${WORK_DIR}/token-config.json"
+# Token config — render template via envsubst (ISM/IGP/mailbox vars exported above),
+# then strip empty "uri" fields (CLI panics on "" — needs null/absent).
+envsubst < /config/token/token-config.json.tmpl > "${WORK_DIR}/token-config.raw.json"
+
+jq 'walk(if type == "object" and .uri == "" then del(.uri) else . end)' \
+  "${WORK_DIR}/token-config.raw.json" > "${WORK_DIR}/token-config.json"
 echo "Token config rendered at ${WORK_DIR}/token-config.json"
+echo "Token config contents:"
+cat "${WORK_DIR}/token-config.json"
 
 # -------------------------------------------------------
 # Deploy warp routes (single invocation for all chains)
@@ -115,11 +131,11 @@ echo "Warp routes deployed"
 
 # -------------------------------------------------------
 # Collect deployment output
-# The CLI writes output to: {environments-dir}/{environment}/warp-routes/
+# The CLI writes output to: {environments-dir}/{environment}/warp-routes/{name}/
 # -------------------------------------------------------
 echo ""
 echo "=== Checking deployment outputs ==="
-WARP_OUTPUT_DIR="${ENVIRONMENTS_DIR}/${ENVIRONMENT}/warp-routes"
+WARP_OUTPUT_DIR="${ENVIRONMENTS_DIR}/${ENVIRONMENT}/warp-routes/${WARP_ROUTE_NAME}"
 if [ -d "${WARP_OUTPUT_DIR}" ]; then
   echo "Warp route deployment outputs:"
   ls -la "${WARP_OUTPUT_DIR}/"
