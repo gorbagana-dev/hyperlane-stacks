@@ -1,0 +1,13 @@
+stack: stack_orchestrator/data/stacks/hyperlane-minio
+deploy-to: k8s-kind
+network:
+  ports:
+    minio:
+      - "9000"
+      - "9001"
+volumes:
+  minio-data: 1Gi
+secrets:
+  hyperlane-minio-secrets:
+    - MINIO_ROOT_USER
+    - MINIO_ROOT_PASSWORD

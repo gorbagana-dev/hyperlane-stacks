@@ -6,17 +6,22 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 
 ## Stack Decomposition
 
-**5 stacks:**
+**8 stacks** (each stack = one k8s Pod or Job, see `specs/stack-specifications.md` for detailed per-stack specs):
 
 | Stack | Type | Purpose |
 |-------|------|---------|
-| `hyperlane-svm-deployer` | One-time job | Deploys Hyperlane core contracts, configures IGP + Multisig ISM. Outputs deployment artifacts as k8s ConfigMaps/Secrets. |
+| `hyperlane-svm-deployer` | One-time job | Deploys Hyperlane core contracts, configures IGP + Multisig ISM. Outputs deployment artifacts as k8s ConfigMaps. |
 | `hyperlane-svm-warp-deployer` | One-time job | Deploys warp route contracts for a specific token pair. Separate from core deployer to allow multiple warp routes against the same core deployment. |
-| `hyperlane-svm-agents` | Long-running | Runs Hyperlane validators (one per chain) with KMS proxy sidecars for Privy signing, relayer, MinIO (S3-compatible checkpoint storage), gas oracle CronJob, Prometheus, and Grafana (with Hyperlane's pre-built dashboards). Consumes ConfigMaps/Secrets from deployer. |
-| `hyperlane-svm-ops` | On-demand jobs | Operational jobs: kill switch, restore, teardown. Requires hardware wallet (operator-attended signing). |
+| `hyperlane-validator` | Long-running | Runs a Hyperlane validator for one chain with KMS proxy sidecar for Privy signing. One deployment per chain. |
+| `hyperlane-relayer` | Long-running | Delivers cross-chain messages. Includes IGP fee claim sidecar. |
+| `hyperlane-minio` | Long-running | S3-compatible checkpoint storage (MinIO) for validators and relayer. |
+| `hyperlane-gas-oracle` | Long-running | Automated IGP gas oracle updates via Privy. |
+| `hyperlane-monitoring` | Long-running | Prometheus + Grafana + Pushgateway + balance monitor. |
 | `hyperlane-warp-ui` | Long-running (optional) | Browser-based bridge UI for token transfers. |
 
-**Rationale:** Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts. Ops is separate because it requires the hardware wallet (which agents don't) and has a different lifecycle.
+Operational jobs (kill switch, restore, teardown) live in `ops/` as standalone k8s Job manifests — not an SO-managed stack. They require the hardware wallet for operator-attended signing.
+
+**Rationale:** Stack-orchestrator maps all services in a stack to a single k8s Pod, so services needing independent lifecycles or restart must be separate stacks. Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts.
 
 ---
 
@@ -283,7 +288,7 @@ The AWS SDK for Rust (v0.56+) supports per-service endpoint overrides via `AWS_E
 
 #### Oracle: Standalone Gas Oracle Service
 
-The gas oracle is a new standalone service (CronJob in agents stack) that:
+The gas oracle is a standalone service in the `hyperlane-gas-oracle` stack that:
 1. Fetches token prices from configured price feeds (e.g., CoinGecko, on-chain oracles)
 2. Computes `GasOracleConfig` values (token exchange rate, gas price per destination domain)
 3. Builds `SetGasOracleConfigs` transactions for both chains
@@ -323,11 +328,11 @@ The Sealevel `process_estimate_costs()` function returns hardcoded zeros (upstre
 
 ### Gas Oracle
 
-**Decision:** Automated gas oracle update CronJob in the `hyperlane-svm-agents` stack.
+**Decision:** Automated gas oracle update service in the `hyperlane-gas-oracle` stack.
 
 The Sealevel IGP's `set_gas_oracle_configs` instruction requires the IGP account owner's signature (no separate oracle role exists). IGP account ownership is transferred to a dedicated Privy oracle wallet (Tier 2) at deploy time, enabling fully automated updates without operator attendance.
 
-- A CronJob in the agents stack fetches current token prices and submits `SetGasOracleConfigs` transactions signed via Privy API
+- The `hyperlane-gas-oracle` stack runs a long-running service that fetches current token prices and submits `SetGasOracleConfigs` transactions signed via Privy API
 - Configurable update frequency
 - Static fallback values configured at deploy time if price feed is unavailable
 - Privy policy engine restricts the oracle wallet to `SetGasOracleConfigs` only — blocks `SetIgpBeneficiary` and `TransferIgpOwnership`
@@ -468,7 +473,7 @@ The `agent-config.json` schema for Sealevel chains requires the following fields
 
 ## Checkpoint Storage
 
-**Decision:** S3-compatible object storage (MinIO) deployed as part of the agents stack.
+**Decision:** S3-compatible object storage (MinIO) deployed as its own `hyperlane-minio` stack.
 
 Validators write checkpoint signatures to S3, and the relayer reads from the same bucket. This uses Hyperlane's native `s3` checkpoint syncer type, avoiding the need for shared PVCs (ReadWriteMany) which are not supported on Kind's default StorageClass.
 
@@ -482,7 +487,7 @@ Validators write checkpoint signatures to S3, and the relayer reads from the sam
 ```
 
 **MinIO deployment:**
-- Single-node MinIO pod in the agents stack with a RWO PVC for data
+- Single-node MinIO pod in the `hyperlane-minio` stack with a RWO PVC for data
 - Bucket per validator: `hyperlane-validator-gorchain`, `hyperlane-validator-solana`
 - Credentials injected via k8s Secret
 - Internal ClusterIP service (not exposed externally)
@@ -514,7 +519,7 @@ AWS_SECRET_ACCESS_KEY=<minio-secret-key>
 
 **Storage requirements:**
 - Checkpoint data is small (~1 KB per checkpoint) — minimal disk footprint
-- MinIO PVC size: 1 Gi is sufficient for extended operation
+- MinIO PVC size: 10 Gi (see `deployment/spec-minio.yml`); checkpoint data is small so this is sufficient for extended operation
 
 **Endpoint routing:** The validator pod uses per-service AWS endpoint overrides (`AWS_ENDPOINT_URL_KMS=http://localhost:9999` for the Privy KMS proxy, `AWS_ENDPOINT_URL_S3=http://minio:9000` for MinIO). The AWS SDK for Rust (v0.56+) supports these per-service overrides natively. See the "Privy Integration Architecture" section for the full environment configuration.
 
@@ -559,7 +564,7 @@ These correspond to the files in the `localnet5.patch` from hyperlane-demo, but 
 
 Hyperlane agents (validators and relayer) natively export Prometheus metrics. The Hyperlane team provides pre-built Grafana dashboards for validator and relayer monitoring.
 
-**Components (in the agents stack):**
+**Components (in the `hyperlane-monitoring` stack):**
 
 | Component | Purpose |
 |-----------|---------|

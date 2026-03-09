@@ -1,5 +1,9 @@
 import logging
+import re
+import subprocess
+import tempfile
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +23,7 @@ from lib.cluster import (
     destroy_kind_cluster,
     install_cert_manager,
 )
-from lib.common import E2E_DIR, wait_for_job_complete
+from lib.common import E2E_DIR, get_configmap_json, wait_for_job_complete
 from lib.deploy import (
     DEPLOY_DIR,
     DeploymentInfo,
@@ -30,6 +34,7 @@ from lib.deploy import (
     stop_stack,
 )
 from lib.keygen import (
+    KEYS_DIR,
     KeypairSet,
     create_deployer_secrets,
     create_warp_deployer_secrets,
@@ -40,6 +45,7 @@ from lib.keygen import (
 log = logging.getLogger(__name__)
 
 FIXTURE_SPEC = E2E_DIR / "fixtures" / "test-spec-deployer.yml"
+WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +72,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--skip-warp-deploy", action="store_true", default=False,
         help="Skip warp deployer (reuse existing warp deployment from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
+        "--skip-minio-deploy", action="store_true", default=False,
+        help="Skip minio deployment (reuse existing from a previous --skip-cleanup run)"
     )
 
 
@@ -212,3 +222,128 @@ def deployer_deployment(
     if not skip_cleanup:
         log.info("Stopping deployer stack...")
         stop_stack("hyperlane-svm-deployer")
+
+
+# ---------------------------------------------------------------------------
+# Warp deployment helpers
+# ---------------------------------------------------------------------------
+
+
+def _write_solana_config(keypair_path: str, rpc_url: str) -> str:
+    """Write a temporary Solana CLI config file. Returns its path."""
+    config_path = Path(tempfile.gettempdir()) / "hyperlane-e2e-solana-config.yml"
+    config_path.write_text(
+        f'json_rpc_url: "{rpc_url}"\n'
+        f'websocket_url: ""\n'
+        f'keypair_path: "{keypair_path}"\n'
+        f"commitment: finalized\n"
+    )
+    return str(config_path)
+
+
+def _create_and_fund_spl_token(keypair_path: str, rpc_url: str = "http://localhost:18899") -> str:
+    """Create a test SPL token with account and supply. Returns mint address."""
+    cfg = _write_solana_config(keypair_path, rpc_url)
+    cli_args = ["--config", cfg, "--url", rpc_url]
+
+    # Create token with 6 decimals (USDC-like)
+    result = subprocess.run(
+        ["spl-token", *cli_args, "create-token", "--decimals", "6"],
+        capture_output=True, text=True, check=True,
+    )
+    output = result.stdout + result.stderr
+    match = re.search(r"Creating token (\w+)", output)
+    if not match:
+        match = re.search(r"Address:\s+(\w+)", output)
+    if not match:
+        raise RuntimeError(f"Failed to parse token mint from output: {output}")
+    mint = match.group(1)
+    log.info("Created SPL token mint: %s", mint)
+
+    # Create token account
+    subprocess.run(
+        ["spl-token", *cli_args, "create-account", mint],
+        capture_output=True, text=True, check=True,
+    )
+    log.info("Created token account for mint %s", mint)
+
+    # Mint 1,000,000 tokens (6 decimals)
+    subprocess.run(
+        ["spl-token", *cli_args, "mint", mint, "1000000"],
+        capture_output=True, text=True, check=True,
+    )
+    log.info("Minted 1,000,000 tokens")
+
+    return mint
+
+
+def _patch_warp_spec(token_mint: str) -> Path:
+    """Substitute the token mint placeholder in the warp spec."""
+    content = WARP_SPEC.read_text()
+    patched = content.replace("REPLACE_AT_RUNTIME", token_mint)
+    patched_path = E2E_DIR / ".warp-spec-patched.yml"
+    patched_path.write_text(patched)
+    return patched_path
+
+
+@pytest.fixture(scope="session")
+def warp_deployment(
+    deployer_deployment: DeploymentInfo,
+    request: pytest.FixtureRequest,
+) -> Generator[dict, None, None]:
+    """Deploy the warp route stack once for the entire test session."""
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_warp_deploy = request.config.getoption("--skip-warp-deploy")
+
+    if skip_warp_deploy:
+        # Reuse existing warp deployment — recover token_mint from the
+        # hyperlane-token-config ConfigMap written by the warp deployer job.
+        namespace = deployer_deployment.namespace
+        log.info("Reusing existing warp deployment (namespace: %s)", namespace)
+        token_config = get_configmap_json(namespace, "hyperlane-token-config", "token-config.json")
+        token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
+        assert token_mint, "Cannot recover token_mint from hyperlane-token-config (is warp deployed?)"
+        log.info("Recovered token mint from ConfigMap: %s", token_mint)
+
+        deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
+        yield {
+            "deployment": DeploymentInfo(
+                deploy_dir=deploy_dir,
+                cluster_id=deployer_deployment.cluster_id,
+                namespace=namespace,
+            ),
+            "token_mint": token_mint,
+            "namespace": namespace,
+        }
+        return
+
+    log.info("Creating and funding test SPL token on Solana...")
+    deployer_keypair = str(KEYS_DIR / "deployer.json")
+    token_mint = _create_and_fund_spl_token(keypair_path=deployer_keypair)
+    log.info("Test SPL token mint: %s", token_mint)
+
+    log.info("Patching warp deployer spec with token mint...")
+    patched_spec = _patch_warp_spec(token_mint)
+
+    log.info("Preparing warp deployer stack...")
+    warp_info = deploy_prepare(
+        "hyperlane-svm-warp-deployer",
+        patched_spec,
+        cluster_id=deployer_deployment.cluster_id,
+    )
+
+    log.info("Starting warp deployer stack...")
+    deploy_start(warp_info.deploy_dir)
+
+    ctx = {
+        "deployment": warp_info,
+        "token_mint": token_mint,
+        "namespace": warp_info.namespace,
+    }
+
+    yield ctx
+
+    patched_spec.unlink(missing_ok=True)
+    if not skip_cleanup:
+        log.info("Stopping warp deployer stack...")
+        stop_stack("hyperlane-svm-warp-deployer")

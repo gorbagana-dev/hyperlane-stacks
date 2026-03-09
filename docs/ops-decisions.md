@@ -10,17 +10,18 @@ Decisions on how the stacks should accommodate the maintenance operations from t
 
 **Decision:** Automated CronJob.
 
-Include a k8s CronJob in the agents stack that periodically claims accumulated IGP fees to the beneficiary address on both chains. The `claim` instruction is permissionless — anyone can call it, but funds always go to the pre-configured beneficiary. The CronJob only needs a funded account to pay transaction fees (the relayer key works for this).
+An IGP fee claim sidecar in the `hyperlane-relayer` stack periodically claims accumulated IGP fees to the beneficiary address on both chains. The `claim` instruction is permissionless — anyone can call it, but funds always go to the pre-configured beneficiary. The sidecar only needs a funded account to pay transaction fees (the relayer key works for this).
 
 ### Gas Oracle + Destination Gas Overhead
 
-**Decision:** Automated CronJob using Privy oracle wallet.
+**Decision:** Automated long-running service using Privy oracle wallet.
 
 The Sealevel IGP program requires the IGP account owner's signature for `set_gas_oracle_configs` — there is no separate oracle role. IGP account ownership is transferred to a dedicated Privy server wallet at deploy time (see `architecture-decisions.md` Tier 2), enabling fully automated updates.
 
-The gas oracle updater is a CronJob in the `hyperlane-svm-agents` stack that:
+The gas oracle is a long-running service in the `hyperlane-gas-oracle` stack that:
 1. Fetches current token prices and computes updated gas oracle configs
 2. Signs and submits `set_gas_oracle_configs` transactions via Privy API on both chains
+3. Loops with a configurable interval (default 15 min via `GAS_ORACLE_INTERVAL_MS`)
 
 The Privy policy engine restricts the oracle wallet to `SetGasOracleConfigs` only — `SetIgpBeneficiary` and `TransferIgpOwnership` are blocked. If the oracle key is compromised, the hardware wallet retains program upgrade authority as a recovery path.
 
@@ -172,22 +173,20 @@ Include a k8s Job template that executes the complete ordered teardown:
 
 ---
 
-## Summary: New Components from Ops Decisions
+## Summary: Components from Ops Decisions
 
-| Component | Stack | Type |
-|-----------|-------|------|
-| IGP fee claim CronJob | agents | k8s CronJob |
-| Gas oracle + overhead updater | agents | k8s CronJob (automated via Privy oracle wallet) |
-| Wallet balance monitor | agents | Sidecar or CronJob + Prometheus metrics |
-| Kill switch job | ops | k8s Job template |
-| Restore job | ops | k8s Job template |
-| Teardown job | separate | k8s Job template |
+| Component | Stack / Location | Type |
+|-----------|-----------------|------|
+| IGP fee claim | `hyperlane-relayer` | Sidecar (loops every 6h) |
+| Gas oracle updater | `hyperlane-gas-oracle` | Long-running pod (automated via Privy oracle wallet) |
+| Wallet balance monitor | `hyperlane-monitoring` | Sidecar + Prometheus metrics |
+| Kill switch job | `ops/` directory | k8s Job template (manual, operator-attended) |
+| Restore job | `ops/` directory | k8s Job template (manual, operator-attended) |
+| Teardown job | `ops/` directory | k8s Job template (manual, operator-attended) |
 
-**Decision:** Separate `hyperlane-svm-ops` stack.
-
-Kill/restore/teardown jobs live in a dedicated ops stack, separate from the agents stack. Rationale:
+Kill/restore/teardown jobs live in `ops/` as standalone k8s Job manifests, not an SO-managed stack. Rationale:
 - Different security profile: ops jobs require the hardware wallet (operator-attended signing), agents do not
 - Different lifecycle: ops jobs are triggered on-demand, agents are long-running
 - Clean separation of concerns
 
-Routine CronJobs (IGP fee claiming, wallet balance monitor, gas oracle updater) remain in the agents stack. The gas oracle updater uses a dedicated Privy oracle wallet (IGP account owner) rather than the hardware wallet.
+Routine operations (IGP fee claiming, wallet balance monitoring) are sidecars in their respective agent stacks. The gas oracle is its own stack with a dedicated Privy oracle wallet (IGP account owner).

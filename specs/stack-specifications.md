@@ -44,7 +44,7 @@ Stack-orchestrator (`laconic-so`) deploys containerized applications via three b
 
 ## Stack Decomposition
 
-The architecture doc (`docs/architecture-decisions.md`) describes 5 logical stacks, including a single `hyperlane-svm-agents` stack containing all agents, MinIO, and monitoring. However, SO's constraint that **all services in a stack = one k8s Pod** forces splitting the agents stack into separate stacks — services that need independent restart, scaling, or lifecycle must be separate stacks.
+SO's constraint that **all services in a stack = one k8s Pod** means services needing independent restart, scaling, or lifecycle must be separate stacks. This drives the 8-stack decomposition below.
 
 ## Stack Inventory
 
@@ -102,10 +102,9 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 
 ### ConfigMaps (input)
 - `deployer-scripts-config` — deploy.sh entrypoint
-- `deployer-chain-config` — gorchain.json, solana.json chain definitions
 - `deployer-gas-oracle-config` — initial gas oracle configs
-- `deployer-multisig-config` — per-chain multisig ISM configs
-- `deployer-registry-config` — chain registry metadata.yaml
+- `deployer-multisig-config` — per-chain multisig ISM configs (`.json.tmpl` templates rendered via envsubst)
+- `deployer-registry-config` — chain registry metadata.yaml template
 
 ### ConfigMaps (output, created by deployer via kubectl)
 - `hyperlane-program-ids` — deployed program addresses per chain

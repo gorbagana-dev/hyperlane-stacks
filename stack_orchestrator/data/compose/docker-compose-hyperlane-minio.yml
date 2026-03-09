@@ -18,21 +18,5 @@ services:
       retries: 5
       start_period: 10s
 
-  minio-init:
-    image: minio/mc:latest
-    restart: "no"
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}
-        mc mb --ignore-existing local/hyperlane-validator-gorchain
-        mc mb --ignore-existing local/hyperlane-validator-solana
-        echo "Buckets created successfully"
-    # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
-    # MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
-
 volumes:
   minio-data:
