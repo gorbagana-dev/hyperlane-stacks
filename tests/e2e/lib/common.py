@@ -470,6 +470,40 @@ def assert_program_on_chain(
     log_info(f"{chain_name}: {display} verified on-chain")
 
 
+class PortForward:
+    """Context manager for kubectl port-forward."""
+
+    def __init__(self, namespace: str, target: str, local_port: int, remote_port: int):
+        self.namespace = namespace
+        self.target = target
+        self.local_port = local_port
+        self.remote_port = remote_port
+        self.proc: subprocess.Popen | None = None
+
+    def __enter__(self) -> PortForward:
+        self.proc = subprocess.Popen(
+            [
+                "kubectl", "port-forward",
+                "-n", self.namespace,
+                self.target,
+                f"{self.local_port}:{self.remote_port}",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        # Wait for port-forward to establish
+        time.sleep(3)
+        if self.proc.poll() is not None:
+            stderr = self.proc.stderr.read().decode() if self.proc.stderr else ""
+            raise RuntimeError(f"port-forward failed to start: {stderr}")
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self.proc:
+            self.proc.terminate()
+            self.proc.wait(timeout=5)
+
+
 def run_deployer_cli(
     *args: str,
     keypair_path: str | None = None,

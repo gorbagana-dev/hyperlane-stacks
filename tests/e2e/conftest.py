@@ -1,5 +1,8 @@
+import base64
+import dataclasses
 import logging
 import re
+import secrets
 import subprocess
 import tempfile
 from collections.abc import Generator
@@ -23,7 +26,7 @@ from lib.cluster import (
     destroy_kind_cluster,
     install_cert_manager,
 )
-from lib.common import E2E_DIR, get_configmap_json, wait_for_job_complete
+from lib.common import E2E_DIR, get_configmap_json, wait_for_job_complete, wait_for_pod_phase
 from lib.deploy import (
     DEPLOY_DIR,
     DeploymentInfo,
@@ -37,6 +40,7 @@ from lib.keygen import (
     KEYS_DIR,
     KeypairSet,
     create_deployer_secrets,
+    create_minio_secrets,
     create_warp_deployer_secrets,
     fund_wallets,
     generate_test_keypairs,
@@ -46,6 +50,28 @@ log = logging.getLogger(__name__)
 
 FIXTURE_SPEC = E2E_DIR / "fixtures" / "test-spec-deployer.yml"
 WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
+MINIO_SPEC = E2E_DIR / "fixtures" / "test-spec-minio.yml"
+
+
+@dataclasses.dataclass
+class MinioInfo:
+    """Minio deployment info with credentials."""
+    deployment: DeploymentInfo
+    user: str
+    password: str
+
+    # Delegate common fields for convenience
+    @property
+    def namespace(self) -> str:
+        return self.deployment.namespace
+
+    @property
+    def cluster_id(self) -> str:
+        return self.deployment.cluster_id
+
+    @property
+    def deploy_dir(self) -> Path:
+        return self.deployment.deploy_dir
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +185,95 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 def keypairs() -> KeypairSet:
     log.info("Generating test keypairs...")
     return generate_test_keypairs()
+
+
+# ---------------------------------------------------------------------------
+# MinIO deployment
+# ---------------------------------------------------------------------------
+
+
+def _recover_minio_credentials(namespace: str) -> tuple[str, str]:
+    """Read minio credentials from k8s secret (for --skip-minio-deploy reuse)."""
+    user = password = ""
+    for field in ("MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD"):
+        result = subprocess.run(
+            ["kubectl", "get", "secret", "hyperlane-minio-secrets", "-n", namespace,
+             "-o", f"jsonpath={{.data.{field}}}"],
+            capture_output=True, text=True, check=True,
+        )
+        value = base64.b64decode(result.stdout.strip()).decode()
+        if field == "MINIO_ROOT_USER":
+            user = value
+        else:
+            password = value
+    log.info("Recovered minio credentials from k8s secret")
+    return user, password
+
+
+@pytest.fixture(scope="session")
+def minio_deployment(
+    request: pytest.FixtureRequest,
+    kind_cluster: None,
+) -> Generator[MinioInfo, None, None]:
+    """Deploy the hyperlane-minio stack.
+
+    Self-contained: only requires a Kind cluster. Creates its own namespace
+    and secrets. Uses the default cluster-id (KIND_CLUSTER_NAME), so when the
+    full suite runs, all stacks share the same namespace naturally.
+    """
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_minio = request.config.getoption("--skip-minio-deploy", default=False)
+
+    if skip_minio:
+        deploy_dir = DEPLOY_DIR / "hyperlane-minio"
+        cluster_id = get_cluster_id(deploy_dir)
+        namespace = f"laconic-{cluster_id}"
+        log.info("Reusing existing minio deployment (namespace: %s)", namespace)
+        user, password = _recover_minio_credentials(namespace)
+        yield MinioInfo(
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            user=user,
+            password=password,
+        )
+        return
+
+    minio_user = f"minio-{secrets.token_hex(4)}"
+    minio_password = secrets.token_hex(16)
+
+    log.info("Preparing minio stack...")
+    deploy_info = deploy_prepare("hyperlane-minio", MINIO_SPEC)
+    namespace = deploy_info.namespace
+    cluster_id = deploy_info.cluster_id
+
+    # Create namespace before deploy start — secrets must exist before pods start.
+    # Idempotent: no-ops if deployer_deployment already created it.
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
+
+    log.info("Creating minio secrets in namespace %s...", namespace)
+    create_minio_secrets(namespace, minio_user, minio_password)
+
+    log.info("Starting minio stack...")
+    deploy_start(deploy_info.deploy_dir)
+
+    log.info("Waiting for minio pod to be running...")
+    wait_for_pod_phase(namespace, f"app={cluster_id}", "Running", timeout=120)
+
+    log.info("Waiting for minio-init job to complete...")
+    job_name = f"{cluster_id}-job-hyperlane-minio-init"
+    wait_for_job_complete(namespace, job_name, timeout=120)
+    log.info("MinIO stack deployed and initialized")
+
+    yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
+
+    if not skip_cleanup:
+        log.info("Stopping minio stack...")
+        stop_stack("hyperlane-minio")
+
+
+# ---------------------------------------------------------------------------
+# Core deployer deployment
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")

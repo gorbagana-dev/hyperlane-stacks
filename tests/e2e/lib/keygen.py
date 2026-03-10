@@ -237,6 +237,22 @@ def create_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
     log_info("Deployer secrets created")
 
 
+def create_minio_secrets(namespace: str, user: str, password: str) -> None:
+    """Create the hyperlane-minio-secrets k8s Secret (idempotent)."""
+    log_info(f"Creating minio secrets in namespace {namespace}...")
+    gen = run_cmd(
+        [
+            "kubectl", "create", "secret", "generic", "hyperlane-minio-secrets",
+            "-n", namespace,
+            f"--from-literal=MINIO_ROOT_USER={user}",
+            f"--from-literal=MINIO_ROOT_PASSWORD={password}",
+            "--dry-run=client", "-o", "yaml",
+        ]
+    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
+    log_info("Minio secrets created")
+
+
 def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
     log_info(f"Creating warp deployer secrets in namespace {namespace}...")
 
