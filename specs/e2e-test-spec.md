@@ -354,11 +354,12 @@ tests/
 │   │   ├── cluster.py                # Kind cluster create/teardown + TLS setup
 │   │   ├── chain.py                  # Gorchain + Solana validator lifecycle
 │   │   ├── deploy.py                 # Stack deployment helpers (SO wrappers)
-│   │   └── keygen.py                 # Keypair generation, funding, secret creation
+│   │   ├── keygen.py                 # Keypair generation, funding, secret creation
+│   │   └── privy_mock.py             # Mock Privy server for validator signing
 │   ├── test_deployer.py              # Core deployer: Job completion + deep ConfigMap validation
 │   ├── test_warp_deployer.py         # Warp deployer: token creation, Job completion, on-chain state
 │   ├── test_minio.py                 # MinIO deploy + verify S3 API + buckets (planned)
-│   ├── test_validators.py            # Both validators deploy + verify metrics (planned)
+│   ├── test_validator.py             # Both validators: deploy, signing, checkpoints, metrics
 │   ├── test_relayer.py               # Relayer deploy + verify metrics (planned)
 │   ├── test_gas_oracle.py            # Gas oracle deploy + verify (planned)
 │   ├── test_monitoring.py            # Monitoring deploy + verify Grafana/Prometheus (planned)
@@ -370,7 +371,9 @@ tests/
 │       ├── host-chain-services.yaml  # k8s Services pointing to host chain nodes
 │       ├── test-spec-deployer.yml    # Core deployer test spec
 │       ├── test-spec-warp-deployer.yml  # Warp deployer test spec
-│       └── test-spec-minio.yml       # MinIO test spec (planned)
+│       ├── test-spec-minio.yml       # MinIO test spec
+│       ├── test-spec-validator-gorchain.yml  # Validator (Gorchain) test spec
+│       └── test-spec-validator-solana.yml    # Validator (Solana) test spec
 ```
 
 ## Phase 1: Deploy + Health
@@ -395,15 +398,16 @@ tests/
  8. Generate test keypairs + derive validator H160 addresses
  9. Fund test wallets on both chains (solana airdrop)
 10. Create + apply k8s Secrets from generated keypairs
-11. Build container images (or verify cached):
+11. Start mock Privy server on host (:19876) with per-chain test keys
+12. Build container images (or verify cached):
     - laconic/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
-    - laconic/hyperlane-kms-proxy:local (mock, from tests/e2e/mock-kms-proxy/)
+    - laconic/hyperlane-kms-proxy:local (real KMS proxy, from hyperlane-kms-proxy/)
     - laconic/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
     - laconic/hyperlane-warp-ui:local (from hyperlane-warp-ui source)
     - minio/minio, gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0 (pulled)
-12. Load images into kind cluster:
+13. Load images into kind cluster:
     kind load docker-image <image> --name hyperlane-e2e
-13. Deploy stacks in order:
+14. Deploy stacks in order:
     a. hyperlane-svm-deployer   → verify: deployer Job completed, ConfigMaps created
     b. hyperlane-svm-warp-deployer → verify: warp deployer Job completed, warp ConfigMaps exist
        Warp deployer test flow:
@@ -468,11 +472,47 @@ Tests:
 
 Assertion approach: `kubectl port-forward` to expose MinIO S3 API on a local port, then use `boto3` (or `mc` CLI) from the host to verify
 
-**hyperlane-validator (per chain):**
-- Pod phase = Running
-- Both containers (validator + mock-kms-proxy) in Running state
-- Metrics endpoint responds on :9090
-- MinIO bucket has at least one checkpoint file after 60s
+**hyperlane-validator (per chain)** (`test_validator.py`):
+
+Two separate deployments — one for Gorchain, one for Solana. Each runs a validator
+container + KMS proxy sidecar in the same pod. The KMS proxy talks to a **mock Privy
+server** running on the host (not a real Privy account).
+
+Prerequisites:
+- MinIO deployed and initialized (provides S3 checkpoint storage)
+- Core deployer completed (creates `hyperlane-agent-config` ConfigMap)
+- Mock Privy server running on host (see [Mock Privy Server](#mock-privy-server-validator-signing))
+
+**Agent-config ConfigMap consumption:**
+
+The deployer job creates a `hyperlane-agent-config` ConfigMap via kubectl at runtime.
+The validator needs this ConfigMap mounted as `/config/agent-config.json`. A kubectl
+**init container** (labelled `laconic.init-container: "true"` in the compose file)
+fetches the real ConfigMap and writes it to a shared PVC (`agent-config`) before the
+validator starts.
+
+**Setup (per validator deployment):**
+
+1. Create `hyperlane-validator-{chain}-secrets` k8s Secret:
+   - `PRIVY_APP_ID` — test value (e.g. `"test-app-id"`)
+   - `PRIVY_APP_SECRET` — test value (e.g. `"test-app-secret"`)
+   - `PRIVY_WALLET_ID` — unique per chain (e.g. `"wallet-gorchain-001"`, `"wallet-solana-001"`)
+   - `AWS_ACCESS_KEY_ID` — MinIO credentials (same as `MINIO_ROOT_USER`)
+   - `AWS_SECRET_ACCESS_KEY` — MinIO credentials (same as `MINIO_ROOT_PASSWORD`)
+2. Deploy using `test-spec-validator-{chain}.yml` fixture
+3. Start deployment, wait for pod Running phase
+
+**Tests:**
+
+- `test_validator_pod_running` — Pod reaches Running phase for both containers (validator + kms-proxy)
+- `test_kms_proxy_health` — Port-forward kms-proxy :9999, `GET /health` returns 200
+- `test_validator_metrics_endpoint` — Port-forward validator :9090, `GET /metrics` returns Prometheus metrics text
+- `test_validator_logs_no_errors` — `kubectl logs` for validator container contain no FATAL/PANIC entries within first 30s
+- `test_validator_checkpoint_in_minio` — After 60s, MinIO bucket `hyperlane-validator-{chain}` contains at least one checkpoint file. Verify via `mc ls test/hyperlane-validator-{chain}/`
+- `test_validator_announcement` — Validator submits `validator_announce` transaction on-chain. Check via `solana program show` or validator logs for announcement confirmation
+- `test_checkpoint_after_message` — Dispatch a dummy message via `hyperlane-sealevel-client mailbox send`, wait up to 60s, verify a new checkpoint appears in MinIO with incremented index. This confirms the validator is actively watching the mailbox and signing new merkle roots
+
+**Assertion approach:** `kubectl port-forward` for metrics/health checks, `mc` CLI (via docker) for MinIO bucket inspection, `kubectl logs` for log analysis, `hyperlane-sealevel-client` (via docker + `run_deployer_cli()`) for message dispatch
 
 **hyperlane-relayer:**
 - Pod phase = Running
@@ -571,37 +611,121 @@ Runs after Phase 2. Executes actual cross-chain warp route transfers.
 
 ## Test Configuration
 
-### Mock KMS Proxy (Validator Signing)
+### Mock Privy Server (Validator Signing)
 
-The Hyperlane validator binary only supports AWS KMS or raw hex key signers. In production, a KMS proxy sidecar translates AWS KMS API calls to Privy server wallet requests. For e2e tests, we replace the real KMS proxy with a **mock KMS proxy** that signs with a local test key.
+The Hyperlane validator binary only supports AWS KMS or raw hex key signers. In production,
+a **KMS proxy sidecar** (`laconic/hyperlane-kms-proxy`) translates AWS KMS API calls to
+Privy server wallet RPC requests. The real KMS proxy is used unmodified in e2e tests — we
+mock the **Privy API** instead, so the full signing path is exercised.
+
+**Architecture:**
+
+```
+┌─ k8s pod ─────────────────────────┐      ┌─ host ──────────────┐
+│  validator ──AWS KMS──► kms-proxy ─┼──────┤► mock-privy (:19876)│
+│                                    │      │  (Python HTTP)      │
+└────────────────────────────────────┘      └─────────────────────┘
+```
+
+The KMS proxy has a configurable `PRIVY_API_URL` env var (defaults to `https://api.privy.io`).
+In tests, this points to the mock Privy server running on the host via a k8s Service:
+`http://privy-mock:19876`.
 
 **How it works:**
-- The mock implements the same three AWS KMS endpoints (`Sign`, `GetPublicKey`, `DescribeKey`)
-- Uses a hardcoded secp256k1 test private key to produce real ECDSA signatures
-- The validator binary is unmodified — it calls `http://localhost:9999` and gets valid responses
-- Checkpoint signatures are cryptographically valid, so the relayer accepts them
+1. Validator calls KMS proxy at `http://localhost:9999` (AWS KMS endpoints)
+2. KMS proxy translates to Privy RPC: `POST /v1/wallets/{wallet_id}/rpc` with `secp256k1_sign`
+3. Mock Privy server looks up `wallet_id` in a dict of test keys, signs with the corresponding
+   secp256k1 private key, returns the signature
+4. KMS proxy translates back to AWS KMS response format
+5. Validator gets a valid ECDSA signature — checkpoint signatures are cryptographically valid
 
-**Implementation:** A minimal Go or Python HTTP server (~100 lines) in `tests/e2e/mock-kms-proxy/`:
+**Per-chain different keys:** Each validator deployment uses a different `PRIVY_WALLET_ID`.
+The mock maps each wallet ID to a unique secp256k1 private key:
+
+```python
+# tests/e2e/lib/privy_mock.py (simplified)
+WALLET_KEYS = {
+    "wallet-gorchain-001": "<secp256k1 private key hex>",
+    "wallet-solana-001":   "<secp256k1 private key hex>",
+}
+```
+
+This mirrors production where each validator chain has its own Privy wallet.
+
+**Mock Privy API endpoint:**
 
 ```
-tests/e2e/mock-kms-proxy/
-├── Dockerfile
-├── main.go          # (or main.py)
-└── test-key.json    # secp256k1 test private key (NOT a real key)
+POST /v1/wallets/{wallet_id}/rpc
+Authorization: Basic <app_id>:<app_secret>
+Content-Type: application/json
+
+{
+  "chain_type": "ethereum",
+  "method": "secp256k1_sign",
+  "params": {"hash": "0x<hex>", "encoding": "hex"}
+}
+
+Response:
+{
+  "method": "secp256k1_sign",
+  "data": {"signature": "0x<r32||s32||v1>", "encoding": "hex"}
+}
 ```
 
-The mock handles:
-- `TrentService.Sign` → sign digest with test key, return DER-encoded signature
-- `TrentService.GetPublicKey` → return test key's public key in SubjectPublicKeyInfo DER
-- `TrentService.DescribeKey` → return static metadata (`ECC_SECG_P256K1`)
+**Implementation:** `tests/e2e/lib/privy_mock.py` — ~50-80 lines of Python using
+`http.server`. The mock also handles the `GetPublicKey` flow (KMS proxy calls
+`secp256k1_sign` on a known digest at startup to recover the public key).
 
-**Test image swap:** SO doesn't support per-service image overrides. The mock is built with the same image name as the real KMS proxy:
+**Host service exposure:** Add `privy-mock` to `fixtures/host-chain-services.yaml`:
+
+```yaml
+# Privy mock server
+apiVersion: v1
+kind: Service
+metadata:
+  name: privy-mock
+spec:
+  ports:
+    - port: 19876
+      targetPort: 19876
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: privy-mock
+subsets:
+  - addresses:
+      - ip: "${HOST_IP}"
+    ports:
+      - port: 19876
+```
+
+**Validator address derivation:** The mock's test keys determine the H160 validator
+addresses. During keypair generation (`lib/keygen.py`), secp256k1 keys are generated
+via `cast wallet new`, which produces both the private key and H160 address. These
+addresses are passed to the deployer as `GORCHAIN_VALIDATOR_ADDRESS` and
+`SOLANA_VALIDATOR_ADDRESS` for ISM configuration. Two different keys → two different
+H160 addresses, matching the production setup.
+
+**Validator secrets per chain:**
+
 ```bash
-docker build -t laconic/hyperlane-kms-proxy:local tests/e2e/mock-kms-proxy/
-```
-This makes it a drop-in replacement — the validator compose file and stack definition are used as-is. The mock image just needs to be built *after* (or instead of) the real KMS proxy image during test setup.
+# Gorchain validator
+kubectl create secret generic hyperlane-validator-gorchain-secrets \
+  --from-literal=PRIVY_APP_ID=test-app-id \
+  --from-literal=PRIVY_APP_SECRET=test-app-secret \
+  --from-literal=PRIVY_WALLET_ID=wallet-gorchain-001 \
+  --from-literal=AWS_ACCESS_KEY_ID=$MINIO_USER \
+  --from-literal=AWS_SECRET_ACCESS_KEY=$MINIO_PASSWORD
 
-**Validator address derivation:** The mock's test key determines the H160 validator address. The keygen script derives H160 from the test key and passes it to the deployer as `GORCHAIN_VALIDATOR_ADDRESS` / `SOLANA_VALIDATOR_ADDRESS`. If two separate test keys are used (one per chain), two different H160 addresses result.
+# Solana validator
+kubectl create secret generic hyperlane-validator-solana-secrets \
+  --from-literal=PRIVY_APP_ID=test-app-id \
+  --from-literal=PRIVY_APP_SECRET=test-app-secret \
+  --from-literal=PRIVY_WALLET_ID=wallet-solana-001 \
+  --from-literal=AWS_ACCESS_KEY_ID=$MINIO_USER \
+  --from-literal=AWS_SECRET_ACCESS_KEY=$MINIO_PASSWORD
+```
 
 ### Mock Gas Oracle Signer
 
@@ -699,6 +823,46 @@ secrets:
     - MINIO_ROOT_PASSWORD
 ```
 
+```yaml
+# test-spec-validator-gorchain.yml
+stack: stack_orchestrator/data/stacks/hyperlane-validator
+deploy-to: k8s-kind
+config:
+  ORIGIN_CHAIN_NAME: gorchain
+  CHECKPOINT_BUCKET: hyperlane-validator-gorchain
+  PRIVY_API_URL: "http://privy-mock:19876"
+volumes:
+  validator-gorchain-data: 5Gi
+  agent-config: 1Mi
+secrets:
+  hyperlane-validator-gorchain-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - PRIVY_WALLET_ID
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+```
+
+```yaml
+# test-spec-validator-solana.yml
+stack: stack_orchestrator/data/stacks/hyperlane-validator
+deploy-to: k8s-kind
+config:
+  ORIGIN_CHAIN_NAME: solana
+  CHECKPOINT_BUCKET: hyperlane-validator-solana
+  PRIVY_API_URL: "http://privy-mock:19876"
+volumes:
+  validator-solana-data: 5Gi
+  agent-config: 1Mi
+secrets:
+  hyperlane-validator-solana-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - PRIVY_WALLET_ID
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+```
+
 ## Test Runner
 
 Tests use Python pytest. See `tests/e2e/conftest.py` for session-scoped fixtures and CLI options.
@@ -770,7 +934,7 @@ rm -rf /tmp/hyperlane-e2e-keys /tmp/solana-test-ledger
 
 ## Design Decisions
 
-1. **Privy in tests:** Using mock KMS proxy + local oracle signing for e2e tests. If real Privy test credentials become available, swap to real Privy integration (configuration-only change — replace mock image with real KMS proxy, inject Privy env vars).
+1. **Privy in tests:** Using the **real KMS proxy** with a **mock Privy server** running on the host. The mock implements Privy's `secp256k1_sign` RPC with local test keys (different key per validator chain). This exercises the full signing path (validator → KMS proxy → Privy API → signature). If real Privy test credentials become available, just stop the mock and point `PRIVY_API_URL` at the real API — no code changes needed.
 
 2. **Deploy script strategy:** The deployer uses a ConfigMap-mounted `deploy.sh` at `/opt/scripts/deploy.sh` (env-var-driven). The deployer scripts are mounted via ConfigMap volumes, not baked into the image. Config templates (multisig, gas-oracle, registry) are also mounted via ConfigMap volumes and rendered at runtime via `envsubst`. The deploy script creates output k8s ConfigMaps (program-ids, agent-config, etc.) directly via kubectl.
 

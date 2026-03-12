@@ -4,14 +4,46 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        # Wait for MinIO to be ready (the SO stack service routes to port 9000)
-        echo "Waiting for MinIO to be ready..."
-        until mc alias set local http://hyperlane-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} 2>/dev/null; do
+        set -e
+
+        MINIO_URL="http://hyperlane-minio:9000"
+
+        # Wait for MinIO S3 API to be fully ready.
+        # mc alias set can succeed before MinIO is fully operational,
+        # so we also verify with mc ls (actual S3 ListBuckets call).
+        echo "Waiting for MinIO to be ready at $${MINIO_URL}..."
+        retries=0
+        until mc alias set local "$${MINIO_URL}" $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} 2>/dev/null \
+              && mc ls local 2>/dev/null; do
+          retries=$$((retries + 1))
+          if [ "$$retries" -ge 30 ]; then
+            echo "MinIO not ready after 60s, giving up"
+            exit 1
+          fi
           echo "MinIO not ready yet, retrying in 2s..."
           sleep 2
         done
+        echo "MinIO is ready"
+
         mc mb --ignore-existing local/hyperlane-validator-gorchain
         mc mb --ignore-existing local/hyperlane-validator-solana
-        echo "Buckets created successfully"
+
+        # Allow anonymous read access so the relayer can fetch checkpoints
+        # without AWS credentials (it uses an anonymous S3 client).
+        # Retry each command — MinIO may briefly drop connections after startup.
+        for bucket in hyperlane-validator-gorchain hyperlane-validator-solana; do
+          retries=0
+          until mc anonymous set download "local/$${bucket}"; do
+            retries=$$((retries + 1))
+            if [ "$$retries" -ge 5 ]; then
+              echo "Failed to set anonymous policy on $${bucket} after 5 retries"
+              exit 1
+            fi
+            echo "Retrying anonymous set for $${bucket} in 3s..."
+            sleep 3
+          done
+        done
+
+        echo "Buckets created with public read access"
     # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
     # MINIO_ROOT_USER, MINIO_ROOT_PASSWORD

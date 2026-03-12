@@ -1,7 +1,6 @@
 services:
   relayer:
-    # TODO: verify agents-v2.0.0 is compatible with Solana SDK v3.x programs
-    image: gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0
+    image: git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest
     restart: unless-stopped
     hostname: relayer
     command:
@@ -9,7 +8,7 @@ services:
       - --db
       - /data/relayer
       - --relayChains
-      - gorchain,solanatestnet
+      - gorchain,solana
       - --allowLocalCheckpointSyncers
       - "false"
       - --metricsPort

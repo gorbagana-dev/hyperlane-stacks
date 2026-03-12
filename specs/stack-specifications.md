@@ -178,7 +178,7 @@ Validator command uses env vars for all chain-specific args:
 MinIO endpoint uses the static hostname `hyperlane-minio` — a k8s Service with this name is created by `deploy/commands.py` in stacks that need MinIO access (see Cross-Stack Communication).
 
 ### Config (spec.yml)
-- `ORIGIN_CHAIN_NAME` — chain name (e.g., `gorchain` or `solanatestnet`), set per deployment
+- `ORIGIN_CHAIN_NAME` — chain name (e.g., `gorchain` or `solana`), set per deployment
 - `CHECKPOINT_BUCKET` — S3 bucket name, set per deployment
 - `MINIO_ACCESS_KEY` — MinIO access key
 
@@ -197,7 +197,7 @@ MinIO endpoint uses the static hostname `hyperlane-minio` — a k8s Service with
 ### Per-Chain Deployment
 Two separate spec.yml files deploy this stack for each chain:
 - `spec-validator-gorchain.yml` — sets `ORIGIN_CHAIN_NAME=gorchain`, `PRIVY_WALLET_ID=<gorchain-wallet>`, `CHECKPOINT_BUCKET=hyperlane-validator-gorchain`
-- `spec-validator-solana.yml` — sets `ORIGIN_CHAIN_NAME=solanatestnet`, `PRIVY_WALLET_ID=<solana-wallet>`, `CHECKPOINT_BUCKET=hyperlane-validator-solana`
+- `spec-validator-solana.yml` — sets `ORIGIN_CHAIN_NAME=solana`, `PRIVY_WALLET_ID=<solana-wallet>`, `CHECKPOINT_BUCKET=hyperlane-validator-solana`
 
 Each deployment gets its own PVC for validator data and its own k8s Deployment.
 

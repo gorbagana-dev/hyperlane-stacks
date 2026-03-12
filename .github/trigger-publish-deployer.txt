@@ -1,0 +1,2 @@
+# Edit this file to trigger the deployer image publish workflow.
+# TODO: Replace this mechanism with release-triggered workflow.

@@ -35,6 +35,36 @@ class KeypairSet:
     solana_validator_address: str
 
 
+def generate_chain_signer(keys_dir: Path, name: str = "chain-signer") -> tuple[str, str]:
+    """Generate a chain signer key for the validator announce transaction.
+
+    Returns (hex_key, solana_address):
+      - hex_key: 0x-prefixed 32-byte hex seed for HYP_DEFAULTSIGNER_KEY
+      - solana_address: base58 Solana address derived from the seed (for funding)
+
+    The key is persisted to {keys_dir}/{name}.json in Solana keypair format
+    so it can be reused across test runs (important for --skip-validator-deploy).
+    """
+    keypair_path = keys_dir / f"{name}.json"
+
+    if keypair_path.is_file():
+        log_info(f"Reusing existing chain signer key: {keypair_path}")
+    else:
+        log_info(f"Generating chain signer key: {keypair_path}")
+        _solana_keygen(keypair_path)
+
+    # Solana keypair JSON is a 64-byte array: [seed(32) || pubkey(32)]
+    keypair_bytes = json.loads(keypair_path.read_text())
+    seed_bytes = bytes(keypair_bytes[:32])
+    hex_key = "0x" + seed_bytes.hex()
+
+    solana_address = _solana_pubkey(keypair_path)
+    log_info(f"  Chain signer hex:    {hex_key[:10]}...{hex_key[-6:]}")
+    log_info(f"  Chain signer addr:   {solana_address}")
+
+    return hex_key, solana_address
+
+
 def _solana_keygen(output: Path) -> None:
     run_cmd(
         [
@@ -251,6 +281,32 @@ def create_minio_secrets(namespace: str, user: str, password: str) -> None:
     )
     run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
     log_info("Minio secrets created")
+
+
+def create_validator_secrets(
+    namespace: str,
+    chain: str,
+    minio_user: str,
+    minio_password: str,
+    chain_signer_key: str = "",
+) -> None:
+    """Create the hyperlane-validator-{chain}-secrets k8s Secret (idempotent)."""
+    secret_name = f"hyperlane-validator-{chain}-secrets"
+    log_info(f"Creating {secret_name} in namespace {namespace}...")
+    cmd = [
+        "kubectl", "create", "secret", "generic", secret_name,
+        "-n", namespace,
+        "--from-literal=PRIVY_APP_ID=test-app-id",
+        "--from-literal=PRIVY_APP_SECRET=test-app-secret",
+        f"--from-literal=AWS_ACCESS_KEY_ID={minio_user}",
+        f"--from-literal=AWS_SECRET_ACCESS_KEY={minio_password}",
+    ]
+    if chain_signer_key:
+        cmd.append(f"--from-literal=HYP_DEFAULTSIGNER_KEY={chain_signer_key}")
+    cmd.extend(["--dry-run=client", "-o", "yaml"])
+    gen = run_cmd(cmd)
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
+    log_info(f"{secret_name} created")
 
 
 def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:

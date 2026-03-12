@@ -2,13 +2,20 @@
 # Delivers cross-chain messages between Gorchain and Solana.
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
+namespace: laconic-hyperlane
+kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
   GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
   SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
 volumes:
-  relayer-data: 5Gi
+  relayer-data:
+resources:
+  volumes:
+    relayer-data:
+      reservations:
+        storage: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config

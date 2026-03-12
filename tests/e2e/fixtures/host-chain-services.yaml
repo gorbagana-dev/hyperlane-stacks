@@ -1,6 +1,6 @@
-# host-chain-services.yaml — k8s Services + Endpoints pointing to host chain nodes
+# host-chain-services.yaml — k8s Services + Endpoints pointing to host services
 # Template variables: ${HOST_IP}, ${NAMESPACE}
-# Applied by cluster.sh:apply_host_chain_services()
+# Applied by cluster.py:apply_host_chain_services()
 
 ---
 # Gorchain RPC Service (headless, no selector — manually managed Endpoints)
@@ -52,4 +52,30 @@ subsets:
       - ip: "${HOST_IP}"
     ports:
       - port: 18899
+        protocol: TCP
+
+---
+# Mock Privy server (headless, no selector — manually managed Endpoints)
+apiVersion: v1
+kind: Service
+metadata:
+  name: privy-mock
+  namespace: ${NAMESPACE}
+spec:
+  ports:
+    - port: 19876
+      targetPort: 19876
+      protocol: TCP
+---
+# Mock Privy Endpoints — points to host IP
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: privy-mock
+  namespace: ${NAMESPACE}
+subsets:
+  - addresses:
+      - ip: "${HOST_IP}"
+    ports:
+      - port: 19876
         protocol: TCP

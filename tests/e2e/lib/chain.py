@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
-LEDGER_BASE = Path("/tmp")
+LEDGER_BASE = Path(__file__).resolve().parent.parent / ".data"
 
 GORCHAIN_STACKS_REPO = "git.vdb.to/LaconicNetwork/gorchain-stacks@main"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
@@ -50,14 +50,20 @@ def start_solana_test_validator(
     gossip_port: int = 18001,
     dynamic_port_range: str = "19050-19075",
     name: str = "solana",
+    fresh: bool = False,
 ) -> None:
     log_info(f"Starting {name} test validator on port {port}...")
 
     _kill_by_port(port)
 
+    LEDGER_BASE.mkdir(parents=True, exist_ok=True)
+
     ledger_dir = LEDGER_BASE / f"test-ledger-{name}"
-    if ledger_dir.exists():
+    if fresh and ledger_dir.exists():
+        log_info(f"Wiping existing ledger: {ledger_dir}")
         shutil.rmtree(ledger_dir)
+    elif ledger_dir.exists():
+        log_info(f"Reusing existing ledger: {ledger_dir}")
 
     stderr_log = LEDGER_BASE / f"test-validator-{name}.stderr"
     stderr_fh = stderr_log.open("w")
@@ -101,14 +107,16 @@ def start_solana_test_validator(
     wait_for_rpc_health(f"http://localhost:{port}", timeout=60)
 
 
-def stop_solana_test_validator(port: int = 18899, name: str = "solana") -> None:
-    """Kill the Solana test validator by port and clean up its ledger."""
+def stop_solana_test_validator(port: int = 18899, name: str = "solana", delete_data: bool = True) -> None:
+    """Kill the Solana test validator by port and optionally clean up its ledger."""
     log_info(f"Stopping {name} test validator on port {port}...")
     _kill_by_port(port)
 
-    ledger_dir = LEDGER_BASE / f"test-ledger-{name}"
-    if ledger_dir.exists():
-        shutil.rmtree(ledger_dir)
+    if delete_data:
+        ledger_dir = LEDGER_BASE / f"test-ledger-{name}"
+        if ledger_dir.exists():
+            log_info(f"Removing ledger: {ledger_dir}")
+            shutil.rmtree(ledger_dir)
 
 
 # ---------------------------------------------------------------------------

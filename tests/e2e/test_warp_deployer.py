@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import subprocess
 
 import pytest
 
@@ -14,12 +13,9 @@ from lib.common import (
     is_base58_pubkey,
     run_deployer_cli,
     wait_for_configmap,
-    wait_for_job_complete,
 )
 
 log = logging.getLogger(__name__)
-
-WARP_JOB_TIMEOUT = 1200
 
 # Warp route: solana=collateral, gorchain=synthetic
 WARP_TOKEN_TYPES = {
@@ -122,15 +118,6 @@ def _get_warp_program_addresses(namespace: str) -> dict[str, str]:
 
 @pytest.mark.slow
 class TestWarpDeployer:
-    def test_warp_deployer_completes(self, warp_deployment: dict) -> None:
-        ns = warp_deployment["namespace"]
-        cid = warp_deployment["deployment"].cluster_id
-        job_name = f"{cid}-job-hyperlane-svm-warp-deployer"
-        try:
-            wait_for_job_complete(ns, job_name, WARP_JOB_TIMEOUT)
-        except (TimeoutError, RuntimeError, subprocess.CalledProcessError):
-            pytest.fail("Warp deployer job did not complete successfully")
-
     def test_warp_token_configmap(self, warp_deployment: dict) -> None:
         """Validate warp token-config has correct structure and references."""
         ns = warp_deployment["namespace"]

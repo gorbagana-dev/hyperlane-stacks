@@ -17,7 +17,7 @@ Each deployment runs two containers: the Hyperlane validator agent and a KMS pro
 laconic-so --stack hyperlane-validator build-containers
 ```
 
-Builds `laconic/hyperlane-kms-proxy:local` -- the Privy-to-AWS-KMS bridge sidecar. The validator image (`gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0`) is pulled from upstream.
+Builds `laconic/hyperlane-kms-proxy:local` (Privy-to-AWS-KMS bridge sidecar) and `laconic/hyperlane-agent:local` (patched Hyperlane agent with `AWS_ENDPOINT_URL_KMS` support for the KMS proxy).
 
 ## 2. Deploy for Gorchain
 
@@ -35,11 +35,12 @@ config:
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain
 configmaps:
   agent-config: ./configmaps/agent-config
+config:
+  PRIVY_WALLET_ID: "<wallet-id>"
 secrets:
   hyperlane-validator-secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
-    - PRIVY_WALLET_ID
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
 ```
@@ -50,7 +51,7 @@ laconic-so --stack hyperlane-validator deploy create --spec-file validator-gorch
 
 ## 3. Deploy for Solana
 
-Same process with `deployment/spec-validator-solana.yml` as reference. Key differences: `ORIGIN_CHAIN_NAME: solanatestnet`, `CHECKPOINT_BUCKET: hyperlane-validator-solana`.
+Same process with `deployment/spec-validator-solana.yml` as reference. Key differences: `ORIGIN_CHAIN_NAME: solana`, `CHECKPOINT_BUCKET: hyperlane-validator-solana`.
 
 ```bash
 laconic-so --stack hyperlane-validator deploy init --output validator-solana-spec.yml
@@ -61,21 +62,30 @@ laconic-so --stack hyperlane-validator deploy create --spec-file validator-solan
 ## 4. Create secrets
 
 ```bash
+# Generate a chain signer key (ed25519 seed as 32-byte hex).
+# This is a HOT key used only for the on-chain announce transaction.
+# It is separate from the KMS-backed validator checkpoint signing key.
+# For SVM chains, derive the Solana address and fund it with SOL:
+#   solana-keygen new -o chain-signer.json
+#   solana-keygen pubkey chain-signer.json  # fund this address
+#   python3 -c "import json; print('0x' + bytes(json.load(open('chain-signer.json'))[:32]).hex())"
+#   # use the hex output as HYP_DEFAULTSIGNER_KEY
+
 kubectl create secret generic hyperlane-validator-secrets \
   --from-literal=PRIVY_APP_ID='<app-id>' \
   --from-literal=PRIVY_APP_SECRET='<app-secret>' \
-  --from-literal=PRIVY_WALLET_ID='<wallet-id>' \
   --from-literal=AWS_ACCESS_KEY_ID='<minio-access-key>' \
-  --from-literal=AWS_SECRET_ACCESS_KEY='<minio-secret-key>'
+  --from-literal=AWS_SECRET_ACCESS_KEY='<minio-secret-key>' \
+  --from-literal=HYP_DEFAULTSIGNER_KEY='0x<32-byte-hex-chain-signer-key>'
 ```
 
 | Secret key | Description |
 |---|---|
 | `PRIVY_APP_ID` | Privy application ID for KMS proxy |
 | `PRIVY_APP_SECRET` | Privy application secret |
-| `PRIVY_WALLET_ID` | Privy wallet ID used for validator signing |
 | `AWS_ACCESS_KEY_ID` | MinIO access key for checkpoint storage |
 | `AWS_SECRET_ACCESS_KEY` | MinIO secret key for checkpoint storage |
+| `HYP_DEFAULTSIGNER_KEY` | Hot ed25519 hex key for announce tx (fund the derived Solana address) |
 
 ## 5. Start
 

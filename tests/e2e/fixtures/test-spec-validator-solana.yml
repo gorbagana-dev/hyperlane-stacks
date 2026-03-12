@@ -1,0 +1,19 @@
+stack: stack_orchestrator/data/stacks/hyperlane-validator
+deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
+config:
+  ORIGIN_CHAIN_NAME: solana
+  CHECKPOINT_BUCKET: hyperlane-validator-solana
+  PRIVY_API_URL: "http://privy-mock:19876"
+  PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
+volumes:
+  validator-data:
+  agent-config:
+secrets:
+  hyperlane-validator-solana-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - HYP_DEFAULTSIGNER_KEY

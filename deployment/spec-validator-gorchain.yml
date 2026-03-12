@@ -2,17 +2,27 @@
 # Runs a validator for Gorchain using the hyperlane-validator stack.
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+namespace: laconic-hyperlane
+kind-cluster-name: hyperlane
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain
+  PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
 volumes:
-  validator-gorchain-data: 5Gi
-configmaps:
-  agent-config: ./configmaps/agent-config
+  validator-data:
+  agent-config:
+resources:
+  volumes:
+    validator-data:
+      reservations:
+        storage: 5Gi
+    agent-config:
+      reservations:
+        storage: 100Mi
 secrets:
   hyperlane-validator-secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
-    - PRIVY_WALLET_ID
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
+    - HYP_DEFAULTSIGNER_KEY

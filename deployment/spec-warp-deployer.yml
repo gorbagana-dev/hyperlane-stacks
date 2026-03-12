@@ -6,6 +6,8 @@
 # ${VAR:-${OTHER}} defaults from compose files.
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
+namespace: laconic-hyperlane
+kind-cluster-name: hyperlane
 config:
   WARP_TOKEN_MINT: "REPLACE_WITH_TOKEN_MINT_ADDRESS"
   WARP_ROUTE_NAME: "USDC-solana-gorchain"

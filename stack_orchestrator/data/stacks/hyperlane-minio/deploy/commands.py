@@ -22,7 +22,7 @@ def start(context: DeploymentContext):
     The service selects pods using app.kubernetes.io/stack label, which SO
     adds automatically to all pods.
     """
-    namespace = f"laconic-{context.id}"
+    namespace = context.spec.get_namespace() or f"laconic-{context.id}"
     # stack.name may be an absolute path; extract the directory basename
     stack_name = Path(context.stack.name).name
 
@@ -32,6 +32,9 @@ def start(context: DeploymentContext):
         "metadata": {
             "name": stack_name,
             "namespace": namespace,
+            "labels": {
+                "app": context.id,
+            },
         },
         "spec": {
             "type": "ClusterIP",

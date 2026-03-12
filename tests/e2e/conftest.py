@@ -18,6 +18,7 @@ from lib.chain import (
     stop_solana_test_validator,
 )
 from lib.cluster import (
+    KIND_CLUSTER_NAME,
     apply_host_chain_services,
     apply_rbac,
     create_kind_cluster,
@@ -29,21 +30,35 @@ from lib.cluster import (
 from lib.common import E2E_DIR, get_configmap_json, wait_for_job_complete, wait_for_pod_phase
 from lib.deploy import (
     DEPLOY_DIR,
+    E2E_NAMESPACE,
     DeploymentInfo,
+    build_agent_image,
+    build_kms_proxy_image,
     deploy_prepare,
     deploy_start,
     get_cluster_id,
     prefetch_deployer_image,
+    prefetch_validator_images,
     stop_stack,
 )
 from lib.keygen import (
     KEYS_DIR,
     KeypairSet,
+    _airdrop,
     create_deployer_secrets,
     create_minio_secrets,
+    create_validator_secrets,
     create_warp_deployer_secrets,
     fund_wallets,
+    generate_chain_signer,
     generate_test_keypairs,
+)
+from lib.privy_mock import (
+    GORCHAIN_WALLET_ID,
+    SOLANA_WALLET_ID,
+    PrivyMockServer,
+    derive_h160_address,
+    generate_wallet_keys,
 )
 
 log = logging.getLogger(__name__)
@@ -51,6 +66,17 @@ log = logging.getLogger(__name__)
 FIXTURE_SPEC = E2E_DIR / "fixtures" / "test-spec-deployer.yml"
 WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
 MINIO_SPEC = E2E_DIR / "fixtures" / "test-spec-minio.yml"
+VALIDATOR_GORCHAIN_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-gorchain.yml"
+VALIDATOR_SOLANA_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-solana.yml"
+
+PRIVY_MOCK_PORT = 19876
+
+# Spec placeholder replacements for stacks that use independent cluster-ids
+# but share the e2e namespace and kind cluster.
+SPEC_REPLACEMENTS = {
+    "REPLACE_NAMESPACE": E2E_NAMESPACE,
+    "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
+}
 
 
 @dataclasses.dataclass
@@ -61,6 +87,26 @@ class MinioInfo:
     password: str
 
     # Delegate common fields for convenience
+    @property
+    def namespace(self) -> str:
+        return self.deployment.namespace
+
+    @property
+    def cluster_id(self) -> str:
+        return self.deployment.cluster_id
+
+    @property
+    def deploy_dir(self) -> Path:
+        return self.deployment.deploy_dir
+
+
+@dataclasses.dataclass
+class ValidatorInfo:
+    """Validator deployment info."""
+    deployment: DeploymentInfo
+    chain: str
+    wallet_id: str
+
     @property
     def namespace(self) -> str:
         return self.deployment.namespace
@@ -102,6 +148,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--skip-minio-deploy", action="store_true", default=False,
         help="Skip minio deployment (reuse existing from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
+        "--skip-validator-deploy", action="store_true", default=False,
+        help="Skip validator deployment (reuse existing from a previous --skip-cleanup run)"
     )
 
 
@@ -182,6 +232,16 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 
 
 @pytest.fixture(scope="session")
+def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+    """Build agent + kms-proxy via laconic-so, pull kubectl image, load all into kind."""
+    log.info("Building patched agent and kms-proxy images via laconic-so...")
+    build_agent_image()
+
+    log.info("Pre-fetching kubectl image into kind cluster...")
+    prefetch_validator_images()
+
+
+@pytest.fixture(scope="session")
 def keypairs() -> KeypairSet:
     log.info("Generating test keypairs...")
     return generate_test_keypairs()
@@ -218,8 +278,8 @@ def minio_deployment(
     """Deploy the hyperlane-minio stack.
 
     Self-contained: only requires a Kind cluster. Creates its own namespace
-    and secrets. Uses the default cluster-id (KIND_CLUSTER_NAME), so when the
-    full suite runs, all stacks share the same namespace naturally.
+    and secrets. Uses an independent cluster-id for unique resource names,
+    with spec-level namespace override to share the e2e namespace.
     """
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_minio = request.config.getoption("--skip-minio-deploy", default=False)
@@ -227,7 +287,7 @@ def minio_deployment(
     if skip_minio:
         deploy_dir = DEPLOY_DIR / "hyperlane-minio"
         cluster_id = get_cluster_id(deploy_dir)
-        namespace = f"laconic-{cluster_id}"
+        namespace = E2E_NAMESPACE
         log.info("Reusing existing minio deployment (namespace: %s)", namespace)
         user, password = _recover_minio_credentials(namespace)
         yield MinioInfo(
@@ -241,7 +301,11 @@ def minio_deployment(
     minio_password = secrets.token_hex(16)
 
     log.info("Preparing minio stack...")
-    deploy_info = deploy_prepare("hyperlane-minio", MINIO_SPEC)
+    deploy_info = deploy_prepare(
+        "hyperlane-minio", MINIO_SPEC,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
+    )
     namespace = deploy_info.namespace
     cluster_id = deploy_info.cluster_id
 
@@ -293,13 +357,17 @@ def deployer_deployment(
         # survives Ctrl+C — deployed programs and funded wallets persist.
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
         cluster_id = get_cluster_id(deploy_dir)
-        namespace = f"laconic-{cluster_id}"
+        namespace = E2E_NAMESPACE
         log.info("Reusing existing core deployment (cluster-id: %s, namespace: %s)", cluster_id, namespace)
         yield DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace)
         return
 
     log.info("Preparing deployer stack...")
-    deploy_info = deploy_prepare("hyperlane-svm-deployer", FIXTURE_SPEC)
+    deploy_info = deploy_prepare(
+        "hyperlane-svm-deployer", FIXTURE_SPEC,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
+    )
     namespace = deploy_info.namespace
 
     # TODO: revisit — manually creating the namespace is a workaround because
@@ -421,10 +489,11 @@ def warp_deployment(
         log.info("Recovered token mint from ConfigMap: %s", token_mint)
 
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
+        cluster_id = get_cluster_id(deploy_dir)
         yield {
             "deployment": DeploymentInfo(
                 deploy_dir=deploy_dir,
-                cluster_id=deployer_deployment.cluster_id,
+                cluster_id=cluster_id,
                 namespace=namespace,
             ),
             "token_mint": token_mint,
@@ -444,11 +513,17 @@ def warp_deployment(
     warp_info = deploy_prepare(
         "hyperlane-svm-warp-deployer",
         patched_spec,
-        cluster_id=deployer_deployment.cluster_id,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
     )
 
     log.info("Starting warp deployer stack...")
     deploy_start(warp_info.deploy_dir)
+
+    log.info("Waiting for warp deployer job to complete...")
+    job_name = f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer"
+    wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
+    log.info("Warp deployer job complete, artifacts available")
 
     ctx = {
         "deployment": warp_info,
@@ -462,3 +537,152 @@ def warp_deployment(
     if not skip_cleanup:
         log.info("Stopping warp deployer stack...")
         stop_stack("hyperlane-svm-warp-deployer")
+
+
+# ---------------------------------------------------------------------------
+# Mock Privy server
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def privy_mock(request: pytest.FixtureRequest) -> Generator[dict[str, str], None, None]:
+    """Start the mock Privy server and yield wallet_keys dict.
+
+    The server runs in a background thread for the entire test session.
+    wallet_keys maps wallet_id -> private_key_hex.
+    """
+    wallet_keys = generate_wallet_keys()
+
+    log.info("Starting mock Privy server on :%d...", PRIVY_MOCK_PORT)
+    server = PrivyMockServer(wallet_keys, port=PRIVY_MOCK_PORT)
+    server.start()
+    log.info(
+        "Mock Privy wallets — gorchain H160: %s, solana H160: %s",
+        derive_h160_address(wallet_keys[GORCHAIN_WALLET_ID]),
+        derive_h160_address(wallet_keys[SOLANA_WALLET_ID]),
+    )
+
+    yield wallet_keys
+
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    if not skip_cleanup:
+        log.info("Stopping mock Privy server...")
+        server.stop()
+
+
+# ---------------------------------------------------------------------------
+# Validator deployments
+# ---------------------------------------------------------------------------
+
+
+def _deploy_validator(
+    chain: str,
+    spec_file: Path,
+    wallet_id: str,
+    minio: MinioInfo,
+    deployer: DeploymentInfo,
+    request: pytest.FixtureRequest,
+) -> Generator[ValidatorInfo, None, None]:
+    """Deploy a single validator stack for the given chain."""
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_validator = request.config.getoption("--skip-validator-deploy", default=False)
+    namespace = E2E_NAMESPACE
+
+    stack_name = f"hyperlane-validator-{chain}"
+
+    if skip_validator:
+        deploy_dir = DEPLOY_DIR / stack_name
+        cluster_id = get_cluster_id(deploy_dir)
+        log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
+        yield ValidatorInfo(
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            chain=chain,
+            wallet_id=wallet_id,
+        )
+        return
+
+    # Generate and fund a chain signer key for the announce transaction.
+    # This is a hot ed25519 key separate from the KMS-backed validator key.
+    chain_signer_key, chain_signer_addr = generate_chain_signer(
+        KEYS_DIR, name=f"{chain}-chain-signer",
+    )
+    rpc = "http://localhost:8899" if chain == "gorchain" else "http://localhost:18899"
+    log.info("Funding chain signer %s on %s...", chain_signer_addr, chain)
+    _airdrop(1, chain_signer_addr, rpc, f"{chain} chain signer")
+
+    log.info("Creating validator secrets for %s...", chain)
+    create_validator_secrets(
+        namespace, chain,
+        minio_user=minio.user,
+        minio_password=minio.password,
+        chain_signer_key=chain_signer_key,
+    )
+
+    validator_replacements = {
+        **SPEC_REPLACEMENTS,
+        "REPLACE_PRIVY_WALLET_ID": wallet_id,
+    }
+
+    log.info("Preparing %s stack...", stack_name)
+    deploy_info = deploy_prepare(
+        "hyperlane-validator",
+        spec_file,
+        deploy_dir=DEPLOY_DIR / stack_name,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=validator_replacements,
+    )
+
+    log.info("Starting %s stack...", stack_name)
+    deploy_start(deploy_info.deploy_dir)
+
+    log.info("Waiting for %s pod to be running...", stack_name)
+    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+    log.info("%s is running", stack_name)
+
+    yield ValidatorInfo(
+        deployment=deploy_info,
+        chain=chain,
+        wallet_id=wallet_id,
+    )
+
+    if not skip_cleanup:
+        log.info("Stopping %s stack...", stack_name)
+        stop_stack("hyperlane-validator", deploy_dir=DEPLOY_DIR / stack_name)
+
+
+@pytest.fixture(scope="session")
+def validator_gorchain(
+    request: pytest.FixtureRequest,
+    deployer_deployment: DeploymentInfo,
+    minio_deployment: MinioInfo,
+    privy_mock: dict[str, str],
+    validator_images: None,
+) -> Generator[ValidatorInfo, None, None]:
+    """Deploy the gorchain validator."""
+    yield from _deploy_validator(
+        chain="gorchain",
+        spec_file=VALIDATOR_GORCHAIN_SPEC,
+        wallet_id=GORCHAIN_WALLET_ID,
+        minio=minio_deployment,
+        deployer=deployer_deployment,
+        request=request,
+    )
+
+
+@pytest.fixture(scope="session")
+def validator_solana(
+    request: pytest.FixtureRequest,
+    deployer_deployment: DeploymentInfo,
+    minio_deployment: MinioInfo,
+    privy_mock: dict[str, str],
+    validator_images: None,
+) -> Generator[ValidatorInfo, None, None]:
+    """Deploy the solana validator."""
+    yield from _deploy_validator(
+        chain="solana",
+        spec_file=VALIDATOR_SOLANA_SPEC,
+        wallet_id=SOLANA_WALLET_ID,
+        minio=minio_deployment,
+        deployer=deployer_deployment,
+        request=request,
+    )

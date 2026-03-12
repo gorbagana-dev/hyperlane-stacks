@@ -13,7 +13,13 @@ from .common import E2E_DIR, REPO_ROOT, fail_exit, force_rmtree, log_info, run_c
 DEPLOY_DIR = E2E_DIR / ".deployments"
 DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 
+# Shared namespace for all e2e stacks — derived from the Kind cluster name.
+E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
+
 DEPLOYER_IMAGE = "git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest"
+KMS_PROXY_IMAGE = "laconic/hyperlane-kms-proxy:local"
+VALIDATOR_IMAGE = "laconic/hyperlane-agent:local"
+KUBECTL_IMAGE = "bitnami/kubectl:latest"
 
 
 
@@ -31,7 +37,7 @@ def resolve_stack_path(stack_name: str) -> Path:
     return REPO_ROOT / "stack_orchestrator" / "data" / "stacks" / stack_name
 
 
-def prepare_spec(src: Path, dst: Path) -> None:
+def prepare_spec(src: Path, dst: Path, replacements: dict[str, str] | None = None) -> None:
     shutil.copy2(src, dst)
 
     content = dst.read_text()
@@ -43,6 +49,10 @@ def prepare_spec(src: Path, dst: Path) -> None:
         content,
         flags=re.MULTILINE,
     )
+    # Apply any additional placeholder replacements
+    if replacements:
+        for placeholder, value in replacements.items():
+            content = content.replace(placeholder, value)
     dst.write_text(content)
 
 
@@ -74,6 +84,50 @@ def prefetch_deployer_image(cluster_name: str = "hyperlane-e2e") -> None:
     log_info("Deployer image loaded into kind cluster")
 
 
+def build_kms_proxy_image(cluster_name: str = "hyperlane-e2e") -> None:
+    """Build the kms-proxy image from source and load it into the kind cluster."""
+    kms_proxy_dir = REPO_ROOT / "hyperlane-kms-proxy"
+    log_info(f"Building kms-proxy image from {kms_proxy_dir}...")
+    run_cmd(["docker", "build", "-t", KMS_PROXY_IMAGE, str(kms_proxy_dir)])
+
+    log_info(f"Loading kms-proxy image into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", KMS_PROXY_IMAGE, "--name", cluster_name])
+
+    log_info("KMS proxy image built and loaded into kind cluster")
+
+
+def build_agent_image(stack_name: str = "hyperlane-validator", cluster_name: str = "hyperlane-e2e") -> None:
+    """Build the patched hyperlane-agent image via laconic-so and load into kind.
+
+    Uses setup-repositories to clone the monorepo at the pinned commit, then
+    build-containers to run the Dockerfile with the KMS endpoint patch.
+    """
+    stack_path = resolve_stack_path(stack_name)
+
+    log_info("Setting up repositories for agent build...")
+    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories"])
+
+    log_info("Building agent and kms-proxy container images...")
+    run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
+
+    for image in (VALIDATOR_IMAGE, KMS_PROXY_IMAGE):
+        log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
+        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+
+    log_info("Agent and kms-proxy images built and loaded into kind cluster")
+
+
+def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull public images needed by the validator pod and load into kind."""
+    log_info(f"Pulling {KUBECTL_IMAGE}...")
+    run_cmd(["docker", "pull", KUBECTL_IMAGE])
+
+    log_info(f"Loading {KUBECTL_IMAGE} into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", KUBECTL_IMAGE, "--name", cluster_name])
+
+    log_info("Validator support images loaded into kind cluster")
+
+
 # ---------------------------------------------------------------------------
 # Deploy lifecycle
 # ---------------------------------------------------------------------------
@@ -81,7 +135,8 @@ def deploy_prepare(
     stack_name: str,
     spec_file: Path,
     deploy_dir: Path | None = None,
-    cluster_id: str | None = None,
+    namespace: str | None = None,
+    spec_replacements: dict[str, str] | None = None,
 ) -> DeploymentInfo:
     if deploy_dir is None:
         deploy_dir = DEPLOY_DIR / stack_name
@@ -112,8 +167,8 @@ def deploy_prepare(
         ]
     )
 
-    # Overwrite with our pre-configured test spec (resolving stack path)
-    prepare_spec(spec_file, init_spec)
+    # Overwrite with our pre-configured test spec (resolving stack path + placeholders)
+    prepare_spec(spec_file, init_spec, replacements=spec_replacements)
 
     # Create deployment directory from spec
     log_info("Running deploy create...")
@@ -131,24 +186,19 @@ def deploy_prepare(
         ]
     )
 
-    # Patch cluster-id in deployment.yml AFTER deploy create.
-    # deploy create generates a random cluster-id, but SO uses it to construct
-    # the kube context as "kind-{cluster-id}". We must set it to the actual
-    # Kind cluster name so that --skip-cluster-management works (SO won't
-    # discover the cluster itself when that flag is set).
-    resolved_cluster_id = cluster_id or KIND_CLUSTER_NAME
-    deployment_yml = deploy_dir / "deployment.yml"
-    log_info(f"Patching cluster-id to {resolved_cluster_id} in {deployment_yml}...")
-    patch_cluster_id(deployment_yml, resolved_cluster_id)
+    # Each stack keeps its auto-generated cluster-id for unique k8s resource
+    # names (Deployment, Service, PVC, etc.). The spec's namespace and
+    # kind-cluster-name fields tell SO which namespace to deploy into and
+    # which kube context to use.
+    cluster_id = get_cluster_id(deploy_dir)
+    resolved_namespace = namespace or f"laconic-{cluster_id}"
 
-    namespace = f"laconic-{resolved_cluster_id}"
-
-    log_info(f"Stack '{stack_name}' prepared — cluster-id: {resolved_cluster_id}, namespace: {namespace}")
+    log_info(f"Stack '{stack_name}' prepared — cluster-id: {cluster_id}, namespace: {resolved_namespace}")
 
     return DeploymentInfo(
         deploy_dir=deploy_dir,
-        cluster_id=resolved_cluster_id,
-        namespace=namespace,
+        cluster_id=cluster_id,
+        namespace=resolved_namespace,
     )
 
 
@@ -165,9 +215,12 @@ def deploy_stack(
     stack_name: str,
     spec_file: Path,
     deploy_dir: Path | None = None,
-    cluster_id: str | None = None,
+    namespace: str | None = None,
+    spec_replacements: dict[str, str] | None = None,
 ) -> DeploymentInfo:
-    info = deploy_prepare(stack_name, spec_file, deploy_dir, cluster_id)
+    info = deploy_prepare(
+        stack_name, spec_file, deploy_dir, namespace, spec_replacements
+    )
     deploy_start(info.deploy_dir)
     return info
 
@@ -213,16 +266,3 @@ def get_cluster_id(deploy_dir: Path) -> str:
     return match.group(1)
 
 
-def patch_cluster_id(file_path: Path, cluster_id: str) -> None:
-    if not file_path.is_file():
-        fail_exit(f"Cannot patch cluster-id: file not found: {file_path}")
-
-    content = file_path.read_text()
-
-    if "cluster-id:" in content:
-        content = re.sub(r"cluster-id:.*", f"cluster-id: {cluster_id}", content)
-    else:
-        content += f"\ncluster-id: {cluster_id}\n"
-
-    file_path.write_text(content)
-    log_info(f"Patched cluster-id to {cluster_id} in {file_path}")

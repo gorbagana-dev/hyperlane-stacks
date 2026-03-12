@@ -2,6 +2,8 @@
 # Prometheus, Grafana, pushgateway, and balance monitoring.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
+namespace: laconic-hyperlane
+kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
@@ -16,8 +18,16 @@ network:
     grafana:
       - "3000"
 volumes:
-  prometheus-data: 10Gi
-  grafana-data: 2Gi
+  prometheus-data:
+  grafana-data:
+resources:
+  volumes:
+    prometheus-data:
+      reservations:
+        storage: 10Gi
+    grafana-data:
+      reservations:
+        storage: 2Gi
 configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config

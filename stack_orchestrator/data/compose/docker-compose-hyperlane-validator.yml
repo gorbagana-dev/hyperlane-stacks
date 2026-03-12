@@ -1,38 +1,47 @@
 services:
+  agent-config-init:
+    image: bitnami/kubectl:latest
+    user: "0"
+    labels:
+      laconic.init-container: "true"
+    entrypoint:
+      - /bin/sh
+    command:
+      - -c
+      - |
+        echo "Fetching agent-config from ConfigMap..."
+        kubectl get configmap hyperlane-agent-config \
+          -o jsonpath='{.data.agent-config\.json}' > /config/agent-config.json
+        echo "agent-config.json written ($(wc -c < /config/agent-config.json) bytes)"
+    volumes:
+      - agent-config:/config
+
   validator:
-    # TODO: verify agents-v2.0.0 is compatible with Solana SDK v3.x programs
-    image: gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0
+    image: git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest
+    user: "0"
     restart: unless-stopped
     hostname: validator
-    command:
-      - validator
-      - --origin-chain-name
-      - ${ORIGIN_CHAIN_NAME}
-      - --db
-      - /data/validator
-      - --checkpointSyncer.type
-      - s3
-      - --checkpointSyncer.bucket
-      - ${CHECKPOINT_BUCKET}
-      - --checkpointSyncer.region
-      - us-east-1
-      - --validator.type
-      - aws
-      - --validator.id
-      - ${PRIVY_WALLET_ID}
-      - --validator.region
-      - us-east-1
-      - --metricsPort
-      - "9090"
     environment:
+      # Hyperlane agent config (HYP_ prefix, _ separator)
+      HYP_ORIGINCHAINNAME: ${ORIGIN_CHAIN_NAME}
+      HYP_DB: /data/validator
+      HYP_CHECKPOINTSYNCER_TYPE: s3
+      HYP_CHECKPOINTSYNCER_BUCKET: ${CHECKPOINT_BUCKET}
+      HYP_CHECKPOINTSYNCER_REGION: us-east-1
+      HYP_VALIDATOR_TYPE: aws
+      HYP_VALIDATOR_ID: ${PRIVY_WALLET_ID}
+      HYP_VALIDATOR_REGION: us-east-1
+      HYP_METRICSPORT: "9090"
+      CONFIG_FILES: /config/agent-config.json
       # KMS proxy sidecar for Privy signing (same pod = localhost)
       AWS_ENDPOINT_URL_KMS: "http://localhost:9999"
       # MinIO for checkpoint storage (cross-stack, k8s service DNS)
       AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
       AWS_REGION: us-east-1
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
-      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-      CONFIG_FILES: /config/agent-config.json
+      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — MinIO credentials
+      # HYP_DEFAULTSIGNER_KEY — chain signer for announce tx (hot ed25519 hex key,
+      #   separate from KMS validator key; only HexKey type supported for SVM)
     volumes:
       - agent-config:/config:ro
       - validator-data:/data
@@ -46,12 +55,11 @@ services:
       start_period: 30s
 
   kms-proxy:
-    # TODO: use git.vdb.to/laconic/hyperlane-kms-proxy:tag once CI publish workflows are set up
-    image: laconic/hyperlane-kms-proxy:local
+    image: git.vdb.to/laconicnetwork/laconic/hyperlane-kms-proxy:latest
     restart: unless-stopped
     hostname: kms-proxy
     environment:
-      KMS_PROXY_PORT: "9999"
+      LISTEN_ADDR: ":9999"
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_WALLET_ID
     ports:
@@ -64,7 +72,9 @@ services:
       start_period: 5s
 
 volumes:
-  # Config volume — becomes ConfigMap in k8s (contains "config" in name)
+  # Agent config volume — PVC shared between init container (writer) and
+  # validator (reader). The init container fetches the real agent-config
+  # from the ConfigMap created by the deployer job.
   agent-config:
-  # Data volume — becomes PVC in k8s
+  # Data volume — PVC for validator checkpoint DB
   validator-data:

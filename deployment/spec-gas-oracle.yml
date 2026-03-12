@@ -2,6 +2,8 @@
 # Periodically updates IGP gas oracle configurations on both chains.
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
+namespace: laconic-hyperlane
+kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"

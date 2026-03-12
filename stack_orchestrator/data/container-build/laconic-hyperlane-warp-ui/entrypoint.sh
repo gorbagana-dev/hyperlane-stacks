@@ -10,7 +10,7 @@ find /app/.next -type f \( -name '*.js' -o -name '*.json' \) -exec sed -i \
   -e "s|__GORCHAIN_DOMAIN_ID__|${GORCHAIN_DOMAIN_ID:-0}|g" \
   -e "s|__SOLANA_DOMAIN_ID__|${SOLANA_DOMAIN_ID:-0}|g" \
   -e "s|__GORCHAIN_CHAIN_NAME__|${GORCHAIN_CHAIN_NAME:-gorchain}|g" \
-  -e "s|__SOLANA_CHAIN_NAME__|${SOLANA_CHAIN_NAME:-solanatestnet}|g" \
+  -e "s|__SOLANA_CHAIN_NAME__|${SOLANA_CHAIN_NAME:-solana}|g" \
   -e "s|__GORCHAIN_CHAIN_ID__|${GORCHAIN_CHAIN_ID:-0}|g" \
   -e "s|__SOLANA_CHAIN_ID__|${SOLANA_CHAIN_ID:-0}|g" \
   -e "s|__WARP_COLLATERAL_ADDRESS__|${WARP_COLLATERAL_ADDRESS:-}|g" \

@@ -1,12 +1,14 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
 network:
   ports:
     minio:
       - "9000"
       - "9001"
 volumes:
-  minio-data: 1Gi
+  minio-data:
 secrets:
   hyperlane-minio-secrets:
     - MINIO_ROOT_USER

@@ -5,4 +5,4 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 docker build -t laconic/hyperlane-kms-proxy:local \
   ${build_command_args} \
-  ${CERC_REPO_BASE_DIR}/hyperlane-stacks/hyperlane-kms-proxy
+  ${SCRIPT_DIR}/../../../../hyperlane-kms-proxy
