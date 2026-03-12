@@ -167,8 +167,9 @@ Single parameterized compose file. All chain-specific values come from env vars 
 
 | Service | Image | Notes |
 |---------|-------|-------|
-| validator | `gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0` | CLI args from env vars, metrics on :9090 |
-| kms-proxy | `laconic/hyperlane-kms-proxy:local` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
+| agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
+| validator | `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest` | CLI args from env vars, metrics on :9090 |
+| kms-proxy | `git.vdb.to/laconicnetwork/laconic/hyperlane-kms-proxy:latest` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
 
 Validator command uses env vars for all chain-specific args:
 - `--origin-chain-name ${ORIGIN_CHAIN_NAME}`
@@ -180,11 +181,12 @@ MinIO endpoint uses the static hostname `hyperlane-minio` — a k8s Service with
 ### Config (spec.yml)
 - `ORIGIN_CHAIN_NAME` — chain name (e.g., `gorchain` or `solana`), set per deployment
 - `CHECKPOINT_BUCKET` — S3 bucket name, set per deployment
-- `MINIO_ACCESS_KEY` — MinIO access key
+- `PRIVY_WALLET_ID` — Privy wallet ID (varies per chain deployment)
 
 ### Secrets (injected separately)
-- `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_WALLET_ID` — wallet ID varies per chain deployment
-- `MINIO_SECRET_KEY` — MinIO secret key
+- `PRIVY_APP_ID`, `PRIVY_APP_SECRET` — Privy API credentials for KMS proxy
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — MinIO credentials for checkpoint storage
+- `HYP_DEFAULTSIGNER_KEY` — ed25519 hex key for on-chain announce tx (hot key, separate from KMS validator key)
 
 ### Compose Environment (hardcoded in compose, not in spec)
 - `AWS_ENDPOINT_URL_KMS=http://localhost:9999` — routes to sidecar
@@ -216,8 +218,9 @@ Delivers cross-chain messages between Gorchain and Solana. Includes an IGP fee c
 
 | Service | Image | Notes |
 |---------|-------|-------|
-| relayer | `gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
-| igp-fee-claim | `laconic/hyperlane-svm-deployer:local` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
+| agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
+| relayer | `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
+| igp-fee-claim | `git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
 
 ### IGP Fee Claim Sidecar
 Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fees.sh`. Mounted as ConfigMap volume. Claims accumulated IGP fees on both chains using the relayer key for tx fees (permissionless operation).
@@ -225,12 +228,13 @@ Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fee
 ### Config (spec.yml)
 - `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`
 - `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID` — for igp-fee-claim sidecar
-- `MINIO_ACCESS_KEY`
+- `GORCHAIN_IGP_ACCOUNT`, `SOLANA_IGP_ACCOUNT` — IGP account addresses for fee claims
 
 ### Secrets (injected separately)
-- `RELAYER_KEY` — hex private key for signing
-- `RELAYER_KEYPAIR_JSON` — Solana keypair for igp-fee-claim
-- `MINIO_SECRET_KEY`
+- `HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
+- `HYP_BASE_CHAINS_SOLANA_SIGNER_KEY` — hex ed25519 key for Solana delivery txs
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — MinIO credentials for reading checkpoints
+- `RELAYER_KEYPAIR_JSON` — Solana keypair JSON (byte array) for igp-fee-claim
 
 ### Compose Environment (hardcoded in compose)
 - `HYP_BASE_GASPAYMENTENFORCEMENT='[{"type": "none"}]'` — disabled (Sealevel returns hardcoded zeros)

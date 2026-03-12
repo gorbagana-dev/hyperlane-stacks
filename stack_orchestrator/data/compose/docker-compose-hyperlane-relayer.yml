@@ -1,10 +1,27 @@
 services:
+  agent-config-init:
+    image: bitnami/kubectl:latest
+    user: "0"
+    labels:
+      laconic.init-container: "true"
+    entrypoint:
+      - /bin/sh
+    command:
+      - -c
+      - |
+        echo "Fetching agent-config from ConfigMap..."
+        kubectl get configmap hyperlane-agent-config \
+          -o jsonpath='{.data.agent-config\.json}' > /config/agent-config.json
+        echo "agent-config.json written ($(wc -c < /config/agent-config.json) bytes)"
+    volumes:
+      - agent-config:/config
+
   relayer:
     image: git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest
     restart: unless-stopped
     hostname: relayer
     command:
-      - relayer
+      - ./relayer
       - --db
       - /data/relayer
       - --relayChains
@@ -19,7 +36,7 @@ services:
       # hardcoded zeros, making OnChainFeeQuoting non-functional
       HYP_BASE_GASPAYMENTENFORCEMENT: '[{"type": "none"}]'
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
-      # HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY, HYP_BASE_CHAINS_SOLANATESTNET_SIGNER_KEY
+      # HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY, HYP_BASE_CHAINS_SOLANA_SIGNER_KEY
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
       # MinIO for reading validator checkpoints
       AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
@@ -46,6 +63,8 @@ services:
       SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_IGP_PROGRAM_ID: ${GORCHAIN_IGP_PROGRAM_ID}
       SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
+      GORCHAIN_IGP_ACCOUNT: ${GORCHAIN_IGP_ACCOUNT}
+      SOLANA_IGP_ACCOUNT: ${SOLANA_IGP_ACCOUNT}
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # RELAYER_KEYPAIR_JSON
     volumes:

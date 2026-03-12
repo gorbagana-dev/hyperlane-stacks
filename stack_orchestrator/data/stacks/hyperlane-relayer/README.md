@@ -25,12 +25,14 @@ config:
   SOLANA_RPC_URL: "https://solana-rpc.example.com"
   GORCHAIN_IGP_PROGRAM_ID: "<program-id>"
   SOLANA_IGP_PROGRAM_ID: "<program-id>"
+  GORCHAIN_IGP_ACCOUNT: "<igp-account-address>"
+  SOLANA_IGP_ACCOUNT: "<igp-account-address>"
 configmaps:
-  agent-config: ./configmaps/agent-config
+  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
 secrets:
   hyperlane-relayer-secrets:
     - HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY
-    - HYP_BASE_CHAINS_SOLANATESTNET_SIGNER_KEY
+    - HYP_BASE_CHAINS_SOLANA_SIGNER_KEY
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
     - RELAYER_KEYPAIR_JSON
@@ -43,9 +45,17 @@ laconic-so --stack hyperlane-relayer deploy create --spec-file relayer-spec.yml 
 ## 2. Create secrets
 
 ```bash
+# Generate relayer chain signer keys (ed25519 seed as 32-byte hex).
+# These are HOT keys used for message delivery transactions.
+# For SVM chains, derive the Solana address and fund it with SOL:
+#   solana-keygen new -o relayer-signer.json
+#   solana-keygen pubkey relayer-signer.json  # fund this address on both chains
+#   python3 -c "import json; print('0x' + bytes(json.load(open('relayer-signer.json'))[:32]).hex())"
+#   # use the hex output as signer key
+
 kubectl create secret generic hyperlane-relayer-secrets \
   --from-literal=HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY='0x<hex-key>' \
-  --from-literal=HYP_BASE_CHAINS_SOLANATESTNET_SIGNER_KEY='0x<hex-key>' \
+  --from-literal=HYP_BASE_CHAINS_SOLANA_SIGNER_KEY='0x<hex-key>' \
   --from-literal=AWS_ACCESS_KEY_ID='<minio-access-key>' \
   --from-literal=AWS_SECRET_ACCESS_KEY='<minio-secret-key>' \
   --from-literal=RELAYER_KEYPAIR_JSON='[<byte array>]'
@@ -53,11 +63,11 @@ kubectl create secret generic hyperlane-relayer-secrets \
 
 | Secret key | Description |
 |---|---|
-| `HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY` | Hex private key for signing Gorchain transactions |
-| `HYP_BASE_CHAINS_SOLANATESTNET_SIGNER_KEY` | Hex private key for signing Solana transactions |
+| `HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY` | Hex private key for signing Gorchain delivery transactions |
+| `HYP_BASE_CHAINS_SOLANA_SIGNER_KEY` | Hex private key for signing Solana delivery transactions |
 | `AWS_ACCESS_KEY_ID` | MinIO access key for reading validator checkpoints |
 | `AWS_SECRET_ACCESS_KEY` | MinIO secret key |
-| `RELAYER_KEYPAIR_JSON` | Solana keypair JSON for IGP fee claims |
+| `RELAYER_KEYPAIR_JSON` | Solana keypair JSON (byte array) for IGP fee claims |
 
 ## 3. Start
 

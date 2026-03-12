@@ -20,16 +20,13 @@ SOLCFG
 
 echo "IGP fee claim sidecar starting (interval: 6h)..."
 while true; do
-  # TODO: UNVERIFIED — `igp claim` args have NOT been confirmed against
-  # `hyperlane-sealevel-client igp claim --help`. The --program-id flag is
-  # likely correct, but verify before production use.
-
   echo "[$(date -u)] Claiming IGP fees on Gorchain..."
   hyperlane-sealevel-client \
     --url "$GORCHAIN_RPC_URL" \
     --keypair "${RELAYER_KEY_FILE}" \
     igp claim \
-    --program-id "$GORCHAIN_IGP_PROGRAM_ID" || \
+    --program-id "$GORCHAIN_IGP_PROGRAM_ID" \
+    --igp-account "$GORCHAIN_IGP_ACCOUNT" || \
     echo "Warning: Gorchain fee claim failed"
 
   echo "[$(date -u)] Claiming IGP fees on Solana..."
@@ -37,7 +34,8 @@ while true; do
     --url "$SOLANA_RPC_URL" \
     --keypair "${RELAYER_KEY_FILE}" \
     igp claim \
-    --program-id "$SOLANA_IGP_PROGRAM_ID" || \
+    --program-id "$SOLANA_IGP_PROGRAM_ID" \
+    --igp-account "$SOLANA_IGP_ACCOUNT" || \
     echo "Warning: Solana fee claim failed"
 
   echo "[$(date -u)] Fee claim cycle complete. Sleeping 6h..."

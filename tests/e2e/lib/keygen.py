@@ -309,6 +309,33 @@ def create_validator_secrets(
     log_info(f"{secret_name} created")
 
 
+def create_relayer_secrets(
+    namespace: str,
+    gorchain_signer_key: str,
+    solana_signer_key: str,
+    minio_user: str,
+    minio_password: str,
+    relayer_keypair_json: str,
+) -> None:
+    """Create the hyperlane-relayer-secrets k8s Secret (idempotent)."""
+    secret_name = "hyperlane-relayer-secrets"
+    log_info(f"Creating {secret_name} in namespace {namespace}...")
+    gen = run_cmd(
+        [
+            "kubectl", "create", "secret", "generic", secret_name,
+            "-n", namespace,
+            f"--from-literal=HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY={gorchain_signer_key}",
+            f"--from-literal=HYP_BASE_CHAINS_SOLANA_SIGNER_KEY={solana_signer_key}",
+            f"--from-literal=AWS_ACCESS_KEY_ID={minio_user}",
+            f"--from-literal=AWS_SECRET_ACCESS_KEY={minio_password}",
+            f"--from-literal=RELAYER_KEYPAIR_JSON={relayer_keypair_json}",
+            "--dry-run=client", "-o", "yaml",
+        ]
+    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
+    log_info(f"{secret_name} created")
+
+
 def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> None:
     log_info(f"Creating warp deployer secrets in namespace {namespace}...")
 

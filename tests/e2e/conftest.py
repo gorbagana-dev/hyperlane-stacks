@@ -47,6 +47,7 @@ from lib.keygen import (
     _airdrop,
     create_deployer_secrets,
     create_minio_secrets,
+    create_relayer_secrets,
     create_validator_secrets,
     create_warp_deployer_secrets,
     fund_wallets,
@@ -68,6 +69,7 @@ WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
 MINIO_SPEC = E2E_DIR / "fixtures" / "test-spec-minio.yml"
 VALIDATOR_GORCHAIN_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-gorchain.yml"
 VALIDATOR_SOLANA_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-solana.yml"
+RELAYER_SPEC = E2E_DIR / "fixtures" / "test-spec-relayer.yml"
 
 PRIVY_MOCK_PORT = 19876
 
@@ -120,6 +122,24 @@ class ValidatorInfo:
         return self.deployment.deploy_dir
 
 
+@dataclasses.dataclass
+class RelayerInfo:
+    """Relayer deployment info."""
+    deployment: DeploymentInfo
+
+    @property
+    def namespace(self) -> str:
+        return self.deployment.namespace
+
+    @property
+    def cluster_id(self) -> str:
+        return self.deployment.cluster_id
+
+    @property
+    def deploy_dir(self) -> Path:
+        return self.deployment.deploy_dir
+
+
 # ---------------------------------------------------------------------------
 # Custom CLI options
 # ---------------------------------------------------------------------------
@@ -152,6 +172,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--skip-validator-deploy", action="store_true", default=False,
         help="Skip validator deployment (reuse existing from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
+        "--skip-relayer-deploy", action="store_true", default=False,
+        help="Skip relayer deployment (reuse existing from a previous --skip-cleanup run)"
     )
 
 
@@ -686,3 +710,116 @@ def validator_solana(
         deployer=deployer_deployment,
         request=request,
     )
+
+
+# ---------------------------------------------------------------------------
+# Relayer deployment
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def relayer_deployment(
+    deployer_deployment: DeploymentInfo,
+    minio_deployment: MinioInfo,
+    validator_images: None,
+    kind_cluster: None,
+    request: pytest.FixtureRequest,
+) -> Generator[RelayerInfo, None, None]:
+    """Deploy the hyperlane-relayer stack."""
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_relayer = request.config.getoption("--skip-relayer-deploy", default=False)
+    namespace = E2E_NAMESPACE
+
+    if skip_relayer:
+        deploy_dir = DEPLOY_DIR / "hyperlane-relayer"
+        cluster_id = get_cluster_id(deploy_dir)
+        log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
+        yield RelayerInfo(
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+        )
+        return
+
+    # Generate and fund chain signer keys for gorchain and solana
+    gorchain_signer_key, gorchain_signer_addr = generate_chain_signer(
+        KEYS_DIR, name="relayer-gorchain-signer",
+    )
+    log.info("Funding relayer gorchain signer %s...", gorchain_signer_addr)
+    _airdrop(1, gorchain_signer_addr, "http://localhost:8899", "relayer gorchain signer")
+
+    solana_signer_key, solana_signer_addr = generate_chain_signer(
+        KEYS_DIR, name="relayer-solana-signer",
+    )
+    log.info("Funding relayer solana signer %s...", solana_signer_addr)
+    _airdrop(1, solana_signer_addr, "http://localhost:18899", "relayer solana signer")
+
+    # Generate and fund a relayer keypair for IGP fee claims
+    _, fee_claim_addr = generate_chain_signer(
+        KEYS_DIR, name="relayer-fee-claim",
+    )
+    log.info("Funding relayer fee claim key %s on both chains...", fee_claim_addr)
+    _airdrop(1, fee_claim_addr, "http://localhost:8899", "relayer fee claim (gorchain)")
+    _airdrop(1, fee_claim_addr, "http://localhost:18899", "relayer fee claim (solana)")
+    relayer_keypair_json = (KEYS_DIR / "relayer-fee-claim.json").read_text().strip()
+
+    # Read IGP program IDs and accounts from the deployer ConfigMap
+    for chain in ("gorchain", "solana"):
+        program_ids = get_configmap_json(namespace, "hyperlane-program-ids", f"{chain}-program-ids.json")
+        if chain == "gorchain":
+            gorchain_igp_program_id = program_ids["igp_program_id"]
+            gorchain_igp_account = program_ids["igp_account"]
+        else:
+            solana_igp_program_id = program_ids["igp_program_id"]
+            solana_igp_account = program_ids["igp_account"]
+
+    # Create relayer secrets
+    log.info("Creating relayer secrets...")
+    create_relayer_secrets(
+        namespace,
+        gorchain_signer_key=gorchain_signer_key,
+        solana_signer_key=solana_signer_key,
+        minio_user=minio_deployment.user,
+        minio_password=minio_deployment.password,
+        relayer_keypair_json=relayer_keypair_json,
+    )
+
+    # Patch the spec with actual IGP values
+    content = RELAYER_SPEC.read_text()
+    content = content.replace(
+        'GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"',
+        f'GORCHAIN_IGP_PROGRAM_ID: "{gorchain_igp_program_id}"',
+    )
+    content = content.replace(
+        'SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"',
+        f'SOLANA_IGP_PROGRAM_ID: "{solana_igp_program_id}"',
+    )
+    content = content.replace(
+        'GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"',
+        f'GORCHAIN_IGP_ACCOUNT: "{gorchain_igp_account}"',
+    )
+    content = content.replace(
+        'SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"',
+        f'SOLANA_IGP_ACCOUNT: "{solana_igp_account}"',
+    )
+    patched_path = E2E_DIR / ".relayer-spec-patched.yml"
+    patched_path.write_text(content)
+
+    log.info("Preparing relayer stack...")
+    deploy_info = deploy_prepare(
+        "hyperlane-relayer", patched_path,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
+    )
+
+    log.info("Starting relayer stack...")
+    deploy_start(deploy_info.deploy_dir)
+
+    log.info("Waiting for relayer pod to be running...")
+    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180)
+    log.info("Relayer is running")
+
+    yield RelayerInfo(deployment=deploy_info)
+
+    patched_path.unlink(missing_ok=True)
+    if not skip_cleanup:
+        log.info("Stopping relayer stack...")
+        stop_stack("hyperlane-relayer")

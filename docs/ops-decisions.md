@@ -8,9 +8,9 @@ Decisions on how the stacks should accommodate the maintenance operations from t
 
 ### IGP Fee Claiming
 
-**Decision:** Automated CronJob.
+**Decision:** Automated long-running sidecar.
 
-An IGP fee claim sidecar in the `hyperlane-relayer` stack periodically claims accumulated IGP fees to the beneficiary address on both chains. The `claim` instruction is permissionless — anyone can call it, but funds always go to the pre-configured beneficiary. The sidecar only needs a funded account to pay transaction fees (the relayer key works for this).
+An IGP fee claim sidecar in the `hyperlane-relayer` stack periodically claims accumulated IGP fees to the beneficiary address on both chains. It runs as a long-running container with a 6-hour sleep loop (not a CronJob). The `claim` instruction is permissionless — anyone can call it, but funds always go to the pre-configured beneficiary. The sidecar only needs a funded account to pay transaction fees (the relayer key works for this).
 
 ### Gas Oracle + Destination Gas Overhead
 

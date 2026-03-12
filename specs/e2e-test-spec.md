@@ -373,7 +373,8 @@ tests/
 │       ├── test-spec-warp-deployer.yml  # Warp deployer test spec
 │       ├── test-spec-minio.yml       # MinIO test spec
 │       ├── test-spec-validator-gorchain.yml  # Validator (Gorchain) test spec
-│       └── test-spec-validator-solana.yml    # Validator (Solana) test spec
+│       ├── test-spec-validator-solana.yml    # Validator (Solana) test spec
+│       └── test-spec-relayer.yml            # Relayer test spec
 ```
 
 ## Phase 1: Deploy + Health
@@ -402,9 +403,10 @@ tests/
 12. Build container images (or verify cached):
     - laconic/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
     - laconic/hyperlane-kms-proxy:local (real KMS proxy, from hyperlane-kms-proxy/)
+    - laconic/hyperlane-agent:local (patched agent, from hyperlane-monorepo + patches)
     - laconic/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
     - laconic/hyperlane-warp-ui:local (from hyperlane-warp-ui source)
-    - minio/minio, gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0 (pulled)
+    - minio/minio (pulled)
 13. Load images into kind cluster:
     kind load docker-image <image> --name hyperlane-e2e
 14. Deploy stacks in order:
@@ -496,9 +498,9 @@ validator starts.
 1. Create `hyperlane-validator-{chain}-secrets` k8s Secret:
    - `PRIVY_APP_ID` — test value (e.g. `"test-app-id"`)
    - `PRIVY_APP_SECRET` — test value (e.g. `"test-app-secret"`)
-   - `PRIVY_WALLET_ID` — unique per chain (e.g. `"wallet-gorchain-001"`, `"wallet-solana-001"`)
    - `AWS_ACCESS_KEY_ID` — MinIO credentials (same as `MINIO_ROOT_USER`)
    - `AWS_SECRET_ACCESS_KEY` — MinIO credentials (same as `MINIO_ROOT_PASSWORD`)
+   - `HYP_DEFAULTSIGNER_KEY` — ed25519 hex key for on-chain announce tx (fund derived address)
 2. Deploy using `test-spec-validator-{chain}.yml` fixture
 3. Start deployment, wait for pod Running phase
 
@@ -514,10 +516,83 @@ validator starts.
 
 **Assertion approach:** `kubectl port-forward` for metrics/health checks, `mc` CLI (via docker) for MinIO bucket inspection, `kubectl logs` for log analysis, `hyperlane-sealevel-client` (via docker + `run_deployer_cli()`) for message dispatch
 
-**hyperlane-relayer:**
-- Pod phase = Running
-- Relayer container running
-- Metrics endpoint responds on :9091
+**hyperlane-relayer** (`test_relayer.py`):
+
+Two containers in the pod: the relayer agent and an IGP fee claim sidecar. The relayer
+reads validator checkpoints from MinIO, fetches agent-config via an init container
+(same pattern as validators), and delivers cross-chain messages.
+
+Prerequisites:
+- MinIO deployed and initialized (relayer reads validator checkpoints from S3)
+- Core deployer completed (creates `hyperlane-agent-config` ConfigMap)
+- Both validators deployed and signing (relayer needs checkpoints to verify messages)
+
+**Agent-config ConfigMap consumption:**
+
+Same init container pattern as the validator: a kubectl init container
+(labelled `laconic.init-container: "true"`) fetches the real `hyperlane-agent-config`
+ConfigMap and writes it to a shared PVC (`agent-config`) before the relayer starts.
+
+**Setup:**
+
+1. Generate relayer chain signer keys (ed25519 seed as hex, same format as validator
+   chain signer HYP_DEFAULTSIGNER_KEY). The relayer needs a funded signer on each chain
+   for delivery transactions.
+2. Create `hyperlane-relayer-secrets` k8s Secret:
+   - `HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
+   - `HYP_BASE_CHAINS_SOLANA_SIGNER_KEY` — hex ed25519 key for Solana delivery txs
+   - `AWS_ACCESS_KEY_ID` — MinIO credentials (same as `MINIO_ROOT_USER`)
+   - `AWS_SECRET_ACCESS_KEY` — MinIO credentials (same as `MINIO_ROOT_PASSWORD`)
+   - `RELAYER_KEYPAIR_JSON` — Solana keypair JSON (byte array) for IGP fee claims
+3. Read IGP program IDs and account addresses from `hyperlane-program-ids` ConfigMap
+4. Deploy using `test-spec-relayer.yml` fixture
+5. Start deployment, wait for pod Running phase
+
+**Tests:**
+
+- `test_relayer_pod_running` — Pod reaches Running phase, init container completed,
+  relayer container started
+- `test_relayer_metrics_endpoint` — Port-forward relayer :9091, `GET /metrics` returns
+  Prometheus metrics text containing `hyperlane_` prefixed metrics
+- `test_relayer_agent_config_loaded` — `kubectl logs` for relayer container show
+  agent-config loaded successfully (both chain configs parsed)
+- `test_relayer_checkpoint_syncer_connected` — Logs show relayer connected to S3
+  checkpoint syncer (MinIO) and found validator announcements for both chains
+- `test_relayer_no_fatal_errors` — `kubectl logs` contain no FATAL/PANIC entries
+  within first 60s
+- `test_igp_fee_claim_sidecar_running` — IGP fee claim container started,
+  `kubectl logs` show "IGP fee claim sidecar starting"
+
+**Assertion approach:** `kubectl port-forward` for metrics, `kubectl logs` for log
+analysis. The relayer won't process any messages until Phase 3 (bridge transfer tests)
+dispatches them, so Phase 1 tests only validate infrastructure health.
+
+**Test fixture** (`tests/e2e/fixtures/test-spec-relayer.yml`):
+```yaml
+stack: stack_orchestrator/data/stacks/hyperlane-relayer
+deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
+  SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
+volumes:
+  relayer-data:
+  agent-config:
+configmaps:
+  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
+secrets:
+  hyperlane-relayer-secrets:
+    - HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY
+    - HYP_BASE_CHAINS_SOLANA_SIGNER_KEY
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - RELAYER_KEYPAIR_JSON
+```
 
 **hyperlane-gas-oracle:**
 - Pod phase = Running (or completed one cycle if run-once mode)
@@ -827,40 +902,46 @@ secrets:
 # test-spec-validator-gorchain.yml
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain
   PRIVY_API_URL: "http://privy-mock:19876"
+  PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
 volumes:
-  validator-gorchain-data: 5Gi
-  agent-config: 1Mi
+  validator-data:
+  agent-config:
 secrets:
   hyperlane-validator-gorchain-secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
-    - PRIVY_WALLET_ID
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
+    - HYP_DEFAULTSIGNER_KEY
 ```
 
 ```yaml
 # test-spec-validator-solana.yml
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana
   PRIVY_API_URL: "http://privy-mock:19876"
+  PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
 volumes:
-  validator-solana-data: 5Gi
-  agent-config: 1Mi
+  validator-data:
+  agent-config:
 secrets:
   hyperlane-validator-solana-secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
-    - PRIVY_WALLET_ID
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
+    - HYP_DEFAULTSIGNER_KEY
 ```
 
 ## Test Runner
