@@ -16,8 +16,8 @@ services:
         until mc alias set local "$${MINIO_URL}" $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} 2>/dev/null \
               && mc ls local 2>/dev/null; do
           retries=$$((retries + 1))
-          if [ "$$retries" -ge 30 ]; then
-            echo "MinIO not ready after 60s, giving up"
+          if [ "$$retries" -ge 90 ]; then
+            echo "MinIO not ready after 180s, giving up"
             exit 1
           fi
           echo "MinIO not ready yet, retrying in 2s..."

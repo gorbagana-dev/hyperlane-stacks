@@ -4,7 +4,9 @@ import logging
 import re
 import secrets
 import subprocess
+import sys
 import tempfile
+import time
 from collections.abc import Generator
 from pathlib import Path
 
@@ -27,7 +29,14 @@ from lib.cluster import (
     destroy_kind_cluster,
     install_cert_manager,
 )
-from lib.common import E2E_DIR, get_configmap_json, wait_for_job_complete, wait_for_pod_phase
+from lib.common import (
+    E2E_DIR,
+    get_configmap_data,
+    get_configmap_json,
+    run_deployer_cli,
+    wait_for_job_complete,
+    wait_for_pod_phase,
+)
 from lib.deploy import (
     DEPLOY_DIR,
     E2E_NAMESPACE,
@@ -38,6 +47,7 @@ from lib.deploy import (
     deploy_start,
     get_cluster_id,
     prefetch_deployer_image,
+    prefetch_minio_images,
     prefetch_validator_images,
     stop_stack,
 )
@@ -57,9 +67,9 @@ from lib.keygen import (
 from lib.privy_mock import (
     GORCHAIN_WALLET_ID,
     SOLANA_WALLET_ID,
-    PrivyMockServer,
     derive_h160_address,
     generate_wallet_keys,
+    is_privy_mock_running,
 )
 
 log = logging.getLogger(__name__)
@@ -324,6 +334,9 @@ def minio_deployment(
     minio_user = f"minio-{secrets.token_hex(4)}"
     minio_password = secrets.token_hex(16)
 
+    log.info("Pre-fetching MinIO images into kind cluster...")
+    prefetch_minio_images()
+
     log.info("Preparing minio stack...")
     deploy_info = deploy_prepare(
         "hyperlane-minio", MINIO_SPEC,
@@ -349,7 +362,7 @@ def minio_deployment(
 
     log.info("Waiting for minio-init job to complete...")
     job_name = f"{cluster_id}-job-hyperlane-minio-init"
-    wait_for_job_complete(namespace, job_name, timeout=120)
+    wait_for_job_complete(namespace, job_name, timeout=200)
     log.info("MinIO stack deployed and initialized")
 
     yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
@@ -569,29 +582,67 @@ def warp_deployment(
 
 
 @pytest.fixture(scope="session")
-def privy_mock(request: pytest.FixtureRequest) -> Generator[dict[str, str], None, None]:
+def privy_mock(request: pytest.FixtureRequest, keypairs: KeypairSet) -> Generator[dict[str, str], None, None]:
     """Start the mock Privy server and yield wallet_keys dict.
 
-    The server runs in a background thread for the entire test session.
+    Runs as a detached subprocess (start_new_session=True) so it survives
+    pytest exit — same pattern as chain nodes. On re-entry with
+    --skip-cleanup, detects the already-running server and reuses it.
+
     wallet_keys maps wallet_id -> private_key_hex.
     """
-    wallet_keys = generate_wallet_keys()
-
-    log.info("Starting mock Privy server on :%d...", PRIVY_MOCK_PORT)
-    server = PrivyMockServer(wallet_keys, port=PRIVY_MOCK_PORT)
-    server.start()
-    log.info(
-        "Mock Privy wallets — gorchain H160: %s, solana H160: %s",
-        derive_h160_address(wallet_keys[GORCHAIN_WALLET_ID]),
-        derive_h160_address(wallet_keys[SOLANA_WALLET_ID]),
-    )
-
-    yield wallet_keys
-
+    wallet_keys = generate_wallet_keys(keypairs)
     skip_cleanup = request.config.getoption("--skip-cleanup")
+
+    if is_privy_mock_running(PRIVY_MOCK_PORT):
+        log.info("Privy-mock already running on :%d, reusing", PRIVY_MOCK_PORT)
+        log.info(
+            "Mock Privy wallets — gorchain H160: %s, solana H160: %s",
+            derive_h160_address(wallet_keys[GORCHAIN_WALLET_ID]),
+            derive_h160_address(wallet_keys[SOLANA_WALLET_ID]),
+        )
+        yield wallet_keys
+    else:
+        log.info("Starting mock Privy server on :%d (detached subprocess)...", PRIVY_MOCK_PORT)
+        log_file = open("/tmp/privy-mock.log", "w")  # noqa: SIM115
+        proc = subprocess.Popen(
+            [
+                sys.executable, "-m", "lib.privy_mock",
+                "--keys-dir", str(keypairs.keys_dir),
+                "--port", str(PRIVY_MOCK_PORT),
+            ],
+            cwd=str(E2E_DIR),
+            start_new_session=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+        for _ in range(30):
+            if is_privy_mock_running(PRIVY_MOCK_PORT):
+                break
+            time.sleep(0.5)
+        else:
+            raise RuntimeError(
+                f"Privy-mock failed to start on :{PRIVY_MOCK_PORT} "
+                f"(pid={proc.pid}). Check /tmp/privy-mock.log"
+            )
+        log.info("Mock Privy server started (pid=%d) on :%d", proc.pid, PRIVY_MOCK_PORT)
+        log.info(
+            "Mock Privy wallets — gorchain H160: %s, solana H160: %s",
+            derive_h160_address(wallet_keys[GORCHAIN_WALLET_ID]),
+            derive_h160_address(wallet_keys[SOLANA_WALLET_ID]),
+        )
+        yield wallet_keys
+
     if not skip_cleanup:
-        log.info("Stopping mock Privy server...")
-        server.stop()
+        log.info("Stopping mock Privy server on :%d...", PRIVY_MOCK_PORT)
+        result = subprocess.run(
+            ["lsof", "-ti", f"tcp:{PRIVY_MOCK_PORT}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for pid in result.stdout.strip().split("\n"):
+                log.info("Killing privy-mock process (PID %s)", pid)
+                subprocess.run(["kill", pid], capture_output=True)
 
 
 # ---------------------------------------------------------------------------
@@ -823,3 +874,83 @@ def relayer_deployment(
     if not skip_cleanup:
         log.info("Stopping relayer stack...")
         stop_stack("hyperlane-relayer")
+
+
+# ---------------------------------------------------------------------------
+# Bridge transfer setup
+# ---------------------------------------------------------------------------
+
+
+def _get_warp_program_addresses(namespace: str) -> dict[str, str]:
+    """Fetch warp-deploy-outputs ConfigMap and return {chain: base58_address}."""
+    import json
+
+    data = get_configmap_data(namespace, "hyperlane-warp-deploy-outputs")
+    assert data, "hyperlane-warp-deploy-outputs has no data"
+
+    programs: dict[str, str] = {}
+    for _key, raw in data.items():
+        for chain_name, entry in json.loads(raw).items():
+            if entry.get("base58"):
+                programs[chain_name] = entry["base58"]
+    return programs
+
+
+def _get_synthetic_mint(warp_program: str, rpc: str) -> str:
+    """Query the synthetic warp token program and extract the mint address."""
+    result = run_deployer_cli(
+        "token", "query",
+        "--program-id", warp_program,
+        "synthetic",
+        rpc=rpc,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, f"token query synthetic failed: {output}"
+
+    # Parse "Mint / Mint Authority: <pubkey>" from the Rust output
+    match = re.search(r"Mint / Mint Authority:\s*(\w{32,44})", output)
+    if match:
+        return match.group(1)
+
+    # Fallback: look for "mint: <pubkey>"
+    match = re.search(r"\bmint:\s+(\w{32,44})", output)
+    assert match, f"Could not parse synthetic mint from output: {output[:500]}"
+    return match.group(1)
+
+
+@pytest.fixture(scope="session")
+def bridge_setup(
+    warp_deployment: dict,
+    relayer_deployment: RelayerInfo,
+    validator_gorchain: ValidatorInfo,
+    validator_solana: ValidatorInfo,
+) -> dict:
+    """Set up bridge transfer context.
+
+    Depends on all bridge infrastructure being deployed. Returns a dict with
+    warp program addresses, token mints, and sender keypair path.
+    """
+    ns = warp_deployment["namespace"]
+    token_mint = warp_deployment["token_mint"]
+    sender_keypair = str(KEYS_DIR / "deployer.json")
+
+    log.info("Resolving warp program addresses...")
+    warp_programs = _get_warp_program_addresses(ns)
+    assert "solana" in warp_programs, "No warp program for solana"
+    assert "gorchain" in warp_programs, "No warp program for gorchain"
+    log.info("Warp programs: %s", warp_programs)
+
+    log.info("Querying synthetic mint on Gorchain...")
+    synthetic_mint = _get_synthetic_mint(
+        warp_programs["gorchain"], rpc="http://localhost:8899",
+    )
+    log.info("Synthetic mint: %s", synthetic_mint)
+
+    return {
+        "namespace": ns,
+        "token_mint": token_mint,
+        "synthetic_mint": synthetic_mint,
+        "sender_keypair": sender_keypair,
+        "warp_programs": warp_programs,
+        "relayer_cluster_id": relayer_deployment.cluster_id,
+    }

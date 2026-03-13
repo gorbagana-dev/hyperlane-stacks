@@ -364,7 +364,7 @@ tests/
 │   ├── test_gas_oracle.py            # Gas oracle deploy + verify (planned)
 │   ├── test_monitoring.py            # Monitoring deploy + verify Grafana/Prometheus (planned)
 │   ├── test_warp_ui.py               # Warp UI deploy + verify TLS ingress (planned)
-│   ├── test_transfer.py              # Cross-chain warp route transfers (planned)
+│   ├── test_bridge.py                # Cross-chain warp route transfers (Phase 3)
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
@@ -539,8 +539,8 @@ ConfigMap and writes it to a shared PVC (`agent-config`) before the relayer star
    chain signer HYP_DEFAULTSIGNER_KEY). The relayer needs a funded signer on each chain
    for delivery transactions.
 2. Create `hyperlane-relayer-secrets` k8s Secret:
-   - `HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
-   - `HYP_BASE_CHAINS_SOLANA_SIGNER_KEY` — hex ed25519 key for Solana delivery txs
+   - `HYP_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
+   - `HYP_CHAINS_SOLANA_SIGNER_KEY` — hex ed25519 key for Solana delivery txs
    - `AWS_ACCESS_KEY_ID` — MinIO credentials (same as `MINIO_ROOT_USER`)
    - `AWS_SECRET_ACCESS_KEY` — MinIO credentials (same as `MINIO_ROOT_PASSWORD`)
    - `RELAYER_KEYPAIR_JSON` — Solana keypair JSON (byte array) for IGP fee claims
@@ -587,8 +587,8 @@ configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
 secrets:
   hyperlane-relayer-secrets:
-    - HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY
-    - HYP_BASE_CHAINS_SOLANA_SIGNER_KEY
+    - HYP_CHAINS_GORCHAIN_SIGNER_KEY
+    - HYP_CHAINS_SOLANA_SIGNER_KEY
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
     - RELAYER_KEYPAIR_JSON
@@ -641,48 +641,188 @@ Tests are Python/pytest modules (not shell scripts). See `tests/e2e/` for implem
 
 ## Phase 3: Full Bridge Transfer
 
-Runs after Phase 2. Executes actual cross-chain warp route transfers.
+Runs after Phase 2. Executes actual cross-chain warp route transfers using the
+deployed warp routes (collateral USDC on Solana ↔ synthetic gUSDC on Gorchain).
 
-### Setup
-- The warp deployer has already deployed the warp route with the USDC token mint (created during Phase 1, step 13b)
-- Create and fund test sender wallets on both chains (`solana airdrop`)
-- Create token account for the TEST SENDER wallet (not the deployer) and mint test supply:
-  ```bash
-  # Create token account for the test sender wallet
-  spl-token create-account <mint-address> --url http://localhost:18899 --owner <sender-keypair>
-  # Mint test USDC to the sender (1,000,000 USDC = 1,000,000,000,000 base units with 6 decimals)
-  spl-token mint <mint-address> 1000000 --url http://localhost:18899 -- <sender-token-account>
-  ```
-- Transfer directions:
-  - **Solana -> Gorchain**: Locks collateral USDC on Solana, mints synthetic USDC on Gorchain
-  - **Gorchain -> Solana**: Burns synthetic USDC on Gorchain, unlocks collateral USDC on Solana
+### Prerequisites
 
-### Tests
+All of these must be running/completed before bridge transfer tests:
 
-**test_transfer.py::test_transfer_sol2gor (Solana → Gorchain):**
-1. Record initial balances:
-   - Source wallet USDC balance on Solana
-   - Destination wallet gUSDC balance on Gorchain
-2. Execute warp transfer:
-   - Call collateral warp route `transfer_remote` on Solana
-   - Amount: 1,000,000 (1 USDC, 6 decimals)
-   - Pay IGP fee
-3. Wait for relay (poll destination balance, timeout 120s)
-4. Assert:
-   - Source USDC balance decreased by 1,000,000
-   - Destination gUSDC balance increased by 1,000,000
-   - Relayer metrics show 1 message processed
+- Core deployer completed (mailbox, ISM, IGP programs deployed and configured)
+- Warp deployer completed (warp route programs deployed, remote routers configured)
+- MinIO running (validator checkpoint storage)
+- Both validators running and signing checkpoints
+- Relayer running and connected to validator checkpoints
+- ISM configured with correct validator addresses (so relayer can verify signatures)
+- IGP configured with gas oracle (so transfers can pay for gas)
 
-**test_transfer.py::test_transfer_gor2sol (Gorchain → Solana):**
-1. Same pattern in reverse direction
-2. Burn gUSDC on Gorchain, receive USDC on Solana
-3. Assert balances updated correctly
+### Fixture: `bridge_setup` (conftest.py)
 
-**test_transfer.py::test_relay_metrics:**
-- Query relayer prometheus metrics
-- `hyperlane_messages_processed_total` > 0
-- No `hyperlane_messages_failed_total` (or = 0)
-- Validator checkpoint index advanced
+Session-scoped fixture that depends on `warp_deployment`, `relayer_deployment`,
+`validator_gorchain`, and `validator_solana`. Sets up the sender wallet and token
+accounts needed for transfers.
+
+**Setup steps:**
+
+1. **Recover warp program addresses** from `hyperlane-warp-deploy-outputs` ConfigMap
+   (same helper as `test_warp_deployer.py::_get_warp_program_addresses`)
+2. **Get the synthetic mint address** on Gorchain by querying the warp token program:
+   ```bash
+   hyperlane-sealevel-client -u http://localhost:8899 \
+     token query --program-id <gorchain-warp-program> synthetic
+   ```
+   Parse `Mint / Mint Authority:` from output to get the synthetic token mint.
+3. **Use the deployer keypair as sender** — it already has SOL on both chains and
+   collateral USDC tokens on Solana (minted during warp deployer setup). No need
+   to create a separate sender wallet.
+4. **Yield bridge context** to tests:
+   ```python
+   {
+       "namespace": str,
+       "token_mint": str,          # Collateral USDC mint on Solana
+       "synthetic_mint": str,      # Synthetic gUSDC mint on Gorchain
+       "sender_keypair": str,      # Path to deployer keypair JSON
+       "warp_programs": {          # {chain_name: base58_program_id}
+           "solana": str,
+           "gorchain": str,
+       },
+   }
+   ```
+
+### Token Balance Queries
+
+Use `spl-token balance` CLI (available on the test runner machine):
+
+```bash
+# Collateral USDC balance on Solana
+spl-token balance <collateral-mint> \
+  --owner <sender-keypair> \
+  --url http://localhost:18899
+
+# Synthetic gUSDC balance on Gorchain
+spl-token balance <synthetic-mint> \
+  --owner <sender-keypair> \
+  --url http://localhost:8899
+```
+
+Helper function in `lib/common.py`:
+```python
+def get_spl_token_balance(
+    mint: str, owner_keypair: str, rpc_url: str,
+) -> float:
+    """Query SPL token balance. Returns 0.0 if no token account exists."""
+```
+
+### Transfer Commands
+
+Transfers use `hyperlane-sealevel-client token transfer-remote` via `run_deployer_cli()`:
+
+**Solana → Gorchain (collateral → synthetic):**
+```bash
+hyperlane-sealevel-client \
+  --url http://localhost:18899 \
+  --keypair <sender-keypair> \
+  token transfer-remote <sender-keypair> \
+  <amount> 99999 <recipient-pubkey> \
+  collateral \
+  --program-id <solana-warp-program-id>
+```
+
+**Gorchain → Solana (synthetic → collateral):**
+```bash
+hyperlane-sealevel-client \
+  --url http://localhost:8899 \
+  --keypair <sender-keypair> \
+  token transfer-remote <sender-keypair> \
+  <amount> 99998 <recipient-pubkey> \
+  synthetic \
+  --program-id <gorchain-warp-program-id>
+```
+
+Key arguments:
+- `<sender-keypair>` appears twice: once as `--keypair` (payer) and once as
+  the first positional arg (token sender — can differ, but same wallet in tests)
+- `<amount>` is in base units (6 decimals: 1 USDC = 1,000,000)
+- `<recipient-pubkey>` is the Solana base58 public key on the destination chain
+- The CLI handles ATA creation on the destination automatically (using the
+  ATA payer funded during warp deploy)
+
+### Tests (`test_bridge.py`)
+
+All tests in `TestBridge` class, marked `@pytest.mark.slow`.
+
+**`test_transfer_solana_to_gorchain`** — Transfer collateral USDC from Solana to synthetic gUSDC on Gorchain:
+
+1. Record sender's initial collateral USDC balance on Solana
+2. Record sender's initial synthetic gUSDC balance on Gorchain (likely 0)
+3. Execute `token transfer-remote` on Solana:
+   - Amount: 1,000,000 (1 USDC)
+   - Destination domain: 99999 (Gorchain)
+   - Recipient: sender's own pubkey (self-transfer for simplicity)
+   - Token type: `collateral`
+4. Assert transfer tx succeeded (exit code 0)
+5. Assert sender's Solana USDC balance decreased by 1,000,000
+6. **Poll destination balance** on Gorchain (timeout 120s, poll every 5s):
+   - Query `spl-token balance <synthetic-mint> --owner <sender> --url gorchain-rpc`
+   - Wait until balance increases by 1,000,000
+7. Assert final Gorchain gUSDC balance = initial + 1,000,000
+
+**`test_transfer_gorchain_to_solana`** — Transfer synthetic gUSDC back from Gorchain to Solana:
+
+1. Record sender's synthetic gUSDC balance on Gorchain (should be > 0 from previous test)
+2. Record sender's collateral USDC balance on Solana
+3. Execute `token transfer-remote` on Gorchain:
+   - Amount: 500,000 (0.5 USDC — use half to prove partial transfers work)
+   - Destination domain: 99998 (Solana)
+   - Recipient: sender's own pubkey
+   - Token type: `synthetic`
+4. Assert transfer tx succeeded (exit code 0)
+5. Assert sender's Gorchain gUSDC balance decreased by 500,000
+6. **Poll destination balance** on Solana (timeout 120s, poll every 5s):
+   - Query `spl-token balance <collateral-mint> --owner <sender> --url solana-rpc`
+   - Wait until balance increases by 500,000
+7. Assert final Solana USDC balance = initial + 500,000
+
+**`test_relayer_processed_messages`** — Verify relayer metrics show successful delivery:
+
+1. Port-forward relayer metrics port (9092)
+2. Fetch `/metrics` endpoint
+3. Assert `hyperlane_operations_processed_count` > 0 (messages were processed)
+
+### Waiting for Relay Delivery
+
+Bridge transfers are asynchronous — the transfer tx completes on the origin chain
+immediately, but delivery on the destination takes time for:
+1. Validator to create a checkpoint (< 5s on local chains)
+2. Relayer to fetch checkpoint and verify signature (< 5s)
+3. Relayer to submit delivery tx on destination (< 5s)
+
+Total expected latency: ~10-15 seconds on local testnets.
+
+Timeout is set to 120s with 5s poll interval to handle edge cases (slow block
+production, relayer retry backoff). The polling helper:
+
+```python
+def wait_for_token_balance(
+    mint: str,
+    owner_keypair: str,
+    rpc_url: str,
+    expected_min: float,
+    timeout: int = 120,
+    poll_interval: int = 5,
+) -> float:
+    """Poll SPL token balance until it reaches expected_min or timeout."""
+```
+
+### Error Handling
+
+- If `transfer-remote` fails (non-zero exit), the test fails immediately with
+  the CLI output in the assertion message
+- If balance polling times out, the test fails with the last observed balance
+  and hints to check validator/relayer logs
+- Tests are ordered: `test_transfer_solana_to_gorchain` runs before
+  `test_transfer_gorchain_to_solana` (the reverse transfer needs synthetic
+  tokens minted by the first transfer)
 
 ## Test Configuration
 

@@ -6,23 +6,30 @@ Implements the Privy wallet RPC endpoint that the KMS proxy calls:
 Each wallet_id maps to a different secp256k1 private key, mirroring
 production where each validator chain has its own Privy wallet.
 
-Usage:
+Usage (in-process):
     server = PrivyMockServer(wallet_keys, port=19876)
     server.start()   # starts in a background thread
     ...
     server.stop()
+
+Usage (standalone subprocess — survives pytest exit):
+    python -m lib.privy_mock --keys-dir .keys/ --port 19876
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
-import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from eth_keys import keys as eth_keys
+
+if TYPE_CHECKING:
+    from lib.keygen import KeypairSet
 
 log = logging.getLogger(__name__)
 
@@ -31,22 +38,55 @@ GORCHAIN_WALLET_ID = "wallet-gorchain-001"
 SOLANA_WALLET_ID = "wallet-solana-001"
 
 
-def generate_wallet_keys() -> dict[str, str]:
-    """Generate fresh secp256k1 keys for each test wallet.
+def generate_wallet_keys(keypair_set: KeypairSet) -> dict[str, str]:
+    """Map test wallet IDs to the secp256k1 private keys from the keypair set.
+
+    Uses the same keys that were passed to the deployer as validator addresses,
+    so the ISM validator set matches the keys the Privy mock signs with.
 
     Returns dict of wallet_id -> private_key_hex (without 0x prefix).
     """
-    keys: dict[str, str] = {}
-    for wallet_id in (GORCHAIN_WALLET_ID, SOLANA_WALLET_ID):
-        pk = eth_keys.PrivateKey(os.urandom(32))
-        keys[wallet_id] = pk.to_bytes().hex()
-    return keys
+    return {
+        GORCHAIN_WALLET_ID: keypair_set.gorchain_validator_private_key,
+        SOLANA_WALLET_ID: keypair_set.solana_validator_private_key,
+    }
 
 
 def derive_h160_address(private_key_hex: str) -> str:
     """Derive the H160 (Ethereum) address from a secp256k1 private key."""
     pk = eth_keys.PrivateKey(bytes.fromhex(private_key_hex))
     return pk.public_key.to_checksum_address()
+
+
+def is_privy_mock_running(port: int = 19876) -> bool:
+    """Check if privy-mock is already running on the given port."""
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        conn.request("GET", "/health")
+        resp = conn.getresponse()
+        return resp.status == 200
+    except Exception:
+        return False
+
+
+def load_wallet_keys_from_dir(keys_dir: str | Path) -> dict[str, str]:
+    """Load wallet keys from persisted keypair files in the keys directory.
+
+    Reads gorchain-validator.json and solana-validator.json (cast wallet new
+    format) and maps wallet IDs to private keys.
+    """
+    keys_dir = Path(keys_dir)
+    gorchain_data = json.loads((keys_dir / "gorchain-validator.json").read_text())
+    solana_data = json.loads((keys_dir / "solana-validator.json").read_text())
+    # cast wallet new --json may return a list
+    if isinstance(gorchain_data, list):
+        gorchain_data = gorchain_data[0]
+    if isinstance(solana_data, list):
+        solana_data = solana_data[0]
+    return {
+        GORCHAIN_WALLET_ID: gorchain_data["private_key"].removeprefix("0x"),
+        SOLANA_WALLET_ID: solana_data["private_key"].removeprefix("0x"),
+    }
 
 
 def _sign_digest(private_key_hex: str, digest: bytes) -> str:
@@ -147,6 +187,20 @@ class PrivyMockServer:
             self.port, len(self.wallet_keys),
         )
 
+    def run_forever(self) -> None:
+        """Run the server in the foreground (blocking). For standalone use."""
+        handler_class = type(
+            "_BoundPrivyHandler",
+            (_PrivyHandler,),
+            {"wallet_keys": self.wallet_keys},
+        )
+        self._server = HTTPServer(("0.0.0.0", self.port), handler_class)
+        log.info(
+            "Mock Privy server listening on :%d with %d wallets (foreground)",
+            self.port, len(self.wallet_keys),
+        )
+        self._server.serve_forever()
+
     def stop(self) -> None:
         if self._server:
             self._server.shutdown()
@@ -155,3 +209,17 @@ class PrivyMockServer:
             self._thread.join(timeout=5)
             self._thread = None
         log.info("Mock Privy server stopped")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Standalone mock Privy server")
+    parser.add_argument("--keys-dir", required=True, help="Path to .keys/ directory")
+    parser.add_argument("--port", type=int, default=19876)
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    wallet_keys = load_wallet_keys_from_dir(args.keys_dir)
+    server = PrivyMockServer(wallet_keys, port=args.port)
+    server.run_forever()

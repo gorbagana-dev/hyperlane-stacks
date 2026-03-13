@@ -543,3 +543,65 @@ def run_deployer_cli(
         ],
         check=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# SPL token balance helpers
+# ---------------------------------------------------------------------------
+
+
+def get_spl_token_balance(
+    mint: str,
+    owner_keypair: str,
+    rpc_url: str,
+) -> float:
+    """Query SPL token balance for a mint. Returns 0.0 if no token account exists."""
+    result = run_cmd(
+        [
+            "spl-token", "balance", mint,
+            "--owner", owner_keypair,
+            "--url", rpc_url,
+        ],
+        check=False,
+        quiet=True,
+    )
+    if result.returncode != 0:
+        # "Could not find any SPL Token account" → balance is 0
+        return 0.0
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def wait_for_token_balance(
+    mint: str,
+    owner_keypair: str,
+    rpc_url: str,
+    expected_min: float,
+    *,
+    timeout: int = 120,
+    poll_interval: int = 5,
+    label: str = "",
+) -> float:
+    """Poll SPL token balance until it reaches *expected_min* or timeout.
+
+    Returns the final observed balance. Raises AssertionError on timeout.
+    """
+    display = label or mint[:12]
+    deadline = time.time() + timeout
+    last_balance = 0.0
+
+    while time.time() < deadline:
+        last_balance = get_spl_token_balance(mint, owner_keypair, rpc_url)
+        if last_balance >= expected_min:
+            log_info(f"{display}: balance reached {last_balance}")
+            return last_balance
+        remaining = int(deadline - time.time())
+        log_info(f"{display}: balance {last_balance}, waiting for {expected_min} ({remaining}s remaining)")
+        time.sleep(poll_interval)
+
+    raise AssertionError(
+        f"{display}: balance {last_balance} did not reach {expected_min} "
+        f"within {timeout}s. Check validator and relayer logs."
+    )

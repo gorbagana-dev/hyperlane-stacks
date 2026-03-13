@@ -231,13 +231,13 @@ Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fee
 - `GORCHAIN_IGP_ACCOUNT`, `SOLANA_IGP_ACCOUNT` — IGP account addresses for fee claims
 
 ### Secrets (injected separately)
-- `HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
-- `HYP_BASE_CHAINS_SOLANA_SIGNER_KEY` — hex ed25519 key for Solana delivery txs
+- `HYP_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
+- `HYP_CHAINS_SOLANA_SIGNER_KEY` — hex ed25519 key for Solana delivery txs
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — MinIO credentials for reading checkpoints
 - `RELAYER_KEYPAIR_JSON` — Solana keypair JSON (byte array) for igp-fee-claim
 
 ### Compose Environment (hardcoded in compose)
-- `HYP_BASE_GASPAYMENTENFORCEMENT='[{"type": "none"}]'` — disabled (Sealevel returns hardcoded zeros)
+- `HYP_GASPAYMENTENFORCEMENT='[{"type": "none"}]'` — disabled (Sealevel returns hardcoded zeros)
 - `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000`
 
 ---

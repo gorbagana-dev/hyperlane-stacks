@@ -57,13 +57,13 @@ MULTISIG_CONFIG_DIR="/config/multisig"
 echo ""
 echo "=== Rendering config templates ==="
 RENDERED_REGISTRY_DIR="${WORK_DIR}/registry"
-mkdir -p "${RENDERED_REGISTRY_DIR}"
+mkdir -p "${RENDERED_REGISTRY_DIR}/chains"
 if [ -f "${REGISTRY_DIR}/metadata.yaml.tmpl" ]; then
-  envsubst < "${REGISTRY_DIR}/metadata.yaml.tmpl" > "${RENDERED_REGISTRY_DIR}/metadata.yaml"
-  echo "Registry rendered at ${RENDERED_REGISTRY_DIR}/metadata.yaml"
+  envsubst < "${REGISTRY_DIR}/metadata.yaml.tmpl" > "${RENDERED_REGISTRY_DIR}/chains/metadata.yaml"
+  echo "Registry rendered at ${RENDERED_REGISTRY_DIR}/chains/metadata.yaml"
 elif [ -f "${REGISTRY_DIR}/metadata.yaml" ]; then
-  cp "${REGISTRY_DIR}/metadata.yaml" "${RENDERED_REGISTRY_DIR}/metadata.yaml"
-  echo "Registry copied (no template) at ${RENDERED_REGISTRY_DIR}/metadata.yaml"
+  cp "${REGISTRY_DIR}/metadata.yaml" "${RENDERED_REGISTRY_DIR}/chains/metadata.yaml"
+  echo "Registry copied (no template) at ${RENDERED_REGISTRY_DIR}/chains/metadata.yaml"
 fi
 
 # -------------------------------------------------------
@@ -151,6 +151,75 @@ if [ "$VERIFY_FAILED" -ne 0 ]; then
   echo "FATAL: Program hash verification failed. Aborting."
   exit 1
 fi
+
+# -------------------------------------------------------
+# Configure Multisig ISM validators on each chain
+# Each chain's ISM is configured with the remote chain's validator address.
+# -------------------------------------------------------
+echo ""
+echo "=== Configuring Multisig ISM ==="
+
+# Render multisig config templates (validator addresses come from secrets)
+RENDERED_MULTISIG_DIR="${WORK_DIR}/multisig"
+mkdir -p "${RENDERED_MULTISIG_DIR}"
+envsubst < "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json.tmpl" > "${RENDERED_MULTISIG_DIR}/gorchain-multisig.json"
+envsubst < "${MULTISIG_CONFIG_DIR}/solana-multisig.json.tmpl" > "${RENDERED_MULTISIG_DIR}/solana-multisig.json"
+echo "Multisig configs rendered at ${RENDERED_MULTISIG_DIR}/"
+
+GORCHAIN_ISM_ID=$(jq -r '.multisig_ism_message_id' "${GORCHAIN_PROGRAMS}")
+SOLANA_ISM_ID=$(jq -r '.multisig_ism_message_id' "${SOLANA_PROGRAMS}")
+
+echo "Configuring ISM on Gorchain (program: ${GORCHAIN_ISM_ID})..."
+hyperlane-sealevel-client \
+  --url "${GORCHAIN_RPC_URL}" \
+  --keypair "${DEPLOYER_KEY_FILE}" \
+  multisig-ism-message-id configure \
+  --program-id "${GORCHAIN_ISM_ID}" \
+  --multisig-config-file "${RENDERED_MULTISIG_DIR}/gorchain-multisig.json" \
+  --registry "${RENDERED_REGISTRY_DIR}"
+
+echo "Configuring ISM on Solana (program: ${SOLANA_ISM_ID})..."
+hyperlane-sealevel-client \
+  --url "${SOLANA_RPC_URL}" \
+  --keypair "${DEPLOYER_KEY_FILE}" \
+  multisig-ism-message-id configure \
+  --program-id "${SOLANA_ISM_ID}" \
+  --multisig-config-file "${RENDERED_MULTISIG_DIR}/solana-multisig.json" \
+  --registry "${RENDERED_REGISTRY_DIR}"
+
+echo "Multisig ISM configured on both chains"
+
+# -------------------------------------------------------
+# Configure IGP gas oracle on each chain
+# Sets token exchange rates, gas prices, and destination gas overheads.
+# -------------------------------------------------------
+echo ""
+echo "=== Configuring IGP gas oracle ==="
+
+GORCHAIN_IGP_ID=$(jq -r '.igp_program_id' "${GORCHAIN_PROGRAMS}")
+SOLANA_IGP_ID=$(jq -r '.igp_program_id' "${SOLANA_PROGRAMS}")
+
+echo "Configuring IGP on Gorchain (program: ${GORCHAIN_IGP_ID})..."
+hyperlane-sealevel-client \
+  --url "${GORCHAIN_RPC_URL}" \
+  --keypair "${DEPLOYER_KEY_FILE}" \
+  igp configure \
+  --program-id "${GORCHAIN_IGP_ID}" \
+  --chain gorchain \
+  --gas-oracle-config-file "${GAS_ORACLE_CONFIG}" \
+  --registry "${RENDERED_REGISTRY_DIR}"
+
+echo "Configuring IGP on Solana (program: ${SOLANA_IGP_ID})..."
+hyperlane-sealevel-client \
+  --url "${SOLANA_RPC_URL}" \
+  --keypair "${DEPLOYER_KEY_FILE}" \
+  igp configure \
+  --program-id "${SOLANA_IGP_ID}" \
+  --chain solana \
+  --gas-oracle-config-file "${GAS_ORACLE_CONFIG}" \
+  --registry "${RENDERED_REGISTRY_DIR}"
+
+echo "IGP gas oracle configured on both chains"
 
 # -------------------------------------------------------
 # Transfer ownership to hardware wallet
@@ -311,25 +380,16 @@ else
   echo "WARNING: Gas oracle config not found at ${GAS_ORACLE_CONFIG}, skipping ConfigMap"
 fi
 
-# Multisig config — render templates via envsubst (validator addresses come from secrets)
-RENDERED_MULTISIG_DIR="${WORK_DIR}/multisig"
-mkdir -p "${RENDERED_MULTISIG_DIR}"
-if [ -f "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json.tmpl" ]; then
-  envsubst < "${MULTISIG_CONFIG_DIR}/gorchain-multisig.json.tmpl" > "${RENDERED_MULTISIG_DIR}/gorchain-multisig.json"
-  envsubst < "${MULTISIG_CONFIG_DIR}/solana-multisig.json.tmpl" > "${RENDERED_MULTISIG_DIR}/solana-multisig.json"
-  echo "Multisig configs rendered at ${RENDERED_MULTISIG_DIR}/"
-  kubectl create configmap hyperlane-multisig-config \
-    --from-file="gorchain-multisig.json=${RENDERED_MULTISIG_DIR}/gorchain-multisig.json" \
-    --from-file="solana-multisig.json=${RENDERED_MULTISIG_DIR}/solana-multisig.json" \
-    --dry-run=client -o yaml | kubectl apply -f -
-else
-  echo "WARNING: Multisig config templates not found at ${MULTISIG_CONFIG_DIR}/, skipping ConfigMap"
-fi
+# Multisig config (already rendered during ISM configure step above)
+kubectl create configmap hyperlane-multisig-config \
+  --from-file="gorchain-multisig.json=${RENDERED_MULTISIG_DIR}/gorchain-multisig.json" \
+  --from-file="solana-multisig.json=${RENDERED_MULTISIG_DIR}/solana-multisig.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-# Registry metadata (rendered from template)
-if [ -f "${RENDERED_REGISTRY_DIR}/metadata.yaml" ]; then
+# Registry metadata (already rendered during template rendering step above)
+if [ -f "${RENDERED_REGISTRY_DIR}/chains/metadata.yaml" ]; then
   kubectl create configmap hyperlane-registry \
-    --from-file="${RENDERED_REGISTRY_DIR}/" \
+    --from-file="${RENDERED_REGISTRY_DIR}/chains/" \
     --dry-run=client -o yaml | kubectl apply -f -
 else
   echo "WARNING: Registry config not found, skipping ConfigMap"

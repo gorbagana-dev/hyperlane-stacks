@@ -20,6 +20,8 @@ DEPLOYER_IMAGE = "git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:lates
 KMS_PROXY_IMAGE = "laconic/hyperlane-kms-proxy:local"
 VALIDATOR_IMAGE = "laconic/hyperlane-agent:local"
 KUBECTL_IMAGE = "bitnami/kubectl:latest"
+MINIO_IMAGE = "minio/minio:latest"
+MINIO_MC_IMAGE = "minio/mc:latest"
 
 
 
@@ -126,6 +128,18 @@ def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
     run_cmd(["kind", "load", "docker-image", KUBECTL_IMAGE, "--name", cluster_name])
 
     log_info("Validator support images loaded into kind cluster")
+
+
+def prefetch_minio_images(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull MinIO images and load them into the kind cluster."""
+    for image in (MINIO_IMAGE, MINIO_MC_IMAGE):
+        log_info(f"Pulling {image}...")
+        run_cmd(["docker", "pull", image])
+
+        log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
+        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+
+    log_info("MinIO images loaded into kind cluster")
 
 
 # ---------------------------------------------------------------------------

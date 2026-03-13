@@ -1,4 +1,5 @@
 import logging
+import re
 import subprocess
 
 import pytest
@@ -10,6 +11,7 @@ from lib.common import (
     get_configmap_data,
     get_configmap_json,
     is_base58_pubkey,
+    run_deployer_cli,
     wait_for_configmap,
 )
 from lib.deploy import DeploymentInfo
@@ -134,41 +136,73 @@ class TestDeployer:
             )
 
     def test_gas_oracle_configmap(self, deployer_deployment: DeploymentInfo) -> None:
-        """Validate gas oracle config has expected structure."""
+        """Validate gas oracle config has expected structure.
+
+        Format is a nested map: {local_chain: {remote_chain: {oracleConfig: {...}, overhead: N}}}
+        """
         ns = deployer_deployment.namespace
         wait_for_configmap(ns, "hyperlane-gas-oracle-config", CONFIGMAP_TIMEOUT)
 
         configs = get_configmap_json(
             ns, "hyperlane-gas-oracle-config", "gas-oracle-configs.json"
         )
-        assert isinstance(configs, list), "gas-oracle-configs is not a list"
-        assert len(configs) > 0, "gas-oracle-configs is empty"
+        assert isinstance(configs, dict), "gas-oracle-configs is not a dict"
 
-        for entry in configs:
-            for field in ("domain", "token_exchange_rate", "gas_price", "token_decimals"):
-                assert field in entry, f"gas-oracle entry missing '{field}'"
+        remote_chain = {"gorchain": "solana", "solana": "gorchain"}
+
+        for chain in CHAINS:
+            assert chain in configs, f"gas-oracle-configs missing chain '{chain}'"
+            remote = remote_chain[chain]
+            assert remote in configs[chain], (
+                f"gas-oracle-configs.{chain} missing remote chain '{remote}'"
+            )
+            entry = configs[chain][remote]
+
+            oracle = entry.get("oracleConfig")
+            assert isinstance(oracle, dict), (
+                f"{chain}.{remote}: missing or invalid oracleConfig"
+            )
+            for field in ("tokenExchangeRate", "gasPrice", "tokenDecimals"):
+                assert field in oracle, (
+                    f"{chain}.{remote}.oracleConfig missing '{field}'"
+                )
+
+            assert "overhead" in entry, f"{chain}.{remote} missing 'overhead'"
 
     def test_multisig_configmap(self, deployer_deployment: DeploymentInfo) -> None:
-        """Validate multisig configs have validators and threshold."""
+        """Validate multisig configs have validators and threshold.
+
+        Each chain's config is keyed by the remote chain name (gorchain's ISM
+        validates messages from solana, so its key is "solana").
+        """
         ns = deployer_deployment.namespace
         wait_for_configmap(ns, "hyperlane-multisig-config", CONFIGMAP_TIMEOUT)
+
+        # Map each chain to its expected remote chain key
+        remote_chain = {"gorchain": "solana", "solana": "gorchain"}
 
         for chain in CHAINS:
             key = f"{chain}-multisig.json"
             multisig = get_configmap_json(ns, "hyperlane-multisig-config", key)
 
-            validators = multisig.get("validators")
+            remote = remote_chain[chain]
+            assert remote in multisig, (
+                f"{chain}: multisig config missing remote chain key '{remote}'"
+            )
+            remote_config = multisig[remote]
+
+            validators = remote_config.get("validators")
             assert isinstance(validators, list) and len(validators) > 0, (
-                f"{chain}: multisig.validators must be a non-empty list"
+                f"{chain}: multisig.{remote}.validators must be a non-empty list"
             )
             for addr in validators:
                 assert addr.startswith("0x") and len(addr) == 42, (
                     f"{chain}: validator address not H160 format: {addr}"
                 )
 
-            threshold = multisig.get("threshold")
+            threshold = remote_config.get("threshold")
             assert isinstance(threshold, int) and threshold >= 1, (
-                f"{chain}: multisig.threshold must be int >= 1, got {threshold}"
+                f"{chain}: multisig.{remote}.threshold must be int >= 1, got {threshold}"
             )
 
     def test_registry_configmap(self, deployer_deployment: DeploymentInfo) -> None:
@@ -209,3 +243,152 @@ class TestDeployer:
                     program_ids[program],
                     label=program,
                 )
+
+    def test_ism_configured_on_chain(self, deployer_deployment: DeploymentInfo) -> None:
+        """Verify multisig ISM validators and threshold are set on-chain.
+
+        For each chain, query the ISM program with the remote chain's domain ID
+        and check that the configured validators and threshold match the multisig
+        ConfigMap.
+        """
+        ns = deployer_deployment.namespace
+        remote_chain = {"gorchain": "solana", "solana": "gorchain"}
+
+        for chain_name, chain_info in CHAINS.items():
+            program_ids = get_configmap_json(
+                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
+            )
+            ism_id = program_ids["multisig_ism_message_id"]
+            remote = remote_chain[chain_name]
+            remote_domain = str(CHAINS[remote]["domain_id"])
+
+            # Get expected config from ConfigMap
+            multisig = get_configmap_json(
+                ns, "hyperlane-multisig-config", f"{chain_name}-multisig.json"
+            )
+            expected_validators = [
+                v.lower() for v in multisig[remote]["validators"]
+            ]
+            expected_threshold = multisig[remote]["threshold"]
+
+            # Query on-chain ISM state
+            result = run_deployer_cli(
+                "multisig-ism-message-id", "query",
+                "--program-id", ism_id,
+                "--domains", remote_domain,
+                rpc=chain_info["rpc"],
+            )
+            output = result.stdout + result.stderr
+            log.info(
+                "%s: ISM query output:\n%s", chain_name, output[:2000],
+            )
+            assert result.returncode == 0, (
+                f"{chain_name}: ISM query failed: {output}"
+            )
+
+            # Parse validators from Rust debug output
+            # Format: validators: [\n  0xabcd...,\n]
+            on_chain_validators = re.findall(r"(0x[0-9a-fA-F]{40})", output)
+            assert on_chain_validators, (
+                f"{chain_name}: no validator addresses found in ISM query output"
+            )
+            assert [v.lower() for v in on_chain_validators] == expected_validators, (
+                f"{chain_name}: on-chain ISM validators {on_chain_validators} "
+                f"don't match expected {expected_validators}"
+            )
+
+            # Parse threshold from: threshold: N
+            threshold_match = re.search(r"threshold:\s*(\d+)", output)
+            assert threshold_match, (
+                f"{chain_name}: threshold not found in ISM query output"
+            )
+            assert int(threshold_match.group(1)) == expected_threshold, (
+                f"{chain_name}: on-chain threshold {threshold_match.group(1)} "
+                f"doesn't match expected {expected_threshold}"
+            )
+
+            log.info(
+                "%s: ISM on-chain config verified (validators=%s, threshold=%d)",
+                chain_name, on_chain_validators, expected_threshold,
+            )
+
+    def test_igp_configured_on_chain(self, deployer_deployment: DeploymentInfo) -> None:
+        """Verify IGP gas oracle config is set on-chain.
+
+        For each chain, query the IGP program and check that the gas oracle
+        for the remote domain has the expected exchange rate, gas price, and
+        token decimals.
+        """
+        ns = deployer_deployment.namespace
+        remote_chain = {"gorchain": "solana", "solana": "gorchain"}
+
+        # Load expected config from ConfigMap
+        gas_config = get_configmap_json(
+            ns, "hyperlane-gas-oracle-config", "gas-oracle-configs.json"
+        )
+
+        for chain_name, chain_info in CHAINS.items():
+            program_ids = get_configmap_json(
+                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
+            )
+            igp_id = program_ids["igp_program_id"]
+            igp_account = program_ids["igp_account"]
+            remote = remote_chain[chain_name]
+            remote_domain = CHAINS[remote]["domain_id"]
+
+            expected = gas_config[chain_name][remote]["oracleConfig"]
+
+            # Query on-chain IGP state
+            result = run_deployer_cli(
+                "igp", "query",
+                "--program-id", igp_id,
+                "--igp-account", igp_account,
+                rpc=chain_info["rpc"],
+            )
+            output = result.stdout + result.stderr
+            log.info(
+                "%s: IGP query output:\n%s", chain_name, output[:2000],
+            )
+            assert result.returncode == 0, (
+                f"{chain_name}: IGP query failed: {output}"
+            )
+
+            # Verify the remote domain appears in gas_oracles
+            assert str(remote_domain) in output, (
+                f"{chain_name}: remote domain {remote_domain} not found in IGP output"
+            )
+
+            # Parse token_exchange_rate from: token_exchange_rate: <N>
+            rate_match = re.search(r"token_exchange_rate:\s*(\d+)", output)
+            assert rate_match, (
+                f"{chain_name}: token_exchange_rate not found in IGP output"
+            )
+            assert rate_match.group(1) == expected["tokenExchangeRate"], (
+                f"{chain_name}: on-chain token_exchange_rate {rate_match.group(1)} "
+                f"doesn't match expected {expected['tokenExchangeRate']}"
+            )
+
+            # Parse gas_price from: gas_price: <N>
+            gas_match = re.search(r"gas_price:\s*(\d+)", output)
+            assert gas_match, (
+                f"{chain_name}: gas_price not found in IGP output"
+            )
+            assert gas_match.group(1) == expected["gasPrice"], (
+                f"{chain_name}: on-chain gas_price {gas_match.group(1)} "
+                f"doesn't match expected {expected['gasPrice']}"
+            )
+
+            # Parse token_decimals from: token_decimals: <N>
+            dec_match = re.search(r"token_decimals:\s*(\d+)", output)
+            assert dec_match, (
+                f"{chain_name}: token_decimals not found in IGP output"
+            )
+            assert int(dec_match.group(1)) == expected["tokenDecimals"], (
+                f"{chain_name}: on-chain token_decimals {dec_match.group(1)} "
+                f"doesn't match expected {expected['tokenDecimals']}"
+            )
+
+            log.info(
+                "%s: IGP on-chain config verified (rate=%s, gas_price=%s, decimals=%s)",
+                chain_name, rate_match.group(1), gas_match.group(1), dec_match.group(1),
+            )

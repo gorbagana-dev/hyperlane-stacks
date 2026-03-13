@@ -33,6 +33,8 @@ class KeypairSet:
     # secp256k1 derived values
     gorchain_validator_address: str
     solana_validator_address: str
+    gorchain_validator_private_key: str  # hex without 0x prefix
+    solana_validator_private_key: str    # hex without 0x prefix
 
 
 def generate_chain_signer(keys_dir: Path, name: str = "chain-signer") -> tuple[str, str]:
@@ -127,6 +129,8 @@ def _load_existing_keypairs(keys_dir: Path) -> KeypairSet | None:
         solana_validator_path=solana_val_path,
         gorchain_validator_address=gorchain_data["address"],
         solana_validator_address=solana_data["address"],
+        gorchain_validator_private_key=gorchain_data["private_key"].removeprefix("0x"),
+        solana_validator_private_key=solana_data["private_key"].removeprefix("0x"),
     )
 
 
@@ -173,11 +177,13 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     log_info("  Generating Gorchain validator secp256k1 key...")
     gorchain_data = _cast_wallet_new(gorchain_val_path)
     gorchain_address = gorchain_data["address"]
+    gorchain_private_key = gorchain_data["private_key"].removeprefix("0x")
 
     solana_val_path = keys_dir / "solana-validator.json"
     log_info("  Generating Solana validator secp256k1 key...")
     solana_data = _cast_wallet_new(solana_val_path)
     solana_address = solana_data["address"]
+    solana_private_key = solana_data["private_key"].removeprefix("0x")
 
     keypair_set = KeypairSet(
         keys_dir=keys_dir,
@@ -192,6 +198,8 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
         solana_validator_path=solana_val_path,
         gorchain_validator_address=gorchain_address,
         solana_validator_address=solana_address,
+        gorchain_validator_private_key=gorchain_private_key,
+        solana_validator_private_key=solana_private_key,
     )
 
     log_info("Test keypairs generated:")
@@ -324,8 +332,8 @@ def create_relayer_secrets(
         [
             "kubectl", "create", "secret", "generic", secret_name,
             "-n", namespace,
-            f"--from-literal=HYP_BASE_CHAINS_GORCHAIN_SIGNER_KEY={gorchain_signer_key}",
-            f"--from-literal=HYP_BASE_CHAINS_SOLANA_SIGNER_KEY={solana_signer_key}",
+            f"--from-literal=HYP_CHAINS_GORCHAIN_SIGNER_KEY={gorchain_signer_key}",
+            f"--from-literal=HYP_CHAINS_SOLANA_SIGNER_KEY={solana_signer_key}",
             f"--from-literal=AWS_ACCESS_KEY_ID={minio_user}",
             f"--from-literal=AWS_SECRET_ACCESS_KEY={minio_password}",
             f"--from-literal=RELAYER_KEYPAIR_JSON={relayer_keypair_json}",
