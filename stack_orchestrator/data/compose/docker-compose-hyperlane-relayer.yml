@@ -17,9 +17,8 @@ services:
       - agent-config:/config
 
   relayer:
-    # Switch to published images when available
-    # image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
-    image: gorbagana-dev/hyperlane-agent:local
+    image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
+    # image: gorbagana-dev/hyperlane-agent:local
     restart: unless-stopped
     hostname: relayer
     command:

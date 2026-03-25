@@ -2,3 +2,4 @@
 # TODO: Replace this mechanism with release-triggered workflow.
 publish
 publish
+publish
