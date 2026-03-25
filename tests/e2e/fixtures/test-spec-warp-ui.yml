@@ -1,0 +1,31 @@
+stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
+deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
+config:
+  # Browser-accessible URLs — the warp-ui JS bundles run in the browser
+  # on the host, not inside the cluster, so they need localhost URLs.
+  GORCHAIN_RPC_URL: "http://localhost:8899"
+  # Use 127.0.0.1 (not localhost) so the Hyperlane SDK can distinguish
+  # solana from gorchain via hostname-based chain detection.
+  SOLANA_RPC_URL: "http://127.0.0.1:18899"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_MAILBOX: "REPLACE_AT_RUNTIME"
+  SOLANA_MAILBOX: "REPLACE_AT_RUNTIME"
+  WARP_COLLATERAL_ADDRESS: "REPLACE_AT_RUNTIME"
+  WARP_SYNTHETIC_ADDRESS: "REPLACE_AT_RUNTIME"
+  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+  WARP_SYNTHETIC_MINT: "REPLACE_AT_RUNTIME"
+  NEXT_PUBLIC_WALLET_CONNECT_ID: "abb082e6cb1a18b07229ed1158a7b2eb"
+resources:
+  containers:
+    warp-ui:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "0.5"
+        memory: 512M

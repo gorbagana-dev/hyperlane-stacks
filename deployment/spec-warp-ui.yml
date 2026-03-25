@@ -11,11 +11,22 @@ config:
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_MAILBOX: "REPLACE_WITH_GORCHAIN_MAILBOX_ADDRESS"
+  SOLANA_MAILBOX: "REPLACE_WITH_SOLANA_MAILBOX_ADDRESS"
   WARP_COLLATERAL_ADDRESS: "REPLACE_WITH_COLLATERAL_ADDRESS"
   WARP_SYNTHETIC_ADDRESS: "REPLACE_WITH_SYNTHETIC_ADDRESS"
+  WARP_TOKEN_MINT: "REPLACE_WITH_COLLATERAL_TOKEN_MINT"
+  WARP_SYNTHETIC_MINT: "REPLACE_WITH_SYNTHETIC_TOKEN_MINT"
   NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
-configmaps:
-  warp-routes-config: ./configmaps/warp-routes-config
+resources:
+  containers:
+    warp-ui:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "0.5"
+        memory: 512M
 network:
   http-proxy:
     - host-name: bridge.example.com

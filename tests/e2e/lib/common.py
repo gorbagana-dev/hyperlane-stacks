@@ -405,7 +405,11 @@ def get_namespace(
 # ---------------------------------------------------------------------------
 CHAINS = {
     "gorchain": {"domain_id": 99999, "rpc": "http://localhost:8899"},
-    "solana": {"domain_id": 99998, "rpc": "http://localhost:18899"},
+    # Use 127.0.0.1 (not localhost) so the Hyperlane SDK's hostname-based
+    # chain detection can distinguish solana from gorchain. The SDK extracts
+    # just the hostname from the wallet's RPC URL and does a substring match
+    # against chain metadata — both chains on "localhost" are ambiguous.
+    "solana": {"domain_id": 99998, "rpc": "http://127.0.0.1:18899"},
 }
 
 CONFIGMAP_TIMEOUT = 30

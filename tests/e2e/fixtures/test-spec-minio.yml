@@ -7,6 +7,15 @@ network:
     minio:
       - "9000"
       - "9001"
+resources:
+  containers:
+    minio:
+      reservations:
+        cpus: "0.1"
+        memory: 128M
+      limits:
+        cpus: "0.5"
+        memory: 256M
 volumes:
   minio-data:
 secrets:

@@ -22,6 +22,7 @@ VALIDATOR_IMAGE = "laconic/hyperlane-agent:local"
 KUBECTL_IMAGE = "bitnami/kubectl:latest"
 MINIO_IMAGE = "minio/minio:latest"
 MINIO_MC_IMAGE = "minio/mc:latest"
+WARP_UI_IMAGE = "laconic/hyperlane-warp-ui:local"
 
 
 
@@ -128,6 +129,22 @@ def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
     run_cmd(["kind", "load", "docker-image", KUBECTL_IMAGE, "--name", cluster_name])
 
     log_info("Validator support images loaded into kind cluster")
+
+
+def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui", cluster_name: str = "hyperlane-e2e") -> None:
+    """Build the warp-ui image via laconic-so and load into kind."""
+    stack_path = resolve_stack_path(stack_name)
+
+    log_info("Setting up repositories for warp-ui build...")
+    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories"])
+
+    log_info("Building warp-ui container image...")
+    run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
+
+    log_info(f"Loading {WARP_UI_IMAGE} into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", WARP_UI_IMAGE, "--name", cluster_name])
+
+    log_info("Warp UI image built and loaded into kind cluster")
 
 
 def prefetch_minio_images(cluster_name: str = "hyperlane-e2e") -> None:

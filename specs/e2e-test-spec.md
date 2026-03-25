@@ -13,6 +13,7 @@ The test suite deploys all Hyperlane stacks on a kind cluster alongside a Gorcha
 | 1 | Deploy + health | All stacks deploy, pods running, metrics endpoints responding |
 | 2 | Contract verification | Program IDs exist on-chain, authorities correct, ConfigMaps populated |
 | 3 | Full bridge transfer | Warp route token transfer Gorchain→Solana and Solana→Gorchain |
+| 4 | Warp UI | UI deployment, sentinel substitution, browser-driven bridge transfers |
 
 ## Infrastructure
 
@@ -823,6 +824,316 @@ def wait_for_token_balance(
 - Tests are ordered: `test_transfer_solana_to_gorchain` runs before
   `test_transfer_gorchain_to_solana` (the reverse transfer needs synthetic
   tokens minted by the first transfer)
+
+## Phase 4: Warp UI
+
+Runs after Phase 3. Deploys the warp-ui stack and validates the bridge UI serves
+correctly and can execute actual cross-chain transfers through a browser.
+
+Two test tiers: HTTP smoke tests (`test_warp_ui.py`) and browser-driven bridge
+transfers (`test_warp_ui_bridge.py`).
+
+### Prerequisites
+
+All Phase 3 prerequisites, plus:
+- Warp UI container image built (`laconic/hyperlane-warp-ui:local`)
+- Warp UI image loaded into kind cluster
+- Playwright + Chromium installed on test runner (`pip install playwright && playwright install chromium`)
+
+### Fixture: `warp_ui_deployment` (conftest.py)
+
+Session-scoped fixture that depends on `warp_deployment` and `deployer_deployment`.
+Deploys the warp-ui stack with addresses resolved from ConfigMaps.
+
+**Setup steps:**
+
+1. **Build and load warp-ui image** into kind cluster (or skip if already loaded,
+   following the `--skip-warp-ui-deploy` pattern)
+2. **Resolve config values** from existing ConfigMaps:
+   - Mailbox addresses from `hyperlane-program-ids` ConfigMap (gorchain + solana)
+   - Warp route addresses from `hyperlane-warp-deploy-outputs` ConfigMap
+   - Token mint from `hyperlane-token-config` ConfigMap or warp deployer output
+3. **Prepare test spec** from `test-spec-warp-ui.yml`, replacing placeholders:
+   ```yaml
+   # test-spec-warp-ui.yml
+   stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
+   deploy-to: k8s-kind
+   config:
+     GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+     SOLANA_RPC_URL: "http://solana-rpc:18899"
+     GORCHAIN_DOMAIN_ID: "99999"
+     SOLANA_DOMAIN_ID: "99998"
+     GORCHAIN_CHAIN_ID: "99999"
+     SOLANA_CHAIN_ID: "99998"
+     GORCHAIN_MAILBOX: "REPLACE_AT_RUNTIME"
+     SOLANA_MAILBOX: "REPLACE_AT_RUNTIME"
+     WARP_COLLATERAL_ADDRESS: "REPLACE_AT_RUNTIME"
+     WARP_SYNTHETIC_ADDRESS: "REPLACE_AT_RUNTIME"
+     WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+   ```
+4. **Deploy warp-ui stack** via `deploy_stack()`
+5. **Wait for pod healthy** (healthcheck on port 3000)
+6. **Yield deployment info** including a `PortForward` context or the local port
+   for test access
+
+```python
+{
+    "deployment": DeploymentInfo,
+    "local_port": int,          # Port-forwarded local port (e.g., 13000)
+    "gorchain_mailbox": str,
+    "solana_mailbox": str,
+    "warp_collateral": str,
+    "warp_synthetic": str,
+    "token_mint": str,
+}
+```
+
+### Tier 1: HTTP Smoke Tests (`test_warp_ui.py`)
+
+No browser needed — uses `subprocess.run(["curl", ...])` or Python `http.client`
+via port-forward to the warp-ui pod.
+
+#### Tests
+
+**`test_warp_ui_pod_healthy`**
+
+Verify the warp-ui pod is Running and passes its healthcheck.
+
+```python
+def test_warp_ui_pod_healthy(self, warp_ui_deployment):
+    ns = warp_ui_deployment["deployment"].namespace
+    cluster_id = warp_ui_deployment["deployment"].cluster_id
+    result = subprocess.run(
+        ["kubectl", "-n", ns, "get", "pods", "-l", f"app={cluster_id}",
+         "-o", "jsonpath={.items[0].status.phase}"],
+        capture_output=True, text=True, check=True,
+    )
+    assert result.stdout.strip() == "Running"
+```
+
+**`test_warp_ui_serves_html`**
+
+GET `/` returns HTTP 200 with HTML content.
+
+```python
+def test_warp_ui_serves_html(self, warp_ui_deployment):
+    port = warp_ui_deployment["local_port"]
+    result = subprocess.run(
+        ["curl", "-sf", f"http://localhost:{port}/"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, "Warp UI did not return 200"
+    assert "<html" in result.stdout.lower() or "<!doctype" in result.stdout.lower()
+```
+
+**`test_warp_ui_sentinels_replaced`**
+
+Fetch JS bundles and verify no sentinel placeholders remain. This proves
+`entrypoint.sh` ran successfully.
+
+```python
+SENTINELS = [
+    "__GORCHAIN_RPC_URL__", "__SOLANA_RPC_URL__",
+    "__GORCHAIN_MAILBOX__", "__SOLANA_MAILBOX__",
+    "__WARP_COLLATERAL_ADDRESS__", "__WARP_SYNTHETIC_ADDRESS__",
+    "__GORCHAIN_CHAIN_NAME__", "__SOLANA_CHAIN_NAME__",
+]
+
+def test_warp_ui_sentinels_replaced(self, warp_ui_deployment):
+    port = warp_ui_deployment["local_port"]
+    # Fetch the HTML page — it loads JS bundles with inlined config
+    result = subprocess.run(
+        ["curl", "-sf", f"http://localhost:{port}/"],
+        capture_output=True, text=True, check=True,
+    )
+    html = result.stdout
+
+    # Extract JS bundle URLs from <script src="/_next/static/...">
+    import re
+    js_urls = re.findall(r'src="(/_next/static/[^"]+\.js)"', html)
+    assert js_urls, "No JS bundles found in HTML"
+
+    # Fetch each bundle and check for leftover sentinels
+    for js_url in js_urls[:5]:  # check first 5 bundles
+        js_result = subprocess.run(
+            ["curl", "-sf", f"http://localhost:{port}{js_url}"],
+            capture_output=True, text=True, check=True,
+        )
+        for sentinel in SENTINELS:
+            assert sentinel not in js_result.stdout, (
+                f"Sentinel {sentinel} not replaced in {js_url}"
+            )
+```
+
+**`test_warp_ui_chain_config_present`**
+
+Verify the served JS contains actual chain names and addresses (not placeholders
+and not defaults).
+
+```python
+def test_warp_ui_chain_config_present(self, warp_ui_deployment):
+    port = warp_ui_deployment["local_port"]
+    mailbox = warp_ui_deployment["gorchain_mailbox"]
+
+    # Fetch all JS bundles and concatenate
+    result = subprocess.run(
+        ["curl", "-sf", f"http://localhost:{port}/"],
+        capture_output=True, text=True, check=True,
+    )
+    # Check that real config values appear somewhere in the served content
+    # (they're compiled into the JS bundles)
+    all_js = result.stdout
+    assert "gorchain" in all_js or mailbox[:8] in all_js, (
+        "Chain config not found in served HTML"
+    )
+```
+
+### Tier 2: Browser Bridge Tests (`test_warp_ui_bridge.py`)
+
+Uses **Playwright** to drive the warp-ui in a real browser with the **Backpack
+wallet extension** that signs and submits real transactions to the test chains.
+
+#### Backpack Wallet Architecture
+
+The Backpack Chrome extension is downloaded, unpacked, and loaded into a
+Chromium persistent browser context via `--load-extension`. The test keypair
+is imported into Backpack during setup, and custom RPC URLs are configured
+for both chains.
+
+**Key design:** Backpack holds the test keypair and signs real transactions
+via its extension popup. This gives true end-to-end coverage through the
+full stack: UI → wallet adapter → Backpack popup → on-chain execution →
+relay → destination chain.
+
+**Implementation** (`tests/e2e/lib/backpack.py`):
+
+Setup flow:
+1. Download and unpack the Backpack CRX (cached in `.backpack-ext/`)
+2. Launch Chromium with `--load-extension` pointing to the unpacked dir
+3. Import test keypair into Backpack via onboarding flow
+4. Set custom RPC URLs for gorchain (`localhost:8899`) and solana (`127.0.0.1:18899`)
+
+Selector notes:
+- Backpack uses React Native Web — interactive elements are `<div data-testid>`
+- An overlay div intercepts pointer events — all clicks need `force=True` or `dispatch_event("click")`
+- React Navigation keeps all screens in DOM — use `.last` to target topmost screen
+- Extension opens a separate `popout.html` window for approvals
+
+#### Fixture: `warp_ui_browser` (conftest.py)
+
+Session-scoped fixture that depends on `warp_ui_deployment` and `bridge_setup`.
+Launches Chromium with Backpack loaded and configured.
+
+The fixture:
+1. Downloads/caches the Backpack CRX
+2. Launches a persistent browser context with the extension
+3. Imports the test keypair and configures RPC URLs
+4. Yields the context, URL, and test data
+5. Cleans up on teardown
+
+#### Tests
+
+**`test_warp_ui_loads_in_browser`**
+
+Verify the UI loads in a real browser, renders the transfer form, and shows
+the configured chains. Uses URL params to pre-select chains/tokens.
+    page.close()
+```
+
+**`test_warp_ui_wallet_connects`**
+
+Verify Backpack connects via the wallet modal and the UI reflects connected state.
+
+Connection flow: "Connect wallet" button → protocol modal ("Solana") →
+wallet list → "Backpack" → approve popup (if it opens). The test detects
+already-connected state by scanning buttons for truncated base58 address patterns.
+
+**`test_warp_ui_bridge_solana_to_gorchain`**
+
+Execute a real collateral→synthetic transfer through the UI. Self-transfer mode
+(recipient auto-filled from connected wallet). Verifies on-chain gUSDC balance
+increase on Gorchain after relay delivery.
+
+**`test_warp_ui_bridge_gorchain_to_solana`**
+
+Execute the reverse synthetic→collateral transfer. Switches Backpack RPC to
+Gorchain before navigating, reloads page to let autoConnect settle. Uses a
+smaller amount (0.05 vs 0.1) to account for bridge fees.
+
+#### Helper Functions
+
+- `_connect_wallet(page, context)` — Connect Backpack, skip if already connected
+- `_fill_amount(page, amount)` — Fill the spinbutton amount input
+- `_submit_transfer(page, context, dest_chain, amount)` — Continue → Send → Approve
+  with retry on "Plugin Closed" wallet errors (up to 2 attempts)
+- `approve_backpack_popup_page(popup)` — Handle optional password unlock, click Approve
+- `_screenshot(page, name)` — Save debug screenshot to `/tmp/`
+
+#### Known Issues
+
+- **Single-SVM-chain wallet architecture (upstream):** The warp-ui template's
+  `SolanaWalletContext` wraps the entire app in a single `ConnectionProvider`
+  with one RPC endpoint. This was designed for one SVM chain (e.g. Solana
+  mainnet). With two SVM chains (gorchain + solana), the `ConnectionProvider`
+  endpoint and Backpack's active RPC must be managed carefully:
+  - **ConnectionProvider** must use a fixed endpoint (solana RPC) so
+    `autoConnect` always succeeds regardless of origin chain direction.
+  - **Backpack's active RPC** must match the origin chain for transaction
+    simulation — Backpack simulates against its own RPC before showing
+    the approve dialog. For the reverse bridge (gorchain → solana), Backpack
+    must be switched to gorchain RPC *after* wallet connect but *before*
+    transaction submission.
+  - The actual transaction send uses a per-chain `Connection` created by the
+    SDK (`solana.ts: multiProvider.getRpcUrl(chainName)`), independent of
+    the `ConnectionProvider` endpoint.
+- **Intermittent "Plugin Closed" error:** Backpack popup sometimes closes before
+  `sendTransaction` completes. Root cause is a timing issue in the Backpack
+  extension. Retry logic handles this — reload and re-submit (up to 5 attempts).
+- **Hostname-based chain detection:** The Hyperlane SDK's `findChainByRpcUrl`
+  matches chains by RPC hostname only. Both chains on `localhost` are ambiguous.
+  Fix: Solana RPC uses `127.0.0.1` while Gorchain uses `localhost`. This is a
+  test/dev-only issue — production deployments use distinct hostnames.
+
+#### Error Handling
+
+- Failed wallet connection → screenshot saved, test fails with assertion
+- Failed transfer → screenshot saved, retry up to 5 times, then fail
+- On-chain balance doesn't change within `RELAY_TIMEOUT` (120s) → fail with
+  last observed balance
+- Backpack password prompt → auto-filled if detected
+
+#### Dependencies
+
+```
+playwright>=1.40
+base58
+```
+
+Add to test runner setup:
+```bash
+pip install playwright
+playwright install chromium
+```
+
+### Test Spec File
+
+```yaml
+# test-spec-warp-ui.yml
+stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
+deploy-to: k8s-kind
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_MAILBOX: "REPLACE_AT_RUNTIME"
+  SOLANA_MAILBOX: "REPLACE_AT_RUNTIME"
+  WARP_COLLATERAL_ADDRESS: "REPLACE_AT_RUNTIME"
+  WARP_SYNTHETIC_ADDRESS: "REPLACE_AT_RUNTIME"
+  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
+```
 
 ## Test Configuration
 

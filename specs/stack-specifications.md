@@ -331,7 +331,7 @@ Browser-based bridge UI (Next.js) for cross-chain token transfers.
 | warp-ui | `laconic/hyperlane-warp-ui:local` | Port 3000, sentinel placeholder substitution at startup |
 
 ### Ingress
-HTTP proxy routes host → warp-ui:3000 via Caddy ingress controller with automatic ACME TLS.
+HTTP proxy routes host → warp-ui:3000 via nginx ingress controller with automatic ACME TLS.
 
 ---
 

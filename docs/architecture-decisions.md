@@ -65,40 +65,28 @@ The patched agent image is used by both the validator and relayer stacks. Publis
 
 #### 3. Warp UI — Custom build required (build with placeholders, inject at runtime)
 
-**No existing image.** Built from https://github.com/hyperlane-xyz/hyperlane-warp-ui-template (not the monorepo).
+**No existing image.** Built from https://github.com/hyperlane-xyz/hyperlane-warp-ui-template at tag `v2.0.0` (not the monorepo). Uses `@hyperlane-xyz/sdk@28.0.0`.
 
 Next.js inlines `NEXT_PUBLIC_*` environment variables and YAML configs at `pnpm build` time. To avoid a slow runtime build, we build the full app at image build time using **placeholder sentinel values**, then substitute them with real values at container start.
 
 **Docker image build time (full build):**
-- Clone `hyperlane-warp-ui-template` repo at commit `6227c04350c27c208c5512ef40776f8181ab022a` (HEAD as of planning). **Note:** Compatibility with `agents-v2.0.0` contracts and exact commit selection to be verified during implementation.
-- Apply `SolanaWalletContext.tsx` code change (exact patch to be determined during implementation):
-  - Modify wallet context to read RPC URLs from environment variables instead of hardcoded localhost URLs
-  - Remove dependency on `@solana/web3.js` default cluster endpoints
+- Clone `hyperlane-warp-ui-template` repo at tag `v2.0.0`
+- Apply `SolanaWalletContext.tsx` patch: the default wallet context uses `clusterApiUrl(WalletAdapterNetwork.Mainnet)` which hardcodes the connection to Solana mainnet RPC. The patch replaces this with sentinel RPC URLs (`__GORCHAIN_RPC_URL__`, `__SOLANA_RPC_URL__`) so the wallet adapter connects to our custom chains. The sentinels are compiled into the JS bundle and replaced at container start by `entrypoint.sh`, same as all other config values. See `hyperlane-demo/patches/warp-ui.patch` for the original localhost version.
 - Install dependencies (`pnpm install`)
-- Create placeholder config files:
-  - `chains.yaml` with sentinel values (e.g., `__GORCHAIN_RPC_URL__`, `__SOLANA_RPC_URL__`)
-  - `warpRoutes.yaml` with sentinel values (e.g., `__WARP_COLLATERAL_ADDRESS__`, `__WARP_SYNTHETIC_ADDRESS__`)
+- Create placeholder config files with sentinel values:
+  - `chains.yaml` — chain metadata including `mailbox` addresses (required for SVM token adapters)
+  - `warpRoutes.yaml` — warp route token connections with `mailbox` per token
   - `.env` with sentinel `NEXT_PUBLIC_*` variables
 - Run `pnpm build` — produces the full Next.js build with sentinels baked into the JS bundles
 
 **Container runtime (entrypoint.sh):**
-- Read actual values from environment variables and mounted ConfigMaps
-- String-replace all sentinel placeholders in the built `.next/` output:
-  ```bash
-  # Example: replace sentinels in all JS bundles
-  find /app/.next -type f -name '*.js' -exec sed -i \
-    -e "s|__GORCHAIN_RPC_URL__|${GORCHAIN_RPC_URL}|g" \
-    -e "s|__SOLANA_RPC_URL__|${SOLANA_RPC_URL}|g" \
-    -e "s|__GORCHAIN_DOMAIN_ID__|${GORCHAIN_DOMAIN_ID}|g" \
-    -e "s|__SOLANA_DOMAIN_ID__|${SOLANA_DOMAIN_ID}|g" \
-    -e "s|__WARP_COLLATERAL_ADDRESS__|${WARP_COLLATERAL_ADDRESS}|g" \
-    -e "s|__WARP_SYNTHETIC_ADDRESS__|${WARP_SYNTHETIC_ADDRESS}|g" \
-    {} +
-  ```
-- Also replace sentinels in `chains.yaml` and `warpRoutes.yaml` if served as static assets
+- Read actual values from environment variables
+- String-replace all sentinel placeholders in the built `.next/` output and `/app/public/` static assets
 - Start the Next.js server
 
-**Sentinel variables (to be finalized during implementation):**
+**No ConfigMap mount.** Config is fully baked into the JS bundles at build time and substituted at container start via `sed` on the compiled output. There is no runtime config file mount — environment variables are the sole configuration interface.
+
+**Sentinel variables:**
 
 | Sentinel | Replaced with | Source |
 |----------|--------------|--------|
@@ -106,11 +94,17 @@ Next.js inlines `NEXT_PUBLIC_*` environment variables and YAML configs at `pnpm 
 | `__SOLANA_RPC_URL__` | Solana RPC endpoint | Env var |
 | `__GORCHAIN_DOMAIN_ID__` | Gorchain domain ID | Env var |
 | `__SOLANA_DOMAIN_ID__` | Solana domain ID | Env var |
+| `__GORCHAIN_CHAIN_ID__` | Gorchain chain ID | Env var |
+| `__SOLANA_CHAIN_ID__` | Solana chain ID | Env var |
 | `__GORCHAIN_CHAIN_NAME__` | Gorchain chain name | Env var |
 | `__SOLANA_CHAIN_NAME__` | Solana chain name | Env var |
-| `__WARP_COLLATERAL_ADDRESS__` | Collateral token program ID | ConfigMap (from warp deployer) |
-| `__WARP_SYNTHETIC_ADDRESS__` | Synthetic token program ID | ConfigMap (from warp deployer) |
-| `__WALLETCONNECT_PROJECT_ID__` | WalletConnect project ID | Env var / Secret |
+| `__GORCHAIN_MAILBOX__` | Gorchain mailbox program address | Env var (from deployer ConfigMap) |
+| `__SOLANA_MAILBOX__` | Solana mailbox program address | Env var (from deployer ConfigMap) |
+| `__WARP_COLLATERAL_ADDRESS__` | Collateral token program ID | Env var (from warp deployer) |
+| `__WARP_SYNTHETIC_ADDRESS__` | Synthetic token program ID | Env var (from warp deployer) |
+| `__NEXT_PUBLIC_WALLET_CONNECT_ID__` | WalletConnect project ID | Env var / Secret |
+| `__GORCHAIN_NATIVE_TOKEN_*__` | Native token name/symbol/decimals | Env var (defaults: GOR/GOR/9) |
+| `__SOLANA_NATIVE_TOKEN_*__` | Native token name/symbol/decimals | Env var (defaults: SOL/SOL/9) |
 
 **Rationale:** Full build at image time means instant startup. The `sed` replacement in entrypoint.sh takes seconds. This is a standard pattern for deploying Next.js apps in Docker with environment-specific config.
 
@@ -129,7 +123,7 @@ Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce
 | Ops jobs | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `git.vdb.to/laconic/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
 | Gas Oracle | `git.vdb.to/laconic/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
-| Warp UI | `git.vdb.to/laconic/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `6227c04` |
+| Warp UI | `git.vdb.to/laconic/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `v2.0.0` (`@hyperlane-xyz/sdk@28.0.0`) |
 | MinIO | `minio/minio` (upstream) | S3-compatible checkpoint storage |
 | Prometheus | `prom/prometheus` (upstream) | Metrics collection |
 | Grafana | `grafana/grafana` (upstream) | Dashboards and alerting |

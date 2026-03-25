@@ -2,7 +2,7 @@ version: "1.1"
 name: hyperlane-warp-ui
 description: "Hyperlane Warp UI — browser-based bridge UI for cross-chain token transfers"
 repos:
-  - github.com/hyperlane-xyz/hyperlane-warp-ui-template
+  - github.com/hyperlane-xyz/hyperlane-warp-ui-template@v2.0.0
 containers:
   - laconic/hyperlane-warp-ui
 pods:

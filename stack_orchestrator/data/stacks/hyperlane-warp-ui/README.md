@@ -2,15 +2,19 @@
 
 Browser-based bridge UI for cross-chain token transfers using Hyperlane warp routes. Serves a Next.js app with runtime-injected chain and token configuration.
 
+Built from [hyperlane-warp-ui-template](https://github.com/hyperlane-xyz/hyperlane-warp-ui-template) at tag `v2.0.0`.
+
 ## Prerequisites
 
 - A running `k8s-kind` cluster
 - `laconic-so` (stack-orchestrator) installed
+- `hyperlane-svm-deployer` stack deployed (needs mailbox addresses)
 - `hyperlane-svm-warp-deployer` stack deployed (needs warp route addresses)
 
 ## 1. Build container
 
 ```bash
+laconic-so --stack hyperlane-warp-ui setup-repositories
 laconic-so --stack hyperlane-warp-ui build-containers
 ```
 
@@ -36,9 +40,9 @@ config:
   SOLANA_CHAIN_ID: "99998"
   WARP_COLLATERAL_ADDRESS: "<collateral-address>"
   WARP_SYNTHETIC_ADDRESS: "<synthetic-address>"
+  GORCHAIN_MAILBOX: "<gorchain-mailbox-program-id>"
+  SOLANA_MAILBOX: "<solana-mailbox-program-id>"
   NEXT_PUBLIC_WALLET_CONNECT_ID: "<walletconnect-project-id>"
-configmaps:
-  warp-routes-config: ./configmaps/warp-routes-config
 network:
   http-proxy:
     - host-name: bridge.example.com

@@ -27,9 +27,12 @@ from lib.cluster import (
     create_namespace,
     create_selfsigned_issuer,
     destroy_kind_cluster,
+    ensure_hosts_entry,
     install_cert_manager,
+    install_ingress_nginx,
 )
 from lib.common import (
+    CHAINS,
     E2E_DIR,
     get_configmap_data,
     get_configmap_json,
@@ -42,7 +45,7 @@ from lib.deploy import (
     E2E_NAMESPACE,
     DeploymentInfo,
     build_agent_image,
-    build_kms_proxy_image,
+    build_warp_ui_image,
     deploy_prepare,
     deploy_start,
     get_cluster_id,
@@ -80,6 +83,7 @@ MINIO_SPEC = E2E_DIR / "fixtures" / "test-spec-minio.yml"
 VALIDATOR_GORCHAIN_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-gorchain.yml"
 VALIDATOR_SOLANA_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-solana.yml"
 RELAYER_SPEC = E2E_DIR / "fixtures" / "test-spec-relayer.yml"
+WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
 
 PRIVY_MOCK_PORT = 19876
 
@@ -187,6 +191,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--skip-relayer-deploy", action="store_true", default=False,
         help="Skip relayer deployment (reuse existing from a previous --skip-cleanup run)"
     )
+    parser.addoption(
+        "--skip-warp-ui-deploy", action="store_true", default=False,
+        help="Skip warp-ui deployment (reuse existing from a previous --skip-cleanup run)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +214,10 @@ def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
         install_cert_manager()
         log.info("Creating self-signed issuer...")
         create_selfsigned_issuer()
+        log.info("Installing nginx ingress controller...")
+        install_ingress_nginx()
+        log.info("Adding bridge.test to /etc/hosts...")
+        ensure_hosts_entry("bridge.test")
     else:
         log.info("Skipping cluster setup (--skip-cluster-setup)")
 
@@ -256,6 +268,9 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 @pytest.fixture(scope="session")
 def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
     """Build or pre-fetch the deployer image and load it into the kind cluster."""
+    if request.config.getoption("--skip-core-deploy") and request.config.getoption("--skip-warp-deploy"):
+        log.info("Skipping deployer image build (--skip-core-deploy + --skip-warp-deploy)")
+        return
     if request.config.getoption("--build-from-source"):
         from lib.deploy import build_deployer_image
         log.info("Building deployer container image from source...")
@@ -268,11 +283,23 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 @pytest.fixture(scope="session")
 def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
     """Build agent + kms-proxy via laconic-so, pull kubectl image, load all into kind."""
+    if request.config.getoption("--skip-validator-deploy", default=False):
+        log.info("Skipping validator image builds (--skip-validator-deploy)")
+        return
     log.info("Building patched agent and kms-proxy images via laconic-so...")
     build_agent_image()
 
     log.info("Pre-fetching kubectl image into kind cluster...")
     prefetch_validator_images()
+
+
+@pytest.fixture(scope="session")
+def all_images(
+    deployer_image: None,
+    validator_images: None,
+    warp_ui_image: None,
+) -> None:
+    """Build/fetch all container images up front before any deployment starts."""
 
 
 @pytest.fixture(scope="session")
@@ -380,7 +407,7 @@ def minio_deployment(
 @pytest.fixture(scope="session")
 def deployer_deployment(
     request: pytest.FixtureRequest,
-    deployer_image: None,
+    all_images: None,
     keypairs: KeypairSet,
     kind_cluster: None,
     chain_nodes: None,
@@ -731,7 +758,6 @@ def validator_gorchain(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     privy_mock: dict[str, str],
-    validator_images: None,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy the gorchain validator."""
     yield from _deploy_validator(
@@ -750,7 +776,6 @@ def validator_solana(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     privy_mock: dict[str, str],
-    validator_images: None,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy the solana validator."""
     yield from _deploy_validator(
@@ -954,3 +979,263 @@ def bridge_setup(
         "warp_programs": warp_programs,
         "relayer_cluster_id": relayer_deployment.cluster_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# Warp UI deployment
+# ---------------------------------------------------------------------------
+
+WARP_UI_HOSTNAME = "bridge.test"
+WARP_UI_URL = f"https://{WARP_UI_HOSTNAME}"
+
+# Ingress manifest template for warp-ui with TLS via cert-manager
+WARP_UI_INGRESS_TEMPLATE = """\
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: warp-ui-ingress
+  namespace: {namespace}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {hostname}
+      secretName: warp-ui-tls
+  rules:
+    - host: {hostname}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {service_name}
+                port:
+                  number: 3000
+"""
+
+
+@pytest.fixture(scope="session")
+def warp_ui_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+    """Build the warp-ui image via laconic-so and load it into the kind cluster."""
+    if request.config.getoption("--skip-warp-ui-deploy", default=False):
+        log.info("Skipping warp-ui image build (--skip-warp-ui-deploy)")
+        return
+    log.info("Building warp-ui container image...")
+    build_warp_ui_image()
+
+
+@pytest.fixture(scope="session")
+def warp_ui_deployment(
+    request: pytest.FixtureRequest,
+    warp_deployment: dict,
+    deployer_deployment: DeploymentInfo,
+    kind_cluster: None,
+) -> Generator[dict, None, None]:
+    """Deploy the warp-ui stack with resolved addresses from ConfigMaps."""
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
+    namespace = E2E_NAMESPACE
+
+    # Resolve config values from existing ConfigMaps
+    log.info("Resolving mailbox addresses from program-ids ConfigMap...")
+    gorchain_programs = get_configmap_json(namespace, "hyperlane-program-ids", "gorchain-program-ids.json")
+    solana_programs = get_configmap_json(namespace, "hyperlane-program-ids", "solana-program-ids.json")
+    gorchain_mailbox = gorchain_programs["mailbox"]
+    solana_mailbox = solana_programs["mailbox"]
+    log.info("Mailboxes — gorchain: %s, solana: %s", gorchain_mailbox, solana_mailbox)
+
+    warp_programs = _get_warp_program_addresses(namespace)
+    warp_collateral = warp_programs["solana"]
+    warp_synthetic = warp_programs["gorchain"]
+    log.info("Warp addresses — collateral: %s, synthetic: %s", warp_collateral, warp_synthetic)
+
+    token_mint = warp_deployment["token_mint"]
+    log.info("Token mint: %s", token_mint)
+
+    synthetic_mint = _get_synthetic_mint(warp_synthetic, rpc="http://localhost:8899")
+    log.info("Synthetic mint: %s", synthetic_mint)
+
+    if skip_warp_ui:
+        deploy_dir = DEPLOY_DIR / "hyperlane-warp-ui"
+        cluster_id = get_cluster_id(deploy_dir)
+        log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
+
+        yield {
+            "deployment": DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            "url": WARP_UI_URL,
+            "gorchain_mailbox": gorchain_mailbox,
+            "solana_mailbox": solana_mailbox,
+            "warp_collateral": warp_collateral,
+            "warp_synthetic": warp_synthetic,
+            "token_mint": token_mint,
+            "synthetic_mint": synthetic_mint,
+        }
+        return
+
+    # Patch the spec with runtime values
+    content = WARP_UI_SPEC.read_text()
+    content = content.replace(
+        'GORCHAIN_MAILBOX: "REPLACE_AT_RUNTIME"',
+        f'GORCHAIN_MAILBOX: "{gorchain_mailbox}"',
+    )
+    content = content.replace(
+        'SOLANA_MAILBOX: "REPLACE_AT_RUNTIME"',
+        f'SOLANA_MAILBOX: "{solana_mailbox}"',
+    )
+    content = content.replace(
+        'WARP_COLLATERAL_ADDRESS: "REPLACE_AT_RUNTIME"',
+        f'WARP_COLLATERAL_ADDRESS: "{warp_collateral}"',
+    )
+    content = content.replace(
+        'WARP_SYNTHETIC_ADDRESS: "REPLACE_AT_RUNTIME"',
+        f'WARP_SYNTHETIC_ADDRESS: "{warp_synthetic}"',
+    )
+    content = content.replace(
+        'WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"',
+        f'WARP_TOKEN_MINT: "{token_mint}"',
+    )
+    content = content.replace(
+        'WARP_SYNTHETIC_MINT: "REPLACE_AT_RUNTIME"',
+        f'WARP_SYNTHETIC_MINT: "{synthetic_mint}"',
+    )
+    patched_path = E2E_DIR / ".warp-ui-spec-patched.yml"
+    patched_path.write_text(content)
+
+    log.info("Preparing warp-ui stack...")
+    deploy_info = deploy_prepare(
+        "hyperlane-warp-ui", patched_path,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
+    )
+
+    log.info("Starting warp-ui stack...")
+    deploy_start(deploy_info.deploy_dir)
+
+    log.info("Waiting for warp-ui pod to be running...")
+    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+    log.info("Warp UI is running")
+
+    # Create Ingress with TLS via cert-manager self-signed issuer.
+    # SO skips TLS on Kind clusters, so we create the Ingress ourselves.
+    # SO names services as {cluster_id}-nodeport-{port}-tcp.
+    service_name = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
+    ingress_yaml = WARP_UI_INGRESS_TEMPLATE.format(
+        namespace=namespace,
+        hostname=WARP_UI_HOSTNAME,
+        service_name=service_name,
+    )
+    log.info("Creating warp-ui Ingress with TLS (host: %s)...", WARP_UI_HOSTNAME)
+    subprocess.run(
+        ["kubectl", "apply", "-f", "-"],
+        input=ingress_yaml, text=True, check=True,
+    )
+
+    # Wait for the TLS certificate to be issued
+    log.info("Waiting for TLS certificate to be ready...")
+    for _ in range(30):
+        result = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "get", "certificate", "warp-ui-tls",
+                "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        if result.stdout.strip() == "True":
+            break
+        time.sleep(2)
+    else:
+        log.warning("TLS certificate not ready after 60s — tests may fail")
+
+    # Wait for the full TLS ingress to return HTTP 200
+    log.info("Waiting for warp-ui to respond via TLS ingress...")
+    for _attempt in range(30):
+        probe = subprocess.run(
+            ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+             f"{WARP_UI_URL}/"],
+            capture_output=True, text=True, check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip() == "200":
+            break
+        time.sleep(2)
+    else:
+        log.warning("Warp UI not returning 200 after 60s — tests may fail")
+    log.info("Warp UI ingress ready at %s", WARP_UI_URL)
+
+    yield {
+        "deployment": deploy_info,
+        "url": WARP_UI_URL,
+        "gorchain_mailbox": gorchain_mailbox,
+        "solana_mailbox": solana_mailbox,
+        "warp_collateral": warp_collateral,
+        "warp_synthetic": warp_synthetic,
+        "token_mint": token_mint,
+        "synthetic_mint": synthetic_mint,
+    }
+
+    patched_path.unlink(missing_ok=True)
+    if not skip_cleanup:
+        log.info("Stopping warp-ui stack...")
+        stop_stack("hyperlane-warp-ui")
+
+
+@pytest.fixture(scope="session")
+def warp_ui_browser(
+    request: pytest.FixtureRequest,
+    warp_ui_deployment: dict,
+    bridge_setup: dict,
+) -> Generator[dict, None, None]:
+    """Launch Playwright browser with Backpack wallet extension.
+
+    Uses a persistent browser context with the Backpack extension loaded.
+    Chrome extensions require headed mode (headless=False). For headless
+    operation, wrap the pytest invocation with ``xvfb-run``::
+
+        xvfb-run pytest -v test_warp_ui_bridge.py
+
+    Pass ``--headed`` to show the browser window on a real display.
+
+    The Backpack wallet is configured with the test keypair and custom
+    RPC URLs for gorchain and solana.
+    """
+    from playwright.sync_api import sync_playwright
+
+    from lib.backpack import (
+        get_backpack_extension_path,
+        launch_browser_with_backpack,
+        setup_backpack_wallet,
+    )
+
+    url = warp_ui_deployment["url"]
+    sender_keypair = bridge_setup["sender_keypair"]
+
+    # Download/cache Backpack extension
+    ext_path = get_backpack_extension_path()
+
+    pw = sync_playwright().start()
+
+    # Launch browser with Backpack loaded
+    context = launch_browser_with_backpack(pw, ext_path)
+
+    # Configure wallet with test keypair and custom RPC URLs
+    rpc_urls = {
+        "gorchain": CHAINS["gorchain"]["rpc"],
+        "solana": CHAINS["solana"]["rpc"],
+    }
+    wallet_pubkey = setup_backpack_wallet(context, sender_keypair, rpc_urls)
+    log.info("Backpack wallet configured with pubkey: %s", wallet_pubkey)
+
+    yield {
+        "context": context,
+        "playwright": pw,
+        "url": url,
+        "sender_keypair": sender_keypair,
+        "wallet_pubkey": wallet_pubkey,
+        "token_mint": bridge_setup["token_mint"],
+        "synthetic_mint": bridge_setup["synthetic_mint"],
+    }
+
+    context.close()
+    pw.stop()

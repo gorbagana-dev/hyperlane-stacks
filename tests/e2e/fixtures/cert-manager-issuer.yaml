@@ -1,6 +1,9 @@
+# Self-signed ClusterIssuer for e2e tests.
+# Named "letsencrypt-prod" to match SO's hardcoded default — in production,
+# this would be a real Let's Encrypt issuer with the same name.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: selfsigned-issuer
+  name: letsencrypt-prod
 spec:
   selfSigned: {}

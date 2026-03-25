@@ -23,17 +23,24 @@ services:
       SOLANA_NATIVE_TOKEN_NAME: ${SOLANA_NATIVE_TOKEN_NAME:-SOL}
       SOLANA_NATIVE_TOKEN_SYMBOL: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
       SOLANA_NATIVE_TOKEN_DECIMALS: ${SOLANA_NATIVE_TOKEN_DECIMALS:-9}
-      # Warp route token addresses (from warp deployer output)
+      # Mailbox program addresses (from core deployer output)
+      GORCHAIN_MAILBOX: ${GORCHAIN_MAILBOX}
+      SOLANA_MAILBOX: ${SOLANA_MAILBOX}
+      # Warp route addresses (from warp deployer output)
       WARP_COLLATERAL_ADDRESS: ${WARP_COLLATERAL_ADDRESS}
       WARP_SYNTHETIC_ADDRESS: ${WARP_SYNTHETIC_ADDRESS}
       WARP_TOKEN_MINT: ${WARP_TOKEN_MINT:-}
-      TOKEN_SYMBOL: ${TOKEN_SYMBOL:-USDC}
-      TOKEN_NAME: ${TOKEN_NAME:-USD Coin}
+      WARP_SYNTHETIC_MINT: ${WARP_SYNTHETIC_MINT:-}
+      # Warp token metadata
+      WARP_TOKEN_NAME: ${WARP_TOKEN_NAME:-USD Coin}
+      WARP_TOKEN_SYMBOL: ${WARP_TOKEN_SYMBOL:-USDC}
+      WARP_TOKEN_DECIMALS: ${WARP_TOKEN_DECIMALS:-6}
+      WARP_SYNTHETIC_NAME: ${WARP_SYNTHETIC_NAME:-Synthetic USD Coin}
+      WARP_SYNTHETIC_SYMBOL: ${WARP_SYNTHETIC_SYMBOL:-gUSDC}
       # WalletConnect
       NEXT_PUBLIC_WALLET_CONNECT_ID: ${NEXT_PUBLIC_WALLET_CONNECT_ID:-}
-    volumes:
-      # Config volume — becomes ConfigMap in k8s (contains "config" in name)
-      - warp-routes-config:/app/config/warp-routes:ro
+      # Standalone server must bind to all interfaces for k8s Service routing
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3000"
     healthcheck:
@@ -42,7 +49,3 @@ services:
       timeout: 10s
       retries: 5
       start_period: 15s
-
-volumes:
-  # Config volume — becomes ConfigMap in k8s
-  warp-routes-config:

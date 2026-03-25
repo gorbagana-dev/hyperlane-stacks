@@ -17,6 +17,15 @@ config:
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
   FORCE_REDEPLOY: "false"
+resources:
+  containers:
+    deployer:
+      reservations:
+        cpus: "0.5"
+        memory: 512M
+      limits:
+        cpus: "2"
+        memory: 1G
 secrets:
   hyperlane-deployer-secrets:
     - DEPLOYER_KEYPAIR

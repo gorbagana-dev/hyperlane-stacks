@@ -9,6 +9,29 @@ config:
   SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
   GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
+resources:
+  containers:
+    agent-config-init:
+      reservations:
+        cpus: "0.1"
+        memory: 64M
+      limits:
+        cpus: "0.25"
+        memory: 128M
+    relayer:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "1"
+        memory: 512M
+    igp-fee-claim:
+      reservations:
+        cpus: "0.1"
+        memory: 64M
+      limits:
+        cpus: "0.25"
+        memory: 128M
 volumes:
   relayer-data:
   agent-config:

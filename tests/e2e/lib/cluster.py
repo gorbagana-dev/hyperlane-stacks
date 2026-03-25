@@ -92,6 +92,55 @@ def create_selfsigned_issuer(fixture_path: Path | None = None) -> None:
     log_info("Self-signed ClusterIssuer created")
 
 
+def ensure_hosts_entry(hostname: str, ip: str = "127.0.0.1") -> None:
+    """Ensure a /etc/hosts entry exists for the given hostname.
+
+    Idempotent — skips if the entry already exists.
+    Uses sudo since /etc/hosts requires root access.
+    """
+    import re as _re
+
+    hosts_path = "/etc/hosts"
+    with open(hosts_path) as f:
+        content = f.read()
+
+    # Check if the exact hostname is already mapped
+    pattern = rf"^\s*\S+\s+.*\b{_re.escape(hostname)}\b"
+    if _re.search(pattern, content, _re.MULTILINE):
+        log_info(f"/etc/hosts already has entry for {hostname}")
+        return
+
+    log_info(f"Adding {hostname} -> {ip} to /etc/hosts...")
+    entry = f"{ip} {hostname}\n"
+    run_cmd(["sudo", "tee", "-a", hosts_path], input_text=entry, quiet=True)
+    log_info(f"Added /etc/hosts entry: {ip} {hostname}")
+
+
+def install_ingress_nginx() -> None:
+    """Install the nginx ingress controller for Kind clusters.
+
+    Uses the Kind-specific manifest from the ingress-nginx project which
+    includes hostNetwork and NodePort configuration that works with Kind's
+    extraPortMappings (ports 80/443 mapped to the host).
+    """
+    log_info("Installing nginx ingress controller for Kind...")
+    run_cmd([
+        "kubectl", "apply", "-f",
+        "https://raw.githubusercontent.com/kubernetes/ingress-nginx/"
+        "controller-v1.12.0/deploy/static/provider/kind/deploy.yaml",
+    ])
+
+    log_info("Waiting for nginx ingress controller to be ready...")
+    run_cmd([
+        "kubectl", "wait", "--namespace", "ingress-nginx",
+        "--for=condition=Ready", "pod",
+        "-l", "app.kubernetes.io/component=controller",
+        "--timeout=120s",
+    ])
+
+    log_info("nginx ingress controller is ready")
+
+
 def create_namespace(namespace: str) -> None:
     log_info(f"Creating namespace {namespace}...")
     result = run_cmd(["kubectl", "create", "namespace", namespace], check=False)

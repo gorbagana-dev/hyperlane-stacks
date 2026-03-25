@@ -7,6 +7,29 @@ config:
   CHECKPOINT_BUCKET: hyperlane-validator-solana
   PRIVY_API_URL: "http://privy-mock:19876"
   PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
+resources:
+  containers:
+    agent-config-init:
+      reservations:
+        cpus: "0.1"
+        memory: 64M
+      limits:
+        cpus: "0.25"
+        memory: 128M
+    validator:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "1"
+        memory: 512M
+    kms-proxy:
+      reservations:
+        cpus: "0.1"
+        memory: 64M
+      limits:
+        cpus: "0.25"
+        memory: 128M
 volumes:
   validator-data:
   agent-config:
