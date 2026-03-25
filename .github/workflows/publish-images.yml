@@ -8,6 +8,7 @@ on:
       - '.github/trigger-publish-deployer.txt'
       - '.github/trigger-publish-agent.txt'
       - '.github/trigger-publish-kms-proxy.txt'
+      - '.github/trigger-publish-warp-ui.txt'
   workflow_dispatch:
 
 jobs:
@@ -21,7 +22,8 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hyperlane-svm-deployer
+      LOCAL_IMAGE: gorbagana-dev/hyperlane-svm-deployer:local
+      REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/hyperlane-svm-deployer
 
     steps:
       - name: Checkout
@@ -62,9 +64,8 @@ jobs:
 
       - name: Tag and push image
         run: |
-          LOCAL_IMAGE="${IMAGE_NAME}:local"
-          REMOTE_TAG="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${IMAGE_NAME}:latest"
+          REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${REMOTE_IMAGE}:latest"
 
           docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
           docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
@@ -85,7 +86,8 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hyperlane-agent
+      LOCAL_IMAGE: gorbagana-dev/hyperlane-agent:local
+      REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/hyperlane-agent
 
     steps:
       - name: Checkout
@@ -127,9 +129,8 @@ jobs:
 
       - name: Tag and push agent image
         run: |
-          LOCAL_IMAGE="${IMAGE_NAME}:local"
-          REMOTE_TAG="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${IMAGE_NAME}:latest"
+          REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${REMOTE_IMAGE}:latest"
 
           docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
           docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
@@ -150,7 +151,8 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hyperlane-kms-proxy
+      LOCAL_IMAGE: gorbagana-dev/hyperlane-kms-proxy:local
+      REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/hyperlane-kms-proxy
 
     steps:
       - name: Checkout
@@ -189,9 +191,66 @@ jobs:
 
       - name: Tag and push image
         run: |
-          LOCAL_IMAGE="${IMAGE_NAME}:local"
-          REMOTE_TAG="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${IMAGE_NAME}:latest"
+          REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${REMOTE_IMAGE}:latest"
+
+          docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
+          docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
+
+          docker push "${REMOTE_TAG}"
+          docker push "${REMOTE_LATEST}"
+
+          echo "Published: ${REMOTE_TAG}"
+          echo "Published: ${REMOTE_LATEST}"
+
+  build-warp-ui:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.modified, '.github/trigger-publish-warp-ui.txt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      LOCAL_IMAGE: gorbagana-dev/hyperlane-warp-ui:local
+      REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/hyperlane-warp-ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install laconic-so
+        run: |
+          mkdir -p ~/bin
+          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          chmod +x ~/bin/laconic-so
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Setup repositories
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui setup-repositories
+
+      - name: Build warp-ui image
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui build-containers
+
+      - name: Generate image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Tag and push image
+        run: |
+          REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${REMOTE_IMAGE}:latest"
 
           docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
           docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
