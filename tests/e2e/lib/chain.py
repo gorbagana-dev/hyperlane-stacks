@@ -12,7 +12,8 @@ from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
 LEDGER_BASE = Path(__file__).resolve().parent.parent / ".data"
 
-GORCHAIN_STACKS_REPO = "github.com/gorbagana-dev/gorchain-stacks@main"
+# TODO: Switch back to @main once gorchain-stacks image publishing is resolved
+GORCHAIN_STACKS_REPO = "github.com/gorbagana-dev/gorchain-stacks@337aefefa4103dc11368b33d08b32ff75f360131"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
 
 
