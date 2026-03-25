@@ -10,10 +10,6 @@ on:
       - '.github/trigger-publish-kms-proxy.txt'
   workflow_dispatch:
 
-env:
-  REGISTRY: git.vdb.to
-  REGISTRY_ORG: laconicnetwork
-
 jobs:
   build-deployer:
     if: >-
@@ -21,15 +17,22 @@ jobs:
       contains(github.event.head_commit.modified, '.github/trigger-publish-deployer.txt')
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
     env:
-      IMAGE_NAME: laconic/hyperlane-svm-deployer
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hyperlane-svm-deployer
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Login to registry
-        run: echo ${{ secrets.CICD_PUBLISH_TOKEN }} | docker login https://git.vdb.to -u laconiccicd --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install laconic-so
         run: |
@@ -42,7 +45,7 @@ jobs:
         run: |
           STACK_YML="$(pwd)/stack_orchestrator/data/stacks/hyperlane-svm-deployer/stack.yml"
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
-          sed -i 's/^#   - laconic/  - laconic/' "$STACK_YML"
+          sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
 
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-svm-deployer setup-repositories
@@ -60,8 +63,8 @@ jobs:
       - name: Tag and push image
         run: |
           LOCAL_IMAGE="${IMAGE_NAME}:local"
-          REMOTE_TAG="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:latest"
+          REMOTE_TAG="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${IMAGE_NAME}:latest"
 
           docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
           docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
@@ -78,15 +81,22 @@ jobs:
       contains(github.event.head_commit.modified, '.github/trigger-publish-agent.txt')
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
     env:
-      IMAGE_NAME: laconic/hyperlane-agent
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hyperlane-agent
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Login to registry
-        run: echo ${{ secrets.CICD_PUBLISH_TOKEN }} | docker login https://git.vdb.to -u laconiccicd --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install laconic-so
         run: |
@@ -99,14 +109,14 @@ jobs:
         run: |
           STACK_YML="$(pwd)/stack_orchestrator/data/stacks/hyperlane-validator/stack.yml"
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
-          sed -i 's/^#   - laconic/  - laconic/' "$STACK_YML"
+          sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
           sed -i 's/^#   #/  #/' "$STACK_YML"
 
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator setup-repositories
 
       - name: Build agent image
-        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator build-containers --include laconic/hyperlane-agent
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator build-containers --include gorbagana-dev/hyperlane-agent
 
       - name: Generate image tag
         id: tag
@@ -118,8 +128,8 @@ jobs:
       - name: Tag and push agent image
         run: |
           LOCAL_IMAGE="${IMAGE_NAME}:local"
-          REMOTE_TAG="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:latest"
+          REMOTE_TAG="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${IMAGE_NAME}:latest"
 
           docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
           docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
@@ -136,15 +146,22 @@ jobs:
       contains(github.event.head_commit.modified, '.github/trigger-publish-kms-proxy.txt')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     env:
-      IMAGE_NAME: laconic/hyperlane-kms-proxy
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hyperlane-kms-proxy
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Login to registry
-        run: echo ${{ secrets.CICD_PUBLISH_TOKEN }} | docker login https://git.vdb.to -u laconiccicd --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install laconic-so
         run: |
@@ -157,11 +174,11 @@ jobs:
         run: |
           STACK_YML="$(pwd)/stack_orchestrator/data/stacks/hyperlane-validator/stack.yml"
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
-          sed -i 's/^#   - laconic/  - laconic/' "$STACK_YML"
+          sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
           sed -i 's/^#   #/  #/' "$STACK_YML"
 
       - name: Build kms-proxy image
-        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator build-containers --include laconic/hyperlane-kms-proxy
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator build-containers --include gorbagana-dev/hyperlane-kms-proxy
 
       - name: Generate image tag
         id: tag
@@ -173,8 +190,8 @@ jobs:
       - name: Tag and push image
         run: |
           LOCAL_IMAGE="${IMAGE_NAME}:local"
-          REMOTE_TAG="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${REGISTRY}/${REGISTRY_ORG}/${IMAGE_NAME}:latest"
+          REMOTE_TAG="${IMAGE_NAME}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${IMAGE_NAME}:latest"
 
           docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
           docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"

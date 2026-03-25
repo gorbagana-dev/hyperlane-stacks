@@ -3,6 +3,7 @@ source ${CERC_CONTAINER_BASE_DIR}/build-base.sh
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-docker build -t laconic/hyperlane-kms-proxy:local \
+docker build -t gorbagana-dev/hyperlane-svm-deployer:local \
+  -f ${SCRIPT_DIR}/Dockerfile \
   ${build_command_args} \
-  ${SCRIPT_DIR}/../../../../hyperlane-kms-proxy
+  ${CERC_REPO_BASE_DIR}/hyperlane-monorepo

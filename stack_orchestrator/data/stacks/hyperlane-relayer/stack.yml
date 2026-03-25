@@ -1,7 +1,7 @@
 version: "1.1"
 name: hyperlane-relayer
 description: "Hyperlane relayer with IGP fee claim sidecar"
-# No repos or containers — the relayer uses laconic/hyperlane-agent:local
+# No repos or containers — the relayer uses gorbagana-dev/hyperlane-agent:local
 # which is built by the hyperlane-validator stack (and will eventually be
 # published to a registry). The igp-fee-claim sidecar uses the deployer image.
 pods:

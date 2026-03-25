@@ -18,7 +18,7 @@ laconic-so --stack hyperlane-warp-ui setup-repositories
 laconic-so --stack hyperlane-warp-ui build-containers
 ```
 
-Builds `laconic/hyperlane-warp-ui:local`.
+Builds `gorbagana-dev/hyperlane-warp-ui:local`.
 
 ## 2. Create deployment
 

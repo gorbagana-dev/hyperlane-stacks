@@ -7,7 +7,7 @@
     job_name: "hyperlane-kill-switch-{{ lookup('pipe', 'date +%s') }}"
     script_configmap_name: "{{ job_name }}-script"
     output_dir: "./kill-switch-output"
-    image: "git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest"
+    image: "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
 
   pre_tasks:
     - name: Validate required variables

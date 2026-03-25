@@ -16,13 +16,13 @@ DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 # Shared namespace for all e2e stacks — derived from the Kind cluster name.
 E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 
-DEPLOYER_IMAGE = "git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest"
-KMS_PROXY_IMAGE = "laconic/hyperlane-kms-proxy:local"
-VALIDATOR_IMAGE = "laconic/hyperlane-agent:local"
+DEPLOYER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
+KMS_PROXY_IMAGE = "gorbagana-dev/hyperlane-kms-proxy:local"
+VALIDATOR_IMAGE = "gorbagana-dev/hyperlane-agent:local"
 KUBECTL_IMAGE = "bitnami/kubectl:latest"
 MINIO_IMAGE = "minio/minio:latest"
 MINIO_MC_IMAGE = "minio/mc:latest"
-WARP_UI_IMAGE = "laconic/hyperlane-warp-ui:local"
+WARP_UI_IMAGE = "gorbagana-dev/hyperlane-warp-ui:local"
 
 
 

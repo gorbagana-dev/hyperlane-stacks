@@ -18,8 +18,8 @@ services:
 
   relayer:
     # Switch to published images when available
-    # image: git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest
-    image: laconic/hyperlane-agent:local
+    # image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
+    image: gorbagana-dev/hyperlane-agent:local
     restart: unless-stopped
     hostname: relayer
     command:
@@ -56,7 +56,7 @@ services:
       start_period: 30s
 
   igp-fee-claim:
-    image: git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest
+    image: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest
     restart: unless-stopped
     hostname: igp-fee-claim
     command: ["/bin/bash", "/opt/scripts/claim-fees.sh"]

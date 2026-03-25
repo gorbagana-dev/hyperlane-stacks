@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# laconic-hyperlane-agent
+# gorbagana-dev-hyperlane-agent
 # Patched build of hyperlane agent with two fixes for S3-compatible / custom endpoints:
 # 1. KMS endpoint — rusoto_kms ignores AWS_ENDPOINT_URL_KMS; patch uses Region::Custom
 # 2. S3 path-style — force path-style addressing when AWS_ENDPOINT_URL is set (MinIO)
@@ -45,8 +45,8 @@ COPY rust/sealevel ../sealevel
 # Apply patches:
 # 1. KMS endpoint — redirect rusoto KMS calls via AWS_ENDPOINT_URL_KMS
 # 2. S3 path-style — use path-style addressing for S3-compatible stores (MinIO)
-COPY stack_orchestrator/data/container-build/laconic-hyperlane-agent/kms-endpoint.patch /tmp/
-COPY stack_orchestrator/data/container-build/laconic-hyperlane-agent/s3-path-style.patch /tmp/
+COPY stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-agent/kms-endpoint.patch /tmp/
+COPY stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-agent/s3-path-style.patch /tmp/
 RUN cd /usr/src && git apply /tmp/kms-endpoint.patch /tmp/s3-path-style.patch
 
 # Build validator and relayer

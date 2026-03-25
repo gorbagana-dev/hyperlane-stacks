@@ -50,7 +50,7 @@ cp ${SCRIPT_DIR}/patches/SolanaWalletContext.tsx \
 cp ${SCRIPT_DIR}/patches/warpRouteWhitelist.ts \
    ${REPO_DIR}/src/consts/warpRouteWhitelist.ts
 
-docker build -t laconic/hyperlane-warp-ui:local \
+docker build -t gorbagana-dev/hyperlane-warp-ui:local \
   -f ${SCRIPT_DIR}/Dockerfile \
   ${build_command_args} \
   ${REPO_DIR}

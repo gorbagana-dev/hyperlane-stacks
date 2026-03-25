@@ -22,7 +22,7 @@ Clones `hyperlane-monorepo` at `@hyperlane-xyz/core@10.2.0` (`16c056a09`) to `~/
 laconic-so --stack hyperlane-svm-warp-deployer build-containers
 ```
 
-Reuses the `git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest` image (same as core deployer).
+Reuses the `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` image (same as core deployer).
 
 ## 3. Create deployment
 

@@ -64,14 +64,14 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 
 | # | Stack | repos: | containers: | pods: | jobs: |
 |---|-------|--------|-------------|-------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `laconic/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `laconic/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
-| 3 | `hyperlane-validator` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-kms-proxy` | `hyperlane-validator` | — |
-| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `laconic/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
+| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
+| 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-kms-proxy` | `hyperlane-validator` | — |
+| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` | — |
-| 6 | `hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | `laconic/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
+| 6 | `hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` | — |
-| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `laconic/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
+| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `gorbagana-dev/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
 
 - Stacks 1 and 2 use `jobs:` (not `pods:`) because deployers are one-shot containers — k8s Jobs (restartPolicy: Never, backoffLimit: 0) prevent CrashLoopBackOff that occurs when Deployments restart completed containers. Their compose files live in `compose-jobs/` instead of `compose/`.
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
@@ -98,7 +98,7 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| deployer | `laconic/hyperlane-svm-deployer:local` | `restart: "no"`, mounts deploy script + config templates |
+| deployer | `gorbagana-dev/hyperlane-svm-deployer:local` | `restart: "no"`, mounts deploy script + config templates |
 
 ### ConfigMaps (input)
 - `deployer-scripts-config` — deploy.sh entrypoint
@@ -137,7 +137,7 @@ One-time Job that deploys warp route contracts (collateral on one chain, synthet
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| warp-deployer | `laconic/hyperlane-svm-deployer:local` | Same deployer image, different entrypoint script |
+| warp-deployer | `gorbagana-dev/hyperlane-svm-deployer:local` | Same deployer image, different entrypoint script |
 
 ### Dependencies
 - Requires Stack 1 (core deployer) to have run first
@@ -168,8 +168,8 @@ Single parameterized compose file. All chain-specific values come from env vars 
 | Service | Image | Notes |
 |---------|-------|-------|
 | agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
-| validator | `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest` | CLI args from env vars, metrics on :9090 |
-| kms-proxy | `git.vdb.to/laconicnetwork/laconic/hyperlane-kms-proxy:latest` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
+| validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | CLI args from env vars, metrics on :9090 |
+| kms-proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
 
 Validator command uses env vars for all chain-specific args:
 - `--origin-chain-name ${ORIGIN_CHAIN_NAME}`
@@ -219,8 +219,8 @@ Delivers cross-chain messages between Gorchain and Solana. Includes an IGP fee c
 | Service | Image | Notes |
 |---------|-------|-------|
 | agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
-| relayer | `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
-| igp-fee-claim | `git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
+| relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
+| igp-fee-claim | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
 
 ### IGP Fee Claim Sidecar
 Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fees.sh`. Mounted as ConfigMap volume. Claims accumulated IGP fees on both chains using the relayer key for tx fees (permissionless operation).
@@ -273,7 +273,7 @@ Periodically fetches token prices and updates IGP gas oracle configurations on b
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| gas-oracle | `laconic/hyperlane-gas-oracle:local` | Node.js, loop mode via `RUN_LOOP=true` |
+| gas-oracle | `gorbagana-dev/hyperlane-gas-oracle:local` | Node.js, loop mode via `RUN_LOOP=true` |
 
 ### Config (spec.yml)
 `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID`, `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GAS_ORACLE_INTERVAL_MS` (default 900000)
@@ -328,7 +328,7 @@ Browser-based bridge UI (Next.js) for cross-chain token transfers.
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| warp-ui | `laconic/hyperlane-warp-ui:local` | Port 3000, sentinel placeholder substitution at startup |
+| warp-ui | `gorbagana-dev/hyperlane-warp-ui:local` | Port 3000, sentinel placeholder substitution at startup |
 
 ### Ingress
 HTTP proxy routes host → warp-ui:3000 via nginx ingress controller with automatic ACME TLS.
@@ -358,10 +358,10 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `laconic/hyperlane-svm-deployer` | `laconic-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
-| `laconic/hyperlane-kms-proxy` | `laconic-hyperlane-kms-proxy` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
-| `laconic/hyperlane-gas-oracle` | `laconic-hyperlane-gas-oracle` | `git.vdb.to/LaconicNetwork/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
-| `laconic/hyperlane-warp-ui` | `laconic-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
+| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
+| `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
+| `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
+| `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
 
 Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-cloned repo in `~/cerc/` as build context. Build scripts must NOT use relative paths back to the repo tree — components may move to different repos.
 
@@ -370,21 +370,21 @@ Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-clo
 Each container-build dir is self-contained with its Dockerfile and any supporting files (entrypoint scripts, config templates):
 
 ```
-container-build/laconic-hyperlane-svm-deployer/
+container-build/gorbagana-dev-hyperlane-svm-deployer/
   build.sh          # runs: docker build -f Dockerfile -t ...:local ~/cerc/hyperlane-monorepo
   Dockerfile        # COPY from ~/cerc/hyperlane-monorepo (no internal git clone)
   entrypoint.sh     # copied into image at build time
 
-container-build/laconic-hyperlane-warp-ui/
+container-build/gorbagana-dev-hyperlane-warp-ui/
   build.sh          # runs: docker build -f Dockerfile -t ...:local ~/cerc/hyperlane-warp-ui-template
   Dockerfile        # COPY from ~/cerc/hyperlane-warp-ui-template (no internal git clone)
   entrypoint.sh     # sentinel substitution + Next.js start
   configs/          # chains.yaml, warpRoutes.yaml, .env.sentinel — placeholder configs
 
-container-build/laconic-hyperlane-kms-proxy/
+container-build/gorbagana-dev-hyperlane-kms-proxy/
   build.sh          # runs: docker build -t ...:local ~/cerc/hyperlane-stacks/hyperlane-kms-proxy
 
-container-build/laconic-hyperlane-gas-oracle/
+container-build/gorbagana-dev-hyperlane-gas-oracle/
   build.sh          # runs: docker build -t ...:local ~/cerc/hyperlane-stacks/hyperlane-gas-oracle
 ```
 
@@ -449,7 +449,7 @@ Both validator spec files reference the same stack (`stack_orchestrator/data/sta
 ## Compose File Conventions
 
 - **Directory layout**: Long-running services use `compose/docker-compose-{pod-name}.yml` (referenced by `pods:` in stack.yml). One-shot deployers use `compose-jobs/docker-compose-{job-name}.yml` (referenced by `jobs:` in stack.yml).
-- **Image tags**: Use `laconic/name:local` (what `build-containers` produces). Add comment noting future published version: `# TODO: use git.vdb.to/laconic/name:tag once CI publish workflows are set up`
+- **Image tags**: Use `gorbagana-dev/name:local` (what `build-containers` produces). Add comment noting future published version: `# TODO: use ghcr.io/gorbagana-dev/name:tag once CI publish workflows are set up`
 - **Inline scripts**: No multi-line inline scripts in compose files. Extract to shell scripts in `stack_orchestrator/data/config/{name}-scripts-config/` dirs. Mount as ConfigMap volumes at `/opt/scripts/`. Reference via `command: ["/bin/bash", "/opt/scripts/script.sh"]`.
 - **Environment variables**: All deployment-specific values come from env vars (set via spec.yml config). Compose files use `${VAR}` syntax.
 - **Volumes**: Named volumes with `config` in the name → ConfigMaps in k8s. Other named volumes → PVCs.
