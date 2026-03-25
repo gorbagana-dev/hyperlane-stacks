@@ -38,12 +38,22 @@ jobs:
           chmod +x ./kubectl
           sudo mv ./kubectl /usr/local/bin/kubectl
 
-      - name: Install laconic-so
+      # TODO: Switch to published binary once stack-orchestrator package publishing is fixed:
+      #   curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+      - name: Build laconic-so from source
         run: |
+          git clone https://github.com/cerc-io/stack-orchestrator.git /tmp/stack-orchestrator
+          cd /tmp/stack-orchestrator
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install shiv
+          pip install -r requirements.txt
+          ./scripts/create_build_tag_file.sh
+          shiv -c laconic-so -o laconic-so .
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
-          chmod +x ~/bin/laconic-so
+          cp laconic-so ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
+          deactivate
 
       - name: Install Solana CLI
         run: |
