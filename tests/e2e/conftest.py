@@ -49,9 +49,11 @@ from lib.deploy import (
     deploy_prepare,
     deploy_start,
     get_cluster_id,
+    prefetch_agent_images,
     prefetch_deployer_image,
     prefetch_minio_images,
     prefetch_validator_images,
+    prefetch_warp_ui_image,
     stop_stack,
 )
 from lib.keygen import (
@@ -282,12 +284,16 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 
 @pytest.fixture(scope="session")
 def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Build agent + kms-proxy via laconic-so, pull kubectl image, load all into kind."""
+    """Build or pre-fetch agent + kms-proxy images, pull kubectl image, load all into kind."""
     if request.config.getoption("--skip-validator-deploy", default=False):
         log.info("Skipping validator image builds (--skip-validator-deploy)")
         return
-    log.info("Building patched agent and kms-proxy images via laconic-so...")
-    build_agent_image()
+    if request.config.getoption("--build-from-source"):
+        log.info("Building patched agent and kms-proxy images via laconic-so...")
+        build_agent_image()
+    else:
+        log.info("Pre-fetching published agent images into kind cluster...")
+        prefetch_agent_images()
 
     log.info("Pre-fetching kubectl image into kind cluster...")
     prefetch_validator_images()
@@ -1019,12 +1025,16 @@ spec:
 
 @pytest.fixture(scope="session")
 def warp_ui_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Build the warp-ui image via laconic-so and load it into the kind cluster."""
+    """Build or pre-fetch the warp-ui image and load it into the kind cluster."""
     if request.config.getoption("--skip-warp-ui-deploy", default=False):
         log.info("Skipping warp-ui image build (--skip-warp-ui-deploy)")
         return
-    log.info("Building warp-ui container image...")
-    build_warp_ui_image()
+    if request.config.getoption("--build-from-source"):
+        log.info("Building warp-ui container image from source...")
+        build_warp_ui_image()
+    else:
+        log.info("Pre-fetching published warp-ui image into kind cluster...")
+        prefetch_warp_ui_image()
 
 
 @pytest.fixture(scope="session")

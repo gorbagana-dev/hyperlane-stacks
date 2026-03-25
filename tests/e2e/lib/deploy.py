@@ -17,12 +17,17 @@ DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 
 DEPLOYER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
-KMS_PROXY_IMAGE = "gorbagana-dev/hyperlane-kms-proxy:local"
-VALIDATOR_IMAGE = "gorbagana-dev/hyperlane-agent:local"
+AGENT_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-agent:latest"
+KMS_PROXY_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest"
 KUBECTL_IMAGE = "bitnami/kubectl:latest"
 MINIO_IMAGE = "minio/minio:latest"
 MINIO_MC_IMAGE = "minio/mc:latest"
-WARP_UI_IMAGE = "gorbagana-dev/hyperlane-warp-ui:local"
+WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
+
+# Local build tags (used by build-from-source path)
+AGENT_IMAGE_LOCAL = "gorbagana-dev/hyperlane-agent:local"
+KMS_PROXY_IMAGE_LOCAL = "gorbagana-dev/hyperlane-kms-proxy:local"
+WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
 
 
 
@@ -91,10 +96,10 @@ def build_kms_proxy_image(cluster_name: str = "hyperlane-e2e") -> None:
     """Build the kms-proxy image from source and load it into the kind cluster."""
     kms_proxy_dir = REPO_ROOT / "hyperlane-kms-proxy"
     log_info(f"Building kms-proxy image from {kms_proxy_dir}...")
-    run_cmd(["docker", "build", "-t", KMS_PROXY_IMAGE, str(kms_proxy_dir)])
+    run_cmd(["docker", "build", "-t", KMS_PROXY_IMAGE_LOCAL, str(kms_proxy_dir)])
 
     log_info(f"Loading kms-proxy image into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", KMS_PROXY_IMAGE, "--name", cluster_name])
+    run_cmd(["kind", "load", "docker-image", KMS_PROXY_IMAGE_LOCAL, "--name", cluster_name])
 
     log_info("KMS proxy image built and loaded into kind cluster")
 
@@ -113,11 +118,23 @@ def build_agent_image(stack_name: str = "hyperlane-validator", cluster_name: str
     log_info("Building agent and kms-proxy container images...")
     run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
 
-    for image in (VALIDATOR_IMAGE, KMS_PROXY_IMAGE):
+    for image in (AGENT_IMAGE_LOCAL, KMS_PROXY_IMAGE_LOCAL):
         log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
         run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
 
     log_info("Agent and kms-proxy images built and loaded into kind cluster")
+
+
+def prefetch_agent_images(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull published agent + kms-proxy images and load into kind."""
+    for image in (AGENT_IMAGE, KMS_PROXY_IMAGE):
+        log_info(f"Pulling {image}...")
+        run_cmd(["docker", "pull", image])
+
+        log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
+        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+
+    log_info("Agent images loaded into kind cluster")
 
 
 def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
@@ -141,10 +158,21 @@ def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui", cluster_name: str
     log_info("Building warp-ui container image...")
     run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
 
-    log_info(f"Loading {WARP_UI_IMAGE} into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", WARP_UI_IMAGE, "--name", cluster_name])
+    log_info(f"Loading {WARP_UI_IMAGE_LOCAL} into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", WARP_UI_IMAGE_LOCAL, "--name", cluster_name])
 
     log_info("Warp UI image built and loaded into kind cluster")
+
+
+def prefetch_warp_ui_image(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull the published warp-ui image and load it into the kind cluster."""
+    log_info(f"Pulling warp-ui image {WARP_UI_IMAGE}...")
+    run_cmd(["docker", "pull", WARP_UI_IMAGE])
+
+    log_info(f"Loading warp-ui image into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", WARP_UI_IMAGE, "--name", cluster_name])
+
+    log_info("Warp UI image loaded into kind cluster")
 
 
 def prefetch_minio_images(cluster_name: str = "hyperlane-e2e") -> None:

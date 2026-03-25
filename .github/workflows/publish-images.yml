@@ -234,6 +234,12 @@ jobs:
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 
+      - name: Enable containers in stack.yml for building
+        run: |
+          STACK_YML="$(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui/stack.yml"
+          sed -i 's/^# containers:/containers:/' "$STACK_YML"
+          sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
+
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui setup-repositories
 
