@@ -1,7 +1,7 @@
 services:
   gas-oracle:
-    # TODO: use git.vdb.to/laconic/hyperlane-gas-oracle:tag once CI publish workflows are set up
-    image: laconic/hyperlane-gas-oracle:local
+    # TODO: use ghcr.io/gorbagana-dev/hyperlane-gas-oracle:tag once CI publish workflows are set up
+    image: gorbagana-dev/hyperlane-gas-oracle:local
     restart: unless-stopped
     hostname: gas-oracle
     environment:

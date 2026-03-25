@@ -121,7 +121,7 @@ When making structural changes, update:
 
 ## Stack orchestrator conventions
 
-- Image names: `laconic/hyperlane-*` (not `laconicnetwork/`)
+- Image names: `gorbagana-dev/hyperlane-*` (registry: `ghcr.io/gorbagana-dev/`)
 - `deploy/commands.py` in stack dirs: post-create hooks (RBAC, services)
 - `stack.yml` `jobs:` for one-shot deployers, `pods:` for long-running services
 - **Check SO source code** (`../stack-orchestrator/`) for deployment lifecycle questions.

@@ -17,8 +17,8 @@ services:
       - agent-config:/config
 
   validator:
-    # image: git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest
-    image: laconic/hyperlane-agent:local
+    image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
+    # image: gorbagana-dev/hyperlane-agent:local
     user: "0"
     restart: unless-stopped
     hostname: validator
@@ -56,8 +56,8 @@ services:
       start_period: 30s
 
   kms-proxy:
-    # image: git.vdb.to/laconicnetwork/laconic/hyperlane-kms-proxy:latest
-    image: laconic/hyperlane-kms-proxy:local
+    image: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest
+    # image: gorbagana-dev/hyperlane-kms-proxy:local
     restart: unless-stopped
     hostname: kms-proxy
     environment:

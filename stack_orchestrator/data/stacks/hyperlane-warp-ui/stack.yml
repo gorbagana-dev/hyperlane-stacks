@@ -3,7 +3,9 @@ name: hyperlane-warp-ui
 description: "Hyperlane Warp UI — browser-based bridge UI for cross-chain token transfers"
 repos:
   - github.com/hyperlane-xyz/hyperlane-warp-ui-template@v2.0.0
-containers:
-  - laconic/hyperlane-warp-ui
+# containers is commented out so deploy-start won't kind-load the image;
+# k8s pulls it from the registry instead. Uncomment for local builds.
+# containers:
+#   - gorbagana-dev/hyperlane-warp-ui
 pods:
   - hyperlane-warp-ui

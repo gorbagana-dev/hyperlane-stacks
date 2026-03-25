@@ -17,7 +17,7 @@ Each deployment runs two containers: the Hyperlane validator agent and a KMS pro
 laconic-so --stack hyperlane-validator build-containers
 ```
 
-Builds `laconic/hyperlane-kms-proxy:local` (Privy-to-AWS-KMS bridge sidecar) and `laconic/hyperlane-agent:local` (patched Hyperlane agent with `AWS_ENDPOINT_URL_KMS` support for the KMS proxy).
+Builds `gorbagana-dev/hyperlane-kms-proxy:local` (Privy-to-AWS-KMS bridge sidecar) and `gorbagana-dev/hyperlane-agent:local` (patched Hyperlane agent with `AWS_ENDPOINT_URL_KMS` support for the KMS proxy).
 
 ## 2. Deploy for Gorchain
 

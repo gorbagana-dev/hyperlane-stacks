@@ -302,10 +302,10 @@ For the deployer: `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` â†
 laconic-so --stack stack_orchestrator/data/stacks/hyperlane-svm-deployer build-containers
 ```
 
-This runs `container-build/laconic-hyperlane-svm-deployer/build.sh`, which:
+This runs `container-build/gorbagana-dev-hyperlane-svm-deployer/build.sh`, which:
 - Copies `entrypoint.sh` into the monorepo build context
 - Runs `docker build` with the monorepo as context
-- Produces `laconic/hyperlane-svm-deployer:local`
+- Produces `gorbagana-dev/hyperlane-svm-deployer:local`
 
 Images are cached in Docker's local image store. Subsequent runs skip building if the image exists.
 
@@ -402,11 +402,11 @@ tests/
 10. Create + apply k8s Secrets from generated keypairs
 11. Start mock Privy server on host (:19876) with per-chain test keys
 12. Build container images (or verify cached):
-    - laconic/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
-    - laconic/hyperlane-kms-proxy:local (real KMS proxy, from hyperlane-kms-proxy/)
-    - laconic/hyperlane-agent:local (patched agent, from hyperlane-monorepo + patches)
-    - laconic/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
-    - laconic/hyperlane-warp-ui:local (from hyperlane-warp-ui source)
+    - gorbagana-dev/hyperlane-svm-deployer:local (from monorepo, ~30 min first time)
+    - gorbagana-dev/hyperlane-kms-proxy:local (real KMS proxy, from hyperlane-kms-proxy/)
+    - gorbagana-dev/hyperlane-agent:local (patched agent, from hyperlane-monorepo + patches)
+    - gorbagana-dev/hyperlane-gas-oracle:local (from hyperlane-gas-oracle/)
+    - gorbagana-dev/hyperlane-warp-ui:local (from hyperlane-warp-ui source)
     - minio/minio (pulled)
 13. Load images into kind cluster:
     kind load docker-image <image> --name hyperlane-e2e
@@ -836,7 +836,7 @@ transfers (`test_warp_ui_bridge.py`).
 ### Prerequisites
 
 All Phase 3 prerequisites, plus:
-- Warp UI container image built (`laconic/hyperlane-warp-ui:local`)
+- Warp UI container image built (`gorbagana-dev/hyperlane-warp-ui:local`)
 - Warp UI image loaded into kind cluster
 - Playwright + Chromium installed on test runner (`pip install playwright && playwright install chromium`)
 
@@ -1140,7 +1140,7 @@ config:
 ### Mock Privy Server (Validator Signing)
 
 The Hyperlane validator binary only supports AWS KMS or raw hex key signers. In production,
-a **KMS proxy sidecar** (`laconic/hyperlane-kms-proxy`) translates AWS KMS API calls to
+a **KMS proxy sidecar** (`gorbagana-dev/hyperlane-kms-proxy`) translates AWS KMS API calls to
 Privy server wallet RPC requests. The real KMS proxy is used unmodified in e2e tests â€” we
 mock the **Privy API** instead, so the full signing path is exercised.
 
@@ -1474,7 +1474,7 @@ rm -rf /tmp/hyperlane-e2e-keys /tmp/solana-test-ledger
 
 ## Resolved Questions
 
-1. **Container image caching:** Use Docker's local image store for now (only rebuild if missing or `--force-rebuild`). Once CI publish workflows are set up, switch to pre-built images from `git.vdb.to` registry.
+1. **Container image caching:** Use Docker's local image store for now (only rebuild if missing or `--force-rebuild`). Once CI publish workflows are set up, switch to pre-built images from `ghcr.io/gorbagana-dev` registry.
 
 2. **CI integration:** Shell scripts that work standalone + a thin GitHub Actions wrapper (`.github/workflows/e2e.yml`).
 

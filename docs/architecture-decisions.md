@@ -41,7 +41,7 @@ Three categories of images based on what's available upstream:
 
 #### 1. Agents (validator, relayer) — Custom patched build
 
-**Image:** `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest`
+**Image:** `ghcr.io/gorbagana-dev/hyperlane-agent:latest`
 
 Custom build from `hyperlane-monorepo` at `agents-v2.2.0` (commit `4da9c44`) with two patches applied at build time:
 - **`kms-endpoint.patch`**: Adds `AWS_ENDPOINT_URL_KMS` support so the validator's AWS KMS signer can be redirected to the local KMS proxy sidecar
@@ -112,18 +112,18 @@ Next.js inlines `NEXT_PUBLIC_*` environment variables and YAML configs at `pnpm 
 
 Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`) with Solana CLI **3.0.14**. Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
 
-**Registry:** `git.vdb.to/laconicnetwork` (private Gitea registry)
+**Registry:** `ghcr.io/gorbagana-dev` (GitHub Container Registry)
 
 | Component | Image | Source |
 |-----------|-------|--------|
-| Validator | `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
-| Relayer | `git.vdb.to/laconicnetwork/laconic/hyperlane-agent:latest` | Same image as validator |
-| Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Custom build from `@hyperlane-xyz/core@10.2.0` (commit `16c056a`), Solana CLI 3.0.14 |
-| Warp Deployer | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer |
-| Ops jobs | `git.vdb.to/laconic/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
-| KMS Proxy | `git.vdb.to/laconic/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
-| Gas Oracle | `git.vdb.to/laconic/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
-| Warp UI | `git.vdb.to/laconic/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `v2.0.0` (`@hyperlane-xyz/sdk@28.0.0`) |
+| Validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
+| Relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Same image as validator |
+| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Custom build from `@hyperlane-xyz/core@10.2.0` (commit `16c056a`), Solana CLI 3.0.14 |
+| Warp Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer |
+| Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
+| KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
+| Gas Oracle | `ghcr.io/gorbagana-dev/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
+| Warp UI | `ghcr.io/gorbagana-dev/hyperlane-warp-ui:local` | Custom build from `hyperlane-warp-ui-template` @ `v2.0.0` (`@hyperlane-xyz/sdk@28.0.0`) |
 | MinIO | `minio/minio` (upstream) | S3-compatible checkpoint storage |
 | Prometheus | `prom/prometheus` (upstream) | Metrics collection |
 | Grafana | `grafana/grafana` (upstream) | Dashboards and alerting |

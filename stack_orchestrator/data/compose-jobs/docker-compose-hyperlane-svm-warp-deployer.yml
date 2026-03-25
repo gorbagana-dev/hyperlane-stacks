@@ -1,6 +1,6 @@
 services:
   warp-deployer:
-    image: git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest
+    image: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest
     restart: "no"
     entrypoint: ["/bin/bash"]
     command: ["/opt/scripts/deploy.sh"]

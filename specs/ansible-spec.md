@@ -87,7 +87,7 @@ confirm_teardown: false
     job_name: "hyperlane-teardown-{{ lookup('pipe', 'date +%s') }}"
     script_configmap_name: "{{ job_name }}-script"
     output_dir: "./teardown-output"
-    image: "laconic/hyperlane-svm-deployer:local"
+    image: "gorbagana-dev/hyperlane-svm-deployer:local"
 
   pre_tasks:
     - name: Validate required variables

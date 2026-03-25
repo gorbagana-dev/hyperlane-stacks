@@ -12,7 +12,7 @@ from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
 LEDGER_BASE = Path(__file__).resolve().parent.parent / ".data"
 
-GORCHAIN_STACKS_REPO = "git.vdb.to/LaconicNetwork/gorchain-stacks@main"
+GORCHAIN_STACKS_REPO = "github.com/gorbagana-dev/gorchain-stacks@main"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
 
 
@@ -138,7 +138,7 @@ def start_gorchain_stack(deploy_dir: Path) -> None:
     """Deploy and start gorchain via laconic-so.
 
     Follows the same pattern as gorchain-stacks/tests: deploy init/create,
-    write config.env, then start. Uses published images from git.vdb.to.
+    write config.env, then start. Uses published images from ghcr.io.
     """
     stack_path = fetch_gorchain_stack()
 

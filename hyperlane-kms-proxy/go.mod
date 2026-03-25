@@ -1,4 +1,4 @@
-module github.com/laconicnetwork/hyperlane-kms-proxy
+module github.com/gorbagana-dev/hyperlane-kms-proxy
 
 go 1.24.0
 

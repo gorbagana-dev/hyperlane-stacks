@@ -17,14 +17,14 @@ Clones `hyperlane-monorepo` at `@hyperlane-xyz/core@10.2.0` (`16c056a09`) to `~/
 
 ## 2. Build container (optional — for development only)
 
-The stack uses the published image `git.vdb.to/laconicnetwork/laconic/hyperlane-svm-deployer:latest` by default. To build from source instead:
+The stack uses the published image `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` by default. To build from source instead:
 
 ```bash
 laconic-so --stack hyperlane-svm-deployer setup-repositories
 laconic-so --stack hyperlane-svm-deployer build-containers
 ```
 
-This builds `laconic/hyperlane-svm-deployer:local` — a multi-stage image containing `hyperlane-sealevel-client`, compiled `.so` program artifacts, `solana-verify`, and `kubectl`.
+This builds `gorbagana-dev/hyperlane-svm-deployer:local` — a multi-stage image containing `hyperlane-sealevel-client`, compiled `.so` program artifacts, `solana-verify`, and `kubectl`.
 
 ## 3. Create deployment
 
