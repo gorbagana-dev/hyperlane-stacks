@@ -12,10 +12,32 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Detect which trigger files changed — works reliably with squash merges,
+  # unlike github.event.head_commit.modified which only sees the last commit.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deployer: ${{ steps.check.outputs.deployer }}
+      agent: ${{ steps.check.outputs.agent }}
+      kms-proxy: ${{ steps.check.outputs.kms-proxy }}
+      warp-ui: ${{ steps.check.outputs.warp-ui }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: check
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1)
+          echo "deployer=$(echo "$CHANGED" | grep -qF trigger-publish-deployer.txt && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "agent=$(echo "$CHANGED" | grep -qF trigger-publish-agent.txt && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "kms-proxy=$(echo "$CHANGED" | grep -qF trigger-publish-kms-proxy.txt && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "warp-ui=$(echo "$CHANGED" | grep -qF trigger-publish-warp-ui.txt && echo true || echo false)" >> $GITHUB_OUTPUT
+
   build-deployer:
+    needs: changes
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, '.github/trigger-publish-deployer.txt')
+      needs.changes.outputs.deployer == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -77,9 +99,10 @@ jobs:
           echo "Published: ${REMOTE_LATEST}"
 
   build-agent:
+    needs: changes
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, '.github/trigger-publish-agent.txt')
+      needs.changes.outputs.agent == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -142,9 +165,10 @@ jobs:
           echo "Published: ${REMOTE_LATEST}"
 
   build-kms-proxy:
+    needs: changes
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, '.github/trigger-publish-kms-proxy.txt')
+      needs.changes.outputs.kms-proxy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -204,9 +228,10 @@ jobs:
           echo "Published: ${REMOTE_LATEST}"
 
   build-warp-ui:
+    needs: changes
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, '.github/trigger-publish-warp-ui.txt')
+      needs.changes.outputs.warp-ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
