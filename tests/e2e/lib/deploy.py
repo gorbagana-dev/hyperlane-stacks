@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import json
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -29,6 +32,54 @@ AGENT_IMAGE_LOCAL = "gorbagana-dev/hyperlane-agent:local"
 KMS_PROXY_IMAGE_LOCAL = "gorbagana-dev/hyperlane-kms-proxy:local"
 WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
 
+
+def ensure_ghcr_pat() -> None:
+    """Set GHCR_PAT env var from ~/.docker/config.json if not already set.
+
+    laconic-so's registry-credentials reads the token from the env var
+    specified in ``token-env`` (GHCR_PAT) to create a k8s pull secret.
+    This function extracts the ghcr.io token from Docker's config so the
+    user only needs ``docker login ghcr.io`` as a prerequisite.
+    """
+    if os.environ.get("GHCR_PAT"):
+        return
+
+    docker_config_path = Path.home() / ".docker" / "config.json"
+    if not docker_config_path.exists():
+        fail_exit(
+            "~/.docker/config.json not found. "
+            "Run 'docker login ghcr.io' first (see README)."
+        )
+
+    docker_config = json.loads(docker_config_path.read_text())
+
+    # Check for credential helper (e.g. "credHelpers": {"ghcr.io": "..."})
+    cred_helpers = docker_config.get("credHelpers", {})
+    cred_store = docker_config.get("credsStore")
+    if "ghcr.io" in cred_helpers or cred_store:
+        fail_exit(
+            "Docker is using a credential helper for ghcr.io. "
+            "Set GHCR_PAT env var manually instead: "
+            "export GHCR_PAT=ghp_xxxx"
+        )
+
+    auths = docker_config.get("auths", {})
+    ghcr_auth = auths.get("ghcr.io", {})
+    auth_b64 = ghcr_auth.get("auth")
+    if not auth_b64:
+        fail_exit(
+            "No ghcr.io credentials in ~/.docker/config.json. "
+            "Run 'docker login ghcr.io' first (see README)."
+        )
+
+    # auth is base64("username:token")
+    decoded = base64.b64decode(auth_b64).decode()
+    _, _, token = decoded.partition(":")
+    if not token:
+        fail_exit("Could not extract token from ghcr.io docker auth.")
+
+    os.environ["GHCR_PAT"] = token
+    log_info("Set GHCR_PAT from ~/.docker/config.json")
 
 
 @dataclass

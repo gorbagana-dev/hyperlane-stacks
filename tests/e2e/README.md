@@ -21,9 +21,19 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - [laconic-so](https://git.vdb.to/cerc-io/stack-orchestrator)
 - [Solana CLI](https://docs.anza.xyz/cli/install) (`solana`, `solana-keygen`, `spl-token`)
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`cast`)
-- Docker
+- Docker — logged in to ghcr.io for pulling published images (see below)
 - [Playwright](https://playwright.dev/python/) browser binary (for warp-ui browser tests): `playwright install chromium`
 - Xvfb (for warp-ui browser tests without a display): `apt install xvfb` — use `xvfb-run` to wrap pytest
+
+### Docker registry login
+
+Published container images are hosted on ghcr.io as private packages. You need a GitHub Personal Access Token (PAT) with `packages:read` scope:
+
+```bash
+echo $GHCR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+Without this, image pulls will fail with `unauthorized`. To build images locally instead, use the `--build-from-source` flag.
 
 ## Setup
 
@@ -39,44 +49,45 @@ playwright install chromium  # download browser binary for warp-ui tests
 
 ```bash
 # Full run (builds images, creates cluster, starts chains, runs tests, tears down)
-cd tests/e2e && pytest -v
+# -x stops on first failure (tests are sequential — downstream tests can't pass if earlier ones fail)
+cd tests/e2e && xvfb-run pytest -v -x
 
 # Skip cluster creation (reuse an existing kind cluster)
-pytest -v --skip-cluster-setup
+pytest -v -x --skip-cluster-setup
 
 # Skip chain node startup (Solana/Gorchain already running externally)
-pytest -v --skip-chain-setup
+pytest -v -x --skip-chain-setup
 
 # Build images from source instead of using published images
-pytest -v --build-from-source
+pytest -v -x --build-from-source
 
 # Keep everything running after tests (for debugging)
-pytest -v --skip-cleanup
+pytest -v -x --skip-cleanup
 
 # Iterative development: reuse cluster + chains + existing deployments
-pytest -v --skip-cluster-setup --skip-chain-setup --skip-cleanup
-pytest -v --skip-cluster-setup --skip-chain-setup --skip-core-deploy --skip-warp-deploy --skip-minio-deploy --skip-validator-deploy --skip-relayer-deploy --skip-warp-ui-deploy
+pytest -v -x --skip-cluster-setup --skip-chain-setup --skip-cleanup
+pytest -v -x --skip-cluster-setup --skip-chain-setup --skip-core-deploy --skip-warp-deploy --skip-minio-deploy --skip-validator-deploy --skip-relayer-deploy --skip-warp-ui-deploy
 
 # Run only core deployer tests
-pytest -v test_deployer.py
+pytest -v -x test_01_deployer.py
 
 # Run only warp deployer tests
-pytest -v test_warp_deployer.py
+pytest -v -x test_02_warp_deployer.py
 
 # Run only validator tests
-pytest -v test_validator.py
+pytest -v -x test_04_validator.py
 
 # Run only warp UI smoke tests
-pytest -v test_warp_ui.py
+pytest -v -x test_07_warp_ui.py
 
 # Run only warp UI browser tests (headless via xvfb-run)
-xvfb-run pytest -v test_warp_ui_bridge.py
+xvfb-run pytest -v -x test_08_warp_ui_bridge.py
 
 # Run with visible browser window (on a desktop with $DISPLAY)
-pytest -v test_warp_ui_bridge.py
+pytest -v -x test_08_warp_ui_bridge.py
 
 # Exclude slow tests (validator checkpoint tests, bridge transfers, UI tests)
-pytest -v -m "not slow"
+pytest -v -x -m "not slow"
 ```
 
 ## Structure
@@ -86,15 +97,17 @@ tests/e2e/
 ├── conftest.py                          # Session-scoped fixtures (setup/teardown)
 ├── pytest.ini                           # pytest configuration
 ├── requirements.txt                     # Python dependencies (use with venv)
-├── test_deployer.py                     # Core deployer verification tests
-├── test_warp_deployer.py                # Warp deployer verification tests
-├── test_minio.py                        # MinIO stack tests
-├── test_validator.py                    # Validator stack tests (gorchain + solana)
-├── test_bridge.py                       # Cross-chain bridge transfer tests
-├── test_warp_ui.py                      # Warp UI HTTP smoke tests (Tier 1)
-├── test_warp_ui_bridge.py               # Warp UI browser bridge tests (Tier 2, Playwright)
+├── test_01_deployer.py                  # Core deployer verification tests
+├── test_02_warp_deployer.py             # Warp deployer verification tests
+├── test_03_minio.py                     # MinIO stack tests
+├── test_04_validator.py                 # Validator stack tests (gorchain + solana)
+├── test_05_relayer.py                   # Relayer stack tests
+├── test_06_bridge.py                    # Cross-chain bridge transfer tests
+├── test_07_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
+├── test_08_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
+├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
-│   ├── common.py                        # Logging, assertions, wait helpers
+│   ├── common.py                        # Logging, assertions, wait helpers, log capture
 │   ├── cluster.py                       # Kind cluster lifecycle, cert-manager, RBAC
 │   ├── chain.py                         # Solana/Gorchain node lifecycle
 │   ├── deploy.py                        # laconic-so deployment helpers
@@ -167,3 +180,12 @@ a `letsencrypt-prod` ClusterIssuer, and SO handles TLS ingress automatically.
 13. **Warp UI browser tests** launches a Playwright browser with a mock Solana wallet injected (`warp_ui_browser` fixture)
 14. **Test functions** verify deployment outputs: ConfigMaps, pod health, container readiness, metrics endpoints, log sanity, checkpoint files in MinIO, bridge transfers, UI rendering
 15. **Teardown** is handled automatically by fixture finalizers -- stopping stacks, chain nodes, and destroying the kind cluster (unless `--skip-cleanup` is passed)
+
+## Logs
+
+Kubernetes logs are automatically captured to `tests/e2e/.logs/` during test runs:
+
+- **Job logs** (deployer, warp-deployer, minio-init) are saved immediately after the job completes
+- **Pod logs** (validators, relayer, warp-ui) are saved during fixture teardown, before the stack is stopped
+
+Each log file is named by stack and container, e.g. `job_hyperlane-svm-deployer.log`, `relayer_relayer.log`. The `.logs/` directory is gitignored. In CI, logs are uploaded as artifacts alongside `.deployments/` and the Solana validator log.

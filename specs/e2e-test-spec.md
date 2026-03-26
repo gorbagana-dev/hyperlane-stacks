@@ -357,15 +357,14 @@ tests/
 │   │   ├── deploy.py                 # Stack deployment helpers (SO wrappers)
 │   │   ├── keygen.py                 # Keypair generation, funding, secret creation
 │   │   └── privy_mock.py             # Mock Privy server for validator signing
-│   ├── test_deployer.py              # Core deployer: Job completion + deep ConfigMap validation
-│   ├── test_warp_deployer.py         # Warp deployer: token creation, Job completion, on-chain state
-│   ├── test_minio.py                 # MinIO deploy + verify S3 API + buckets (planned)
-│   ├── test_validator.py             # Both validators: deploy, signing, checkpoints, metrics
-│   ├── test_relayer.py               # Relayer deploy + verify metrics (planned)
-│   ├── test_gas_oracle.py            # Gas oracle deploy + verify (planned)
-│   ├── test_monitoring.py            # Monitoring deploy + verify Grafana/Prometheus (planned)
-│   ├── test_warp_ui.py               # Warp UI deploy + verify TLS ingress (planned)
-│   ├── test_bridge.py                # Cross-chain warp route transfers (Phase 3)
+│   ├── test_01_deployer.py           # Core deployer: Job completion + deep ConfigMap validation
+│   ├── test_02_warp_deployer.py      # Warp deployer: token creation, Job completion, on-chain state
+│   ├── test_03_minio.py              # MinIO deploy + verify S3 API + buckets
+│   ├── test_04_validator.py          # Both validators: deploy, signing, checkpoints, metrics
+│   ├── test_05_relayer.py            # Relayer deploy + verify metrics
+│   ├── test_06_bridge.py             # Cross-chain warp route transfers
+│   ├── test_07_warp_ui.py            # Warp UI deploy + verify TLS ingress
+│   ├── test_08_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
@@ -459,7 +458,7 @@ This avoids needing `solana` CLI inside the cluster.
 - `hyperlane-warp-deploy-outputs` ConfigMap exists with deployment artifacts
 - Warp route direction: USDC collateral on Solana (domain 99998) → synthetic USDC on Gorchain (domain 99999)
 
-**hyperlane-minio** (`test_minio.py`):
+**hyperlane-minio** (`test_03_minio.py`):
 
 Setup:
 - Create `hyperlane-minio-secrets` (MINIO_ROOT_USER, MINIO_ROOT_PASSWORD) before deploy
@@ -475,7 +474,7 @@ Tests:
 
 Assertion approach: `kubectl port-forward` to expose MinIO S3 API on a local port, then use `boto3` (or `mc` CLI) from the host to verify
 
-**hyperlane-validator (per chain)** (`test_validator.py`):
+**hyperlane-validator (per chain)** (`test_04_validator.py`):
 
 Two separate deployments — one for Gorchain, one for Solana. Each runs a validator
 container + KMS proxy sidecar in the same pod. The KMS proxy talks to a **mock Privy
@@ -517,7 +516,7 @@ validator starts.
 
 **Assertion approach:** `kubectl port-forward` for metrics/health checks, `mc` CLI (via docker) for MinIO bucket inspection, `kubectl logs` for log analysis, `hyperlane-sealevel-client` (via docker + `run_deployer_cli()`) for message dispatch
 
-**hyperlane-relayer** (`test_relayer.py`):
+**hyperlane-relayer** (`test_05_relayer.py`):
 
 Two containers in the pod: the relayer agent and an IGP fee claim sidecar. The relayer
 reads validator checkpoints from MinIO, fetches agent-config via an init container
@@ -617,13 +616,13 @@ Runs after Phase 1 completes. Uses `solana` CLI on the host against localhost RP
 
 Tests are Python/pytest modules (not shell scripts). See `tests/e2e/` for implementation.
 
-**test_deployer.py::test_programs_exist_on_chain:**
+**test_01_deployer.py::test_programs_exist_on_chain:**
 - Read `hyperlane-program-ids` ConfigMap via kubectl
 - For each program ID (mailbox, validator_announce) on both chains:
   - `solana program show <program-id> --url http://localhost:<port>` succeeds
   - Program is executable and deployed on-chain
 
-**test_deployer.py (ConfigMap validation tests) — already implemented:**
+**test_01_deployer.py (ConfigMap validation tests) — already implemented:**
 - `test_program_ids_configmap` — validates 6 required fields per chain (mailbox, validator_announce, multisig_ism_message_id, igp_program_id, overhead_igp_account, igp_account), all valid base58
 - `test_agent_config_configmap` — validates agent-config.json structure, cross-references with program-ids
 - `test_gas_oracle_configmap` — validates gas oracle config structure
@@ -635,7 +634,7 @@ Tests are Python/pytest modules (not shell scripts). See `tests/e2e/` for implem
   - `solana program show <program-id>` → "Authority" field = `HARDWARE_WALLET_PUBKEY`
 - IGP account ownership = `IGP_ORACLE_PUBKEY`
 
-**test_deployer.py::test_multisig_configmap (ISM config validation):**
+**test_01_deployer.py::test_multisig_configmap (ISM config validation):**
 - Parse multisig configs for both chains
 - Verify validator addresses match test validator H160 addresses
 - Verify threshold = 1 (for 1-of-1 test config)
@@ -666,7 +665,7 @@ accounts needed for transfers.
 **Setup steps:**
 
 1. **Recover warp program addresses** from `hyperlane-warp-deploy-outputs` ConfigMap
-   (same helper as `test_warp_deployer.py::_get_warp_program_addresses`)
+   (same helper as `test_02_warp_deployer.py::_get_warp_program_addresses`)
 2. **Get the synthetic mint address** on Gorchain by querying the warp token program:
    ```bash
    hyperlane-sealevel-client -u http://localhost:8899 \
@@ -748,7 +747,7 @@ Key arguments:
 - The CLI handles ATA creation on the destination automatically (using the
   ATA payer funded during warp deploy)
 
-### Tests (`test_bridge.py`)
+### Tests (`test_06_bridge.py`)
 
 All tests in `TestBridge` class, marked `@pytest.mark.slow`.
 
@@ -830,8 +829,8 @@ def wait_for_token_balance(
 Runs after Phase 3. Deploys the warp-ui stack and validates the bridge UI serves
 correctly and can execute actual cross-chain transfers through a browser.
 
-Two test tiers: HTTP smoke tests (`test_warp_ui.py`) and browser-driven bridge
-transfers (`test_warp_ui_bridge.py`).
+Two test tiers: HTTP smoke tests (`test_07_warp_ui.py`) and browser-driven bridge
+transfers (`test_08_warp_ui_bridge.py`).
 
 ### Prerequisites
 
@@ -888,7 +887,7 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
 }
 ```
 
-### Tier 1: HTTP Smoke Tests (`test_warp_ui.py`)
+### Tier 1: HTTP Smoke Tests (`test_07_warp_ui.py`)
 
 No browser needed — uses `subprocess.run(["curl", ...])` or Python `http.client`
 via port-forward to the warp-ui pod.
@@ -988,7 +987,7 @@ def test_warp_ui_chain_config_present(self, warp_ui_deployment):
     )
 ```
 
-### Tier 2: Browser Bridge Tests (`test_warp_ui_bridge.py`)
+### Tier 2: Browser Bridge Tests (`test_08_warp_ui_bridge.py`)
 
 Uses **Playwright** to drive the warp-ui in a real browser with the **Backpack
 wallet extension** that signs and submits real transactions to the test chains.
@@ -1408,8 +1407,8 @@ cd tests/e2e
 pytest -v
 
 # Run specific test module
-pytest test_deployer.py -v
-pytest test_warp_deployer.py -v
+pytest test_01_deployer.py -v
+pytest test_02_warp_deployer.py -v
 
 # Skip infrastructure setup (reuse existing cluster + chains)
 pytest -v --skip-cluster-setup --skip-chain-setup

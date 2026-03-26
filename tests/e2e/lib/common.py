@@ -378,6 +378,63 @@ def dump_job_logs(namespace: str, job_name: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Log collection
+# ---------------------------------------------------------------------------
+LOGS_DIR = E2E_DIR / ".logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def save_job_logs(namespace: str, job_name: str) -> None:
+    """Save all container logs for a completed Job to .logs/."""
+    result = subprocess.run(
+        ["kubectl", "logs", "-n", namespace, f"job/{job_name}", "--all-containers"],
+        capture_output=True, text=True,
+    )
+    if result.stdout:
+        out = LOGS_DIR / f"job_{job_name}.log"
+        out.write_text(result.stdout)
+        log_info(f"Job logs saved to {out}")
+
+
+def save_pod_logs(namespace: str, label_selector: str, name: str) -> None:
+    """Save all container logs for pods matching a label selector to .logs/.
+
+    Each container gets its own file: .logs/{name}_{container}.log
+    """
+    # Get pod names
+    result = subprocess.run(
+        ["kubectl", "get", "pods", "-n", namespace, "-l", label_selector,
+         "-o", "jsonpath={.items[*].metadata.name}"],
+        capture_output=True, text=True,
+    )
+    if not result.stdout.strip():
+        return
+
+    for pod_name in result.stdout.strip().split():
+        # Get container names
+        for container_key in ("containers", "initContainers"):
+            jsonpath = f"{{.spec.{container_key}[*].name}}"
+            containers_result = subprocess.run(
+                ["kubectl", "get", "pod", pod_name, "-n", namespace,
+                 "-o", f"jsonpath={jsonpath}"],
+                capture_output=True, text=True,
+            )
+            if not containers_result.stdout.strip():
+                continue
+            for container in containers_result.stdout.strip().split():
+                prefix = "init_" if container_key == "initContainers" else ""
+                log_result = subprocess.run(
+                    ["kubectl", "logs", "-n", namespace, pod_name, "-c", container],
+                    capture_output=True, text=True,
+                )
+                if log_result.stdout:
+                    out = LOGS_DIR / f"{name}_{prefix}{container}.log"
+                    out.write_text(log_result.stdout)
+
+    log_info(f"Pod logs for {name} saved to {LOGS_DIR}")
+
+
+# ---------------------------------------------------------------------------
 # kubectl helper
 # ---------------------------------------------------------------------------
 def kubectl_json(args: list[str]) -> dict[str, Any]:
