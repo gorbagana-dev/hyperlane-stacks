@@ -79,12 +79,39 @@ jobs:
           cd tests/e2e
           xvfb-run pytest -v
 
-      - name: Upload logs on failure
-        if: failure()
+      - name: Collect k8s logs
+        if: always()
+        run: |
+          mkdir -p /tmp/e2e-logs
+          NAMESPACE="laconic-hyperlane-e2e"
+          # Pod logs (all containers)
+          for pod in $(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null); do
+            pod_name=$(basename "$pod")
+            for container in $(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null); do
+              kubectl logs -n "$NAMESPACE" "$pod_name" -c "$container" > "/tmp/e2e-logs/${pod_name}_${container}.log" 2>&1 || true
+            done
+            # Init container logs
+            for container in $(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.initContainers[*].name}' 2>/dev/null); do
+              kubectl logs -n "$NAMESPACE" "$pod_name" -c "$container" > "/tmp/e2e-logs/${pod_name}_init_${container}.log" 2>&1 || true
+            done
+          done
+          # Job logs (completed/failed)
+          for job in $(kubectl get jobs -n "$NAMESPACE" -o name 2>/dev/null); do
+            job_name=$(basename "$job")
+            kubectl logs -n "$NAMESPACE" "job/${job_name}" --all-containers > "/tmp/e2e-logs/job_${job_name}.log" 2>&1 || true
+          done
+          # Events
+          kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' > /tmp/e2e-logs/events.txt 2>&1 || true
+          # Pod status summary
+          kubectl get pods -n "$NAMESPACE" -o wide > /tmp/e2e-logs/pod-status.txt 2>&1 || true
+
+      - name: Upload logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-logs
           path: |
+            /tmp/e2e-logs/
             tests/e2e/.deployments/
             /tmp/solana-test-ledger/validator.log
           retention-days: 7
