@@ -286,18 +286,24 @@ The AWS SDK for Rust (v0.56+) supports per-service endpoint overrides via `AWS_E
 
 #### Oracle: Standalone Gas Oracle Service
 
-The gas oracle is a standalone service in the `hyperlane-gas-oracle` stack that:
-1. Fetches token prices from configured price feeds (e.g., CoinGecko, on-chain oracles)
-2. Computes `GasOracleConfig` values (token exchange rate, gas price per destination domain)
-3. Builds `SetGasOracleConfigs` transactions for both chains
-4. Signs and submits via Privy's **Solana wallet API** (Ed25519 — this is a Solana transaction, not a checkpoint)
+The gas oracle is a standalone TypeScript service in the `hyperlane-gas-oracle` stack that:
+1. Fetches sGOR and SOL token prices from CoinGecko (or configurable endpoint)
+2. Converts sGOR price to gGOR (Gorchain native token) via configurable multiplier (default ×100)
+3. Computes `GasOracleConfig` values using `@hyperlane-xyz/sdk` `getLocalStorageGasOracleConfig()` — handles 1e19 Sealevel exchange rate scaling, margin, and gas price conversion
+4. Builds `SetGasOracleConfigs` instructions using SDK Borsh serialization (correct discriminator, account ordering, and Option/enum wrappers)
+5. Signs and submits via Privy Solana wallet (production) or local keypair (testing)
 
 **No proxy needed** — the oracle is our own service, so it calls Privy directly.
 
+**Two signer modes:**
+- `SIGNER_MODE=privy` (default): Privy server wallet for production
+- `SIGNER_MODE=keypair`: Local Solana keypair for E2E testing
+
 **Configuration:**
-- Privy wallet ID and API credentials (k8s Secret)
-- Price feed URLs and update interval
-- Sanity check thresholds (reject updates deviating >X% from previous value)
+- Privy wallet ID and API credentials (k8s Secret) — or keypair JSON for testing
+- Price feed URL and update interval
+- Gas price (default: 0.000005 SOL = 5000 lamports), overhead (default: 200000 CU), margin (default: 10%)
+- Sanity check thresholds (reject updates deviating >50% from previous value)
 - Both chain RPC URLs and IGP program IDs
 
 ---
@@ -330,7 +336,7 @@ The Sealevel `process_estimate_costs()` function returns hardcoded zeros (upstre
 
 The Sealevel IGP's `set_gas_oracle_configs` instruction requires the IGP account owner's signature (no separate oracle role exists). IGP account ownership is transferred to a dedicated Privy oracle wallet (Tier 2) at deploy time, enabling fully automated updates without operator attendance.
 
-- The `hyperlane-gas-oracle` stack runs a long-running service that fetches current token prices and submits `SetGasOracleConfigs` transactions signed via Privy API
+- The `hyperlane-gas-oracle` stack runs a long-running TypeScript service that fetches current token prices and submits `SetGasOracleConfigs` transactions (Privy or local keypair signing)
 - Configurable update frequency
 - Static fallback values configured at deploy time if price feed is unavailable
 - Privy policy engine restricts the oracle wallet to `SetGasOracleConfigs` only — blocks `SetIgpBeneficiary` and `TransferIgpOwnership`

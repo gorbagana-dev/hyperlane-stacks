@@ -12,8 +12,23 @@ config:
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
   GAS_ORACLE_INTERVAL_MS: "900000"
+  # Gas oracle parameters
+  GAS_PRICE: "0.000005"
+  GAS_OVERHEAD: "200000"
+  EXCHANGE_RATE_MARGIN_PCT: "10"
+  GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
+  # Price feed — override for custom endpoints
+  # PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+  # GORCHAIN_TOKEN_ID: "gorbagana"
+  # SOLANA_TOKEN_ID: "solana"
+  # FALLBACK_GORCHAIN_PRICE_USD: "0"
+  # FALLBACK_SOLANA_PRICE_USD: "0"
 secrets:
   hyperlane-gas-oracle-secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
     - PRIVY_ORACLE_WALLET_ID
+registry-credentials:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT

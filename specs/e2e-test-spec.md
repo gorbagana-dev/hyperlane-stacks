@@ -1255,11 +1255,12 @@ kubectl create secret generic hyperlane-validator-solana-secrets \
 
 ### Mock Gas Oracle Signer
 
-The gas oracle uses Privy's Ed25519 wallet to sign and submit `SetGasOracleConfigs` transactions. For e2e tests:
+The gas oracle supports two signing modes via `SIGNER_MODE` env var:
 
-- Inject a test Ed25519 keypair as `ORACLE_KEYPAIR_JSON` (Solana keypair format)
-- Modify the gas oracle to detect test mode: if `ORACLE_KEYPAIR_JSON` is set, sign locally instead of calling Privy
-- Fund the test oracle wallet via faucet/airdrop on both chains
+- **`privy`** (default, production): Signs via Privy server wallet
+- **`keypair`** (testing): Signs with a local Solana keypair via `ORACLE_KEYPAIR` env var
+
+For e2e tests, set `SIGNER_MODE=keypair` and inject a funded test Ed25519 keypair as `ORACLE_KEYPAIR` (JSON array format).
 
 > **Note:** If real Privy test credentials become available, the mock KMS proxy and local oracle signing can be swapped for real Privy integration to test the full signing path. The test fixtures are designed to make this a configuration-only change (swap image/env vars, no test logic changes).
 
