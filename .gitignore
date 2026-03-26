@@ -1,6 +1,7 @@
 __pycache__/
 .data/
 .deployments
+.logs
 .keys
 .venv/
 .backpack-ext/

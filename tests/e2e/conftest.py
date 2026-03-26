@@ -37,6 +37,8 @@ from lib.common import (
     get_configmap_data,
     get_configmap_json,
     run_deployer_cli,
+    save_job_logs,
+    save_pod_logs,
     wait_for_job_complete,
     wait_for_pod_phase,
 )
@@ -396,10 +398,12 @@ def minio_deployment(
     log.info("Waiting for minio-init job to complete...")
     job_name = f"{cluster_id}-job-hyperlane-minio-init"
     wait_for_job_complete(namespace, job_name, timeout=200)
+    save_job_logs(namespace, job_name)
     log.info("MinIO stack deployed and initialized")
 
     yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
 
+    save_pod_logs(namespace, f"app={cluster_id}", "minio")
     if not skip_cleanup:
         log.info("Stopping minio stack...")
         stop_stack("hyperlane-minio")
@@ -468,6 +472,7 @@ def deployer_deployment(
     log.info("Waiting for deployer job to complete...")
     job_name = f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer"
     wait_for_job_complete(namespace, job_name)
+    save_job_logs(namespace, job_name)
     log.info("Core deployer job complete, artifacts available")
 
     yield deploy_info
@@ -593,6 +598,7 @@ def warp_deployment(
     log.info("Waiting for warp deployer job to complete...")
     job_name = f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer"
     wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
+    save_job_logs(warp_info.namespace, job_name)
     log.info("Warp deployer job complete, artifacts available")
 
     ctx = {
@@ -753,6 +759,7 @@ def _deploy_validator(
         wallet_id=wallet_id,
     )
 
+    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
     if not skip_cleanup:
         log.info("Stopping %s stack...", stack_name)
         stop_stack("hyperlane-validator", deploy_dir=DEPLOY_DIR / stack_name)
@@ -901,6 +908,7 @@ def relayer_deployment(
 
     yield RelayerInfo(deployment=deploy_info)
 
+    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping relayer stack...")
@@ -1185,6 +1193,7 @@ def warp_ui_deployment(
         "synthetic_mint": synthetic_mint,
     }
 
+    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "warp-ui")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping warp-ui stack...")
