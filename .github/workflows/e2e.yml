@@ -74,6 +74,6 @@ jobs:
         with:
           name: e2e-logs
           path: |
-            tests/e2e/.deployments/**/logs/
+            tests/e2e/.deployments/
             /tmp/solana-test-ledger/validator.log
           retention-days: 7
