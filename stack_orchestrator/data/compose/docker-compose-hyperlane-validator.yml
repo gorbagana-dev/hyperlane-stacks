@@ -22,6 +22,17 @@ services:
     user: "0"
     restart: unless-stopped
     hostname: validator
+    command:
+      - /bin/bash
+      - -c
+      - |
+        echo "Validator starting up..."
+        echo "Waiting for KMS proxy on localhost:9999..."
+        until echo > /dev/tcp/localhost/9999 2>/dev/null; do
+          sleep 1
+        done
+        echo "KMS proxy is ready, starting validator"
+        exec ./validator
     environment:
       # Hyperlane agent config (HYP_ prefix, _ separator)
       HYP_ORIGINCHAINNAME: ${ORIGIN_CHAIN_NAME}
