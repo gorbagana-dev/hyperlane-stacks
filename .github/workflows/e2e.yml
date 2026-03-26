@@ -1,16 +1,12 @@
 name: E2E Tests
 
 on:
-  push:
-    branches: [e2e-test]
-  pull_request:
-    branches: [e2e-test]
   workflow_dispatch:
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -21,8 +17,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install Python dependencies
+        run: |
+          cd tests/e2e
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Install kind
         run: |
@@ -36,9 +38,22 @@ jobs:
           chmod +x ./kubectl
           sudo mv ./kubectl /usr/local/bin/kubectl
 
-      - name: Install laconic-so
+      # TODO: Switch to published binary once stack-orchestrator package publishing is fixed:
+      #   curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+      - name: Build laconic-so from source
         run: |
-          pip install laconic-stack-orchestrator
+          git clone https://github.com/cerc-io/stack-orchestrator.git /tmp/stack-orchestrator
+          cd /tmp/stack-orchestrator
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install shiv
+          pip install -r requirements.txt
+          ./scripts/create_build_tag_file.sh
+          shiv -c laconic-so -o laconic-so .
+          mkdir -p ~/bin
+          cp laconic-so ~/bin/laconic-so
+          echo "$HOME/bin" >> $GITHUB_PATH
+          deactivate
 
       - name: Install Solana CLI
         run: |
@@ -53,7 +68,8 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          cd tests/e2e && pytest -v --timeout=1800
+          cd tests/e2e
+          xvfb-run pytest -v
 
       - name: Upload logs on failure
         if: failure()
