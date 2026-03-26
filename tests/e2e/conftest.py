@@ -1218,7 +1218,7 @@ def warp_ui_browser(
     Chrome extensions require headed mode (headless=False). For headless
     operation, wrap the pytest invocation with ``xvfb-run``::
 
-        xvfb-run pytest -v test_08_warp_ui_bridge.py
+        xvfb-run pytest -v test_09_warp_ui_bridge.py
 
     Pass ``--headed`` to show the browser window on a real display.
 

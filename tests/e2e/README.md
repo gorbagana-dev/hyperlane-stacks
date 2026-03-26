@@ -10,6 +10,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - **Validators** -- deploys gorchain and solana validators with a mock Privy server, verifies pod health, KMS proxy connectivity, metrics endpoint, log sanity, and checkpoint writing to MinIO
 - **Relayer** -- deploys the hyperlane relayer, verifies pod health and metrics endpoint
 - **Bridge transfers** -- executes cross-chain warp route transfers (Solana→Gorchain and reverse) via CLI, verifies on-chain balance changes
+- **Fee claims** -- claims accumulated IGP fees on both chains, verifies beneficiary balance increases (skips with warning if no fees to claim)
 - **Warp UI (Tier 1)** -- deploys the warp-ui stack, verifies pod health, HTML serving, sentinel replacement, and chain config presence via HTTP
 - **Warp UI (Tier 2)** -- drives the warp-ui in a Playwright browser with a mock Solana wallet, executes real bridge transfers through the UI
 
@@ -78,13 +79,13 @@ pytest -v -x test_02_warp_deployer.py
 pytest -v -x test_04_validator.py
 
 # Run only warp UI smoke tests
-pytest -v -x test_07_warp_ui.py
+pytest -v -x test_08_warp_ui.py
 
 # Run only warp UI browser tests (headless via xvfb-run)
-xvfb-run pytest -v -x test_08_warp_ui_bridge.py
+xvfb-run pytest -v -x test_09_warp_ui_bridge.py
 
 # Run with visible browser window (on a desktop with $DISPLAY)
-pytest -v -x test_08_warp_ui_bridge.py
+pytest -v -x test_09_warp_ui_bridge.py
 
 # Exclude slow tests (validator checkpoint tests, bridge transfers, UI tests)
 pytest -v -x -m "not slow"
@@ -103,8 +104,9 @@ tests/e2e/
 ├── test_04_validator.py                 # Validator stack tests (gorchain + solana)
 ├── test_05_relayer.py                   # Relayer stack tests
 ├── test_06_bridge.py                    # Cross-chain bridge transfer tests
-├── test_07_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
-├── test_08_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
+├── test_07_fee_claim.py                 # IGP fee claim tests
+├── test_08_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
+├── test_09_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture

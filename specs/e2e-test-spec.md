@@ -363,8 +363,9 @@ tests/
 │   ├── test_04_validator.py          # Both validators: deploy, signing, checkpoints, metrics
 │   ├── test_05_relayer.py            # Relayer deploy + verify metrics
 │   ├── test_06_bridge.py             # Cross-chain warp route transfers
-│   ├── test_07_warp_ui.py            # Warp UI deploy + verify TLS ingress
-│   ├── test_08_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
+│   ├── test_07_fee_claim.py          # IGP fee claim tests
+│   ├── test_08_warp_ui.py            # Warp UI deploy + verify TLS ingress
+│   ├── test_09_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
@@ -829,8 +830,8 @@ def wait_for_token_balance(
 Runs after Phase 3. Deploys the warp-ui stack and validates the bridge UI serves
 correctly and can execute actual cross-chain transfers through a browser.
 
-Two test tiers: HTTP smoke tests (`test_07_warp_ui.py`) and browser-driven bridge
-transfers (`test_08_warp_ui_bridge.py`).
+Two test tiers: HTTP smoke tests (`test_08_warp_ui.py`) and browser-driven bridge
+transfers (`test_09_warp_ui_bridge.py`).
 
 ### Prerequisites
 
@@ -887,7 +888,7 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
 }
 ```
 
-### Tier 1: HTTP Smoke Tests (`test_07_warp_ui.py`)
+### Tier 1: HTTP Smoke Tests (`test_08_warp_ui.py`)
 
 No browser needed — uses `subprocess.run(["curl", ...])` or Python `http.client`
 via port-forward to the warp-ui pod.
@@ -987,7 +988,7 @@ def test_warp_ui_chain_config_present(self, warp_ui_deployment):
     )
 ```
 
-### Tier 2: Browser Bridge Tests (`test_08_warp_ui_bridge.py`)
+### Tier 2: Browser Bridge Tests (`test_09_warp_ui_bridge.py`)
 
 Uses **Playwright** to drive the warp-ui in a real browser with the **Backpack
 wallet extension** that signs and submits real transactions to the test chains.
