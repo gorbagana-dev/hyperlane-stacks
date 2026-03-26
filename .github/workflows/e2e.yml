@@ -61,11 +61,7 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
       - name: Install Foundry (cast)
-        run: |
-          curl -L https://foundry.paradigm.xyz | bash
-          export PATH="$HOME/.foundry/bin:$PATH"
-          foundryup
-          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+        uses: foundry-rs/foundry-toolchain@v1
 
       - name: Run E2E tests
         run: |
