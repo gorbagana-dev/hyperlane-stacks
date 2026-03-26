@@ -159,14 +159,19 @@ def _test_validator_pod_running(info: ValidatorInfo) -> None:
     assert result.stdout.strip() == "Running", f"Expected Running, got: {result.stdout}"
 
 
-def _test_both_containers_ready(info: ValidatorInfo) -> None:
+def _test_both_containers_ready(info: ValidatorInfo, timeout: int = 90) -> None:
+    # The validator may crash on first start if the KMS proxy sidecar isn't
+    # ready yet (Connection refused). k8s restarts it and the second attempt
+    # succeeds. Poll until both containers are ready.
     pod_name = _find_pod_name(info.namespace, f"app={info.cluster_id}")
-    statuses = _get_container_statuses(info.namespace, pod_name)
-
-    assert "validator" in statuses, f"validator container not found, got: {list(statuses.keys())}"
-    assert statuses["validator"] == "true", f"validator not ready: {statuses}"
-    assert "kms-proxy" in statuses, f"kms-proxy container not found, got: {list(statuses.keys())}"
-    assert statuses["kms-proxy"] == "true", f"kms-proxy not ready: {statuses}"
+    deadline = time.time() + timeout
+    while True:
+        statuses = _get_container_statuses(info.namespace, pod_name)
+        if statuses.get("validator") == "true" and statuses.get("kms-proxy") == "true":
+            return
+        if time.time() > deadline:
+            assert False, f"containers not ready after {timeout}s: {statuses}"
+        time.sleep(5)
 
 
 def _test_kms_proxy_health(info: ValidatorInfo, local_port: int) -> None:
