@@ -75,6 +75,8 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Run E2E tests
+        env:
+          GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd tests/e2e
           xvfb-run pytest -v -x

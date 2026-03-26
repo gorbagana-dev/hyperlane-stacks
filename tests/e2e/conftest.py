@@ -50,6 +50,7 @@ from lib.deploy import (
     build_warp_ui_image,
     deploy_prepare,
     deploy_start,
+    ensure_ghcr_pat,
     get_cluster_id,
     prefetch_agent_images,
     prefetch_deployer_image,
@@ -199,6 +200,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--skip-warp-ui-deploy", action="store_true", default=False,
         help="Skip warp-ui deployment (reuse existing from a previous --skip-cleanup run)"
     )
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Ensure GHCR_PAT is set before any fixtures run."""
+    ensure_ghcr_pat()
 
 
 # ---------------------------------------------------------------------------

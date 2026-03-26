@@ -33,3 +33,7 @@ secrets:
     - IGP_ORACLE_PUBKEY
     - GORCHAIN_VALIDATOR_ADDRESS
     - SOLANA_VALIDATOR_ADDRESS
+registry-credentials:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
