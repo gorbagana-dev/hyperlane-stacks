@@ -26,3 +26,9 @@ secrets:
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
     - HYP_DEFAULTSIGNER_KEY
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+registry-credentials:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT

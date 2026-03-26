@@ -39,3 +39,9 @@ secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
     - HARDWARE_WALLET_PUBKEY
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+registry-credentials:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT
