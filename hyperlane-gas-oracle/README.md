@@ -122,9 +122,7 @@ The `gasAmount` values (44–68k) originate from EVM gas accounting where each u
 // before we enforce gas amounts to Sealevel chains.
 ```
 
-In Hyperlane's production SVM-to-SVM deployments (e.g., Solana ↔ Sonic SVM), this works fine because the exchange rates are near 1:1 (both chains use SOL-family tokens of similar value). The inflated gas units cancel out with a low exchange rate.
-
-### Why gGOR/SOL requires a very low gasPrice
+### Calibrating gasPrice for gGOR/SOL
 
 Gorchain's native token gGOR is ~767× cheaper than SOL. This creates a large `tokenExchangeRate` (~7.67e21), which amplifies the gas cost:
 

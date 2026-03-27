@@ -23,6 +23,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Configure git credentials for private gorbagana-dev repos
+        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
