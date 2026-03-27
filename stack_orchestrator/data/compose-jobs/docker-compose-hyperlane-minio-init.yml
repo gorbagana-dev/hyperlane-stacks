@@ -35,8 +35,8 @@ services:
           retries=0
           until mc anonymous set download "local/$${bucket}"; do
             retries=$$((retries + 1))
-            if [ "$$retries" -ge 5 ]; then
-              echo "Failed to set anonymous policy on $${bucket} after 5 retries"
+            if [ "$$retries" -ge 30 ]; then
+              echo "Failed to set anonymous policy on $${bucket} after 30 retries"
               exit 1
             fi
             echo "Retrying anonymous set for $${bucket} in 3s..."
