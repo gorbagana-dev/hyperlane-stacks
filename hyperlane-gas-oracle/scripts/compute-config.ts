@@ -1,4 +1,4 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env -S yarn tsx
 /**
  * Compute gas-oracle-configs.json values from current market prices.
  *

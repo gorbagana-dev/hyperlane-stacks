@@ -47,7 +47,7 @@ Supports two signing modes:
 
 ```bash
 # Build
-npm install && npm run build
+yarn install && yarn build
 
 # Run (one-shot)
 node dist/index.js
@@ -76,19 +76,19 @@ The deployer sets initial gas oracle values from `gas-oracle-configs.json`. Use 
 
 ```bash
 cd hyperlane-gas-oracle
-npm install
+yarn install
 
 # Fetch live prices from CoinGecko and print the config JSON
-npm run compute-config
+yarn compute-config
 
 # Write directly to the deployer config file
-npm run compute-config -- --write
+yarn compute-config --write
 
 # Override prices manually (skip CoinGecko fetch)
-npm run compute-config -- --sgor-price 0.10 --sol-price 150
+yarn compute-config --sgor-price 0.10 --sol-price 150
 
 # Override parameters
-npm run compute-config -- --margin 10 --gas-price 0.000005 --overhead 200000
+yarn compute-config --margin 10 --gas-price 0.000005 --overhead 200000
 ```
 
 The exchange rate formula (Sealevel 1e19 scale):

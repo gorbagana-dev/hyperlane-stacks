@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "compute-config": "npx tsx scripts/compute-config.ts"
+    "compute-config": "yarn tsx scripts/compute-config.ts"
   },
   "dependencies": {
     "@hyperlane-xyz/sdk": "^26.0.0",

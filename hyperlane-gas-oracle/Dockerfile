@@ -1,10 +1,11 @@
 FROM node:20-alpine AS builder
 
 WORKDIR /app
-COPY package.json tsconfig.json ./
-RUN npm install
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 COPY src/ src/
-RUN npm run build
+COPY tsconfig.json ./
+RUN yarn build
 
 FROM node:20-alpine
 
