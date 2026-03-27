@@ -66,6 +66,7 @@ services:
       SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
       GORCHAIN_IGP_ACCOUNT: ${GORCHAIN_IGP_ACCOUNT}
       SOLANA_IGP_ACCOUNT: ${SOLANA_IGP_ACCOUNT}
+      CLAIM_INTERVAL_SECONDS: ${CLAIM_INTERVAL_SECONDS:-21600}
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # RELAYER_KEYPAIR_JSON
     volumes:

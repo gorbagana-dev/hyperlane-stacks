@@ -2,8 +2,8 @@
   "gorchain": {
     "solana": {
       "oracleConfig": {
-        "tokenExchangeRate": "1000000000",
-        "gasPrice": "1",
+        "tokenExchangeRate": "7670341937728019155631",
+        "gasPrice": "5000",
         "tokenDecimals": 9
       },
       "overhead": 200000
@@ -12,8 +12,8 @@
   "solana": {
     "gorchain": {
       "oracleConfig": {
-        "tokenExchangeRate": "1000000000",
-        "gasPrice": "1",
+        "tokenExchangeRate": "15775046403712297",
+        "gasPrice": "5000",
         "tokenDecimals": 9
       },
       "overhead": 200000

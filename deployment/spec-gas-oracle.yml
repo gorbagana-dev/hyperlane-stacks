@@ -1,19 +1,58 @@
 # Hyperlane Gas Oracle - deployment spec
 # Periodically updates IGP gas oracle configurations on both chains.
+# Fetches token prices, computes exchange rates via @hyperlane-xyz/sdk,
+# and submits SetGasOracleConfigs transactions signed by Privy server wallet.
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
 namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
+  # --- Chain RPCs ---
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
+
+  # --- IGP program addresses (base58, from deployer output) ---
   GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
   SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
+
+  # --- Hyperlane domain IDs (must match deployer config) ---
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
+
+  # --- Update frequency ---
+  # How often the oracle re-fetches prices and submits new configs (ms).
+  # Default: 900000 (15 minutes).
   GAS_ORACLE_INTERVAL_MS: "900000"
+
+  # --- Privy API URL ---
+  # Override for testing (e.g. mock server). Production uses the default.
+  # PRIVY_API_URL: "https://auth.privy.io/api/v1"
+
+  # --- Gas oracle parameters ---
+  # Gas price in decimal SOL (0.000005 SOL = 5000 lamports = Solana base tx fee).
+  GAS_PRICE: "0.000005"
+  # Destination gas overhead in compute units, added to each cross-chain message cost.
+  GAS_OVERHEAD: "200000"
+  # Safety margin added to the token exchange rate (percentage).
+  # e.g. 10 means the quoted rate is 10% above the market rate to absorb volatility.
+  EXCHANGE_RATE_MARGIN_PCT: "10"
+  # sGOR → gGOR conversion factor. Gorchain's native token (gGOR) is priced as
+  # sGOR_price × this multiplier. 1 gGOR = 100 sGOR.
+  GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
+
+  # --- Price feed ---
+  # CoinGecko-compatible API base URL. If empty, the oracle skips updates
+  # (useful when price feed is not yet available).
+  PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+  # CoinGecko token IDs for price lookups.
+  # GORCHAIN_TOKEN_ID: "gorbagana"   # sGOR token (default)
+  # SOLANA_TOKEN_ID: "solana"         # SOL token (default)
 secrets:
   hyperlane-gas-oracle-secrets:
-    - PRIVY_APP_ID
-    - PRIVY_APP_SECRET
-    - PRIVY_ORACLE_WALLET_ID
+    - PRIVY_APP_ID              # Privy application ID
+    - PRIVY_APP_SECRET          # Privy application secret
+    - PRIVY_ORACLE_WALLET_ID    # Privy server wallet ID (Ed25519, IGP account owner)
+registry-credentials:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT

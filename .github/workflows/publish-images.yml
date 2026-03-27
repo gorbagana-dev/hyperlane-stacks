@@ -9,6 +9,7 @@ on:
       - '.github/trigger-publish-agent.txt'
       - '.github/trigger-publish-kms-proxy.txt'
       - '.github/trigger-publish-warp-ui.txt'
+      - '.github/trigger-publish-gas-oracle.txt'
   workflow_dispatch:
 
 jobs:
@@ -21,6 +22,7 @@ jobs:
       agent: ${{ steps.check.outputs.agent }}
       kms-proxy: ${{ steps.check.outputs.kms-proxy }}
       warp-ui: ${{ steps.check.outputs.warp-ui }}
+      gas-oracle: ${{ steps.check.outputs.gas-oracle }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +34,7 @@ jobs:
           echo "agent=$(echo "$CHANGED" | grep -qF trigger-publish-agent.txt && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "kms-proxy=$(echo "$CHANGED" | grep -qF trigger-publish-kms-proxy.txt && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "warp-ui=$(echo "$CHANGED" | grep -qF trigger-publish-warp-ui.txt && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "gas-oracle=$(echo "$CHANGED" | grep -qF trigger-publish-gas-oracle.txt && echo true || echo false)" >> $GITHUB_OUTPUT
 
   build-deployer:
     needs: changes
@@ -270,6 +273,71 @@ jobs:
 
       - name: Build warp-ui image
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui build-containers
+
+      - name: Generate image tag
+        id: tag
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Tag and push image
+        run: |
+          REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
+          REMOTE_LATEST="${REMOTE_IMAGE}:latest"
+
+          docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
+          docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
+
+          docker push "${REMOTE_TAG}"
+          docker push "${REMOTE_LATEST}"
+
+          echo "Published: ${REMOTE_TAG}"
+          echo "Published: ${REMOTE_LATEST}"
+
+  build-gas-oracle:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.gas-oracle == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      LOCAL_IMAGE: gorbagana-dev/hyperlane-gas-oracle:local
+      REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/hyperlane-gas-oracle
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install laconic-so
+        run: |
+          mkdir -p ~/bin
+          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          chmod +x ~/bin/laconic-so
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Enable containers in stack.yml for building
+        run: |
+          STACK_YML="$(pwd)/stack_orchestrator/data/stacks/hyperlane-gas-oracle/stack.yml"
+          sed -i 's/^# containers:/containers:/' "$STACK_YML"
+          sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
+
+      - name: Setup repositories
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-gas-oracle setup-repositories
+
+      - name: Build container image
+        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-gas-oracle build-containers
 
       - name: Generate image tag
         id: tag

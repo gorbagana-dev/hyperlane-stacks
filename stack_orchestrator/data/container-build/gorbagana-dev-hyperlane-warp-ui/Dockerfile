@@ -4,7 +4,7 @@
 # Invoked via: docker build -f <this-file> ~/cerc/hyperlane-warp-ui-template
 # Note: build.sh copies entrypoint.sh and configs/ into the build context before building.
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
@@ -38,7 +38,7 @@ RUN sed -i 's/reactStrictMode: true,/reactStrictMode: true,\n  output: "standalo
 RUN pnpm build
 
 # Stage 2: Runtime (standalone — no pnpm or full node_modules needed)
-FROM node:20-alpine
+FROM node:24-alpine
 
 RUN addgroup -g 1001 -S warpui && \
     adduser -u 1001 -S warpui -G warpui

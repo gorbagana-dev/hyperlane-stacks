@@ -167,6 +167,19 @@ class TestDeployer:
                     f"{chain}.{remote}.oracleConfig missing '{field}'"
                 )
 
+            # Verify exchange rate uses correct 1e19 Sealevel scale (not dummy 1e9)
+            rate = int(oracle["tokenExchangeRate"])
+            assert rate >= 10**18, (
+                f"{chain}.{remote}: tokenExchangeRate ({rate}) is too low — "
+                f"Sealevel IGP uses 1e19 scale, rate should be >= 1e18"
+            )
+            # Verify gas price is non-trivial (Solana base fee ≈ 5000 lamports)
+            gas_price = int(oracle["gasPrice"])
+            assert gas_price >= 1000, (
+                f"{chain}.{remote}: gasPrice ({gas_price}) is too low — "
+                f"expected >= 1000 lamports"
+            )
+
             assert "overhead" in entry, f"{chain}.{remote} missing 'overhead'"
 
     def test_multisig_configmap(self, deployer_deployment: DeploymentInfo) -> None:

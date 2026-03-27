@@ -366,3 +366,25 @@ def create_warp_deployer_secrets(namespace: str, keypair_set: KeypairSet) -> Non
 
     run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
     log_info("Warp deployer secrets created")
+
+
+def create_gas_oracle_secrets(namespace: str, oracle_wallet_id: str) -> None:
+    """Create the hyperlane-gas-oracle-secrets k8s Secret (idempotent).
+
+    The actual Privy credentials are dummy values (the mock doesn't validate them).
+    The wallet ID must match what the mock expects.
+    """
+    secret_name = "hyperlane-gas-oracle-secrets"
+    log_info(f"Creating {secret_name} in namespace {namespace}...")
+    gen = run_cmd(
+        [
+            "kubectl", "create", "secret", "generic", secret_name,
+            "-n", namespace,
+            "--from-literal=PRIVY_APP_ID=test-app-id",
+            "--from-literal=PRIVY_APP_SECRET=test-app-secret",
+            f"--from-literal=PRIVY_ORACLE_WALLET_ID={oracle_wallet_id}",
+            "--dry-run=client", "-o", "yaml",
+        ]
+    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
+    log_info(f"{secret_name} created")

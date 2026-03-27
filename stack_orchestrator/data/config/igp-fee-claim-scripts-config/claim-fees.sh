@@ -1,6 +1,7 @@
 #!/bin/bash
 # IGP fee claim sidecar — claims accumulated IGP fees on both chains
-# Runs in a loop every 6 hours. Uses the relayer key for tx fees (permissionless operation).
+# Runs in a loop (default: every 6 hours, configurable via CLAIM_INTERVAL_SECONDS).
+# Uses the relayer key for tx fees (permissionless operation).
 
 set -euo pipefail
 
@@ -18,7 +19,8 @@ keypair_path: "${RELAYER_KEY_FILE}"
 commitment: finalized
 SOLCFG
 
-echo "IGP fee claim sidecar starting (interval: 6h)..."
+INTERVAL="${CLAIM_INTERVAL_SECONDS:-21600}"
+echo "IGP fee claim sidecar starting (interval: ${INTERVAL}s)..."
 while true; do
   echo "[$(date -u)] Claiming IGP fees on Gorchain..."
   hyperlane-sealevel-client \
@@ -38,6 +40,6 @@ while true; do
     --igp-account "$SOLANA_IGP_ACCOUNT" || \
     echo "Warning: Solana fee claim failed"
 
-  echo "[$(date -u)] Fee claim cycle complete. Sleeping 6h..."
-  sleep 21600
+  echo "[$(date -u)] Fee claim cycle complete. Sleeping ${INTERVAL}s..."
+  sleep "$INTERVAL"
 done

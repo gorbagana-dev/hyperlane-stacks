@@ -74,10 +74,12 @@ from lib.keygen import (
 )
 from lib.privy_mock import (
     GORCHAIN_WALLET_ID,
+    ORACLE_WALLET_ID,
     SOLANA_WALLET_ID,
     derive_h160_address,
     generate_wallet_keys,
     is_privy_mock_running,
+    load_oracle_keypair,
 )
 
 log = logging.getLogger(__name__)
@@ -639,12 +641,19 @@ def privy_mock(request: pytest.FixtureRequest, keypairs: KeypairSet) -> Generato
     wallet_keys = generate_wallet_keys(keypairs)
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
+    # Load oracle address for logging
+    oracle_address = None
+    oracle_keypair_path = keypairs.keys_dir / "igp-oracle.json"
+    if oracle_keypair_path.is_file():
+        oracle_address, _ = load_oracle_keypair(keypairs.keys_dir)
+
     if is_privy_mock_running(PRIVY_MOCK_PORT):
         log.info("Privy-mock already running on :%d, reusing", PRIVY_MOCK_PORT)
         log.info(
-            "Mock Privy wallets — gorchain H160: %s, solana H160: %s",
+            "Mock Privy wallets — gorchain H160: %s, solana H160: %s, oracle: %s",
             derive_h160_address(wallet_keys[GORCHAIN_WALLET_ID]),
             derive_h160_address(wallet_keys[SOLANA_WALLET_ID]),
+            oracle_address or "none",
         )
         yield wallet_keys
     else:
@@ -672,9 +681,10 @@ def privy_mock(request: pytest.FixtureRequest, keypairs: KeypairSet) -> Generato
             )
         log.info("Mock Privy server started (pid=%d) on :%d", proc.pid, PRIVY_MOCK_PORT)
         log.info(
-            "Mock Privy wallets — gorchain H160: %s, solana H160: %s",
+            "Mock Privy wallets — gorchain H160: %s, solana H160: %s, oracle: %s",
             derive_h160_address(wallet_keys[GORCHAIN_WALLET_ID]),
             derive_h160_address(wallet_keys[SOLANA_WALLET_ID]),
+            oracle_address or "none",
         )
         yield wallet_keys
 
@@ -1218,7 +1228,7 @@ def warp_ui_browser(
     Chrome extensions require headed mode (headless=False). For headless
     operation, wrap the pytest invocation with ``xvfb-run``::
 
-        xvfb-run pytest -v test_08_warp_ui_bridge.py
+        xvfb-run pytest -v test_09_warp_ui_bridge.py
 
     Pass ``--headed`` to show the browser window on a real display.
 

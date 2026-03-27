@@ -265,21 +265,24 @@ S3-compatible storage for validator checkpoints. Replaces shared PVCs (RWX) with
 Periodically fetches token prices and updates IGP gas oracle configurations on both chains.
 
 ### How It Works
-1. Fetches GOR and SOL prices from CoinGecko
-2. Computes exchange rates and gas prices
-3. Signs `SetGasOracleConfigs` transactions via Privy Solana wallet (Ed25519)
-4. Runs in a loop (`RUN_LOOP=true`) with configurable interval (default 15 min)
+1. Fetches sGOR and SOL prices from CoinGecko (or configurable price endpoint)
+2. Converts sGOR price to gGOR (Gorchain native token) via configurable multiplier
+3. Computes exchange rates using `@hyperlane-xyz/sdk` `getLocalStorageGasOracleConfig()` (1e19 Sealevel scale, with margin)
+4. Builds `SetGasOracleConfigs` instructions using SDK Borsh serialization
+5. Signs via Privy server wallet (production) or local keypair (testing)
+6. Runs in a loop (`RUN_LOOP=true`) with configurable interval (default 15 min)
 
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| gas-oracle | `gorbagana-dev/hyperlane-gas-oracle:local` | Node.js, loop mode via `RUN_LOOP=true` |
+| gas-oracle | `ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest` | TypeScript, loop mode via `RUN_LOOP=true` |
 
 ### Config (spec.yml)
-`GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID`, `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GAS_ORACLE_INTERVAL_MS` (default 900000)
+`GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID`, `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GAS_ORACLE_INTERVAL_MS` (default 900000), `GAS_PRICE` (default "0.000005"), `GAS_OVERHEAD` (default 200000), `EXCHANGE_RATE_MARGIN_PCT` (default 10), `GORCHAIN_NATIVE_TOKEN_MULTIPLIER` (default 100), `SIGNER_MODE` ("privy" or "keypair")
 
 ### Secrets (injected separately)
-`PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_ORACLE_WALLET_ID`
+Privy mode: `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_ORACLE_WALLET_ID`
+Keypair mode: `ORACLE_KEYPAIR`
 
 ---
 
@@ -360,7 +363,7 @@ Summary of custom images and their SO build pipeline:
 |---------------|-----------|---------------------------|--------|
 | `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
 | `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
-| `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | Node.js, source at `hyperlane-gas-oracle/` |
+| `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | TypeScript, source at `hyperlane-gas-oracle/`, uses `@hyperlane-xyz/sdk` |
 | `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
 
 Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-cloned repo in `~/cerc/` as build context. Build scripts must NOT use relative paths back to the repo tree — components may move to different repos.
