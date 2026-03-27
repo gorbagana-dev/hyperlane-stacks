@@ -72,22 +72,29 @@ laconic-so --stack hyperlane-gas-oracle deploy start
 
 ## Computing Initial Gas Oracle Values
 
-The deployer sets initial gas oracle values from `gas-oracle-configs.json`. To compute values based on current market prices:
+The deployer sets initial gas oracle values from `gas-oracle-configs.json`. Use the included script to compute values from current market prices:
 
 ```bash
-# Fetch current prices
-curl -s 'https://api.coingecko.com/api/v3/simple/price?ids=gorbagana,solana&vs_currencies=usd'
+cd hyperlane-gas-oracle
+npm install
 
-# Exchange rate formula (Sealevel 1e19 scale):
-#   tokenExchangeRate = (localTokenPrice / remoteTokenPrice) × 1e19 × (1 + margin/100)
-#
-# Example with sGOR=$0.10, SOL=$150, multiplier=100, margin=10%:
-#   gGOR = $0.10 × 100 = $10
-#   gorchain→solana: ($10 / $150) × 1e19 × 1.1 = 733333333333333333
-#   solana→gorchain: ($150 / $10) × 1e19 × 1.1 = 165000000000000000000
-#
-# gasPrice: 5000 (= 0.000005 SOL in lamports, Solana base tx fee)
-# tokenDecimals: 9 (SOL decimals)
+# Fetch live prices from CoinGecko and print the config JSON
+npm run compute-config
+
+# Write directly to the deployer config file
+npm run compute-config -- --write
+
+# Override prices manually (skip CoinGecko fetch)
+npm run compute-config -- --sgor-price 0.10 --sol-price 150
+
+# Override parameters
+npm run compute-config -- --margin 10 --gas-price 0.000005 --overhead 200000
+```
+
+The exchange rate formula (Sealevel 1e19 scale):
+```
+tokenExchangeRate = (localTokenPrice / remoteTokenPrice) × 1e19 × (1 + margin/100)
+gasPrice = SOL amount × 1e9 (lamports)
 ```
 
 The oracle service will overwrite these values on its first successful run with live prices.
