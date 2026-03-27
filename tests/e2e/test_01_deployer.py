@@ -174,11 +174,12 @@ class TestDeployer:
             assert rate > 0, (
                 f"{chain}.{remote}: tokenExchangeRate ({rate}) must be > 0"
             )
-            # Verify gas price is non-trivial (Solana base fee ≈ 5000 lamports)
+            # Verify gas price is positive. With EVM-default gasAmount (44-68k)
+            # and large gGOR/SOL exchange rates, gasPrice must be very low
+            # (e.g. 1 lamport per gas unit) to keep IGP quotes reasonable.
             gas_price = int(oracle["gasPrice"])
-            assert gas_price >= 1000, (
-                f"{chain}.{remote}: gasPrice ({gas_price}) is too low — "
-                f"expected >= 1000 lamports"
+            assert gas_price > 0, (
+                f"{chain}.{remote}: gasPrice ({gas_price}) must be > 0"
             )
 
             assert "overhead" in entry, f"{chain}.{remote} missing 'overhead'"

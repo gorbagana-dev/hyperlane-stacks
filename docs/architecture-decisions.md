@@ -303,7 +303,7 @@ The gas oracle is a standalone TypeScript service in the `hyperlane-gas-oracle` 
 **Configuration:**
 - Privy wallet ID and API credentials (k8s Secret) — or keypair JSON for testing
 - Price feed URL (`PRICE_FEED_URL`) and update interval — empty URL skips oracle updates entirely
-- Gas price (default: 0.000005 SOL = 5000 lamports), overhead (default: 200000 CU), margin (default: 10%)
+- Gas price (default: 0.000000001 SOL = 1 lamport per gas unit), overhead (default: 200000 CU), margin (default: 10%)
 - Sanity check thresholds (reject updates deviating >50% from previous value)
 - Both chain RPC URLs and IGP program IDs
 
