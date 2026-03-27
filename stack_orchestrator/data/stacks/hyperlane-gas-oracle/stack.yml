@@ -1,8 +1,6 @@
 version: "1.1"
 name: hyperlane-gas-oracle
 description: "Hyperlane gas oracle — fetches prices, updates IGP configs via Privy"
-repos:
-  - github.com/gorbagana-dev/hyperlane-stacks
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:

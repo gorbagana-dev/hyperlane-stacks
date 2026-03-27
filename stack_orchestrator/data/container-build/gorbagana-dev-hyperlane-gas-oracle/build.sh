@@ -5,4 +5,4 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 docker build -t gorbagana-dev/hyperlane-gas-oracle:local \
   ${build_command_args} \
-  ${CERC_REPO_BASE_DIR}/hyperlane-stacks/hyperlane-gas-oracle
+  ${SCRIPT_DIR}/../../../../hyperlane-gas-oracle
