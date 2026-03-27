@@ -34,7 +34,7 @@ export interface OracleConfig {
   maxPriceDeviation: number;
 
   // Gas oracle parameters
-  gasPrice: string; // decimal SOL (e.g. "0.000005" → 5000 lamports)
+  gasPrice: string; // decimal SOL (e.g. "0.000000001" → 1 lamport per gas unit)
   gasOverhead: number; // compute units
   exchangeRateMarginPct: number; // percentage
 
@@ -101,7 +101,7 @@ export function loadConfig(): OracleConfig {
     maxPriceDeviation: parseFloat(optionalEnv("MAX_PRICE_DEVIATION", "0.5")),
 
     // Gas oracle parameters
-    gasPrice: optionalEnv("GAS_PRICE", "0.000005"),
+    gasPrice: optionalEnv("GAS_PRICE", "0.000000001"),
     gasOverhead: parseInt(optionalEnv("GAS_OVERHEAD", "200000"), 10),
     exchangeRateMarginPct: parseFloat(
       optionalEnv("EXCHANGE_RATE_MARGIN_PCT", "10"),

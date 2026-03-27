@@ -19,7 +19,7 @@
  *
  * Override parameters:
  *   --margin 10                      Exchange rate margin % (default: 10)
- *   --gas-price 0.000005             Gas price in SOL (default: 0.000005)
+ *   --gas-price 0.000000001          Gas price in SOL (default: 0.000000001)
  *   --overhead 200000                Gas overhead in CU (default: 200000)
  *   --multiplier 100                 sGOR→gGOR multiplier (default: 100)
  *   --feed-url https://...           CoinGecko API base URL
@@ -52,7 +52,7 @@ function hasFlag(name: string): boolean {
 }
 
 const MARGIN = parseFloat(getArg("margin") ?? "10");
-const GAS_PRICE = getArg("gas-price") ?? "0.000005";
+const GAS_PRICE = getArg("gas-price") ?? "0.000000001";
 const OVERHEAD = parseInt(getArg("overhead") ?? "200000", 10);
 const MULTIPLIER = parseFloat(getArg("multiplier") ?? "100");
 const FEED_URL = getArg("feed-url") ?? "https://api.coingecko.com/api/v3";

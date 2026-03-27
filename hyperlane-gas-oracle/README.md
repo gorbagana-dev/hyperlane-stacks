@@ -35,7 +35,7 @@ Supports two signing modes:
 | `PRICE_FEED_URL` | No | *(empty)* | CoinGecko-compatible API base URL. Empty = skip oracle updates. |
 | `GORCHAIN_TOKEN_ID` | No | `gorbagana` | CoinGecko token ID for sGOR |
 | `SOLANA_TOKEN_ID` | No | `solana` | CoinGecko token ID for SOL |
-| `GAS_PRICE` | No | `0.000005` | Gas price in decimal SOL (= 5000 lamports) |
+| `GAS_PRICE` | No | `0.000000001` | Gas price in decimal SOL per gas unit (= 1 lamport) |
 | `GAS_OVERHEAD` | No | `200000` | Destination gas overhead in compute units |
 | `EXCHANGE_RATE_MARGIN_PCT` | No | `10` | Exchange rate safety margin percentage |
 | `GORCHAIN_NATIVE_TOKEN_MULTIPLIER` | No | `100` | sGOR → gGOR conversion factor (1 gGOR = 100 sGOR) |
@@ -88,7 +88,7 @@ yarn compute-config --write
 yarn compute-config --sgor-price 0.10 --sol-price 150
 
 # Override parameters
-yarn compute-config --margin 10 --gas-price 0.000005 --overhead 200000
+yarn compute-config --margin 10 --gas-price 0.000000001 --overhead 200000
 ```
 
 The exchange rate formula (Sealevel 1e19 scale):
@@ -98,3 +98,42 @@ gasPrice = SOL amount × 1e9 (lamports)
 ```
 
 The oracle service will overwrite these values on its first successful run with live prices.
+
+## Gas Price Calibration for SVM Chains
+
+The on-chain IGP fee quote formula is:
+
+```
+quote = (gasAmount + overhead) × gasPrice × tokenExchangeRate / 1e19
+```
+
+Where:
+- **gasAmount** is set per warp route token program during deployment (hardcoded EVM defaults: 44k native, 64k synthetic, 68k collateral)
+- **overhead** is set on the Overhead IGP during `igp configure` (from `gas-oracle-configs.json`)
+- **gasPrice** and **tokenExchangeRate** are set on the IGP by this oracle service (or statically by the deployer)
+
+### The EVM gas amount problem
+
+The `gasAmount` values (44–68k) originate from EVM gas accounting where each unit costs `gasPrice` wei. In SVM (Solana/Gorchain), transaction fees are a flat ~5000 lamports regardless of compute — there is no per-unit gas metering. The Hyperlane Rust client has a TODO acknowledging this:
+
+```rust
+// TODO: note these are the amounts specific to the EVM.
+// We should eventually make this configurable per protocol type
+// before we enforce gas amounts to Sealevel chains.
+```
+
+In Hyperlane's production SVM-to-SVM deployments (e.g., Solana ↔ Sonic SVM), this works fine because the exchange rates are near 1:1 (both chains use SOL-family tokens of similar value). The inflated gas units cancel out with a low exchange rate.
+
+### Why gGOR/SOL requires a very low gasPrice
+
+Gorchain's native token gGOR is ~767× cheaper than SOL. This creates a large `tokenExchangeRate` (~7.67e21), which amplifies the gas cost:
+
+```
+With gasPrice=5000 (Solana base fee):
+  (68000 + 200000) × 5000 × 7.67e21 / 1e19 = 1,027 gGOR ≈ $195
+
+With gasPrice=1 (calibrated):
+  (68000 + 200000) × 1 × 7.67e21 / 1e19 = 0.21 gGOR ≈ $0.04
+```
+
+Since `gasAmount` is baked into the warp route program and `overhead` has semantic meaning (ISM verification cost), we compensate by setting `gasPrice` to the minimum (1 lamport per gas unit). The `GAS_PRICE` env var controls this — the default of `0.000000001` SOL produces a gasPrice of 1.

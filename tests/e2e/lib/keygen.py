@@ -238,9 +238,16 @@ def fund_wallets(
     hw_pubkey = _solana_pubkey(keys_dir / "hardware-wallet.json")
     oracle_pubkey = _solana_pubkey(keys_dir / "igp-oracle.json")
 
-    for rpc, chain_name in [(solana_rpc, "Solana"), (gorchain_rpc, "Gorchain")]:
+    deployer_funding = {
+        gorchain_rpc: 100,
+        solana_rpc: 100,
+    }
+    chain_names = {gorchain_rpc: "Gorchain", solana_rpc: "Solana"}
+
+    for rpc in [solana_rpc, gorchain_rpc]:
+        chain_name = chain_names[rpc]
         log_info(f"  Funding wallets on {chain_name} ({rpc})...")
-        _airdrop(100, deployer_pubkey, rpc, "deployer")
+        _airdrop(deployer_funding[rpc], deployer_pubkey, rpc, "deployer")
         _airdrop(1, hw_pubkey, rpc, "hardware wallet")
         _airdrop(1, oracle_pubkey, rpc, "IGP oracle")
 

@@ -29,8 +29,11 @@ config:
   # PRIVY_API_URL: "https://auth.privy.io/api/v1"
 
   # --- Gas oracle parameters ---
-  # Gas price in decimal SOL (0.000005 SOL = 5000 lamports = Solana base tx fee).
-  GAS_PRICE: "0.000005"
+  # Gas price in decimal SOL per gas unit. With EVM-default gasAmount (~44-68k)
+  # and overhead (200k), this multiplies up: (gasAmount + overhead) × gasPrice × exchangeRate.
+  # Use a very low value (1 lamport per gas unit) to keep quotes reasonable
+  # when the gGOR/SOL exchange rate is high (gGOR is much cheaper than SOL).
+  GAS_PRICE: "0.000000001"
   # Destination gas overhead in compute units, added to each cross-chain message cost.
   GAS_OVERHEAD: "200000"
   # Safety margin added to the token exchange rate (percentage).
