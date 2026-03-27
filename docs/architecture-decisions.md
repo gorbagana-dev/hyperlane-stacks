@@ -288,20 +288,21 @@ The AWS SDK for Rust (v0.56+) supports per-service endpoint overrides via `AWS_E
 
 The gas oracle is a standalone TypeScript service in the `hyperlane-gas-oracle` stack that:
 1. Fetches sGOR and SOL token prices from CoinGecko (or configurable endpoint)
-2. Converts sGOR price to gGOR (Gorchain native token) via configurable multiplier (default ×100)
+2. Converts sGOR price to gGOR (Gorchain native token) via configurable multiplier (default ×100, since 1 gGOR = 100 sGOR)
 3. Computes `GasOracleConfig` values using `@hyperlane-xyz/sdk` `getLocalStorageGasOracleConfig()` — handles 1e19 Sealevel exchange rate scaling, margin, and gas price conversion
 4. Builds `SetGasOracleConfigs` instructions using SDK Borsh serialization (correct discriminator, account ordering, and Option/enum wrappers)
-5. Signs and submits via Privy Solana wallet (production) or local keypair (testing)
+5. Signs via Privy `signTransaction` (sign-only), then submits to the configured chain RPC — giving the oracle full control over which RPC receives the transaction
+6. Skips updates when `PRICE_FEED_URL` is not set (empty string)
 
-**No proxy needed** — the oracle is our own service, so it calls Privy directly.
+**No proxy needed** — the oracle is our own service, so it calls Privy directly. Uses the sign-only `signTransaction` endpoint (not `signAndSendTransaction`), so the oracle controls which RPC the tx is submitted to — critical for custom chains like Gorchain that aren't in Privy's CAIP-2 registry.
 
 **Two signer modes:**
-- `SIGNER_MODE=privy` (default): Privy server wallet for production
-- `SIGNER_MODE=keypair`: Local Solana keypair for E2E testing
+- `SIGNER_MODE=privy` (default): Privy server wallet for production. Uses `PRIVY_API_URL` (default: `https://auth.privy.io/api/v1`, overridable for mock server in E2E tests).
+- `SIGNER_MODE=keypair`: Local Solana keypair for lightweight testing
 
 **Configuration:**
 - Privy wallet ID and API credentials (k8s Secret) — or keypair JSON for testing
-- Price feed URL and update interval
+- Price feed URL (`PRICE_FEED_URL`) and update interval — empty URL skips oracle updates entirely
 - Gas price (default: 0.000005 SOL = 5000 lamports), overhead (default: 200000 CU), margin (default: 10%)
 - Sanity check thresholds (reject updates deviating >50% from previous value)
 - Both chain RPC URLs and IGP program IDs
@@ -336,9 +337,9 @@ The Sealevel `process_estimate_costs()` function returns hardcoded zeros (upstre
 
 The Sealevel IGP's `set_gas_oracle_configs` instruction requires the IGP account owner's signature (no separate oracle role exists). IGP account ownership is transferred to a dedicated Privy oracle wallet (Tier 2) at deploy time, enabling fully automated updates without operator attendance.
 
-- The `hyperlane-gas-oracle` stack runs a long-running TypeScript service that fetches current token prices and submits `SetGasOracleConfigs` transactions (Privy or local keypair signing)
-- Configurable update frequency
-- Static fallback values configured at deploy time if price feed is unavailable
+- The `hyperlane-gas-oracle` stack runs a long-running TypeScript service that fetches current token prices and submits `SetGasOracleConfigs` transactions (Privy sign-only or local keypair signing)
+- Configurable update frequency (default: 15 min)
+- If `PRICE_FEED_URL` is empty, the oracle skips updates — the deployer's initial `gas-oracle-configs.json` values remain in effect
 - Privy policy engine restricts the oracle wallet to `SetGasOracleConfigs` only — blocks `SetIgpBeneficiary` and `TransferIgpOwnership`
 
 **Note:** Despite using `None` enforcement, the gas oracle should still be configured correctly for accurate fee quoting to users.
