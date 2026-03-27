@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 COPY package.json yarn.lock ./
@@ -7,7 +7,7 @@ COPY src/ src/
 COPY tsconfig.json ./
 RUN yarn build
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 RUN addgroup -g 1001 -S oracle && \
     adduser -u 1001 -S oracle -G oracle
