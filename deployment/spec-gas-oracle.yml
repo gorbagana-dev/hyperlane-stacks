@@ -19,12 +19,10 @@ config:
   GAS_OVERHEAD: "200000"
   EXCHANGE_RATE_MARGIN_PCT: "10"
   GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
-  # Price feed — override for custom endpoints
-  # PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+  # Price feed (required for oracle updates; empty = skip)
+  PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
   # GORCHAIN_TOKEN_ID: "gorbagana"
   # SOLANA_TOKEN_ID: "solana"
-  # FALLBACK_GORCHAIN_PRICE_USD: "0"
-  # FALLBACK_SOLANA_PRICE_USD: "0"
 secrets:
   hyperlane-gas-oracle-secrets:
     - PRIVY_APP_ID

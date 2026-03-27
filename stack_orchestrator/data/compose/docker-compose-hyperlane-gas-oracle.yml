@@ -21,13 +21,11 @@ services:
       SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
-      # Price feed config
-      PRICE_FEED_URL: ${PRICE_FEED_URL:-https://api.coingecko.com/api/v3}
+      # Price feed config (empty PRICE_FEED_URL = skip oracle updates)
+      PRICE_FEED_URL: ${PRICE_FEED_URL:-}
       GORCHAIN_TOKEN_ID: ${GORCHAIN_TOKEN_ID:-gorbagana}
       SOLANA_TOKEN_ID: ${SOLANA_TOKEN_ID:-solana}
       MAX_PRICE_DEVIATION: ${MAX_PRICE_DEVIATION:-0.5}
-      FALLBACK_GORCHAIN_PRICE_USD: ${FALLBACK_GORCHAIN_PRICE_USD:-0}
-      FALLBACK_SOLANA_PRICE_USD: ${FALLBACK_SOLANA_PRICE_USD:-0}
       # Gas oracle parameters
       GAS_PRICE: ${GAS_PRICE:-0.000005}
       GAS_OVERHEAD: ${GAS_OVERHEAD:-200000}

@@ -18,40 +18,23 @@ export async function fetchTokenPrices(
 
   console.log(`Fetching prices from ${url}`);
 
-  let gorchainPrice: number | undefined;
-  let solanaPrice: number | undefined;
-
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      throw new Error(
-        `Price feed returned ${resp.status}: ${await resp.text()}`,
-      );
-    }
-
-    const data = (await resp.json()) as Record<
-      string,
-      { usd?: number } | undefined
-    >;
-    gorchainPrice = data[gorchainTokenId]?.usd;
-    solanaPrice = data[solanaTokenId]?.usd;
-  } catch (err) {
-    console.warn(`Price feed error: ${err}`);
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(
+      `Price feed returned ${resp.status}: ${await resp.text()}`,
+    );
   }
 
+  const data = (await resp.json()) as Record<
+    string,
+    { usd?: number } | undefined
+  >;
+  const gorchainPrice = data[gorchainTokenId]?.usd;
+  const solanaPrice = data[solanaTokenId]?.usd;
+
   if (!gorchainPrice || !solanaPrice) {
-    if (
-      config.fallbackGorchainPriceUsd > 0 &&
-      config.fallbackSolanaPriceUsd > 0
-    ) {
-      console.warn("Price feed incomplete, using fallback prices");
-      return {
-        gorchainPriceUsd: config.fallbackGorchainPriceUsd,
-        solanaPriceUsd: config.fallbackSolanaPriceUsd,
-      };
-    }
     throw new Error(
-      `Missing prices: gorchain=${gorchainPrice}, solana=${solanaPrice}`,
+      `Missing prices from feed: gorchain=${gorchainPrice}, solana=${solanaPrice}`,
     );
   }
 

@@ -46,6 +46,12 @@ async function main(): Promise<void> {
   console.log("Starting Hyperlane gas oracle update...");
 
   const config = loadConfig();
+
+  if (!config.priceFeedUrl) {
+    console.log("PRICE_FEED_URL not set — skipping oracle update.");
+    return;
+  }
+
   const signer = createSigner(config);
   const oracleAddress = await signer.getAddress();
   console.log(`Oracle wallet address: ${oracleAddress}`);
