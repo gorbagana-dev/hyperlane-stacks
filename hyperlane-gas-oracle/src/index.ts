@@ -34,8 +34,8 @@ function createSigner(config: OracleConfig): OracleSigner {
     return new KeypairSigner(config.oracleKeypair);
   }
 
-  console.log("Using Privy signer");
-  const privy = createPrivyClient(config.privyAppId, config.privyAppSecret);
+  console.log(`Using Privy signer (API: ${config.privyApiUrl})`);
+  const privy = createPrivyClient(config.privyAppId, config.privyAppSecret, config.privyApiUrl);
   return new PrivySigner(privy, config.privyOracleWalletId);
 }
 
@@ -211,7 +211,7 @@ async function submitUpdate(params: SubmitParams): Promise<void> {
 
   console.log(`  Signing and submitting...`);
   try {
-    const signature = await signer.signAndSend(connection, tx, chainName);
+    const signature = await signer.signAndSend(connection, tx);
     console.log(`  Transaction submitted: ${signature}`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

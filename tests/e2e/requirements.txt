@@ -2,3 +2,4 @@ pytest>=7.0
 eth_account>=0.9.0
 playwright>=1.40
 base58>=2.1
+solders>=0.21.0

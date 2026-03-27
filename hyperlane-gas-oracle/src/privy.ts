@@ -1,13 +1,10 @@
 /**
  * Privy server wallet integration for signing Solana transactions (Ed25519).
  *
- * Uses Privy's REST API to sign transactions with a server-managed Solana wallet.
- * See: https://docs.privy.io/guide/server-wallets/usage/solana
+ * Uses Privy's REST API signTransaction (sign-only) endpoint so that the
+ * caller controls which RPC the signed transaction is submitted to.
+ * See: https://docs.privy.io/api-reference/wallets/solana/sign-transaction
  */
-
-import bs58 from "bs58";
-
-const PRIVY_API_BASE = "https://auth.privy.io/api/v1";
 
 interface PrivyWallet {
   id: string;
@@ -15,23 +12,19 @@ interface PrivyWallet {
   chain_type: string;
 }
 
-interface PrivyTxResult {
-  hash?: string;
-  signature?: string;
-}
-
 export interface PrivyClient {
   getWallet(walletId: string): Promise<PrivyWallet>;
-  signAndSendTransaction(
+  /** Sign a transaction without submitting it. Returns base64-encoded signed tx. */
+  signTransaction(
     walletId: string,
-    serializedTx: Uint8Array,
-    caip2: string,
-  ): Promise<PrivyTxResult>;
+    txBase64: string,
+  ): Promise<string>;
 }
 
 export function createPrivyClient(
   appId: string,
   appSecret: string,
+  apiUrl: string = "https://auth.privy.io/api/v1",
 ): PrivyClient {
   const authHeader =
     "Basic " + Buffer.from(`${appId}:${appSecret}`).toString("base64");
@@ -41,7 +34,7 @@ export function createPrivyClient(
     path: string,
     body?: unknown,
   ): Promise<any> {
-    const url = `${PRIVY_API_BASE}${path}`;
+    const url = `${apiUrl}${path}`;
     const resp = await fetch(url, {
       method,
       headers: {
@@ -66,20 +59,18 @@ export function createPrivyClient(
       return request("GET", `/wallets/${walletId}`);
     },
 
-    async signAndSendTransaction(
+    async signTransaction(
       walletId: string,
-      serializedTx: Uint8Array,
-      caip2: string,
-    ): Promise<PrivyTxResult> {
-      const encoded = bs58.encode(serializedTx);
-      return request("POST", `/wallets/${walletId}/rpc`, {
-        method: "signAndSendTransaction",
-        caip2,
+      txBase64: string,
+    ): Promise<string> {
+      const result = await request("POST", `/wallets/${walletId}/rpc`, {
+        method: "signTransaction",
         params: {
-          encoding: "base58",
-          transaction: encoded,
+          transaction: txBase64,
+          encoding: "base64",
         },
       });
+      return result.data.signed_transaction;
     },
   };
 }

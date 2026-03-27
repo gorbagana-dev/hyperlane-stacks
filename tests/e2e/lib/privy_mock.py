@@ -1,10 +1,16 @@
-"""Mock Privy server for e2e validator tests.
+"""Mock Privy server for e2e tests.
 
-Implements the Privy wallet RPC endpoint that the KMS proxy calls:
-  POST /v1/wallets/{wallet_id}/rpc  (method: secp256k1_sign)
+Implements the Privy wallet RPC endpoint:
+  POST /v1/wallets/{wallet_id}/rpc
+  GET  /v1/wallets/{wallet_id}
 
-Each wallet_id maps to a different secp256k1 private key, mirroring
-production where each validator chain has its own Privy wallet.
+Supported RPC methods:
+  - secp256k1_sign: used by KMS proxy for validator signing (secp256k1)
+  - signTransaction: used by gas oracle for Solana tx signing (Ed25519)
+
+Each wallet_id maps to a cryptographic key:
+  - Validator wallets → secp256k1 private keys
+  - Oracle wallet → Solana Ed25519 keypair (signs full transactions)
 
 Usage (in-process):
     server = PrivyMockServer(wallet_keys, port=19876)
@@ -18,6 +24,7 @@ Usage (standalone subprocess — survives pytest exit):
 
 from __future__ import annotations
 
+import base64
 import http.client
 import json
 import logging
@@ -27,6 +34,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from eth_keys import keys as eth_keys
+from solders.keypair import Keypair as SoldersKeypair
+from solders.transaction import Transaction as SoldersTransaction
 
 if TYPE_CHECKING:
     from lib.keygen import KeypairSet
@@ -36,6 +45,7 @@ log = logging.getLogger(__name__)
 # Default wallet IDs used in test fixtures
 GORCHAIN_WALLET_ID = "wallet-gorchain-001"
 SOLANA_WALLET_ID = "wallet-solana-001"
+ORACLE_WALLET_ID = "wallet-oracle-001"
 
 
 def generate_wallet_keys(keypair_set: KeypairSet) -> dict[str, str]:
@@ -50,6 +60,17 @@ def generate_wallet_keys(keypair_set: KeypairSet) -> dict[str, str]:
         GORCHAIN_WALLET_ID: keypair_set.gorchain_validator_private_key,
         SOLANA_WALLET_ID: keypair_set.solana_validator_private_key,
     }
+
+
+def load_oracle_keypair(keys_dir: str | Path) -> tuple[str, list[int]]:
+    """Load the IGP oracle Solana keypair for the mock.
+
+    Returns (base58_address, keypair_bytes_list).
+    """
+    oracle_path = Path(keys_dir) / "igp-oracle.json"
+    keypair_bytes = json.loads(oracle_path.read_text())
+    kp = SoldersKeypair.from_bytes(bytes(keypair_bytes))
+    return str(kp.pubkey()), keypair_bytes
 
 
 def derive_h160_address(private_key_hex: str) -> str:
@@ -99,10 +120,29 @@ def _sign_digest(private_key_hex: str, digest: bytes) -> str:
     return "0x" + (r_bytes + s_bytes + v_byte).hex()
 
 
+def _sign_solana_transaction(keypair_bytes: list[int], tx_base64: str) -> str:
+    """Sign a Solana transaction with an Ed25519 keypair.
+
+    Deserializes the unsigned transaction, signs it with the keypair,
+    and returns the signed transaction as base64.
+    """
+    kp = SoldersKeypair.from_bytes(bytes(keypair_bytes))
+    tx_bytes = base64.b64decode(tx_base64)
+    tx = SoldersTransaction.from_bytes(tx_bytes)
+
+    # Sign the serialized message and reconstruct via populate()
+    msg = tx.message
+    sig = kp.sign_message(bytes(msg))
+    signed_tx = SoldersTransaction.populate(msg, [sig])
+    return base64.b64encode(bytes(signed_tx)).decode()
+
+
 class _PrivyHandler(BaseHTTPRequestHandler):
     """HTTP handler for the mock Privy server."""
 
     wallet_keys: dict[str, str]  # Set by PrivyMockServer
+    oracle_keypair: list[int] | None  # Set by PrivyMockServer
+    oracle_address: str | None  # Set by PrivyMockServer
 
     def log_message(self, format: str, *args: Any) -> None:
         log.debug("privy-mock: %s", format % args)
@@ -115,17 +155,22 @@ class _PrivyHandler(BaseHTTPRequestHandler):
             return
 
         wallet_id = parts[2]
-        private_key_hex = self.wallet_keys.get(wallet_id)
-        if private_key_hex is None:
-            self._error(404, f"unknown wallet: {wallet_id}")
-            return
 
         content_length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(content_length))
-
         method = body.get("method", "")
-        if method != "secp256k1_sign":
+
+        if method == "secp256k1_sign":
+            self._handle_secp256k1_sign(wallet_id, body)
+        elif method == "signTransaction":
+            self._handle_sign_transaction(wallet_id, body)
+        else:
             self._error(400, f"unsupported method: {method}")
+
+    def _handle_secp256k1_sign(self, wallet_id: str, body: dict) -> None:
+        private_key_hex = self.wallet_keys.get(wallet_id)
+        if private_key_hex is None:
+            self._error(404, f"unknown wallet: {wallet_id}")
             return
 
         hash_hex = body.get("params", {}).get("hash", "")
@@ -135,18 +180,37 @@ class _PrivyHandler(BaseHTTPRequestHandler):
         digest = bytes.fromhex(hash_hex)
         sig_hex = _sign_digest(private_key_hex, digest)
 
-        response = {
+        self._json_response({
             "method": "secp256k1_sign",
             "data": {
                 "signature": sig_hex,
                 "encoding": "hex",
             },
-        }
+        })
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(response).encode())
+    def _handle_sign_transaction(self, wallet_id: str, body: dict) -> None:
+        if wallet_id != ORACLE_WALLET_ID or self.oracle_keypair is None:
+            self._error(404, f"unknown oracle wallet: {wallet_id}")
+            return
+
+        tx_base64 = body.get("params", {}).get("transaction", "")
+        if not tx_base64:
+            self._error(400, "missing params.transaction")
+            return
+
+        try:
+            signed_base64 = _sign_solana_transaction(self.oracle_keypair, tx_base64)
+        except Exception as e:
+            self._error(500, f"signing failed: {e}")
+            return
+
+        self._json_response({
+            "method": "signTransaction",
+            "data": {
+                "signed_transaction": signed_base64,
+                "encoding": "base64",
+            },
+        })
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -154,8 +218,37 @@ class _PrivyHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(b"ok")
-        else:
-            self._error(404, "not found")
+            return
+
+        # GET /v1/wallets/{wallet_id} — return wallet info
+        parts = self.path.strip("/").split("/")
+        if len(parts) == 3 and parts[0] == "v1" and parts[1] == "wallets":
+            wallet_id = parts[2]
+            if wallet_id == ORACLE_WALLET_ID and self.oracle_address:
+                self._json_response({
+                    "id": wallet_id,
+                    "address": self.oracle_address,
+                    "chain_type": "solana",
+                })
+            elif wallet_id in self.wallet_keys:
+                # Validator wallets — derive Ethereum address
+                address = derive_h160_address(self.wallet_keys[wallet_id])
+                self._json_response({
+                    "id": wallet_id,
+                    "address": address,
+                    "chain_type": "ethereum",
+                })
+            else:
+                self._error(404, f"unknown wallet: {wallet_id}")
+            return
+
+        self._error(404, "not found")
+
+    def _json_response(self, data: dict) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
 
     def _error(self, status: int, msg: str) -> None:
         self.send_response(status)
@@ -167,37 +260,50 @@ class _PrivyHandler(BaseHTTPRequestHandler):
 class PrivyMockServer:
     """Mock Privy server that runs in a background thread."""
 
-    def __init__(self, wallet_keys: dict[str, str], port: int = 19876):
+    def __init__(
+        self,
+        wallet_keys: dict[str, str],
+        port: int = 19876,
+        oracle_keypair: list[int] | None = None,
+        oracle_address: str | None = None,
+    ):
         self.wallet_keys = wallet_keys
         self.port = port
+        self.oracle_keypair = oracle_keypair
+        self.oracle_address = oracle_address
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
 
-    def start(self) -> None:
-        handler_class = type(
+    def _make_handler(self) -> type:
+        return type(
             "_BoundPrivyHandler",
             (_PrivyHandler,),
-            {"wallet_keys": self.wallet_keys},
+            {
+                "wallet_keys": self.wallet_keys,
+                "oracle_keypair": self.oracle_keypair,
+                "oracle_address": self.oracle_address,
+            },
         )
+
+    def start(self) -> None:
+        handler_class = self._make_handler()
         self._server = HTTPServer(("0.0.0.0", self.port), handler_class)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         log.info(
-            "Mock Privy server started on :%d with %d wallets",
+            "Mock Privy server started on :%d with %d wallets (oracle: %s)",
             self.port, len(self.wallet_keys),
+            self.oracle_address or "none",
         )
 
     def run_forever(self) -> None:
         """Run the server in the foreground (blocking). For standalone use."""
-        handler_class = type(
-            "_BoundPrivyHandler",
-            (_PrivyHandler,),
-            {"wallet_keys": self.wallet_keys},
-        )
+        handler_class = self._make_handler()
         self._server = HTTPServer(("0.0.0.0", self.port), handler_class)
         log.info(
-            "Mock Privy server listening on :%d with %d wallets (foreground)",
+            "Mock Privy server listening on :%d with %d wallets (oracle: %s, foreground)",
             self.port, len(self.wallet_keys),
+            self.oracle_address or "none",
         )
         self._server.serve_forever()
 
@@ -221,5 +327,17 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     wallet_keys = load_wallet_keys_from_dir(args.keys_dir)
-    server = PrivyMockServer(wallet_keys, port=args.port)
+
+    # Load oracle keypair if available
+    oracle_address = None
+    oracle_keypair = None
+    oracle_path = Path(args.keys_dir) / "igp-oracle.json"
+    if oracle_path.is_file():
+        oracle_address, oracle_keypair = load_oracle_keypair(args.keys_dir)
+        log.info("Oracle wallet loaded: %s -> %s", ORACLE_WALLET_ID, oracle_address)
+
+    server = PrivyMockServer(
+        wallet_keys, port=args.port,
+        oracle_keypair=oracle_keypair, oracle_address=oracle_address,
+    )
     server.run_forever()

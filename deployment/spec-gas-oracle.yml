@@ -12,6 +12,8 @@ config:
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
   GAS_ORACLE_INTERVAL_MS: "900000"
+  # Privy API URL (default: production; override for mock in tests)
+  # PRIVY_API_URL: "https://auth.privy.io/api/v1"
   # Gas oracle parameters
   GAS_PRICE: "0.000005"
   GAS_OVERHEAD: "200000"

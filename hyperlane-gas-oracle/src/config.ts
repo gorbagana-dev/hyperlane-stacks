@@ -7,6 +7,7 @@ export interface OracleConfig {
   privyAppId: string;
   privyAppSecret: string;
   privyOracleWalletId: string;
+  privyApiUrl: string; // override for testing (mock server)
 
   // Signer mode
   signerMode: "privy" | "keypair";
@@ -79,6 +80,7 @@ export function loadConfig(): OracleConfig {
       signerMode === "privy" ? requireEnv("PRIVY_APP_SECRET") : "",
     privyOracleWalletId:
       signerMode === "privy" ? requireEnv("PRIVY_ORACLE_WALLET_ID") : "",
+    privyApiUrl: optionalEnv("PRIVY_API_URL", "https://auth.privy.io/api/v1"),
 
     signerMode,
     oracleKeypair,

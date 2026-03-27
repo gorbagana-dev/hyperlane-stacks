@@ -12,8 +12,7 @@
     "@hyperlane-xyz/sdk": "^26.0.0",
     "@hyperlane-xyz/utils": "^26.0.0",
     "@solana/web3.js": "^1.95.0",
-    "borsh": "^0.7.0",
-    "bs58": "^6.0.0"
+    "borsh": "^0.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
