@@ -74,7 +74,6 @@ from lib.keygen import (
 )
 from lib.privy_mock import (
     GORCHAIN_WALLET_ID,
-    ORACLE_WALLET_ID,
     SOLANA_WALLET_ID,
     derive_h160_address,
     generate_wallet_keys,
@@ -973,6 +972,56 @@ def _get_synthetic_mint(warp_program: str, rpc: str) -> str:
     return match.group(1)
 
 
+def _get_or_create_beneficiary_keypair() -> tuple[Path, str]:
+    """Generate (or reuse) a dedicated IGP beneficiary keypair.
+
+    Returns (keypair_path, pubkey). The keypair is persisted at
+    KEYS_DIR/igp-beneficiary.json so it survives --skip-* reruns.
+    """
+    keypair_path = KEYS_DIR / "igp-beneficiary.json"
+    if not keypair_path.is_file():
+        log.info("Generating IGP beneficiary keypair...")
+        subprocess.run(
+            [
+                "solana-keygen", "new", "--no-bip39-passphrase",
+                "-o", str(keypair_path), "--force",
+            ],
+            check=True, capture_output=True, text=True,
+        )
+    result = subprocess.run(
+        ["solana-keygen", "pubkey", str(keypair_path)],
+        capture_output=True, text=True, check=True,
+    )
+    pubkey = result.stdout.strip()
+    log.info("IGP beneficiary pubkey: %s", pubkey)
+    return keypair_path, pubkey
+
+
+def _set_igp_beneficiary(
+    rpc: str,
+    program_id: str,
+    igp_account: str,
+    new_beneficiary: str,
+    chain: str,
+) -> None:
+    """Change the IGP account beneficiary to a new address.
+
+    Must be called with the deployer keypair (IGP account owner).
+    """
+    result = run_deployer_cli(
+        "igp", "set-igp-beneficiary",
+        "--program-id", program_id,
+        "--igp-account", igp_account,
+        new_beneficiary,
+        rpc=rpc,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, (
+        f"Failed to set IGP beneficiary on {chain}: {output}"
+    )
+    log.info("Set %s IGP beneficiary to %s", chain, new_beneficiary)
+
+
 @pytest.fixture(scope="session")
 def bridge_setup(
     warp_deployment: dict,
@@ -984,6 +1033,9 @@ def bridge_setup(
 
     Depends on all bridge infrastructure being deployed. Returns a dict with
     warp program addresses, token mints, and sender keypair path.
+
+    Also configures a dedicated IGP beneficiary (separate from the deployer)
+    so that fee claim tests can observe balance changes.
     """
     ns = warp_deployment["namespace"]
     token_mint = warp_deployment["token_mint"]
@@ -1000,6 +1052,28 @@ def bridge_setup(
         warp_programs["gorchain"], rpc="http://localhost:8899",
     )
     log.info("Synthetic mint: %s", synthetic_mint)
+
+    # Set up a dedicated IGP beneficiary so fee claim tests can observe
+    # balance changes. Without this, the deployer is both fee payer and
+    # beneficiary, making fee collection invisible.
+    _beneficiary_path, beneficiary_pubkey = _get_or_create_beneficiary_keypair()
+
+    # Fund the beneficiary with a tiny amount so solana balance works
+    for chain_name, rpc in [("Gorchain", "http://localhost:8899"), ("Solana", "http://localhost:18899")]:
+        _airdrop(1, beneficiary_pubkey, rpc, f"IGP beneficiary ({chain_name})")
+
+    # Change IGP beneficiary on both chains from deployer → dedicated account
+    for chain in ("gorchain", "solana"):
+        program_ids = get_configmap_json(
+            ns, "hyperlane-program-ids", f"{chain}-program-ids.json",
+        )
+        _set_igp_beneficiary(
+            rpc=CHAINS[chain]["rpc"],
+            program_id=program_ids["igp_program_id"],
+            igp_account=program_ids["igp_account"],
+            new_beneficiary=beneficiary_pubkey,
+            chain=chain,
+        )
 
     return {
         "namespace": ns,
