@@ -6,13 +6,13 @@ import pytest
 
 from lib.common import (
     CHAINS,
-    E2E_NAMESPACE,
     PortForward,
     get_configmap_json,
     get_spl_token_balance,
     run_deployer_cli,
     wait_for_token_balance,
 )
+from lib.deploy import E2E_NAMESPACE
 
 log = logging.getLogger(__name__)
 
@@ -141,7 +141,6 @@ class TestBridge:
         )
         output = result.stdout + result.stderr
         log.info("transfer-remote output:\n%s", output[:2000])
-        _log_igp_balances("after-sol-to-gor")
         assert result.returncode == 0, (
             f"transfer-remote collateral failed: {output}"
         )
@@ -169,6 +168,7 @@ class TestBridge:
         log.info(
             "Bridge Solana→Gorchain complete. gUSDC balance: %s", final_gorchain,
         )
+        _log_igp_balances("after-sol-to-gor")
 
     def test_transfer_gorchain_to_solana(self, bridge_setup: dict) -> None:
         """Transfer synthetic gUSDC from Gorchain back to collateral USDC on Solana."""
@@ -216,7 +216,6 @@ class TestBridge:
         )
         output = result.stdout + result.stderr
         log.info("transfer-remote output:\n%s", output[:2000])
-        _log_igp_balances("after-gor-to-sol")
         assert result.returncode == 0, (
             f"transfer-remote synthetic failed: {output}"
         )
@@ -245,6 +244,7 @@ class TestBridge:
         log.info(
             "Bridge Gorchain→Solana complete. USDC balance: %s", final_solana,
         )
+        _log_igp_balances("after-gor-to-sol")
 
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""
