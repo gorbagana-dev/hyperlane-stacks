@@ -384,6 +384,7 @@ def minio_deployment(
         "hyperlane-minio", MINIO_SPEC,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="minio",
     )
     namespace = deploy_info.namespace
     cluster_id = deploy_info.cluster_id
@@ -448,6 +449,7 @@ def deployer_deployment(
         "hyperlane-svm-deployer", FIXTURE_SPEC,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="deployer",
     )
     namespace = deploy_info.namespace
 
@@ -597,6 +599,7 @@ def warp_deployment(
         patched_spec,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="warp-deployer",
     )
 
     log.info("Starting warp deployer stack...")
@@ -759,6 +762,7 @@ def _deploy_validator(
         deploy_dir=DEPLOY_DIR / stack_name,
         namespace=E2E_NAMESPACE,
         spec_replacements=validator_replacements,
+        cluster_id=f"val-{chain}",
     )
 
     log.info("Starting %s stack...", stack_name)
@@ -912,6 +916,7 @@ def relayer_deployment(
         "hyperlane-relayer", patched_path,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="relayer",
     )
 
     log.info("Starting relayer stack...")
@@ -1217,6 +1222,7 @@ def warp_ui_deployment(
         "hyperlane-warp-ui", patched_path,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="warp-ui",
     )
 
     log.info("Starting warp-ui stack...")
