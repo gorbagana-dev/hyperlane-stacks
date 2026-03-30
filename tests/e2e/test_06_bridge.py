@@ -7,10 +7,12 @@ import pytest
 from lib.common import (
     CHAINS,
     PortForward,
+    get_configmap_json,
     get_spl_token_balance,
     run_deployer_cli,
     wait_for_token_balance,
 )
+from lib.deploy import E2E_NAMESPACE
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +26,34 @@ POLL_INTERVAL = 5  # seconds between balance polls
 TRANSFER_RETRIES = 3  # retries for transfer-remote calls
 TRANSFER_RETRY_DELAY = 5  # seconds between retries
 SETTLE_DELAY = 10  # seconds to let validator settle state after relay delivery
+
+
+def _get_sol_balance(rpc: str, address: str) -> float:
+    """Get SOL balance of an address via solana CLI."""
+    result = subprocess.run(
+        ["solana", "balance", "--url", rpc, address],
+        capture_output=True, text=True, check=True,
+    )
+    return float(result.stdout.strip().split()[0])
+
+
+def _log_igp_balances(label: str) -> None:
+    """Log IGP account balances for debugging fee collection."""
+    for chain in ("gorchain", "solana"):
+        try:
+            program_ids = get_configmap_json(
+                E2E_NAMESPACE, "hyperlane-program-ids",
+                f"{chain}-program-ids.json",
+            )
+            igp_account = program_ids["igp_account"]
+            rpc = CHAINS[chain]["rpc"]
+            balance = _get_sol_balance(rpc, igp_account)
+            log.info(
+                "[IGP-DEBUG %s] %s IGP (%s) balance: %s SOL",
+                label, chain, igp_account, balance,
+            )
+        except Exception as exc:
+            log.warning("[IGP-DEBUG %s] Failed to check %s IGP: %s", label, chain, exc)
 
 
 def _get_sender_pubkey(keypair_path: str) -> str:
@@ -101,6 +131,7 @@ class TestBridge:
             "Transferring %d base units from Solana to Gorchain (domain %s)...",
             TRANSFER_AMOUNT_SOL_TO_GOR, gorchain_domain,
         )
+        _log_igp_balances("before-sol-to-gor")
         result = _run_transfer_remote(
             "/tmp/key.json",
             str(TRANSFER_AMOUNT_SOL_TO_GOR), gorchain_domain, recipient,
@@ -137,6 +168,7 @@ class TestBridge:
         log.info(
             "Bridge Solana→Gorchain complete. gUSDC balance: %s", final_gorchain,
         )
+        _log_igp_balances("after-sol-to-gor")
 
     def test_transfer_gorchain_to_solana(self, bridge_setup: dict) -> None:
         """Transfer synthetic gUSDC from Gorchain back to collateral USDC on Solana."""
@@ -174,6 +206,7 @@ class TestBridge:
             "Transferring %d base units from Gorchain to Solana (domain %s)...",
             TRANSFER_AMOUNT_GOR_TO_SOL, solana_domain,
         )
+        _log_igp_balances("before-gor-to-sol")
         result = _run_transfer_remote(
             "/tmp/key.json",
             str(TRANSFER_AMOUNT_GOR_TO_SOL), solana_domain, recipient,
@@ -211,6 +244,7 @@ class TestBridge:
         log.info(
             "Bridge Gorchain→Solana complete. USDC balance: %s", final_solana,
         )
+        _log_igp_balances("after-gor-to-sol")
 
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""

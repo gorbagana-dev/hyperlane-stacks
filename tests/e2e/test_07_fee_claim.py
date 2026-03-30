@@ -68,8 +68,12 @@ class TestFeeClaim:
     """Tests for IGP fee claiming on both chains."""
 
     @pytest.fixture(autouse=True)
-    def _igp_data(self) -> None:
-        """Load IGP program IDs and accounts from the deployer ConfigMap."""
+    def _igp_data(self, bridge_setup: dict) -> None:
+        """Load IGP program IDs and accounts from the deployer ConfigMap.
+
+        Depends on bridge_setup to ensure the full infrastructure (deployer,
+        validators, relayer, bridge) is up before claiming fees.
+        """
         self.igp = {}
         for chain in ("gorchain", "solana"):
             program_ids = get_configmap_json(

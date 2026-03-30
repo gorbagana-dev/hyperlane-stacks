@@ -74,7 +74,6 @@ from lib.keygen import (
 )
 from lib.privy_mock import (
     GORCHAIN_WALLET_ID,
-    ORACLE_WALLET_ID,
     SOLANA_WALLET_ID,
     derive_h160_address,
     generate_wallet_keys,
@@ -385,6 +384,7 @@ def minio_deployment(
         "hyperlane-minio", MINIO_SPEC,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="minio",
     )
     namespace = deploy_info.namespace
     cluster_id = deploy_info.cluster_id
@@ -400,14 +400,18 @@ def minio_deployment(
     log.info("Starting minio stack...")
     deploy_start(deploy_info.deploy_dir)
 
-    log.info("Waiting for minio pod to be running...")
-    wait_for_pod_phase(namespace, f"app={cluster_id}", "Running", timeout=120)
+    try:
+        log.info("Waiting for minio pod to be running...")
+        wait_for_pod_phase(namespace, f"app={cluster_id}", "Running", timeout=120)
 
-    log.info("Waiting for minio-init job to complete...")
-    job_name = f"{cluster_id}-job-hyperlane-minio-init"
-    wait_for_job_complete(namespace, job_name, timeout=200)
-    save_job_logs(namespace, job_name)
-    log.info("MinIO stack deployed and initialized")
+        log.info("Waiting for minio-init job to complete...")
+        job_name = f"{cluster_id}-job-hyperlane-minio-init"
+        wait_for_job_complete(namespace, job_name, timeout=200)
+        save_job_logs(namespace, job_name)
+        log.info("MinIO stack deployed and initialized")
+    except Exception:
+        save_pod_logs(namespace, f"app={cluster_id}", "minio")
+        raise
 
     yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
 
@@ -449,6 +453,7 @@ def deployer_deployment(
         "hyperlane-svm-deployer", FIXTURE_SPEC,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="deployer",
     )
     namespace = deploy_info.namespace
 
@@ -477,11 +482,15 @@ def deployer_deployment(
     log.info("Starting deployer stack...")
     deploy_start(deploy_info.deploy_dir)
 
-    log.info("Waiting for deployer job to complete...")
-    job_name = f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer"
-    wait_for_job_complete(namespace, job_name)
-    save_job_logs(namespace, job_name)
-    log.info("Core deployer job complete, artifacts available")
+    try:
+        log.info("Waiting for deployer job to complete...")
+        job_name = f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer"
+        wait_for_job_complete(namespace, job_name)
+        save_job_logs(namespace, job_name)
+        log.info("Core deployer job complete, artifacts available")
+    except Exception:
+        save_job_logs(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
+        raise
 
     yield deploy_info
 
@@ -598,16 +607,21 @@ def warp_deployment(
         patched_spec,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="warp-deployer",
     )
 
     log.info("Starting warp deployer stack...")
     deploy_start(warp_info.deploy_dir)
 
-    log.info("Waiting for warp deployer job to complete...")
-    job_name = f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer"
-    wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
-    save_job_logs(warp_info.namespace, job_name)
-    log.info("Warp deployer job complete, artifacts available")
+    try:
+        log.info("Waiting for warp deployer job to complete...")
+        job_name = f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer"
+        wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
+        save_job_logs(warp_info.namespace, job_name)
+        log.info("Warp deployer job complete, artifacts available")
+    except Exception:
+        save_job_logs(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
+        raise
 
     ctx = {
         "deployment": warp_info,
@@ -760,14 +774,19 @@ def _deploy_validator(
         deploy_dir=DEPLOY_DIR / stack_name,
         namespace=E2E_NAMESPACE,
         spec_replacements=validator_replacements,
+        cluster_id=f"val-{chain}",
     )
 
     log.info("Starting %s stack...", stack_name)
     deploy_start(deploy_info.deploy_dir)
 
-    log.info("Waiting for %s pod to be running...", stack_name)
-    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
-    log.info("%s is running", stack_name)
+    try:
+        log.info("Waiting for %s pod to be running...", stack_name)
+        wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+        log.info("%s is running", stack_name)
+    except Exception:
+        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
+        raise
 
     yield ValidatorInfo(
         deployment=deploy_info,
@@ -913,14 +932,19 @@ def relayer_deployment(
         "hyperlane-relayer", patched_path,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="relayer",
     )
 
     log.info("Starting relayer stack...")
     deploy_start(deploy_info.deploy_dir)
 
-    log.info("Waiting for relayer pod to be running...")
-    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180)
-    log.info("Relayer is running")
+    try:
+        log.info("Waiting for relayer pod to be running...")
+        wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180)
+        log.info("Relayer is running")
+    except Exception:
+        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
+        raise
 
     yield RelayerInfo(deployment=deploy_info)
 
@@ -973,6 +997,34 @@ def _get_synthetic_mint(warp_program: str, rpc: str) -> str:
     return match.group(1)
 
 
+def _set_igp_beneficiary(
+    rpc: str,
+    program_id: str,
+    igp_account: str,
+    new_beneficiary: str,
+    chain: str,
+    owner_keypair: str | None = None,
+) -> None:
+    """Change the IGP account beneficiary to a new address.
+
+    Must be signed by the IGP account owner (igp-oracle key after
+    ownership transfer, or deployer key if transfer hasn't happened).
+    """
+    result = run_deployer_cli(
+        "igp", "set-igp-beneficiary",
+        "--program-id", program_id,
+        "--igp-account", igp_account,
+        new_beneficiary,
+        keypair_path=owner_keypair,
+        rpc=rpc,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, (
+        f"Failed to set IGP beneficiary on {chain}: {output}"
+    )
+    log.info("Set %s IGP beneficiary to %s", chain, new_beneficiary)
+
+
 @pytest.fixture(scope="session")
 def bridge_setup(
     warp_deployment: dict,
@@ -984,6 +1036,9 @@ def bridge_setup(
 
     Depends on all bridge infrastructure being deployed. Returns a dict with
     warp program addresses, token mints, and sender keypair path.
+
+    Also configures a dedicated IGP beneficiary (separate from the deployer)
+    so that fee claim tests can observe balance changes.
     """
     ns = warp_deployment["namespace"]
     token_mint = warp_deployment["token_mint"]
@@ -1000,6 +1055,33 @@ def bridge_setup(
         warp_programs["gorchain"], rpc="http://localhost:8899",
     )
     log.info("Synthetic mint: %s", synthetic_mint)
+
+    # Change IGP beneficiary on both chains from deployer → dedicated account.
+    # The beneficiary keypair is generated and funded during initial test setup
+    # (keygen.py). Without this, the deployer is both fee payer and beneficiary,
+    # making fee collection invisible to fee claim tests.
+    # TODO: add an ops job/playbook to configure the IGP beneficiary address
+    # for production deployments (deployment/ops/).
+    beneficiary_pubkey = subprocess.run(
+        ["solana-keygen", "pubkey", str(KEYS_DIR / "igp-beneficiary.json")],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    # IGP account ownership is transferred to the igp-oracle key during
+    # core deployment. set-igp-beneficiary requires the owner's signature.
+    igp_oracle_keypair = str(KEYS_DIR / "igp-oracle.json")
+    log.info("Setting IGP beneficiary to %s...", beneficiary_pubkey)
+    for chain in ("gorchain", "solana"):
+        program_ids = get_configmap_json(
+            ns, "hyperlane-program-ids", f"{chain}-program-ids.json",
+        )
+        _set_igp_beneficiary(
+            rpc=CHAINS[chain]["rpc"],
+            program_id=program_ids["igp_program_id"],
+            igp_account=program_ids["igp_account"],
+            new_beneficiary=beneficiary_pubkey,
+            chain=chain,
+            owner_keypair=igp_oracle_keypair,
+        )
 
     return {
         "namespace": ns,
@@ -1143,6 +1225,7 @@ def warp_ui_deployment(
         "hyperlane-warp-ui", patched_path,
         namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="warp-ui",
     )
 
     log.info("Starting warp-ui stack...")

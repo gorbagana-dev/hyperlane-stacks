@@ -6,6 +6,9 @@
  * using @hyperlane-xyz/sdk, and outputs the JSON in the format expected
  * by stack_orchestrator/data/config/deployer-gas-oracle-config/gas-oracle-configs.json
  *
+ * Uses the same computeOracleConfigs() function as the gas oracle service,
+ * including the min USD cost floor modifier.
+ *
  * Usage:
  *   cd hyperlane-gas-oracle
  *   npm install           # if not done
@@ -19,8 +22,9 @@
  *
  * Override parameters:
  *   --margin 10                      Exchange rate margin % (default: 10)
- *   --gas-price 0.000005             Gas price in SOL (default: 0.000005)
+ *   --gas-price 0.000000001          Gas price in SOL (default: 0.000000001)
  *   --overhead 200000                Gas overhead in CU (default: 200000)
+ *   --min-usd-cost 0.50             Min USD cost floor (default: 0.50, 0 = disabled)
  *   --multiplier 100                 sGOR→gGOR multiplier (default: 100)
  *   --feed-url https://...           CoinGecko API base URL
  *   --gorchain-token-id gorbagana    CoinGecko token ID for sGOR
@@ -30,8 +34,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ProtocolType } from "@hyperlane-xyz/utils";
-import { getLocalStorageGasOracleConfig } from "@hyperlane-xyz/sdk";
+import { computeOracleConfigs } from "../src/oracle-config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = resolve(
@@ -52,8 +55,9 @@ function hasFlag(name: string): boolean {
 }
 
 const MARGIN = parseFloat(getArg("margin") ?? "10");
-const GAS_PRICE = getArg("gas-price") ?? "0.000005";
+const GAS_PRICE = getArg("gas-price") ?? "0.000000001";
 const OVERHEAD = parseInt(getArg("overhead") ?? "200000", 10);
+const MIN_USD_COST = parseFloat(getArg("min-usd-cost") ?? "0.50");
 const MULTIPLIER = parseFloat(getArg("multiplier") ?? "100");
 const FEED_URL = getArg("feed-url") ?? "https://api.coingecko.com/api/v3";
 const GORCHAIN_TOKEN_ID = getArg("gorchain-token-id") ?? "gorbagana";
@@ -106,39 +110,21 @@ async function main(): Promise<void> {
   console.error(`  SOL:  $${solPrice} USD`);
   console.error(`  gGOR: $${ggorPrice} USD (sGOR × ${MULTIPLIER})`);
   console.error(`\nParameters:`);
-  console.error(`  gasPrice: ${GAS_PRICE} SOL`);
-  console.error(`  overhead: ${OVERHEAD} CU`);
-  console.error(`  margin:   ${MARGIN}%`);
+  console.error(`  gasPrice:    ${GAS_PRICE} SOL`);
+  console.error(`  overhead:    ${OVERHEAD} CU`);
+  console.error(`  margin:      ${MARGIN}%`);
+  console.error(`  minUsdCost:  $${MIN_USD_COST}`);
 
-  const gasOracleParams = {
-    gorchain: {
-      gasPrice: { amount: GAS_PRICE, decimals: 9 },
-      nativeToken: { price: ggorPrice.toString(), decimals: 9 },
-    },
-    solana: {
-      gasPrice: { amount: GAS_PRICE, decimals: 9 },
-      nativeToken: { price: solPrice.toString(), decimals: 9 },
-    },
-  };
-
-  const gorchainConfigs = getLocalStorageGasOracleConfig({
-    local: "gorchain",
-    localProtocolType: ProtocolType.Sealevel,
-    gasOracleParams,
+  const { gorchainToSolana, solanaToGorchain } = computeOracleConfigs({
+    gorchainPriceUsd: ggorPrice,
+    solanaPriceUsd: solPrice,
+    gasPrice: GAS_PRICE,
     exchangeRateMarginPct: MARGIN,
+    overhead: OVERHEAD,
+    minUsdCost: MIN_USD_COST,
   });
 
-  const solanaConfigs = getLocalStorageGasOracleConfig({
-    local: "solana",
-    localProtocolType: ProtocolType.Sealevel,
-    gasOracleParams,
-    exchangeRateMarginPct: MARGIN,
-  });
-
-  const gorchainToSolana = gorchainConfigs["solana"];
-  const solanaToGorchain = solanaConfigs["gorchain"];
-
-  console.error(`\nComputed exchange rates (1e19 Sealevel scale):`);
+  console.error(`\nComputed oracle configs:`);
   console.error(
     `  gorchain→solana: exchangeRate=${gorchainToSolana.tokenExchangeRate}, gasPrice=${gorchainToSolana.gasPrice}`,
   );
@@ -152,7 +138,7 @@ async function main(): Promise<void> {
         oracleConfig: {
           tokenExchangeRate: gorchainToSolana.tokenExchangeRate,
           gasPrice: gorchainToSolana.gasPrice,
-          tokenDecimals: gorchainToSolana.tokenDecimals ?? 9,
+          tokenDecimals: gorchainToSolana.tokenDecimals,
         },
         overhead: OVERHEAD,
       },
@@ -162,7 +148,7 @@ async function main(): Promise<void> {
         oracleConfig: {
           tokenExchangeRate: solanaToGorchain.tokenExchangeRate,
           gasPrice: solanaToGorchain.gasPrice,
-          tokenDecimals: solanaToGorchain.tokenDecimals ?? 9,
+          tokenDecimals: solanaToGorchain.tokenDecimals,
         },
         overhead: OVERHEAD,
       },

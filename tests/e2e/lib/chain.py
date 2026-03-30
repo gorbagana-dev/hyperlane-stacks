@@ -128,7 +128,7 @@ def stop_solana_test_validator(port: int = 18899, name: str = "solana", delete_d
 def fetch_gorchain_stack() -> Path:
     """Fetch the gorchain-stacks repo via laconic-so and return the stack path."""
     log_info("Fetching gorchain-stacks repo...")
-    run_cmd(["laconic-so", "fetch-stack", "--git-ssh", "--pull", GORCHAIN_STACKS_REPO])
+    run_cmd(["laconic-so", "fetch-stack", "--pull", GORCHAIN_STACKS_REPO])
     stack_path = CERC_REPO_BASE_DIR / "gorchain-stacks" / "stack-orchestrator" / "stacks" / "gorchain"
     if not stack_path.is_dir():
         raise RuntimeError(f"Gorchain stack not found at {stack_path}")
