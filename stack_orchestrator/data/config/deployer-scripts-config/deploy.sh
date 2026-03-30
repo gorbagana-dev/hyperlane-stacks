@@ -275,7 +275,7 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
     done
 
     # Transfer IGP ownership to oracle wallet (if configured)
-    if [ -n "${IGP_ORACLE_WALLET_PUBKEY:-}" ]; then
+    if [ -n "${IGP_ORACLE_PUBKEY:-}" ]; then
       IGP_ID=$(jq -r '.interchain_gas_paymaster // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
       IGP_ACCOUNT=$(jq -r '.interchain_gas_paymaster_account // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
       if [ -n "$IGP_ID" ]; then
@@ -286,7 +286,7 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
           igp transfer-igp-ownership \
           --program-id "$IGP_ID" \
           ${IGP_ACCOUNT:+--igp-account "$IGP_ACCOUNT"} \
-          "${IGP_ORACLE_WALLET_PUBKEY}" \
+          "${IGP_ORACLE_PUBKEY}" \
           || echo "WARNING: IGP ownership transfer on ${CHAIN_OUTPUT} failed or not supported"
       fi
     fi
