@@ -1037,6 +1037,8 @@ def bridge_setup(
     # The beneficiary keypair is generated and funded during initial test setup
     # (keygen.py). Without this, the deployer is both fee payer and beneficiary,
     # making fee collection invisible to fee claim tests.
+    # TODO: add an ops job/playbook to configure the IGP beneficiary address
+    # for production deployments (deployment/ops/).
     beneficiary_pubkey = subprocess.run(
         ["solana-keygen", "pubkey", str(KEYS_DIR / "igp-beneficiary.json")],
         capture_output=True, text=True, check=True,
