@@ -977,31 +977,6 @@ def _get_synthetic_mint(warp_program: str, rpc: str) -> str:
     return match.group(1)
 
 
-def _get_or_create_beneficiary_keypair() -> tuple[Path, str]:
-    """Generate (or reuse) a dedicated IGP beneficiary keypair.
-
-    Returns (keypair_path, pubkey). The keypair is persisted at
-    KEYS_DIR/igp-beneficiary.json so it survives --skip-* reruns.
-    """
-    keypair_path = KEYS_DIR / "igp-beneficiary.json"
-    if not keypair_path.is_file():
-        log.info("Generating IGP beneficiary keypair...")
-        subprocess.run(
-            [
-                "solana-keygen", "new", "--no-bip39-passphrase",
-                "-o", str(keypair_path), "--force",
-            ],
-            check=True, capture_output=True, text=True,
-        )
-    result = subprocess.run(
-        ["solana-keygen", "pubkey", str(keypair_path)],
-        capture_output=True, text=True, check=True,
-    )
-    pubkey = result.stdout.strip()
-    log.info("IGP beneficiary pubkey: %s", pubkey)
-    return keypair_path, pubkey
-
-
 def _set_igp_beneficiary(
     rpc: str,
     program_id: str,
@@ -1058,16 +1033,15 @@ def bridge_setup(
     )
     log.info("Synthetic mint: %s", synthetic_mint)
 
-    # Set up a dedicated IGP beneficiary so fee claim tests can observe
-    # balance changes. Without this, the deployer is both fee payer and
-    # beneficiary, making fee collection invisible.
-    _beneficiary_path, beneficiary_pubkey = _get_or_create_beneficiary_keypair()
-
-    # Fund the beneficiary with a tiny amount so solana balance works
-    for chain_name, rpc in [("Gorchain", "http://localhost:8899"), ("Solana", "http://localhost:18899")]:
-        _airdrop(1, beneficiary_pubkey, rpc, f"IGP beneficiary ({chain_name})")
-
-    # Change IGP beneficiary on both chains from deployer → dedicated account
+    # Change IGP beneficiary on both chains from deployer → dedicated account.
+    # The beneficiary keypair is generated and funded during initial test setup
+    # (keygen.py). Without this, the deployer is both fee payer and beneficiary,
+    # making fee collection invisible to fee claim tests.
+    beneficiary_pubkey = subprocess.run(
+        ["solana-keygen", "pubkey", str(KEYS_DIR / "igp-beneficiary.json")],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    log.info("Setting IGP beneficiary to %s...", beneficiary_pubkey)
     for chain in ("gorchain", "solana"):
         program_ids = get_configmap_json(
             ns, "hyperlane-program-ids", f"{chain}-program-ids.json",

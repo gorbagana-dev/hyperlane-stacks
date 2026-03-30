@@ -19,12 +19,14 @@ class KeypairSet:
     deployer_path: Path
     hardware_wallet_path: Path
     igp_oracle_path: Path
+    igp_beneficiary_path: Path
 
     # Ed25519 derived values
     deployer_pubkey: str
     deployer_keypair: str
     hardware_wallet_pubkey: str
     igp_oracle_pubkey: str
+    igp_beneficiary_pubkey: str
 
     # secp256k1 paths
     gorchain_validator_path: Path
@@ -100,10 +102,11 @@ def _load_existing_keypairs(keys_dir: Path) -> KeypairSet | None:
     deployer_path = keys_dir / "deployer.json"
     hw_path = keys_dir / "hardware-wallet.json"
     oracle_path = keys_dir / "igp-oracle.json"
+    beneficiary_path = keys_dir / "igp-beneficiary.json"
     gorchain_val_path = keys_dir / "gorchain-validator.json"
     solana_val_path = keys_dir / "solana-validator.json"
 
-    ed25519_files = [deployer_path, hw_path, oracle_path]
+    ed25519_files = [deployer_path, hw_path, oracle_path, beneficiary_path]
     secp_files = [gorchain_val_path, solana_val_path]
 
     if not all(f.is_file() for f in ed25519_files + secp_files):
@@ -121,10 +124,12 @@ def _load_existing_keypairs(keys_dir: Path) -> KeypairSet | None:
         deployer_path=deployer_path,
         hardware_wallet_path=hw_path,
         igp_oracle_path=oracle_path,
+        igp_beneficiary_path=beneficiary_path,
         deployer_pubkey=_solana_pubkey(deployer_path),
         deployer_keypair=deployer_path.read_text().strip(),
         hardware_wallet_pubkey=_solana_pubkey(hw_path),
         igp_oracle_pubkey=_solana_pubkey(oracle_path),
+        igp_beneficiary_pubkey=_solana_pubkey(beneficiary_path),
         gorchain_validator_path=gorchain_val_path,
         solana_validator_path=solana_val_path,
         gorchain_validator_address=gorchain_data["address"],
@@ -146,6 +151,7 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
         log_info(f"  Deployer pubkey:            {existing.deployer_pubkey}")
         log_info(f"  Hardware wallet pubkey:     {existing.hardware_wallet_pubkey}")
         log_info(f"  IGP oracle pubkey:          {existing.igp_oracle_pubkey}")
+        log_info(f"  IGP beneficiary pubkey:     {existing.igp_beneficiary_pubkey}")
         log_info(f"  Gorchain validator (H160):  {existing.gorchain_validator_address}")
         log_info(f"  Solana validator (H160):    {existing.solana_validator_address}")
         return existing
@@ -171,6 +177,11 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     _solana_keygen(oracle_path)
     oracle_pubkey = _solana_pubkey(oracle_path)
 
+    beneficiary_path = keys_dir / "igp-beneficiary.json"
+    log_info("  Generating IGP beneficiary keypair...")
+    _solana_keygen(beneficiary_path)
+    beneficiary_pubkey = _solana_pubkey(beneficiary_path)
+
     # --- secp256k1 keypairs (for validator signing) ---
 
     gorchain_val_path = keys_dir / "gorchain-validator.json"
@@ -190,10 +201,12 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
         deployer_path=deployer_path,
         hardware_wallet_path=hw_path,
         igp_oracle_path=oracle_path,
+        igp_beneficiary_path=beneficiary_path,
         deployer_pubkey=deployer_pubkey,
         deployer_keypair=deployer_keypair,
         hardware_wallet_pubkey=hw_pubkey,
         igp_oracle_pubkey=oracle_pubkey,
+        igp_beneficiary_pubkey=beneficiary_pubkey,
         gorchain_validator_path=gorchain_val_path,
         solana_validator_path=solana_val_path,
         gorchain_validator_address=gorchain_address,
@@ -206,6 +219,7 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     log_info(f"  Deployer pubkey:            {deployer_pubkey}")
     log_info(f"  Hardware wallet pubkey:     {hw_pubkey}")
     log_info(f"  IGP oracle pubkey:          {oracle_pubkey}")
+    log_info(f"  IGP beneficiary pubkey:     {beneficiary_pubkey}")
     log_info(f"  Gorchain validator (H160):  {gorchain_address}")
     log_info(f"  Solana validator (H160):    {solana_address}")
 
@@ -237,6 +251,7 @@ def fund_wallets(
     deployer_pubkey = _solana_pubkey(keys_dir / "deployer.json")
     hw_pubkey = _solana_pubkey(keys_dir / "hardware-wallet.json")
     oracle_pubkey = _solana_pubkey(keys_dir / "igp-oracle.json")
+    beneficiary_pubkey = _solana_pubkey(keys_dir / "igp-beneficiary.json")
 
     deployer_funding = {
         gorchain_rpc: 100,
@@ -250,6 +265,7 @@ def fund_wallets(
         _airdrop(deployer_funding[rpc], deployer_pubkey, rpc, "deployer")
         _airdrop(1, hw_pubkey, rpc, "hardware wallet")
         _airdrop(1, oracle_pubkey, rpc, "IGP oracle")
+        _airdrop(1, beneficiary_pubkey, rpc, "IGP beneficiary")
 
     log_info("Wallet funding complete")
 
