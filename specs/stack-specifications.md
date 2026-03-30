@@ -278,7 +278,7 @@ Periodically fetches token prices and updates IGP gas oracle configurations on b
 | gas-oracle | `ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest` | TypeScript, loop mode via `RUN_LOOP=true` |
 
 ### Config (spec.yml)
-`GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID`, `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GAS_ORACLE_INTERVAL_MS` (default 900000), `GAS_PRICE` (default "0.000000001"), `GAS_OVERHEAD` (default 200000), `EXCHANGE_RATE_MARGIN_PCT` (default 10), `GORCHAIN_NATIVE_TOKEN_MULTIPLIER` (default 100), `SIGNER_MODE` ("privy" or "keypair")
+`GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID`, `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GAS_ORACLE_INTERVAL_MS` (default 900000), `GAS_PRICE` (default "0.000000001"), `GAS_OVERHEAD` (default 200000), `EXCHANGE_RATE_MARGIN_PCT` (default 10), `MIN_USD_COST` (default "0.50"), `GORCHAIN_NATIVE_TOKEN_MULTIPLIER` (default 100), `SIGNER_MODE` ("privy" or "keypair")
 
 ### Secrets (injected separately)
 Privy mode: `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_ORACLE_WALLET_ID`

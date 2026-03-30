@@ -35,8 +35,9 @@ export interface OracleConfig {
 
   // Gas oracle parameters
   gasPrice: string; // decimal SOL (e.g. "0.000000001" → 1 lamport per gas unit)
-  gasOverhead: number; // compute units
+  gasOverhead: number; // compute units (on-chain overhead IGP setting)
   exchangeRateMarginPct: number; // percentage
+  minUsdCost: number; // minimum USD cost floor per message (0 = disabled)
 
   // sGOR → gGOR conversion factor (1 gGOR = N sGOR)
   gorchainNativeTokenMultiplier: number;
@@ -106,6 +107,7 @@ export function loadConfig(): OracleConfig {
     exchangeRateMarginPct: parseFloat(
       optionalEnv("EXCHANGE_RATE_MARGIN_PCT", "10"),
     ),
+    minUsdCost: parseFloat(optionalEnv("MIN_USD_COST", "0.50")),
     gorchainNativeTokenMultiplier: parseFloat(
       optionalEnv("GORCHAIN_NATIVE_TOKEN_MULTIPLIER", "100"),
     ),

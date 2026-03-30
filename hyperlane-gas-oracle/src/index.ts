@@ -15,10 +15,9 @@
  */
 
 import { Connection } from "@solana/web3.js";
-import { ProtocolType } from "@hyperlane-xyz/utils";
-import { getLocalStorageGasOracleConfig } from "@hyperlane-xyz/sdk";
 
 import { loadConfig, type OracleConfig } from "./config.js";
+import { computeOracleConfigs } from "./oracle-config.js";
 import { fetchTokenPrices, isRateReasonable } from "./prices.js";
 import { buildSetGasOracleConfigsTx, type GasOracleUpdate } from "./igp.js";
 import { createPrivyClient } from "./privy.js";
@@ -71,39 +70,16 @@ async function main(): Promise<void> {
   );
 
   // 2. Compute oracle configs using SDK
-  // The SDK's getLocalStorageGasOracleConfig() handles:
-  // - 1e19 exchange rate scaling for Sealevel
-  // - Margin percentage
-  // - Gas price decimal conversion
-  const gasOracleParams = {
-    gorchain: {
-      gasPrice: { amount: config.gasPrice, decimals: 9 },
-      nativeToken: { price: gGorPriceUsd.toString(), decimals: 9 },
-    },
-    solana: {
-      gasPrice: { amount: config.gasPrice, decimals: 9 },
-      nativeToken: { price: prices.solanaPriceUsd.toString(), decimals: 9 },
-    },
-  };
-
-  // Gorchain → Solana: exchange rate from Gorchain's perspective
-  const gorchainOracleConfigs = getLocalStorageGasOracleConfig({
-    local: "gorchain",
-    localProtocolType: ProtocolType.Sealevel,
-    gasOracleParams,
+  // Uses getLocalStorageGasOracleConfig() with a min USD cost floor modifier
+  // matching Hyperlane's production behavior.
+  const { gorchainToSolana, solanaToGorchain } = computeOracleConfigs({
+    gorchainPriceUsd: gGorPriceUsd,
+    solanaPriceUsd: prices.solanaPriceUsd,
+    gasPrice: config.gasPrice,
     exchangeRateMarginPct: config.exchangeRateMarginPct,
+    overhead: config.gasOverhead,
+    minUsdCost: config.minUsdCost,
   });
-
-  // Solana → Gorchain: exchange rate from Solana's perspective
-  const solanaOracleConfigs = getLocalStorageGasOracleConfig({
-    local: "solana",
-    localProtocolType: ProtocolType.Sealevel,
-    gasOracleParams,
-    exchangeRateMarginPct: config.exchangeRateMarginPct,
-  });
-
-  const gorchainToSolana = gorchainOracleConfigs["solana"];
-  const solanaToGorchain = solanaOracleConfigs["gorchain"];
 
   console.log(
     `Gorchain→Solana: exchangeRate=${gorchainToSolana.tokenExchangeRate}, gasPrice=${gorchainToSolana.gasPrice}`,

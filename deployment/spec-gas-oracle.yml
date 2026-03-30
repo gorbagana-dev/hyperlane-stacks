@@ -29,16 +29,19 @@ config:
   # PRIVY_API_URL: "https://auth.privy.io/api/v1"
 
   # --- Gas oracle parameters ---
-  # Gas price in decimal SOL per gas unit. With EVM-default gasAmount (~44-68k)
-  # and overhead (200k), this multiplies up: (gasAmount + overhead) × gasPrice × exchangeRate.
-  # Use a very low value (1 lamport per gas unit) to keep quotes reasonable
-  # when the gGOR/SOL exchange rate is high (gGOR is much cheaper than SOL).
+  # Gas price in decimal SOL per gas unit. This is the raw gas price before
+  # the min USD cost floor is applied. The floor modifier may increase it.
   GAS_PRICE: "0.000000001"
-  # Destination gas overhead in compute units, added to each cross-chain message cost.
+  # Destination gas overhead in compute units (matches on-chain overhead IGP setting).
   GAS_OVERHEAD: "200000"
   # Safety margin added to the token exchange rate (percentage).
   # e.g. 10 means the quoted rate is 10% above the market rate to absorb volatility.
   EXCHANGE_RATE_MARGIN_PCT: "10"
+  # Minimum USD cost floor per cross-chain message. When the natural IGP quote
+  # is below this amount, gasPrice is automatically increased to hit the floor.
+  # Matches Hyperlane production behavior ($0.50 for SVM chains).
+  # Set to "0" to disable the floor.
+  MIN_USD_COST: "0.50"
   # sGOR → gGOR conversion factor. Gorchain's native token (gGOR) is priced as
   # sGOR_price × this multiplier. 1 gGOR = 100 sGOR.
   GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
