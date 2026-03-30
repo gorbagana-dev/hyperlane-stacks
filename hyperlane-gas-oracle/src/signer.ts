@@ -13,10 +13,54 @@ import {
   Connection,
   Keypair,
   Transaction,
-  sendAndConfirmTransaction,
-  sendAndConfirmRawTransaction,
 } from "@solana/web3.js";
 import type { PrivyClient } from "./privy.js";
+
+const CONFIRM_TIMEOUT_MS = 60000;
+const CONFIRM_POLL_MS = 2000;
+
+/**
+ * Send a raw signed transaction and poll for confirmation via HTTP.
+ *
+ * Uses sendRawTransaction + getSignatureStatuses polling instead of
+ * sendAndConfirmRawTransaction, which relies on WebSocket subscriptions.
+ * In k8s deployments, the WS port (8900) is often not exposed, causing
+ * ETIMEDOUT errors that eat into the confirmation timeout.
+ */
+async function sendAndPollConfirmation(
+  connection: Connection,
+  rawTx: Buffer,
+): Promise<string> {
+  const signature = await connection.sendRawTransaction(rawTx, {
+    skipPreflight: false,
+    preflightCommitment: "confirmed",
+  });
+
+  const start = Date.now();
+  while (Date.now() - start < CONFIRM_TIMEOUT_MS) {
+    const { value } = await connection.getSignatureStatuses([signature]);
+    const status = value[0];
+    if (status !== null) {
+      if (status.err) {
+        throw new Error(
+          `Transaction ${signature} failed: ${JSON.stringify(status.err)}`,
+        );
+      }
+      if (
+        status.confirmationStatus === "confirmed" ||
+        status.confirmationStatus === "finalized"
+      ) {
+        return signature;
+      }
+    }
+    await new Promise((r) => setTimeout(r, CONFIRM_POLL_MS));
+  }
+
+  throw new Error(
+    `Transaction was not confirmed in ${CONFIRM_TIMEOUT_MS / 1000} seconds. ` +
+      `Check signature ${signature} using the Solana Explorer or CLI tools.`,
+  );
+}
 
 export interface OracleSigner {
   /** Get the signer's Solana public key (base58). */
@@ -70,14 +114,9 @@ export class PrivySigner implements OracleSigner {
       txBase64,
     );
 
-    // Submit the signed transaction to our own RPC
+    // Submit the signed transaction and poll for confirmation via HTTP
     const signedBuffer = Buffer.from(signedBase64, "base64");
-    const signature = await sendAndConfirmRawTransaction(
-      connection,
-      signedBuffer,
-      { commitment: "confirmed" },
-    );
-    return signature;
+    return sendAndPollConfirmation(connection, signedBuffer);
   }
 }
 
@@ -99,9 +138,9 @@ export class KeypairSigner implements OracleSigner {
     connection: Connection,
     tx: Transaction,
   ): Promise<string> {
-    const signature = await sendAndConfirmTransaction(connection, tx, [
-      this.keypair,
-    ]);
-    return signature;
+    // Sign locally, then submit and poll via HTTP (no WebSocket needed)
+    tx.sign(this.keypair);
+    const rawTx = tx.serialize();
+    return sendAndPollConfirmation(connection, Buffer.from(rawTx));
   }
 }
