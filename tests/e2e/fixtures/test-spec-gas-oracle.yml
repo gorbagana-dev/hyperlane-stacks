@@ -1,0 +1,29 @@
+stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
+deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GAS_ORACLE_INTERVAL_MS: "60000"
+  PRIVY_API_URL: "http://privy-mock:19876"
+  SIGNER_MODE: "privy"
+  GAS_PRICE: "0.000000001"
+  GAS_OVERHEAD: "200000"
+  EXCHANGE_RATE_MARGIN_PCT: "10"
+  MIN_USD_COST: "0.50"
+  GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
+  PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+secrets:
+  hyperlane-gas-oracle-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - PRIVY_ORACLE_WALLET_ID
+registry-credentials:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT

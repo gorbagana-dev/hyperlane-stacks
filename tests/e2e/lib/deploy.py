@@ -26,6 +26,7 @@ KUBECTL_IMAGE = "bitnami/kubectl:latest"
 MINIO_IMAGE = "minio/minio:latest"
 MINIO_MC_IMAGE = "minio/mc:latest"
 WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
+GAS_ORACLE_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest"
 
 # Local build tags (used by build-from-source path)
 AGENT_IMAGE_LOCAL = "gorbagana-dev/hyperlane-agent:local"
@@ -236,6 +237,17 @@ def prefetch_minio_images(cluster_name: str = "hyperlane-e2e") -> None:
         run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
 
     log_info("MinIO images loaded into kind cluster")
+
+
+def prefetch_gas_oracle_image(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull the published gas oracle image and load it into the kind cluster."""
+    log_info(f"Pulling gas oracle image {GAS_ORACLE_IMAGE}...")
+    run_cmd(["docker", "pull", GAS_ORACLE_IMAGE])
+
+    log_info(f"Loading gas oracle image into kind cluster '{cluster_name}'...")
+    run_cmd(["kind", "load", "docker-image", GAS_ORACLE_IMAGE, "--name", cluster_name])
+
+    log_info("Gas oracle image loaded into kind cluster")
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ from lib.deploy import (
     get_cluster_id,
     prefetch_agent_images,
     prefetch_deployer_image,
+    prefetch_gas_oracle_image,
     prefetch_minio_images,
     prefetch_validator_images,
     prefetch_warp_ui_image,
@@ -64,6 +65,7 @@ from lib.keygen import (
     KeypairSet,
     _airdrop,
     create_deployer_secrets,
+    create_gas_oracle_secrets,
     create_minio_secrets,
     create_relayer_secrets,
     create_validator_secrets,
@@ -74,6 +76,7 @@ from lib.keygen import (
 )
 from lib.privy_mock import (
     GORCHAIN_WALLET_ID,
+    ORACLE_WALLET_ID,
     SOLANA_WALLET_ID,
     derive_h160_address,
     generate_wallet_keys,
@@ -89,6 +92,7 @@ MINIO_SPEC = E2E_DIR / "fixtures" / "test-spec-minio.yml"
 VALIDATOR_GORCHAIN_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-gorchain.yml"
 VALIDATOR_SOLANA_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-solana.yml"
 RELAYER_SPEC = E2E_DIR / "fixtures" / "test-spec-relayer.yml"
+GAS_ORACLE_SPEC = E2E_DIR / "fixtures" / "test-spec-gas-oracle.yml"
 WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
 
 PRIVY_MOCK_PORT = 19876
@@ -309,10 +313,21 @@ def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None
 
 
 @pytest.fixture(scope="session")
+def gas_oracle_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+    """Pre-fetch the gas oracle image and load it into the kind cluster."""
+    if request.config.getoption("--skip-gas-oracle-deploy", default=False):
+        log.info("Skipping gas oracle image prefetch (--skip-gas-oracle-deploy)")
+        return
+    log.info("Pre-fetching published gas oracle image into kind cluster...")
+    prefetch_gas_oracle_image()
+
+
+@pytest.fixture(scope="session")
 def all_images(
     deployer_image: None,
     validator_images: None,
     warp_ui_image: None,
+    gas_oracle_image: None,
 ) -> None:
     """Build/fetch all container images up front before any deployment starts."""
 
@@ -953,6 +968,165 @@ def relayer_deployment(
     if not skip_cleanup:
         log.info("Stopping relayer stack...")
         stop_stack("hyperlane-relayer")
+
+
+# ---------------------------------------------------------------------------
+# Gas oracle deployment
+# ---------------------------------------------------------------------------
+
+
+def _wait_for_oracle_update(
+    namespace: str, cluster_id: str, timeout: int = 120,
+) -> str:
+    """Wait for the gas oracle to complete its first update cycle.
+
+    Polls pod logs for the success marker. Returns the full log output
+    when found, or raises TimeoutError.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "logs",
+                "-l", f"app={cluster_id}", "--tail=200",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        if "Gas oracle update complete." in result.stdout:
+            return result.stdout
+        time.sleep(5)
+    raise TimeoutError(
+        f"Gas oracle did not complete update within {timeout}s"
+    )
+
+
+def _parse_oracle_logs(logs: str) -> dict:
+    """Extract oracle-computed values from pod logs.
+
+    Returns dict with prices, exchange rates, and gas prices for both directions.
+    """
+    parsed: dict = {}
+
+    # Prices: sGOR=$X USD, SOL=$Y USD
+    price_match = re.search(
+        r"Prices:\s+sGOR=\$([0-9.]+)\s+USD,\s+SOL=\$([0-9.]+)\s+USD", logs,
+    )
+    if price_match:
+        parsed["sgor_price_usd"] = price_match.group(1)
+        parsed["sol_price_usd"] = price_match.group(2)
+
+    # Gorchain→Solana: exchangeRate=N, gasPrice=M
+    g2s_match = re.search(
+        r"Gorchain→Solana:\s+exchangeRate=(\d+),\s+gasPrice=(\d+)", logs,
+    )
+    if g2s_match:
+        parsed["gorchain_to_solana_exchange_rate"] = g2s_match.group(1)
+        parsed["gorchain_to_solana_gas_price"] = g2s_match.group(2)
+
+    # Solana→Gorchain: exchangeRate=N, gasPrice=M
+    s2g_match = re.search(
+        r"Solana→Gorchain:\s+exchangeRate=(\d+),\s+gasPrice=(\d+)", logs,
+    )
+    if s2g_match:
+        parsed["solana_to_gorchain_exchange_rate"] = s2g_match.group(1)
+        parsed["solana_to_gorchain_gas_price"] = s2g_match.group(2)
+
+    return parsed
+
+
+@pytest.fixture(scope="session")
+def gas_oracle_deployment(
+    deployer_deployment: DeploymentInfo,
+    privy_mock: dict[str, str],
+    kind_cluster: None,
+    gas_oracle_image: None,
+    request: pytest.FixtureRequest,
+) -> Generator[dict, None, None]:
+    """Deploy the hyperlane-gas-oracle stack and wait for first update."""
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_oracle = request.config.getoption("--skip-gas-oracle-deploy", default=False)
+    namespace = E2E_NAMESPACE
+
+    if skip_oracle:
+        deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
+        cluster_id = get_cluster_id(deploy_dir)
+        log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
+        yield {
+            "deployment": DeploymentInfo(
+                deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
+            ),
+            "oracle_values": {},
+        }
+        return
+
+    # Read IGP program IDs from the deployer ConfigMap
+    gorchain_program_ids = get_configmap_json(
+        namespace, "hyperlane-program-ids", "gorchain-program-ids.json",
+    )
+    solana_program_ids = get_configmap_json(
+        namespace, "hyperlane-program-ids", "solana-program-ids.json",
+    )
+    gorchain_igp_program_id = gorchain_program_ids["igp_program_id"]
+    solana_igp_program_id = solana_program_ids["igp_program_id"]
+
+    # Create gas oracle secrets (Privy creds — dummy values for mock)
+    log.info("Creating gas oracle secrets...")
+    create_gas_oracle_secrets(namespace, ORACLE_WALLET_ID)
+
+    # Patch the spec with actual IGP program IDs
+    content = GAS_ORACLE_SPEC.read_text()
+    content = content.replace(
+        'GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"',
+        f'GORCHAIN_IGP_PROGRAM_ID: "{gorchain_igp_program_id}"',
+    )
+    content = content.replace(
+        'SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"',
+        f'SOLANA_IGP_PROGRAM_ID: "{solana_igp_program_id}"',
+    )
+    patched_path = E2E_DIR / ".gas-oracle-spec-patched.yml"
+    patched_path.write_text(content)
+
+    log.info("Preparing gas oracle stack...")
+    deploy_info = deploy_prepare(
+        "hyperlane-gas-oracle", patched_path,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="gas-oracle",
+    )
+
+    log.info("Starting gas oracle stack...")
+    deploy_start(deploy_info.deploy_dir)
+
+    try:
+        log.info("Waiting for gas oracle pod to be running...")
+        wait_for_pod_phase(
+            namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120,
+        )
+        log.info("Gas oracle pod is running")
+    except Exception:
+        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        raise
+
+    # Wait for the first successful oracle update
+    try:
+        log.info("Waiting for gas oracle to complete first update...")
+        oracle_logs = _wait_for_oracle_update(namespace, deploy_info.cluster_id)
+        oracle_values = _parse_oracle_logs(oracle_logs)
+        log.info("Gas oracle update complete. Parsed values: %s", oracle_values)
+    except TimeoutError:
+        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        raise
+
+    yield {
+        "deployment": deploy_info,
+        "oracle_values": oracle_values,
+    }
+
+    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+    patched_path.unlink(missing_ok=True)
+    if not skip_cleanup:
+        log.info("Stopping gas oracle stack...")
+        stop_stack("hyperlane-gas-oracle")
 
 
 # ---------------------------------------------------------------------------
