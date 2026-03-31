@@ -242,8 +242,10 @@ def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
         create_selfsigned_issuer()
         log.info("Installing nginx ingress controller...")
         install_ingress_nginx()
-        log.info("Adding bridge.test to /etc/hosts...")
+        log.info("Adding test hostnames to /etc/hosts...")
         ensure_hosts_entry("bridge.test")
+        ensure_hosts_entry("grafana.test")
+        ensure_hosts_entry("prometheus.test")
     else:
         log.info("Skipping cluster setup (--skip-cluster-setup)")
 
@@ -1148,6 +1150,64 @@ def gas_oracle_deployment(
 # ---------------------------------------------------------------------------
 
 GRAFANA_ADMIN_PASSWORD = "testadmin"
+GRAFANA_HOSTNAME = "grafana.test"
+GRAFANA_URL = f"https://{GRAFANA_HOSTNAME}"
+PROMETHEUS_HOSTNAME = "prometheus.test"
+PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
+
+GRAFANA_INGRESS_TEMPLATE = """\
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: {namespace}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {hostname}
+      secretName: grafana-tls
+  rules:
+    - host: {hostname}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {service_name}
+                port:
+                  number: 3000
+"""
+
+PROMETHEUS_INGRESS_TEMPLATE = """\
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: {namespace}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {hostname}
+      secretName: prometheus-tls
+  rules:
+    - host: {hostname}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {service_name}
+                port:
+                  number: 9090
+"""
 
 
 def _wait_for_balance_monitor(
@@ -1232,6 +1292,8 @@ def monitoring_deployment(
             "namespace": namespace,
             "pod_name": pod_name,
             "expected_wallet_labels": [],
+            "grafana_url": GRAFANA_URL,
+            "prometheus_url": PROMETHEUS_URL,
         }
         return
 
@@ -1299,11 +1361,67 @@ def monitoring_deployment(
     log.info("Waiting for Prometheus to scrape balance metrics...")
     time.sleep(20)
 
+    # Create ingress for Grafana and Prometheus
+    grafana_service = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
+    prometheus_service = f"{deploy_info.cluster_id}-nodeport-9090-tcp"
+
+    for name, template, hostname, service in [
+        ("Grafana", GRAFANA_INGRESS_TEMPLATE, GRAFANA_HOSTNAME,
+         grafana_service),
+        ("Prometheus", PROMETHEUS_INGRESS_TEMPLATE, PROMETHEUS_HOSTNAME,
+         prometheus_service),
+    ]:
+        ingress_yaml = template.format(
+            namespace=namespace,
+            hostname=hostname,
+            service_name=service,
+        )
+        log.info("Creating %s Ingress with TLS (host: %s)...", name, hostname)
+        subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=ingress_yaml, text=True, check=True,
+        )
+
+    # Wait for TLS certificates
+    for tls_secret in ("grafana-tls", "prometheus-tls"):
+        log.info("Waiting for TLS certificate %s...", tls_secret)
+        for _ in range(30):
+            result = subprocess.run(
+                [
+                    "kubectl", "-n", namespace, "get", "certificate", tls_secret,
+                    "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            if result.stdout.strip() == "True":
+                break
+            time.sleep(2)
+        else:
+            log.warning("TLS certificate %s not ready after 60s", tls_secret)
+
+    # HTTP probe both endpoints
+    for name, url in [("Grafana", GRAFANA_URL), ("Prometheus", PROMETHEUS_URL)]:
+        log.info("Waiting for %s to respond via TLS ingress...", name)
+        for _ in range(30):
+            probe = subprocess.run(
+                ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+                 f"{url}/"],
+                capture_output=True, text=True, check=False,
+            )
+            if probe.returncode == 0 and probe.stdout.strip() == "200":
+                break
+            time.sleep(2)
+        else:
+            log.warning("%s not returning 200 after 60s", name)
+        log.info("%s ingress ready at %s", name, url)
+
     yield {
         "deployment": deploy_info,
         "namespace": namespace,
         "pod_name": pod_name,
         "expected_wallet_labels": wallet_labels,
+        "grafana_url": GRAFANA_URL,
+        "prometheus_url": PROMETHEUS_URL,
     }
 
     save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")

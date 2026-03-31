@@ -2,6 +2,10 @@
 
 Verifies Prometheus scraping, Grafana provisioning, Pushgateway metrics flow,
 and balance monitor operation with real wallet addresses.
+
+Grafana and Prometheus are accessed via TLS ingress (grafana.test,
+prometheus.test) using self-signed certificates, matching the production
+ingress pattern.
 """
 
 from __future__ import annotations
@@ -18,28 +22,14 @@ log = logging.getLogger(__name__)
 GRAFANA_ADMIN_PASSWORD = "testadmin"
 
 
-def _kubectl_exec(
-    namespace: str, pod_name: str, container: str, command: list[str],
-) -> subprocess.CompletedProcess[str]:
-    """Run a command inside a container via kubectl exec."""
-    cmd = [
-        "kubectl", "-n", namespace, "exec", pod_name,
-        "-c", container, "--",
-        *command,
-    ]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-
-def _prometheus_query(
-    namespace: str, pod_name: str, query: str,
-) -> list[dict]:
-    """Run a PromQL instant query and return the result vector."""
-    result = _kubectl_exec(
-        namespace, pod_name, "prometheus",
+def _prometheus_query(prometheus_url: str, query: str) -> list[dict]:
+    """Run a PromQL instant query via ingress and return the result vector."""
+    result = subprocess.run(
         [
-            "wget", "-q", "-O", "-",
-            f"http://localhost:9090/api/v1/query?query={query}",
+            "curl", "-s", "-k",
+            f"{prometheus_url}/api/v1/query?query={query}",
         ],
+        capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
         log.warning("PromQL query failed: %s", result.stderr)
@@ -52,16 +42,16 @@ def _prometheus_query(
 
 
 def _grafana_api(
-    namespace: str, pod_name: str, path: str,
+    grafana_url: str, path: str,
 ) -> tuple[int, dict | list | str]:
-    """Call a Grafana API endpoint with Basic auth. Returns (status_code, body)."""
-    result = _kubectl_exec(
-        namespace, pod_name, "grafana",
+    """Call a Grafana API endpoint via ingress with Basic auth."""
+    result = subprocess.run(
         [
-            "wget", "-q", "-O", "-",
-            "--header", "Authorization: Basic YWRtaW46dGVzdGFkbWlu",
-            f"http://localhost:3000{path}",
+            "curl", "-s", "-k",
+            "-u", f"admin:{GRAFANA_ADMIN_PASSWORD}",
+            f"{grafana_url}{path}",
         ],
+        capture_output=True, text=True, timeout=30,
     )
     if result.returncode != 0:
         return result.returncode, result.stderr
@@ -69,19 +59,6 @@ def _grafana_api(
         return 0, json.loads(result.stdout)
     except json.JSONDecodeError:
         return 0, result.stdout
-
-
-def _get_pod_name(namespace: str, label: str) -> str:
-    """Get the first pod name matching a label selector."""
-    result = subprocess.run(
-        [
-            "kubectl", "-n", namespace, "get", "pods",
-            "-l", label,
-            "-o", "jsonpath={.items[0].metadata.name}",
-        ],
-        capture_output=True, text=True, check=True,
-    )
-    return result.stdout.strip()
 
 
 def _get_container_logs(
@@ -109,12 +86,11 @@ class TestMonitoring:
 
     def test_prometheus_healthy(self, monitoring_deployment: dict) -> None:
         """Verify Prometheus health endpoint returns successfully."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        prom_url = monitoring_deployment["prometheus_url"]
 
-        result = _kubectl_exec(
-            ns, pod, "prometheus",
-            ["wget", "-q", "-O", "-", "http://localhost:9090/-/healthy"],
+        result = subprocess.run(
+            ["curl", "-s", "-k", f"{prom_url}/-/healthy"],
+            capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 0, (
             f"Prometheus health check failed: {result.stderr}"
@@ -126,10 +102,9 @@ class TestMonitoring:
 
     def test_prometheus_self_scrape(self, monitoring_deployment: dict) -> None:
         """Verify Prometheus is scraping itself (job='prometheus', up=1)."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        prom_url = monitoring_deployment["prometheus_url"]
 
-        results = _prometheus_query(ns, pod, 'up{job="prometheus"}')
+        results = _prometheus_query(prom_url, 'up{job="prometheus"}')
         assert len(results) > 0, "No results for up{job='prometheus'}"
 
         value = results[0]["value"][1]
@@ -140,10 +115,9 @@ class TestMonitoring:
 
     def test_prometheus_pushgateway_target(self, monitoring_deployment: dict) -> None:
         """Verify Pushgateway scrape target is up."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        prom_url = monitoring_deployment["prometheus_url"]
 
-        results = _prometheus_query(ns, pod, 'up{job="pushgateway"}')
+        results = _prometheus_query(prom_url, 'up{job="pushgateway"}')
         assert len(results) > 0, "No results for up{job='pushgateway'}"
 
         value = results[0]["value"][1]
@@ -154,11 +128,10 @@ class TestMonitoring:
 
     def test_prometheus_has_balance_metrics(self, monitoring_deployment: dict) -> None:
         """Verify balance monitor metrics are flowing through Pushgateway."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        prom_url = monitoring_deployment["prometheus_url"]
 
         results = _prometheus_query(
-            ns, pod, 'hyperlane_wallet_balance_sol{chain="gorchain"}',
+            prom_url, 'hyperlane_wallet_balance_sol{chain="gorchain"}',
         )
         assert len(results) > 0, (
             "No balance metrics found for gorchain — balance monitor may not "
@@ -170,12 +143,11 @@ class TestMonitoring:
 
     def test_grafana_healthy(self, monitoring_deployment: dict) -> None:
         """Verify Grafana health endpoint returns successfully."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        grafana_url = monitoring_deployment["grafana_url"]
 
-        result = _kubectl_exec(
-            ns, pod, "grafana",
-            ["wget", "-q", "-O", "-", "http://localhost:3000/api/health"],
+        result = subprocess.run(
+            ["curl", "-s", "-k", f"{grafana_url}/api/health"],
+            capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 0, (
             f"Grafana health check failed: {result.stderr}"
@@ -188,10 +160,9 @@ class TestMonitoring:
 
     def test_grafana_login(self, monitoring_deployment: dict) -> None:
         """Verify Grafana login with injected admin password."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        grafana_url = monitoring_deployment["grafana_url"]
 
-        status, body = _grafana_api(ns, pod, "/api/org")
+        status, body = _grafana_api(grafana_url, "/api/org")
         assert status == 0, f"Grafana API call failed: {body}"
         assert isinstance(body, dict), f"Unexpected response type: {type(body)}"
         assert "id" in body, f"Grafana org response missing 'id': {body}"
@@ -199,10 +170,9 @@ class TestMonitoring:
 
     def test_grafana_datasource_configured(self, monitoring_deployment: dict) -> None:
         """Verify Grafana has a Prometheus datasource provisioned."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        grafana_url = monitoring_deployment["grafana_url"]
 
-        status, body = _grafana_api(ns, pod, "/api/datasources")
+        status, body = _grafana_api(grafana_url, "/api/datasources")
         assert status == 0, f"Grafana datasources API failed: {body}"
         assert isinstance(body, list), f"Expected list, got: {type(body)}"
 
@@ -216,10 +186,9 @@ class TestMonitoring:
 
     def test_grafana_dashboards_provisioned(self, monitoring_deployment: dict) -> None:
         """Verify all three dashboards are provisioned in Grafana."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        grafana_url = monitoring_deployment["grafana_url"]
 
-        status, body = _grafana_api(ns, pod, "/api/search")
+        status, body = _grafana_api(grafana_url, "/api/search")
         assert status == 0, f"Grafana search API failed: {body}"
         assert isinstance(body, list), f"Expected list, got: {type(body)}"
 
@@ -255,13 +224,12 @@ class TestMonitoring:
         self, monitoring_deployment: dict,
     ) -> None:
         """Verify balance metrics have correct chain, wallet, address labels."""
-        ns = monitoring_deployment["namespace"]
-        pod = monitoring_deployment["pod_name"]
+        prom_url = monitoring_deployment["prometheus_url"]
         expected_wallets = monitoring_deployment["expected_wallet_labels"]
 
         for chain in ("gorchain", "solana"):
             results = _prometheus_query(
-                ns, pod,
+                prom_url,
                 f'hyperlane_wallet_balance_sol{{chain="{chain}"}}',
             )
             assert len(results) > 0, (
