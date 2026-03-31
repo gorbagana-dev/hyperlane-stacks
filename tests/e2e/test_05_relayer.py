@@ -130,7 +130,8 @@ class TestRelayer:
             f"igp-fee-claim container is not running: {result.stdout}"
         )
 
-        # Check logs show the sidecar started
+        # Check logs show the sidecar is active (startup message may have
+        # scrolled past --tail=50 if the sidecar has been running a while)
         result = run_cmd([
             "kubectl", "logs",
             "-n", ns,
@@ -139,8 +140,12 @@ class TestRelayer:
             "--tail=50",
         ])
         logs = result.stdout
-        assert "IGP fee claim sidecar starting" in logs, (
-            f"IGP fee claim sidecar did not start properly. Logs:\n{logs}"
+        assert (
+            "IGP fee claim sidecar starting" in logs
+            or "Claiming IGP fees" in logs
+            or "Fee claim cycle complete" in logs
+        ), (
+            f"IGP fee claim sidecar shows no activity. Logs:\n{logs}"
         )
 
     def test_relayer_checkpoint_syncer_connected(self, relayer_deployment: RelayerInfo) -> None:
