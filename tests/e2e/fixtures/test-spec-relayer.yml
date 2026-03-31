@@ -10,6 +10,9 @@ config:
   GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   CLAIM_INTERVAL_SECONDS: "600"
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
 resources:
   containers:
     agent-config-init:

@@ -7,6 +7,9 @@ config:
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain
   PRIVY_API_URL: "http://privy-mock:19876"
   PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
 resources:
   containers:
     agent-config-init:
