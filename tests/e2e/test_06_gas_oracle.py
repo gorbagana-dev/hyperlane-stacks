@@ -21,16 +21,17 @@ log = logging.getLogger(__name__)
 class TestGasOracle:
     """Gas oracle service tests.
 
-    The gas_oracle_deployment fixture deploys the oracle, waits for its
-    first successful update, and captures the computed values from logs.
-    Tests verify on-chain state matches what the oracle submitted.
+    The gas_oracle_deployment fixture deploys the oracle, waits for it to
+    write /tmp/oracle-latest.json (after a successful update), and reads the
+    file via kubectl exec. Tests verify on-chain state matches the values
+    the oracle submitted.
     """
 
     def test_oracle_completed_update(self, gas_oracle_deployment: dict) -> None:
         """Verify the oracle completed at least one update cycle."""
         oracle_values = gas_oracle_deployment["oracle_values"]
 
-        # The fixture waited for "Gas oracle update complete." in logs,
+        # The fixture waited for /tmp/oracle-latest.json to appear,
         # so we just verify the parsed output is non-empty.
         assert oracle_values, "Oracle log parsing returned empty — no update detected"
         assert "gorchain_to_solana_exchange_rate" in oracle_values, (

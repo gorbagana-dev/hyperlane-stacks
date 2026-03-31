@@ -977,61 +977,54 @@ def relayer_deployment(
 
 def _wait_for_oracle_update(
     namespace: str, cluster_id: str, timeout: int = 120,
-) -> str:
+) -> dict:
     """Wait for the gas oracle to complete its first update cycle.
 
-    Polls pod logs for the success marker. Returns the full log output
-    when found, or raises TimeoutError.
+    Polls the oracle's output file (/tmp/oracle-latest.json) inside the pod
+    via ``kubectl exec``. The oracle writes this file after each successful
+    update, so its presence means the update is complete and its contents
+    are the authoritative record of what was submitted on-chain.
+
+    Returns the parsed JSON dict, or raises TimeoutError.
     """
+    import json
+
     deadline = time.time() + timeout
+    pod_name = None
+
     while time.time() < deadline:
-        result = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "logs",
-                "-l", f"app={cluster_id}", "--tail=200",
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        if "Gas oracle update complete." in result.stdout:
-            return result.stdout
+        # Find the oracle pod name (needed for exec)
+        if pod_name is None:
+            result = subprocess.run(
+                [
+                    "kubectl", "-n", namespace, "get", "pods",
+                    "-l", f"app={cluster_id}",
+                    "-o", "jsonpath={.items[0].metadata.name}",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                pod_name = result.stdout.strip()
+
+        if pod_name:
+            result = subprocess.run(
+                [
+                    "kubectl", "-n", namespace, "exec", pod_name,
+                    "--", "cat", "/tmp/oracle-latest.json",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                try:
+                    return json.loads(result.stdout)
+                except json.JSONDecodeError:
+                    log.warning("oracle-latest.json not valid JSON yet")
+
         time.sleep(5)
+
     raise TimeoutError(
         f"Gas oracle did not complete update within {timeout}s"
     )
-
-
-def _parse_oracle_logs(logs: str) -> dict:
-    """Extract oracle-computed values from pod logs.
-
-    Returns dict with prices, exchange rates, and gas prices for both directions.
-    """
-    parsed: dict = {}
-
-    # Prices: sGOR=$X USD, SOL=$Y USD
-    price_match = re.search(
-        r"Prices:\s+sGOR=\$([0-9.]+)\s+USD,\s+SOL=\$([0-9.]+)\s+USD", logs,
-    )
-    if price_match:
-        parsed["sgor_price_usd"] = price_match.group(1)
-        parsed["sol_price_usd"] = price_match.group(2)
-
-    # Gorchain→Solana: exchangeRate=N, gasPrice=M
-    g2s_match = re.search(
-        r"Gorchain→Solana:\s+exchangeRate=(\d+),\s+gasPrice=(\d+)", logs,
-    )
-    if g2s_match:
-        parsed["gorchain_to_solana_exchange_rate"] = g2s_match.group(1)
-        parsed["gorchain_to_solana_gas_price"] = g2s_match.group(2)
-
-    # Solana→Gorchain: exchangeRate=N, gasPrice=M
-    s2g_match = re.search(
-        r"Solana→Gorchain:\s+exchangeRate=(\d+),\s+gasPrice=(\d+)", logs,
-    )
-    if s2g_match:
-        parsed["solana_to_gorchain_exchange_rate"] = s2g_match.group(1)
-        parsed["solana_to_gorchain_gas_price"] = s2g_match.group(2)
-
-    return parsed
 
 
 @pytest.fixture(scope="session")
@@ -1110,9 +1103,8 @@ def gas_oracle_deployment(
     # Wait for the first successful oracle update
     try:
         log.info("Waiting for gas oracle to complete first update...")
-        oracle_logs = _wait_for_oracle_update(namespace, deploy_info.cluster_id)
-        oracle_values = _parse_oracle_logs(oracle_logs)
-        log.info("Gas oracle update complete. Parsed values: %s", oracle_values)
+        oracle_values = _wait_for_oracle_update(namespace, deploy_info.cluster_id)
+        log.info("Gas oracle update complete. Values: %s", oracle_values)
     except TimeoutError:
         save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
         raise

@@ -14,6 +14,8 @@
  * service with RUN_LOOP=true (for stack-orchestrator deployments).
  */
 
+import * as fs from "node:fs";
+
 import { Connection } from "@solana/web3.js";
 
 import { loadConfig, type OracleConfig } from "./config.js";
@@ -141,6 +143,21 @@ async function main(): Promise<void> {
   // Store rates for next iteration's deviation check
   previousRates[gorKey] = gorchainToSolana.tokenExchangeRate;
   previousRates[solKey] = solanaToGorchain.tokenExchangeRate;
+
+  // Write latest values to file for external consumers (e.g. e2e tests).
+  // This is the authoritative record of what was submitted on-chain.
+  const latestValues = {
+    timestamp: new Date().toISOString(),
+    gorchain_to_solana_exchange_rate: gorchainToSolana.tokenExchangeRate,
+    gorchain_to_solana_gas_price: gorchainToSolana.gasPrice,
+    solana_to_gorchain_exchange_rate: solanaToGorchain.tokenExchangeRate,
+    solana_to_gorchain_gas_price: solanaToGorchain.gasPrice,
+    sgor_price_usd: String(prices.gorchainPriceUsd),
+    sol_price_usd: String(prices.solanaPriceUsd),
+  };
+  const outputPath = process.env.ORACLE_OUTPUT_FILE || "/tmp/oracle-latest.json";
+  fs.writeFileSync(outputPath, JSON.stringify(latestValues, null, 2) + "\n");
+  console.log(`Wrote oracle values to ${outputPath}`);
 
   console.log("Gas oracle update complete.");
 }
