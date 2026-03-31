@@ -1,36 +1,36 @@
 groups:
   - name: hyperlane-alerts
-    # TODO: Verify actual Hyperlane agent metric names against the running
-    # validator/relayer. These were written from docs and may not match the
-    # exact metric names emitted by the Sealevel agents. Check:
-    #   curl http://<agent-pod>:9090/metrics
-    # The AgentPodRestarting alert requires kube-state-metrics to be deployed
-    # in the cluster (it provides kube_pod_container_status_restarts_total).
     rules:
-      # Validator not signing checkpoints
+      # Validator not signing checkpoints.
+      # hyperlane_latest_checkpoint is a gauge tracking the latest checkpoint
+      # index, labeled by phase. phase="validator_processed" increments when
+      # the validator signs a new checkpoint. If the value hasn't changed in
+      # 10 minutes, the validator is stuck.
       - alert: ValidatorNotSigning
         expr: |
-          time() - max by (app) (
-            hyperlane_latest_checkpoint_observed_count{app=~".*validator.*"}
-          ) > 600
+          changes(
+            hyperlane_latest_checkpoint{phase="validator_processed"}[10m]
+          ) == 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Hyperlane validator {{ $labels.app }} not signing checkpoints"
+          summary: "Hyperlane validator on {{ $labels.chain }} not signing checkpoints"
           description: "Validator has not produced a new checkpoint in over 10 minutes."
 
-      # Relayer delivery failures
-      - alert: RelayerDeliveryFailures
-        expr: rate(hyperlane_messages_processed_count{status="error"}[5m]) > 0
+      # Relayer message submission failures.
+      # hyperlane_operations_processed_count tracks operations by phase and
+      # chain. phase="submission_failed" indicates failed deliveries.
+      - alert: RelayerSubmissionFailures
+        expr: rate(hyperlane_operations_processed_count{phase="submission_failed"}[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Hyperlane relayer experiencing delivery failures"
+          summary: "Hyperlane relayer failing to submit messages on {{ $labels.chain }}"
           description: "Relayer has been failing to deliver messages for 5 minutes."
 
-      # Wallet balance low
+      # Wallet balance low (from balance monitor pushing to pushgateway).
       - alert: WalletBalanceLow
         expr: hyperlane_wallet_balance_sol < 1
         for: 5m
@@ -40,7 +40,10 @@ groups:
           summary: "Wallet {{ $labels.wallet }} on {{ $labels.chain }} balance low"
           description: "Balance is {{ $value }} SOL, below threshold."
 
-      # Agent pod restart
+      # Agent pod restart.
+      # TODO: Requires kube-state-metrics to be deployed in the cluster.
+      # Without it this alert is inert — kube_pod_container_status_restarts_total
+      # won't exist.
       - alert: AgentPodRestarting
         expr: rate(kube_pod_container_status_restarts_total{pod=~".*hyperlane.*"}[15m]) > 0
         for: 5m
