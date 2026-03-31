@@ -363,6 +363,7 @@ tests/
 │   ├── test_04_validator.py          # Both validators: deploy, signing, checkpoints, metrics
 │   ├── test_05_relayer.py            # Relayer deploy + verify metrics
 │   ├── test_06_gas_oracle.py         # Gas oracle deploy + verify on-chain IGP updates
+│   ├── test_06b_monitoring.py        # Monitoring stack: Prometheus, Grafana, balance monitor
 │   ├── test_07_bridge.py             # Cross-chain warp route transfers
 │   ├── test_08_fee_claim.py          # IGP fee claim tests
 │   ├── test_09_warp_ui.py            # Warp UI deploy + verify TLS ingress
@@ -377,7 +378,8 @@ tests/
 │       ├── test-spec-validator-gorchain.yml  # Validator (Gorchain) test spec
 │       ├── test-spec-validator-solana.yml    # Validator (Solana) test spec
 │       ├── test-spec-relayer.yml            # Relayer test spec
-│       └── test-spec-gas-oracle.yml         # Gas oracle test spec
+│       ├── test-spec-gas-oracle.yml         # Gas oracle test spec
+│       └── test-spec-monitoring.yml        # Monitoring stack test spec
 ```
 
 ## Phase 1: Deploy + Health
@@ -673,10 +675,94 @@ secrets:
     - PRIVY_ORACLE_WALLET_ID
 ```
 
-**hyperlane-monitoring:**
-- Prometheus pod running, scrape targets include validator/relayer endpoints
-- Grafana responds on :3000, login with test admin password succeeds
-- Pushgateway responds on :9091
+**hyperlane-monitoring** (`test_06b_monitoring.py`):
+
+The monitoring stack runs Prometheus, Grafana, Pushgateway, and a balance monitor
+in a single pod. Prometheus scrapes its own metrics and Pushgateway (static config),
+plus validator/relayer pods via k8s service discovery (prometheus.io annotations).
+Grafana is provisioned with a Prometheus datasource and three dashboard JSON files.
+The balance monitor queries wallet balances via Solana JSON-RPC and pushes metrics
+to Pushgateway.
+
+Prerequisites:
+- Kind cluster running with namespace created
+- Validator and relayer pods already deployed with `prometheus.io/scrape` annotations
+  (tests run after `test_05_relayer`)
+- Keypairs available (deployer, IGP oracle, IGP beneficiary, relayer-fee-claim pubkeys)
+
+**Setup:**
+
+1. Create `hyperlane-monitoring-secrets` k8s Secret:
+   - `GF_SECURITY_ADMIN_PASSWORD` — test value (e.g. `"testadmin"`)
+2. Build `MONITORED_WALLETS_GORCHAIN` and `MONITORED_WALLETS_SOLANA` strings from
+   keypairs — comma-separated `"label:address"` format:
+   - Gorchain: `"deployer:{deployer_pubkey},igp-oracle:{igp_oracle_pubkey},igp-beneficiary:{igp_beneficiary_pubkey},relayer:{relayer_pubkey}"`
+   - Solana: same wallet set (all wallets are funded on both chains)
+3. Patch `test-spec-monitoring.yml` with wallet strings and RPC URLs
+4. Deploy using `test-spec-monitoring.yml` fixture
+5. Wait for all containers Running (prometheus, grafana, pushgateway, balance-monitor)
+6. Wait for balance monitor to complete at least one check cycle — poll pod logs for
+   `"[balance-monitor] Gorchain wallets:"` startup message (timeout 60s)
+7. Wait briefly for Pushgateway to receive metrics (~5s after balance-monitor starts)
+
+**Tests:**
+
+- `test_prometheus_healthy` — `GET /prometheus/-/healthy` returns 200 via `kubectl exec`
+  (curl/wget in prometheus container)
+- `test_prometheus_self_scrape` — Query `up{job="prometheus"}` via PromQL API
+  (`/prometheus/api/v1/query`). Assert value is `1` (Prometheus is scraping itself)
+- `test_prometheus_pushgateway_target` — Query `up{job="pushgateway"}` via PromQL API.
+  Assert value is `1` (Pushgateway scrape target is up)
+- `test_prometheus_has_balance_metrics` — Query
+  `hyperlane_wallet_balance_sol{chain="gorchain"}` via PromQL API. Assert at least one
+  result exists (balance monitor successfully pushed metrics through Pushgateway)
+- `test_grafana_healthy` — `GET /grafana/api/health` returns 200 via `kubectl exec`
+- `test_grafana_login` — `POST /grafana/api/org` with Basic auth
+  (`admin:testadmin`) returns 200, confirming login with injected password
+- `test_grafana_datasource_configured` — `GET /grafana/api/datasources` with auth.
+  Assert at least one datasource of type `prometheus` exists
+- `test_grafana_dashboards_provisioned` — `GET /grafana/api/search` with auth.
+  Assert dashboard UIDs include `hyperlane-overview`, `hyperlane-validator`,
+  `hyperlane-relayer` (the three provisioned JSON files)
+- `test_balance_monitor_wallets_checked` — Parse balance-monitor container logs.
+  Confirm log output includes lines for each configured wallet label
+  (deployer, igp-oracle, igp-beneficiary, relayer) on both chains
+- `test_balance_metrics_have_correct_labels` — Query Prometheus for
+  `hyperlane_wallet_balance_sol` and verify `chain`, `wallet`, `address` labels
+  are present with expected values. Check both `gorchain` and `solana` chain labels.
+
+**Balance monitor wallet configuration:** The fixture constructs wallet lists from
+test keypairs. These are the same wallets funded during test setup, so `getBalance`
+calls return real balances. The balance monitor format is `"label:address"` pairs:
+```
+deployer:ABC123...,igp-oracle:DEF456...,igp-beneficiary:GHI789...,relayer:JKL012...
+```
+
+**Grafana API access:** All Grafana API calls use `kubectl exec` against the grafana
+container in the monitoring pod, curling `localhost:3000`. This avoids needing
+port-forwarding or ingress. Basic auth header: `Authorization: Basic base64(admin:testadmin)`.
+
+**Test fixture** (`tests/e2e/fixtures/test-spec-monitoring.yml`):
+```yaml
+stack: stack_orchestrator/data/stacks/hyperlane-monitoring
+deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  MONITORED_WALLETS_GORCHAIN: "REPLACE_AT_RUNTIME"
+  MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
+  BALANCE_THRESHOLD_SOL: "1.0"
+  BALANCE_CHECK_INTERVAL: "30"
+secrets:
+  hyperlane-monitoring-secrets:
+    - GF_SECURITY_ADMIN_PASSWORD
+```
+
+Note: `BALANCE_CHECK_INTERVAL` is set to 30s in tests (vs 300s in prod) so the
+balance monitor completes at least one cycle quickly. No `resources:` or `volumes:`
+section needed for tests — PVC sizes default to small values.
 
 **hyperlane-warp-ui:**
 - Pod running
