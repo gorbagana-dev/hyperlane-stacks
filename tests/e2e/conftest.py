@@ -205,6 +205,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Skip relayer deployment (reuse existing from a previous --skip-cleanup run)"
     )
     parser.addoption(
+        "--skip-gas-oracle-deploy", action="store_true", default=False,
+        help="Skip gas oracle deployment (reuse existing from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
         "--skip-warp-ui-deploy", action="store_true", default=False,
         help="Skip warp-ui deployment (reuse existing from a previous --skip-cleanup run)"
     )
