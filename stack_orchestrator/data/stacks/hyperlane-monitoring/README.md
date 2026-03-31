@@ -13,11 +13,11 @@ Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four
                       ┌─────────────────────────────────────────────┐
                       │            monitoring pod                   │
                       │                                             │
-  validator pods ────►│  Prometheus ◄── Pushgateway ◄── balance    │
-  relayer pod   ────►│  (scrapes)      (receives)      monitor    │
-                      │      │                          (polls RPC)│
-                      │      ▼                                     │
-                      │  Grafana (dashboards)                      │
+  validator pods ────►│  Prometheus ◄── Pushgateway ◄── balance     │
+  relayer pod    ────►│  (scrapes)      (receives)      monitor     │
+                      │      │                          (polls RPC) │
+                      │      ▼                                      │
+                      │  Grafana (dashboards)                       │
                       └─────────────────────────────────────────────┘
 ```
 
