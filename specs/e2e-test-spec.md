@@ -362,10 +362,11 @@ tests/
 │   ├── test_03_minio.py              # MinIO deploy + verify S3 API + buckets
 │   ├── test_04_validator.py          # Both validators: deploy, signing, checkpoints, metrics
 │   ├── test_05_relayer.py            # Relayer deploy + verify metrics
-│   ├── test_06_bridge.py             # Cross-chain warp route transfers
-│   ├── test_07_fee_claim.py          # IGP fee claim tests
-│   ├── test_08_warp_ui.py            # Warp UI deploy + verify TLS ingress
-│   ├── test_09_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
+│   ├── test_06_gas_oracle.py         # Gas oracle deploy + verify on-chain IGP updates
+│   ├── test_07_bridge.py             # Cross-chain warp route transfers
+│   ├── test_08_fee_claim.py          # IGP fee claim tests
+│   ├── test_09_warp_ui.py            # Warp UI deploy + verify TLS ingress
+│   ├── test_10_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
@@ -375,7 +376,8 @@ tests/
 │       ├── test-spec-minio.yml       # MinIO test spec
 │       ├── test-spec-validator-gorchain.yml  # Validator (Gorchain) test spec
 │       ├── test-spec-validator-solana.yml    # Validator (Solana) test spec
-│       └── test-spec-relayer.yml            # Relayer test spec
+│       ├── test-spec-relayer.yml            # Relayer test spec
+│       └── test-spec-gas-oracle.yml         # Gas oracle test spec
 ```
 
 ## Phase 1: Deploy + Health
@@ -426,7 +428,7 @@ tests/
     d. hyperlane-validator (gorchain) → verify: pod running, metrics on :9090, checkpoint writes to MinIO
     e. hyperlane-validator (solana)   → verify: same checks
     f. hyperlane-relayer         → verify: pod running, metrics on :9091
-    g. hyperlane-gas-oracle      → verify: pod running, at least one oracle update tx submitted
+    g. hyperlane-gas-oracle      → verify: pod running, first oracle update complete, on-chain IGP updated
     h. hyperlane-monitoring      → verify: prometheus scraping targets, grafana login works
     i. hyperlane-warp-ui         → verify: HTTP 200 on bridge UI, TLS cert valid via ingress
 ```
@@ -595,9 +597,81 @@ secrets:
     - RELAYER_KEYPAIR_JSON
 ```
 
-**hyperlane-gas-oracle:**
-- Pod phase = Running (or completed one cycle if run-once mode)
-- Logs contain "Gas oracle update" or equivalent success message
+**hyperlane-gas-oracle** (`test_06_gas_oracle.py`):
+
+The gas oracle fetches live token prices from CoinGecko, computes exchange rates
+using `@hyperlane-xyz/sdk`, and submits `SetGasOracleConfigs` transactions on both
+chains. It signs via the mock Privy server using the IGP oracle wallet.
+
+Prerequisites:
+- Core deployer completed (creates `hyperlane-program-ids` ConfigMap with IGP program IDs)
+- Mock Privy server running on host (oracle signs as `wallet-oracle-001`)
+- IGP ownership transferred to oracle wallet (done by deployer's `deploy.sh`)
+
+**Setup:**
+
+1. Read IGP program IDs from `hyperlane-program-ids` ConfigMap (gorchain + solana)
+2. Create `hyperlane-gas-oracle-secrets` k8s Secret:
+   - `PRIVY_APP_ID` — test value (mock doesn't validate)
+   - `PRIVY_APP_SECRET` — test value
+   - `PRIVY_ORACLE_WALLET_ID` — `"wallet-oracle-001"` (must match mock)
+3. Patch `test-spec-gas-oracle.yml` with actual IGP program IDs
+4. Deploy using `test-spec-gas-oracle.yml` fixture
+5. Wait for pod Running phase
+6. Poll pod logs for `"Gas oracle update complete."` marker (timeout 120s)
+7. Parse oracle's logged output to capture computed exchange rates and gas prices
+
+**Tests:**
+
+- `test_oracle_completed_update` — Oracle pod completed at least one update cycle;
+  parsed log output contains exchange rates for both directions
+- `test_oracle_updated_on_chain` — Query on-chain IGP state via `igp query` CLI
+  on both chains. Compare `token_exchange_rate` and `gas_price` against values
+  captured from the oracle's own logs (deterministic regardless of live prices)
+- `test_oracle_rates_reasonable` — Sanity checks: exchange rates in Sealevel scale
+  (1e18–1e22), gas prices > 0, token decimals = 9
+
+**Log parsing:** The oracle logs prices and computed configs in a parseable format:
+```
+Prices: sGOR=$0.00XX USD, SOL=$XX.XX USD
+Gorchain→Solana: exchangeRate=NNNN, gasPrice=MMMM
+Solana→Gorchain: exchangeRate=NNNN, gasPrice=MMMM
+```
+These values are captured by the fixture and used as expected values for on-chain
+assertions, avoiding flaky tests from live price fluctuation.
+
+**Race condition mitigation:** The oracle runs in loop mode with a 60s interval.
+The fixture waits for the first `"Gas oracle update complete."` log line before
+yielding to tests. Subsequent iterations won't fire during the short test window.
+
+**Test fixture** (`tests/e2e/fixtures/test-spec-gas-oracle.yml`):
+```yaml
+stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
+deploy-to: k8s-kind
+namespace: REPLACE_NAMESPACE
+kind-cluster-name: REPLACE_KIND_CLUSTER
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GAS_ORACLE_INTERVAL_MS: "60000"
+  PRIVY_API_URL: "http://privy-mock:19876"
+  SIGNER_MODE: "privy"
+  GAS_PRICE: "0.000000001"
+  GAS_OVERHEAD: "200000"
+  EXCHANGE_RATE_MARGIN_PCT: "10"
+  MIN_USD_COST: "0.50"
+  GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
+  PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+secrets:
+  hyperlane-gas-oracle-secrets:
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+    - PRIVY_ORACLE_WALLET_ID
+```
 
 **hyperlane-monitoring:**
 - Prometheus pod running, scrape targets include validator/relayer endpoints
@@ -748,7 +822,7 @@ Key arguments:
 - The CLI handles ATA creation on the destination automatically (using the
   ATA payer funded during warp deploy)
 
-### Tests (`test_06_bridge.py`)
+### Tests (`test_07_bridge.py`)
 
 All tests in `TestBridge` class, marked `@pytest.mark.slow`.
 
@@ -830,8 +904,8 @@ def wait_for_token_balance(
 Runs after Phase 3. Deploys the warp-ui stack and validates the bridge UI serves
 correctly and can execute actual cross-chain transfers through a browser.
 
-Two test tiers: HTTP smoke tests (`test_08_warp_ui.py`) and browser-driven bridge
-transfers (`test_09_warp_ui_bridge.py`).
+Two test tiers: HTTP smoke tests (`test_09_warp_ui.py`) and browser-driven bridge
+transfers (`test_10_warp_ui_bridge.py`).
 
 ### Prerequisites
 
@@ -888,7 +962,7 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
 }
 ```
 
-### Tier 1: HTTP Smoke Tests (`test_08_warp_ui.py`)
+### Tier 1: HTTP Smoke Tests (`test_09_warp_ui.py`)
 
 No browser needed — uses `subprocess.run(["curl", ...])` or Python `http.client`
 via port-forward to the warp-ui pod.
@@ -988,7 +1062,7 @@ def test_warp_ui_chain_config_present(self, warp_ui_deployment):
     )
 ```
 
-### Tier 2: Browser Bridge Tests (`test_09_warp_ui_bridge.py`)
+### Tier 2: Browser Bridge Tests (`test_10_warp_ui_bridge.py`)
 
 Uses **Playwright** to drive the warp-ui in a real browser with the **Backpack
 wallet extension** that signs and submits real transactions to the test chains.

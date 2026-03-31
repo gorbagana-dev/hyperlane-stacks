@@ -111,6 +111,22 @@ ls -la "${GORCHAIN_PROGRAMS}"
 echo "Solana program-ids: ${SOLANA_PROGRAMS}"
 ls -la "${SOLANA_PROGRAMS}"
 
+# Validate all expected fields exist in program-ids.json
+REQUIRED_FIELDS="mailbox validator_announce multisig_ism_message_id igp_program_id overhead_igp_account igp_account"
+for PROGRAMS_FILE_CHECK in "${GORCHAIN_PROGRAMS}" "${SOLANA_PROGRAMS}"; do
+  CHAIN_LABEL=$(basename "$(dirname "$(dirname "$PROGRAMS_FILE_CHECK")")")
+  for FIELD in $REQUIRED_FIELDS; do
+    VALUE=$(jq -r ".${FIELD} // empty" "${PROGRAMS_FILE_CHECK}" 2>/dev/null || true)
+    if [ -z "$VALUE" ]; then
+      echo "FATAL: Missing required field '${FIELD}' in ${CHAIN_LABEL} program-ids.json"
+      echo "  File: ${PROGRAMS_FILE_CHECK}"
+      echo "  Contents: $(cat "${PROGRAMS_FILE_CHECK}")"
+      exit 1
+    fi
+  done
+  echo "OK: All required fields present in ${CHAIN_LABEL} program-ids.json"
+done
+
 # -------------------------------------------------------
 # Post-deploy program hash verification
 # -------------------------------------------------------
@@ -126,12 +142,15 @@ for CHAIN_OUTPUT in gorchain solana; do
     PROGRAMS_FILE="${SOLANA_PROGRAMS}"
   fi
 
-  for PROGRAM in mailbox validator_announce interchain_gas_paymaster multisig_ism; do
+  # Map: binary_name:json_key (binary is hyperlane_sealevel_{name}.so, JSON key is the field in program-ids.json)
+  for ENTRY in mailbox:mailbox validator_announce:validator_announce interchain_gas_paymaster:igp_program_id multisig_ism_message_id:multisig_ism_message_id; do
+    PROGRAM="${ENTRY%%:*}"
+    JSON_KEY="${ENTRY##*:}"
     SO_FILE="/opt/hyperlane/programs/hyperlane_sealevel_${PROGRAM}.so"
     if [ ! -f "$SO_FILE" ]; then
       continue
     fi
-    PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${PROGRAMS_FILE}" 2>/dev/null || true)
+    PROGRAM_ID=$(jq -r ".${JSON_KEY} // empty" "${PROGRAMS_FILE}" 2>/dev/null || true)
     if [ -z "$PROGRAM_ID" ]; then
       continue
     fi
@@ -239,8 +258,11 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
     fi
 
     # Transfer upgrade authority for all programs (uses solana CLI, not hyperlane)
-    for PROGRAM in mailbox validator_announce interchain_gas_paymaster multisig_ism; do
-      PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${PROGRAMS_FILE}" 2>/dev/null || true)
+    # JSON keys differ from binary names for IGP (igp_program_id) and ISM (multisig_ism_message_id)
+    for ENTRY in mailbox:mailbox validator_announce:validator_announce interchain_gas_paymaster:igp_program_id multisig_ism_message_id:multisig_ism_message_id; do
+      PROGRAM="${ENTRY%%:*}"
+      JSON_KEY="${ENTRY##*:}"
+      PROGRAM_ID=$(jq -r ".${JSON_KEY} // empty" "${PROGRAMS_FILE}" 2>/dev/null || true)
       if [ -n "$PROGRAM_ID" ]; then
         echo "Transferring upgrade authority for ${PROGRAM} (${PROGRAM_ID}) on ${CHAIN_OUTPUT}..."
         solana program set-upgrade-authority "$PROGRAM_ID" \
@@ -267,7 +289,7 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
     # Note: core transfer-ownership does not exist in the CLI.
     # validator_announce and multisig_ism account ownership transfer commands
     # are not yet known. Skipping with a warning.
-    for PROGRAM in multisig_ism validator_announce; do
+    for PROGRAM in multisig_ism_message_id validator_announce; do
       PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${PROGRAMS_FILE}" 2>/dev/null || true)
       if [ -n "$PROGRAM_ID" ]; then
         echo "WARNING: No known account ownership transfer command for ${PROGRAM} on ${CHAIN_OUTPUT} (program-id: ${PROGRAM_ID}). Skipping."
@@ -276,19 +298,21 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
 
     # Transfer IGP ownership to oracle wallet (if configured)
     if [ -n "${IGP_ORACLE_PUBKEY:-}" ]; then
-      IGP_ID=$(jq -r '.interchain_gas_paymaster // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
-      IGP_ACCOUNT=$(jq -r '.interchain_gas_paymaster_account // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
-      if [ -n "$IGP_ID" ]; then
-        echo "Transferring IGP account ownership to oracle wallet on ${CHAIN_OUTPUT}..."
-        hyperlane-sealevel-client \
-          --url "$RPC_URL" \
-          --keypair "${DEPLOYER_KEY_FILE}" \
-          igp transfer-igp-ownership \
-          --program-id "$IGP_ID" \
-          ${IGP_ACCOUNT:+--igp-account "$IGP_ACCOUNT"} \
-          "${IGP_ORACLE_PUBKEY}" \
-          || echo "WARNING: IGP ownership transfer on ${CHAIN_OUTPUT} failed or not supported"
+      IGP_ID=$(jq -r '.igp_program_id // empty' "${PROGRAMS_FILE}")
+      IGP_ACCOUNT=$(jq -r '.igp_account // empty' "${PROGRAMS_FILE}")
+      if [ -z "$IGP_ID" ] || [ -z "$IGP_ACCOUNT" ]; then
+        echo "FATAL: igp_program_id or igp_account missing from ${CHAIN_OUTPUT} program-ids.json"
+        exit 1
       fi
+      echo "Transferring IGP account ownership to oracle wallet on ${CHAIN_OUTPUT}..."
+      echo "  IGP program: ${IGP_ID}, IGP account: ${IGP_ACCOUNT}, new owner: ${IGP_ORACLE_PUBKEY}"
+      hyperlane-sealevel-client \
+        --url "$RPC_URL" \
+        --keypair "${DEPLOYER_KEY_FILE}" \
+        igp transfer-igp-ownership \
+        --program-id "$IGP_ID" \
+        --igp-account "$IGP_ACCOUNT" \
+        "${IGP_ORACLE_PUBKEY}"
     fi
   done
 fi
