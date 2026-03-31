@@ -250,6 +250,25 @@ def prefetch_gas_oracle_image(cluster_name: str = "hyperlane-e2e") -> None:
     log_info("Gas oracle image loaded into kind cluster")
 
 
+# Monitoring stack images (all public — no GHCR auth needed)
+PROMETHEUS_IMAGE = "prom/prometheus:latest"
+PUSHGATEWAY_IMAGE = "prom/pushgateway:latest"
+GRAFANA_IMAGE = "grafana/grafana:latest"
+BALANCE_MONITOR_IMAGE = "python:3.12-alpine"
+
+
+def prefetch_monitoring_images(cluster_name: str = "hyperlane-e2e") -> None:
+    """Pull monitoring stack images and load them into the kind cluster."""
+    for image in (PROMETHEUS_IMAGE, PUSHGATEWAY_IMAGE, GRAFANA_IMAGE, BALANCE_MONITOR_IMAGE):
+        log_info(f"Pulling {image}...")
+        run_cmd(["docker", "pull", image])
+
+        log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
+        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+
+    log_info("Monitoring images loaded into kind cluster")
+
+
 # ---------------------------------------------------------------------------
 # Deploy lifecycle
 # ---------------------------------------------------------------------------

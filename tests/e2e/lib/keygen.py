@@ -411,3 +411,19 @@ def create_gas_oracle_secrets(namespace: str, oracle_wallet_id: str) -> None:
     )
     run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
     log_info(f"{secret_name} created")
+
+
+def create_monitoring_secrets(namespace: str, admin_password: str) -> None:
+    """Create the hyperlane-monitoring-secrets k8s Secret (idempotent)."""
+    secret_name = "hyperlane-monitoring-secrets"
+    log_info(f"Creating {secret_name} in namespace {namespace}...")
+    gen = run_cmd(
+        [
+            "kubectl", "create", "secret", "generic", secret_name,
+            "-n", namespace,
+            f"--from-literal=GF_SECURITY_ADMIN_PASSWORD={admin_password}",
+            "--dry-run=client", "-o", "yaml",
+        ]
+    )
+    run_cmd(["kubectl", "apply", "-f", "-"], input_text=gen.stdout)
+    log_info(f"{secret_name} created")
