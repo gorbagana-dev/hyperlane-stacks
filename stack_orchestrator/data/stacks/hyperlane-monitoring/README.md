@@ -1,89 +1,111 @@
 # hyperlane-monitoring
 
-Prometheus, Grafana, pushgateway, and balance monitoring for the Hyperlane deployment. Scrapes metrics from validator and relayer pods, monitors wallet balances, and provides dashboards.
+Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four containers:
 
-## 1. Create deployment
+- **Prometheus** — scrapes metrics from validator and relayer pods via `kubernetes_sd_configs`, and from Pushgateway for balance metrics
+- **Grafana** — dashboards for bridge operations, validator checkpoints, relayer throughput, and wallet balances
+- **Pushgateway** — receives balance metrics pushed by the balance monitor
+- **Balance monitor** — Python script that polls wallet balances via Solana JSON-RPC and pushes to Pushgateway
+
+## How it works
+
+```
+                      ┌─────────────────────────────────────────────┐
+                      │            monitoring pod                   │
+                      │                                             │
+  validator pods ────►│  Prometheus ◄── Pushgateway ◄── balance    │
+  relayer pod   ────►│  (scrapes)      (receives)      monitor    │
+                      │      │                          (polls RPC)│
+                      │      ▼                                     │
+                      │  Grafana (dashboards)                      │
+                      └─────────────────────────────────────────────┘
+```
+
+**Metrics flow:**
+
+1. **Validator/relayer metrics**: Prometheus discovers pods with `prometheus.io/scrape: "true"` annotation via `kubernetes_sd_configs` and scrapes their `/metrics` endpoints directly
+2. **Wallet balances**: The balance monitor queries Solana JSON-RPC (`getBalance`) for each configured wallet, then pushes `hyperlane_wallet_balance_sol` gauge metrics to Pushgateway. Prometheus scrapes Pushgateway on `localhost:9091`
+3. **Grafana**: Queries Prometheus as its datasource. Three dashboards are provisioned automatically: overview, validator detail, and relayer detail
+
+**Prerequisites:**
+- Validator and relayer specs must include `prometheus.io/scrape` and `prometheus.io/port` annotations (see `deployment/spec-validator-*.yml` and `deployment/spec-relayer.yml`)
+- The `deploy/commands.py` create hook applies RBAC (ClusterRole + ClusterRoleBinding) granting the namespace's default ServiceAccount permission to list/watch pods for Prometheus service discovery
+
+## Configuration
+
+### Wallet format
+
+Wallets are specified as comma-separated `label:address` or `label:address:threshold` entries:
+
+```
+relayer:ABC123:5.0,igp-oracle:DEF456:2.0,deployer:GHI789
+```
+
+- Per-wallet threshold (third field) is optional
+- Wallets without a threshold use the global `BALANCE_THRESHOLD_SOL` as fallback
+- Set higher thresholds for critical wallets (relayer) and lower for less critical ones
+
+### Environment variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GORCHAIN_RPC_URL` | Gorchain Solana-compatible RPC endpoint | — |
+| `SOLANA_RPC_URL` | Solana RPC endpoint | — |
+| `MONITORED_WALLETS_GORCHAIN` | Wallets to monitor on Gorchain | — |
+| `MONITORED_WALLETS_SOLANA` | Wallets to monitor on Solana | — |
+| `BALANCE_THRESHOLD_SOL` | Default low-balance warning threshold (SOL) | `1.0` |
+| `BALANCE_CHECK_INTERVAL` | Seconds between balance checks | `300` |
+
+### Secrets
+
+| Secret key | Description |
+|------------|-------------|
+| `GF_SECURITY_ADMIN_PASSWORD` | Grafana admin password |
+
+## Deployment
+
+### 1. Initialize spec
 
 ```bash
 laconic-so --stack hyperlane-monitoring deploy init --output monitoring-spec.yml
 ```
 
-Edit `monitoring-spec.yml` (see `deployment/spec-monitoring.yml` for reference):
+The generated spec includes `http-proxy` defaults for Grafana (`grafana.example.com`) and Prometheus (`prometheus.example.com`). Edit the hostnames and wallet addresses.
 
-```yaml
-stack: stack_orchestrator/data/stacks/hyperlane-monitoring
-deploy-to: k8s-kind
-config:
-  GORCHAIN_RPC_URL: "https://gorchain-rpc.example.com"
-  SOLANA_RPC_URL: "https://solana-rpc.example.com"
-  MONITORED_WALLETS_GORCHAIN: "validator:Abc123,relayer:Def456"
-  MONITORED_WALLETS_SOLANA: "validator:Abc123,relayer:Def456"
-  BALANCE_THRESHOLD_SOL: "1.0"
-  BALANCE_CHECK_INTERVAL: "300"
-network:
-  ports:
-    prometheus:
-      - "9090"
-    grafana:
-      - "3000"
-volumes:
-  prometheus-data: 10Gi
-  grafana-data: 2Gi
-configmaps:
-  prometheus-config: ./configmaps/prometheus-config
-  grafana-datasources-config: ./configmaps/grafana-datasources-config
-  grafana-dashboard-config: ./configmaps/grafana-dashboard-config
-  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
-  balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
-secrets:
-  hyperlane-monitoring-secrets:
-    - GF_SECURITY_ADMIN_PASSWORD
-```
-
-```bash
-laconic-so --stack hyperlane-monitoring deploy create --spec-file monitoring-spec.yml --deployment-dir monitoring-deployment
-```
-
-## 2. Populate config files
-
-Edit the config templates in `monitoring-deployment/configmaps/`:
-
-| ConfigMap directory | Contents |
-|---|---|
-| `prometheus-config/` | `prometheus.yml`, `alerts.yml` -- scrape targets and alert rules |
-| `grafana-datasources-config/` | `datasources.yaml` -- Prometheus datasource definition |
-| `grafana-dashboard-config/` | `dashboards.yaml` -- dashboard provisioning config |
-| `grafana-dashboards-config/` | JSON dashboard files |
-| `balance-monitor-scripts-config/` | `check-balance.py` -- balance monitoring script |
-
-## 3. Create secrets
+### 2. Create secrets
 
 ```bash
 kubectl create secret generic hyperlane-monitoring-secrets \
   --from-literal=GF_SECURITY_ADMIN_PASSWORD='<grafana-password>'
 ```
 
-| Secret key | Description |
-|---|---|
-| `GF_SECURITY_ADMIN_PASSWORD` | Grafana admin password |
-
-## 4. Start
+### 3. Deploy
 
 ```bash
+laconic-so --stack hyperlane-monitoring deploy create \
+  --spec-file monitoring-spec.yml \
+  --deployment-dir monitoring-deployment
+
 laconic-so deployment --dir monitoring-deployment start
 ```
 
-## 5. Verify
+### 4. Verify
 
 ```bash
-# Check pods are running
+# Check pod is running
 kubectl get pods -l app=hyperlane-monitoring
 
-# Check Prometheus targets
-kubectl port-forward svc/prometheus 9090:9090
-# Open http://localhost:9090/targets
+# Prometheus targets (should show validator + relayer as "up")
+curl https://prometheus.example.com/api/v1/targets
 
-# Check Grafana
-kubectl port-forward svc/grafana 3000:3000
-# Open http://localhost:3000 (admin / <password>)
+# Grafana
+# Open https://grafana.example.com (admin / <password>)
 ```
+
+## Dashboards
+
+Three dashboards are provisioned automatically:
+
+- **Hyperlane Overview** — wallet balances, latest checkpoints, message throughput
+- **Hyperlane Validator** — per-chain validator checkpoint progress, block height, signing activity
+- **Hyperlane Relayer** — message processing rates, gas usage, delivery status
