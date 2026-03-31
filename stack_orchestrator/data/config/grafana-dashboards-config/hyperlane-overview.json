@@ -8,18 +8,18 @@
   "links": [],
   "panels": [
     {
-      "title": "Validator Checkpoints",
+      "title": "Validator Checkpoint Index",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "rate(hyperlane_latest_checkpoint_observed_count[5m])",
-          "legendFormat": "{{ app }}"
+          "expr": "hyperlane_latest_checkpoint{phase=\"validator_processed\"}",
+          "legendFormat": "{{ chain }}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short"
         }
       }
     },
@@ -29,8 +29,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "rate(hyperlane_messages_processed_count[5m])",
-          "legendFormat": "{{ status }}"
+          "expr": "rate(hyperlane_operations_processed_count[5m])",
+          "legendFormat": "{{ chain }} - {{ phase }}"
         }
       ],
       "fieldConfig": {
@@ -65,6 +65,7 @@
     },
     {
       "title": "Agent Pod Restarts",
+      "description": "Requires kube-state-metrics to be deployed",
       "type": "stat",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [

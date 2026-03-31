@@ -80,13 +80,13 @@ pytest -v -x test_02_warp_deployer.py
 pytest -v -x test_04_validator.py
 
 # Run only warp UI smoke tests
-pytest -v -x test_09_warp_ui.py
+pytest -v -x test_10_warp_ui.py
 
 # Run only warp UI browser tests (headless via xvfb-run)
-xvfb-run pytest -v -x test_10_warp_ui_bridge.py
+xvfb-run pytest -v -x test_11_warp_ui_bridge.py
 
 # Run with visible browser window (on a desktop with $DISPLAY)
-pytest -v -x test_10_warp_ui_bridge.py
+pytest -v -x test_11_warp_ui_bridge.py
 
 # Exclude slow tests (validator checkpoint tests, bridge transfers, UI tests)
 pytest -v -x -m "not slow"
@@ -105,10 +105,11 @@ tests/e2e/
 ├── test_04_validator.py                 # Validator stack tests (gorchain + solana)
 ├── test_05_relayer.py                   # Relayer stack tests
 ├── test_06_gas_oracle.py                # Gas oracle stack tests
-├── test_07_bridge.py                    # Cross-chain bridge transfer tests
-├── test_08_fee_claim.py                 # IGP fee claim tests
-├── test_09_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
-├── test_10_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
+├── test_07_monitoring.py                # Monitoring stack tests (Prometheus, Grafana, balance monitor)
+├── test_08_bridge.py                    # Cross-chain bridge transfer tests
+├── test_09_fee_claim.py                 # IGP fee claim tests
+├── test_10_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
+├── test_11_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture

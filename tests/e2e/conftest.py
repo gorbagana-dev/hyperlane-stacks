@@ -56,6 +56,7 @@ from lib.deploy import (
     prefetch_deployer_image,
     prefetch_gas_oracle_image,
     prefetch_minio_images,
+    prefetch_monitoring_images,
     prefetch_validator_images,
     prefetch_warp_ui_image,
     stop_stack,
@@ -67,6 +68,7 @@ from lib.keygen import (
     create_deployer_secrets,
     create_gas_oracle_secrets,
     create_minio_secrets,
+    create_monitoring_secrets,
     create_relayer_secrets,
     create_validator_secrets,
     create_warp_deployer_secrets,
@@ -93,6 +95,7 @@ VALIDATOR_GORCHAIN_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-gorchain.y
 VALIDATOR_SOLANA_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-solana.yml"
 RELAYER_SPEC = E2E_DIR / "fixtures" / "test-spec-relayer.yml"
 GAS_ORACLE_SPEC = E2E_DIR / "fixtures" / "test-spec-gas-oracle.yml"
+MONITORING_SPEC = E2E_DIR / "fixtures" / "test-spec-monitoring.yml"
 WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
 
 PRIVY_MOCK_PORT = 19876
@@ -202,8 +205,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Skip relayer deployment (reuse existing from a previous --skip-cleanup run)"
     )
     parser.addoption(
+        "--skip-gas-oracle-deploy", action="store_true", default=False,
+        help="Skip gas oracle deployment (reuse existing from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
         "--skip-warp-ui-deploy", action="store_true", default=False,
         help="Skip warp-ui deployment (reuse existing from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
+        "--skip-monitoring-deploy", action="store_true", default=False,
+        help="Skip monitoring deployment (reuse existing from a previous --skip-cleanup run)"
     )
 
 
@@ -231,8 +242,10 @@ def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
         create_selfsigned_issuer()
         log.info("Installing nginx ingress controller...")
         install_ingress_nginx()
-        log.info("Adding bridge.test to /etc/hosts...")
+        log.info("Adding test hostnames to /etc/hosts...")
         ensure_hosts_entry("bridge.test")
+        ensure_hosts_entry("grafana.test")
+        ensure_hosts_entry("prometheus.test")
     else:
         log.info("Skipping cluster setup (--skip-cluster-setup)")
 
@@ -323,11 +336,22 @@ def gas_oracle_image(request: pytest.FixtureRequest, kind_cluster: None) -> None
 
 
 @pytest.fixture(scope="session")
+def monitoring_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+    """Pre-fetch monitoring stack images and load them into the kind cluster."""
+    if request.config.getoption("--skip-monitoring-deploy", default=False):
+        log.info("Skipping monitoring image prefetch (--skip-monitoring-deploy)")
+        return
+    log.info("Pre-fetching monitoring images into kind cluster...")
+    prefetch_monitoring_images()
+
+
+@pytest.fixture(scope="session")
 def all_images(
     deployer_image: None,
     validator_images: None,
     warp_ui_image: None,
     gas_oracle_image: None,
+    monitoring_images: None,
 ) -> None:
     """Build/fetch all container images up front before any deployment starts."""
 
@@ -1044,11 +1068,17 @@ def gas_oracle_deployment(
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
         cluster_id = get_cluster_id(deploy_dir)
         log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
+        # Read current oracle values from the running pod
+        oracle_values = {}
+        try:
+            oracle_values = _wait_for_oracle_update(namespace, cluster_id, timeout=30)
+        except TimeoutError:
+            log.warning("Could not read oracle values from running pod")
         yield {
             "deployment": DeploymentInfo(
                 deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
             ),
-            "oracle_values": {},
+            "oracle_values": oracle_values,
         }
         return
 
@@ -1119,6 +1149,322 @@ def gas_oracle_deployment(
     if not skip_cleanup:
         log.info("Stopping gas oracle stack...")
         stop_stack("hyperlane-gas-oracle")
+
+
+# ---------------------------------------------------------------------------
+# Monitoring stack
+# ---------------------------------------------------------------------------
+
+GRAFANA_ADMIN_PASSWORD = "testadmin"
+GRAFANA_HOSTNAME = "grafana.test"
+GRAFANA_URL = f"https://{GRAFANA_HOSTNAME}"
+PROMETHEUS_HOSTNAME = "prometheus.test"
+PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
+
+GRAFANA_INGRESS_TEMPLATE = """\
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: {namespace}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {hostname}
+      secretName: grafana-tls
+  rules:
+    - host: {hostname}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {service_name}
+                port:
+                  number: 3000
+"""
+
+PROMETHEUS_INGRESS_TEMPLATE = """\
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: {namespace}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {hostname}
+      secretName: prometheus-tls
+  rules:
+    - host: {hostname}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {service_name}
+                port:
+                  number: 9090
+"""
+
+
+def _wait_for_balance_monitor(
+    namespace: str, pod_name: str, timeout: int = 60,
+) -> None:
+    """Wait for the balance monitor to complete at least one check cycle."""
+    import subprocess
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "logs", pod_name,
+                "-c", "balance-monitor",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode == 0 and "Gorchain wallets:" in result.stdout:
+            log.info("Balance monitor has started and reported wallets")
+            return
+        time.sleep(5)
+
+    raise TimeoutError(
+        f"Balance monitor did not report wallets within {timeout}s"
+    )
+
+
+def _build_wallet_string(keypairs: KeypairSet) -> tuple[str, list[str]]:
+    """Build MONITORED_WALLETS string and return (wallet_string, label_list).
+
+    Both chains use the same wallets (all funded on both chains during setup).
+    """
+    # Get relayer pubkey from fee-claim keypair (if it exists)
+    relayer_keypair_path = keypairs.keys_dir / "relayer-fee-claim.json"
+    # (label, address, per-wallet threshold)
+    wallet_entries = [
+        ("deployer", keypairs.deployer_pubkey, None),
+        ("igp-oracle", keypairs.igp_oracle_pubkey, "2.0"),
+        ("igp-beneficiary", keypairs.igp_beneficiary_pubkey, None),
+    ]
+    if relayer_keypair_path.is_file():
+        result = subprocess.run(
+            ["solana-keygen", "pubkey", str(relayer_keypair_path)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            wallet_entries.append(("relayer", result.stdout.strip(), "5.0"))
+
+    parts = []
+    for label, addr, threshold in wallet_entries:
+        if threshold:
+            parts.append(f"{label}:{addr}:{threshold}")
+        else:
+            parts.append(f"{label}:{addr}")
+    wallet_string = ",".join(parts)
+    labels = [label for label, _, _ in wallet_entries]
+    return wallet_string, labels
+
+
+@pytest.fixture(scope="session")
+def monitoring_deployment(
+    deployer_deployment: DeploymentInfo,
+    keypairs: KeypairSet,
+    kind_cluster: None,
+    monitoring_images: None,
+    request: pytest.FixtureRequest,
+) -> Generator[dict, None, None]:
+    """Deploy the hyperlane-monitoring stack and wait for metrics flow."""
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_monitoring = request.config.getoption("--skip-monitoring-deploy", default=False)
+    namespace = E2E_NAMESPACE
+
+    if skip_monitoring:
+        deploy_dir = DEPLOY_DIR / "hyperlane-monitoring"
+        cluster_id = get_cluster_id(deploy_dir)
+        pod_name = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "get", "pods",
+                "-l", f"app={cluster_id}",
+                "-o", "jsonpath={.items[0].metadata.name}",
+            ],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        assert pod_name, "Monitoring pod not found — cannot reuse deployment"
+        # Recover wallet labels from Prometheus metrics
+        wallet_labels = []
+        probe = subprocess.run(
+            ["curl", "-s", "-k",
+             f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
+            capture_output=True, text=True, check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            import json as _json
+            try:
+                data = _json.loads(probe.stdout)
+                labels = {
+                    r["metric"].get("wallet")
+                    for r in data.get("data", {}).get("result", [])
+                    if r["metric"].get("wallet")
+                }
+                wallet_labels = sorted(labels)
+            except (ValueError, KeyError):
+                pass
+        log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
+        yield {
+            "deployment": DeploymentInfo(
+                deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
+            ),
+            "namespace": namespace,
+            "pod_name": pod_name,
+            "expected_wallet_labels": wallet_labels,
+            "grafana_url": GRAFANA_URL,
+            "prometheus_url": PROMETHEUS_URL,
+        }
+        return
+
+    # Build wallet strings from keypairs
+    wallet_string, wallet_labels = _build_wallet_string(keypairs)
+    log.info("Monitoring wallet string: %s", wallet_string)
+
+    # Create monitoring secrets
+    log.info("Creating monitoring secrets...")
+    create_monitoring_secrets(namespace, GRAFANA_ADMIN_PASSWORD)
+
+    # Patch spec with wallet strings
+    content = MONITORING_SPEC.read_text()
+    content = content.replace(
+        'MONITORED_WALLETS_GORCHAIN: "REPLACE_AT_RUNTIME"',
+        f'MONITORED_WALLETS_GORCHAIN: "{wallet_string}"',
+    )
+    content = content.replace(
+        'MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"',
+        f'MONITORED_WALLETS_SOLANA: "{wallet_string}"',
+    )
+    patched_path = E2E_DIR / ".monitoring-spec-patched.yml"
+    patched_path.write_text(content)
+
+    log.info("Preparing monitoring stack...")
+    deploy_info = deploy_prepare(
+        "hyperlane-monitoring", patched_path,
+        namespace=E2E_NAMESPACE,
+        spec_replacements=SPEC_REPLACEMENTS,
+        cluster_id="monitoring",
+    )
+
+    log.info("Starting monitoring stack...")
+    deploy_start(deploy_info.deploy_dir)
+
+    try:
+        log.info("Waiting for monitoring pod to be running...")
+        wait_for_pod_phase(
+            namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180,
+        )
+        log.info("Monitoring pod is running")
+    except Exception:
+        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        raise
+
+    # Get pod name for kubectl exec in tests
+    pod_name = subprocess.run(
+        [
+            "kubectl", "-n", namespace, "get", "pods",
+            "-l", f"app={deploy_info.cluster_id}",
+            "-o", "jsonpath={.items[0].metadata.name}",
+        ],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    # Wait for balance monitor to complete first check
+    try:
+        log.info("Waiting for balance monitor to report wallets...")
+        _wait_for_balance_monitor(namespace, pod_name)
+    except TimeoutError:
+        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        raise
+
+    # Give Prometheus time to scrape the Pushgateway metrics
+    log.info("Waiting for Prometheus to scrape balance metrics...")
+    time.sleep(20)
+
+    # Create ingress for Grafana and Prometheus
+    grafana_service = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
+    prometheus_service = f"{deploy_info.cluster_id}-nodeport-9090-tcp"
+
+    for name, template, hostname, service in [
+        ("Grafana", GRAFANA_INGRESS_TEMPLATE, GRAFANA_HOSTNAME,
+         grafana_service),
+        ("Prometheus", PROMETHEUS_INGRESS_TEMPLATE, PROMETHEUS_HOSTNAME,
+         prometheus_service),
+    ]:
+        ingress_yaml = template.format(
+            namespace=namespace,
+            hostname=hostname,
+            service_name=service,
+        )
+        log.info("Creating %s Ingress with TLS (host: %s)...", name, hostname)
+        subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=ingress_yaml, text=True, check=True,
+        )
+
+    # Wait for TLS certificates
+    for tls_secret in ("grafana-tls", "prometheus-tls"):
+        log.info("Waiting for TLS certificate %s...", tls_secret)
+        for _ in range(30):
+            result = subprocess.run(
+                [
+                    "kubectl", "-n", namespace, "get", "certificate", tls_secret,
+                    "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            if result.stdout.strip() == "True":
+                break
+            time.sleep(2)
+        else:
+            log.warning("TLS certificate %s not ready after 60s", tls_secret)
+
+    # HTTP probe both endpoints (use health endpoints, not / which redirects)
+    for name, url, health_path in [
+        ("Grafana", GRAFANA_URL, "/api/health"),
+        ("Prometheus", PROMETHEUS_URL, "/-/healthy"),
+    ]:
+        log.info("Waiting for %s to respond via TLS ingress...", name)
+        for _ in range(5):
+            probe = subprocess.run(
+                ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+                 f"{url}{health_path}"],
+                capture_output=True, text=True, check=False,
+            )
+            if probe.returncode == 0 and probe.stdout.strip() == "200":
+                break
+            time.sleep(2)
+        else:
+            log.warning("%s not returning 200 after 10s", name)
+        log.info("%s ingress ready at %s", name, url)
+
+    yield {
+        "deployment": deploy_info,
+        "namespace": namespace,
+        "pod_name": pod_name,
+        "expected_wallet_labels": wallet_labels,
+        "grafana_url": GRAFANA_URL,
+        "prometheus_url": PROMETHEUS_URL,
+    }
+
+    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+    patched_path.unlink(missing_ok=True)
+    if not skip_cleanup:
+        log.info("Stopping monitoring stack...")
+        stop_stack("hyperlane-monitoring")
 
 
 # ---------------------------------------------------------------------------
@@ -1477,7 +1823,7 @@ def warp_ui_browser(
     Chrome extensions require headed mode (headless=False). For headless
     operation, wrap the pytest invocation with ``xvfb-run``::
 
-        xvfb-run pytest -v test_09_warp_ui_bridge.py
+        xvfb-run pytest -v test_11_warp_ui_bridge.py
 
     Pass ``--headed`` to show the browser window on a real display.
 

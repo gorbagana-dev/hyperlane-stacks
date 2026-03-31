@@ -8,6 +8,9 @@ config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
 volumes:
   validator-data:
   agent-config:

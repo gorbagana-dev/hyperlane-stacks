@@ -17,8 +17,9 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9091"]
 
-  # Kubernetes pod discovery — scrapes pods with prometheus.io/scrape annotation
-  # Requires RBAC (applied by deploy/commands.py)
+  # Kubernetes pod discovery — scrapes pods with prometheus.io/scrape annotation.
+  # Requires RBAC (applied by deploy/commands.py).
+  # Validator and relayer specs include prometheus.io/scrape annotations.
   - job_name: kubernetes-pods
     kubernetes_sd_configs:
       - role: pod
@@ -27,12 +28,7 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: "true"
-      # Use prometheus.io/port annotation for target port
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        target_label: __address__
-        regex: (.+)
-        replacement: ${1}
+      # Use prometheus.io/port annotation to override target port
       - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         regex: ([^:]+)(?::\d+)?;(\d+)

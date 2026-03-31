@@ -12,6 +12,9 @@ config:
   GORCHAIN_IGP_ACCOUNT: "REPLACE_WITH_GORCHAIN_IGP_ACCOUNT"
   SOLANA_IGP_ACCOUNT: "REPLACE_WITH_SOLANA_IGP_ACCOUNT"
   # CLAIM_INTERVAL_SECONDS: "21600"  # IGP fee claim interval (default: 6h)
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
 volumes:
   relayer-data:
 resources:

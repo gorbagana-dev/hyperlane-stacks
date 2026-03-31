@@ -7,16 +7,22 @@ kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  MONITORED_WALLETS_GORCHAIN: "REPLACE_WITH_GORCHAIN_WALLETS"
-  MONITORED_WALLETS_SOLANA: "REPLACE_WITH_SOLANA_WALLETS"
-  BALANCE_THRESHOLD_SOL: "1.0"
+  # Wallet format: label:address or label:address:threshold
+  # Per-wallet threshold overrides BALANCE_THRESHOLD_SOL (the fallback).
+  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
   BALANCE_CHECK_INTERVAL: "300"
 network:
-  ports:
-    prometheus:
-      - "9090"
-    grafana:
-      - "3000"
+  http-proxy:
+    - host-name: grafana.example.com
+      routes:
+        - path: /
+          proxy-to: grafana:3000
+    - host-name: prometheus.example.com
+      routes:
+        - path: /
+          proxy-to: prometheus:9090
 volumes:
   prometheus-data:
   grafana-data:
@@ -32,7 +38,7 @@ configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
-  grafana-dashboards: ./configmaps/grafana-dashboards
+  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
 secrets:
   hyperlane-monitoring-secrets:
