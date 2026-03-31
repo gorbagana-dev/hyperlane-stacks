@@ -7,10 +7,9 @@ No external dependencies — uses only Python stdlib.
 
 import json
 import os
-import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 
 PUSHGATEWAY_URL = os.environ.get("PUSHGATEWAY_URL", "http://localhost:9091")
 INTERVAL = int(os.environ.get("BALANCE_CHECK_INTERVAL", "300"))
@@ -73,35 +72,49 @@ def push_metric(chain: str, label: str, address: str, balance: float) -> None:
         print(f"  [ERROR] Pushgateway push failed: {exc}", flush=True)
 
 
-def parse_wallets(raw: str) -> list[tuple[str, str]]:
-    """Parse comma-separated 'label:address' pairs."""
+def parse_wallets(raw: str) -> list[tuple[str, str, float]]:
+    """Parse comma-separated 'label:address' or 'label:address:threshold' entries.
+
+    Returns list of (label, address, threshold) tuples.
+    If no per-wallet threshold is specified, uses the global BALANCE_THRESHOLD_SOL.
+    """
     wallets = []
     for entry in raw.split(","):
         entry = entry.strip()
         if not entry or ":" not in entry:
             continue
-        label, address = entry.split(":", 1)
-        wallets.append((label.strip(), address.strip()))
+        parts = entry.split(":")
+        if len(parts) < 2:
+            continue
+        label = parts[0].strip()
+        address = parts[1].strip()
+        threshold = THRESHOLD
+        if len(parts) >= 3 and parts[2].strip():
+            try:
+                threshold = float(parts[2].strip())
+            except ValueError:
+                pass
+        wallets.append((label, address, threshold))
     return wallets
 
 
-def check_wallets(rpc_url: str, chain: str, wallets: list[tuple[str, str]]) -> None:
+def check_wallets(rpc_url: str, chain: str, wallets: list[tuple[str, str, float]]) -> None:
     """Check and push balance for each wallet on a chain."""
-    for label, address in wallets:
+    for label, address, threshold in wallets:
         balance = get_balance(rpc_url, address)
         if balance is None:
             continue
         push_metric(chain, label, address, balance)
-        if balance < THRESHOLD:
+        if balance < threshold:
             print(
                 f"  [WARNING] {label} on {chain}: {balance:.4f} SOL "
-                f"< threshold {THRESHOLD} SOL",
+                f"< threshold {threshold} SOL",
                 flush=True,
             )
 
 
 def main() -> None:
-    print(f"[balance-monitor] Starting (interval: {INTERVAL}s, threshold: {THRESHOLD} SOL)", flush=True)
+    print(f"[balance-monitor] Starting (interval: {INTERVAL}s, default threshold: {THRESHOLD} SOL)", flush=True)
 
     gorchain_wallets = parse_wallets(WALLETS_GORCHAIN)
     solana_wallets = parse_wallets(WALLETS_SOLANA)
@@ -110,7 +123,11 @@ def main() -> None:
         print("[balance-monitor] No wallets configured, exiting.", flush=True)
         return
 
-    print(f"[balance-monitor] Gorchain wallets: {len(gorchain_wallets)}, Solana wallets: {len(solana_wallets)}", flush=True)
+    print(
+        f"[balance-monitor] Gorchain wallets: {len(gorchain_wallets)}, "
+        f"Solana wallets: {len(solana_wallets)}",
+        flush=True,
+    )
 
     while True:
         if gorchain_wallets and GORCHAIN_RPC:

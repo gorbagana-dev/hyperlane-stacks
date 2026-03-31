@@ -7,9 +7,11 @@ kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  MONITORED_WALLETS_GORCHAIN: "REPLACE_WITH_GORCHAIN_WALLETS"
-  MONITORED_WALLETS_SOLANA: "REPLACE_WITH_SOLANA_WALLETS"
-  BALANCE_THRESHOLD_SOL: "1.0"
+  # Wallet format: label:address or label:address:threshold
+  # Per-wallet threshold overrides BALANCE_THRESHOLD_SOL (the fallback).
+  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
   BALANCE_CHECK_INTERVAL: "300"
 network:
   http-proxy:

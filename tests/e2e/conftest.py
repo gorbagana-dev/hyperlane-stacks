@@ -1248,10 +1248,11 @@ def _build_wallet_string(keypairs: KeypairSet) -> tuple[str, list[str]]:
     """
     # Get relayer pubkey from fee-claim keypair (if it exists)
     relayer_keypair_path = keypairs.keys_dir / "relayer-fee-claim.json"
+    # (label, address, per-wallet threshold)
     wallet_entries = [
-        ("deployer", keypairs.deployer_pubkey),
-        ("igp-oracle", keypairs.igp_oracle_pubkey),
-        ("igp-beneficiary", keypairs.igp_beneficiary_pubkey),
+        ("deployer", keypairs.deployer_pubkey, None),
+        ("igp-oracle", keypairs.igp_oracle_pubkey, "2.0"),
+        ("igp-beneficiary", keypairs.igp_beneficiary_pubkey, None),
     ]
     if relayer_keypair_path.is_file():
         result = subprocess.run(
@@ -1259,10 +1260,16 @@ def _build_wallet_string(keypairs: KeypairSet) -> tuple[str, list[str]]:
             capture_output=True, text=True, check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
-            wallet_entries.append(("relayer", result.stdout.strip()))
+            wallet_entries.append(("relayer", result.stdout.strip(), "5.0"))
 
-    wallet_string = ",".join(f"{label}:{addr}" for label, addr in wallet_entries)
-    labels = [label for label, _ in wallet_entries]
+    parts = []
+    for label, addr, threshold in wallet_entries:
+        if threshold:
+            parts.append(f"{label}:{addr}:{threshold}")
+        else:
+            parts.append(f"{label}:{addr}")
+    wallet_string = ",".join(parts)
+    labels = [label for label, _, _ in wallet_entries]
     return wallet_string, labels
 
 
