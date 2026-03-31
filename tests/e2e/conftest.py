@@ -1399,20 +1399,23 @@ def monitoring_deployment(
         else:
             log.warning("TLS certificate %s not ready after 60s", tls_secret)
 
-    # HTTP probe both endpoints
-    for name, url in [("Grafana", GRAFANA_URL), ("Prometheus", PROMETHEUS_URL)]:
+    # HTTP probe both endpoints (use health endpoints, not / which redirects)
+    for name, url, health_path in [
+        ("Grafana", GRAFANA_URL, "/api/health"),
+        ("Prometheus", PROMETHEUS_URL, "/-/healthy"),
+    ]:
         log.info("Waiting for %s to respond via TLS ingress...", name)
-        for _ in range(30):
+        for _ in range(5):
             probe = subprocess.run(
                 ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
-                 f"{url}/"],
+                 f"{url}{health_path}"],
                 capture_output=True, text=True, check=False,
             )
             if probe.returncode == 0 and probe.stdout.strip() == "200":
                 break
             time.sleep(2)
         else:
-            log.warning("%s not returning 200 after 60s", name)
+            log.warning("%s not returning 200 after 10s", name)
         log.info("%s ingress ready at %s", name, url)
 
     yield {

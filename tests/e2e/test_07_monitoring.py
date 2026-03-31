@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from urllib.parse import quote
 
 import pytest
 
@@ -27,7 +28,7 @@ def _prometheus_query(prometheus_url: str, query: str) -> list[dict]:
     result = subprocess.run(
         [
             "curl", "-s", "-k",
-            f"{prometheus_url}/api/v1/query?query={query}",
+            f"{prometheus_url}/api/v1/query?query={quote(query)}",
         ],
         capture_output=True, text=True, timeout=30,
     )
