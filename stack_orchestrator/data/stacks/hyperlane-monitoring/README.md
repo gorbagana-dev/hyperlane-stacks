@@ -16,8 +16,8 @@ deploy-to: k8s-kind
 config:
   GORCHAIN_RPC_URL: "https://gorchain-rpc.example.com"
   SOLANA_RPC_URL: "https://solana-rpc.example.com"
-  MONITORED_WALLETS_GORCHAIN: "<comma-separated pubkeys>"
-  MONITORED_WALLETS_SOLANA: "<comma-separated pubkeys>"
+  MONITORED_WALLETS_GORCHAIN: "validator:Abc123,relayer:Def456"
+  MONITORED_WALLETS_SOLANA: "validator:Abc123,relayer:Def456"
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "300"
 network:
@@ -33,7 +33,7 @@ configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
-  grafana-dashboards: ./configmaps/grafana-dashboards
+  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
 secrets:
   hyperlane-monitoring-secrets:
@@ -53,8 +53,8 @@ Edit the config templates in `monitoring-deployment/configmaps/`:
 | `prometheus-config/` | `prometheus.yml`, `alerts.yml` -- scrape targets and alert rules |
 | `grafana-datasources-config/` | `datasources.yaml` -- Prometheus datasource definition |
 | `grafana-dashboard-config/` | `dashboards.yaml` -- dashboard provisioning config |
-| `grafana-dashboards/` | JSON dashboard files |
-| `balance-monitor-scripts-config/` | `check-balance.sh` -- balance monitoring script |
+| `grafana-dashboards-config/` | JSON dashboard files |
+| `balance-monitor-scripts-config/` | `check-balance.py` -- balance monitoring script |
 
 ## 3. Create secrets
 

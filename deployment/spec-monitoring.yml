@@ -32,7 +32,7 @@ configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
-  grafana-dashboards: ./configmaps/grafana-dashboards
+  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
 secrets:
   hyperlane-monitoring-secrets:

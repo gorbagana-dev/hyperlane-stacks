@@ -17,8 +17,16 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9091"]
 
-  # Kubernetes pod discovery — scrapes pods with prometheus.io/scrape annotation
-  # Requires RBAC (applied by deploy/commands.py)
+  # Kubernetes pod discovery — scrapes pods with prometheus.io/scrape annotation.
+  # Requires RBAC (applied by deploy/commands.py).
+  #
+  # TODO: For this to actually discover validators/relayer, their compose files
+  # need prometheus.io/scrape and prometheus.io/port annotations. SO supports
+  # pod annotations via the spec's `annotations:` section. The validator and
+  # relayer stacks need:
+  #   annotations:
+  #     prometheus.io/scrape: "true"
+  #     prometheus.io/port: "9090"   # (or whatever metrics port the agent uses)
   - job_name: kubernetes-pods
     kubernetes_sd_configs:
       - role: pod

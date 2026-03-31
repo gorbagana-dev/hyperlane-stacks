@@ -1,5 +1,11 @@
 groups:
   - name: hyperlane-alerts
+    # TODO: Verify actual Hyperlane agent metric names against the running
+    # validator/relayer. These were written from docs and may not match the
+    # exact metric names emitted by the Sealevel agents. Check:
+    #   curl http://<agent-pod>:9090/metrics
+    # The AgentPodRestarting alert requires kube-state-metrics to be deployed
+    # in the cluster (it provides kube_pod_container_status_restarts_total).
     rules:
       # Validator not signing checkpoints
       - alert: ValidatorNotSigning
