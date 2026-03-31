@@ -755,14 +755,24 @@ config:
   MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "30"
+volumes:
+  prometheus-data:
+  grafana-data:
+configmaps:
+  prometheus-config: ./configmaps/prometheus-config
+  grafana-datasources-config: ./configmaps/grafana-datasources-config
+  grafana-dashboard-config: ./configmaps/grafana-dashboard-config
+  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
+  balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
 secrets:
   hyperlane-monitoring-secrets:
     - GF_SECURITY_ADMIN_PASSWORD
 ```
 
 Note: `BALANCE_CHECK_INTERVAL` is set to 30s in tests (vs 300s in prod) so the
-balance monitor completes at least one cycle quickly. No `resources:` or `volumes:`
-section needed for tests — PVC sizes default to small values.
+balance monitor completes at least one cycle quickly. The `configmaps:` section is
+required because `prepare_spec` overwrites the auto-generated spec — without it,
+SO treats config volumes as PVCs.
 
 **hyperlane-warp-ui:**
 - Pod running
