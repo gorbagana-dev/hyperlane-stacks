@@ -1068,11 +1068,17 @@ def gas_oracle_deployment(
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
         cluster_id = get_cluster_id(deploy_dir)
         log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
+        # Read current oracle values from the running pod
+        oracle_values = {}
+        try:
+            oracle_values = _wait_for_oracle_update(namespace, cluster_id, timeout=30)
+        except TimeoutError:
+            log.warning("Could not read oracle values from running pod")
         yield {
             "deployment": DeploymentInfo(
                 deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
             ),
-            "oracle_values": {},
+            "oracle_values": oracle_values,
         }
         return
 
