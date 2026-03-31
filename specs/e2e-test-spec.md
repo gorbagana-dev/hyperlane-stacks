@@ -363,11 +363,11 @@ tests/
 │   ├── test_04_validator.py          # Both validators: deploy, signing, checkpoints, metrics
 │   ├── test_05_relayer.py            # Relayer deploy + verify metrics
 │   ├── test_06_gas_oracle.py         # Gas oracle deploy + verify on-chain IGP updates
-│   ├── test_06b_monitoring.py        # Monitoring stack: Prometheus, Grafana, balance monitor
-│   ├── test_07_bridge.py             # Cross-chain warp route transfers
-│   ├── test_08_fee_claim.py          # IGP fee claim tests
-│   ├── test_09_warp_ui.py            # Warp UI deploy + verify TLS ingress
-│   ├── test_10_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
+│   ├── test_07_monitoring.py         # Monitoring stack: Prometheus, Grafana, balance monitor
+│   ├── test_08_bridge.py             # Cross-chain warp route transfers
+│   ├── test_09_fee_claim.py          # IGP fee claim tests
+│   ├── test_10_warp_ui.py            # Warp UI deploy + verify TLS ingress
+│   ├── test_11_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
@@ -675,7 +675,7 @@ secrets:
     - PRIVY_ORACLE_WALLET_ID
 ```
 
-**hyperlane-monitoring** (`test_06b_monitoring.py`):
+**hyperlane-monitoring** (`test_07_monitoring.py`):
 
 The monitoring stack runs Prometheus, Grafana, Pushgateway, and a balance monitor
 in a single pod. Prometheus scrapes its own metrics and Pushgateway (static config),
@@ -908,7 +908,7 @@ Key arguments:
 - The CLI handles ATA creation on the destination automatically (using the
   ATA payer funded during warp deploy)
 
-### Tests (`test_07_bridge.py`)
+### Tests (`test_08_bridge.py`)
 
 All tests in `TestBridge` class, marked `@pytest.mark.slow`.
 
@@ -990,8 +990,8 @@ def wait_for_token_balance(
 Runs after Phase 3. Deploys the warp-ui stack and validates the bridge UI serves
 correctly and can execute actual cross-chain transfers through a browser.
 
-Two test tiers: HTTP smoke tests (`test_09_warp_ui.py`) and browser-driven bridge
-transfers (`test_10_warp_ui_bridge.py`).
+Two test tiers: HTTP smoke tests (`test_10_warp_ui.py`) and browser-driven bridge
+transfers (`test_11_warp_ui_bridge.py`).
 
 ### Prerequisites
 
@@ -1048,7 +1048,7 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
 }
 ```
 
-### Tier 1: HTTP Smoke Tests (`test_09_warp_ui.py`)
+### Tier 1: HTTP Smoke Tests (`test_10_warp_ui.py`)
 
 No browser needed — uses `subprocess.run(["curl", ...])` or Python `http.client`
 via port-forward to the warp-ui pod.
@@ -1148,7 +1148,7 @@ def test_warp_ui_chain_config_present(self, warp_ui_deployment):
     )
 ```
 
-### Tier 2: Browser Bridge Tests (`test_10_warp_ui_bridge.py`)
+### Tier 2: Browser Bridge Tests (`test_11_warp_ui_bridge.py`)
 
 Uses **Playwright** to drive the warp-ui in a real browser with the **Backpack
 wallet extension** that signs and submits real transactions to the test chains.
