@@ -1290,6 +1290,26 @@ def monitoring_deployment(
             ],
             capture_output=True, text=True, check=False,
         ).stdout.strip()
+        assert pod_name, "Monitoring pod not found — cannot reuse deployment"
+        # Recover wallet labels from Prometheus metrics
+        wallet_labels = []
+        probe = subprocess.run(
+            ["curl", "-s", "-k",
+             f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
+            capture_output=True, text=True, check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            import json as _json
+            try:
+                data = _json.loads(probe.stdout)
+                labels = {
+                    r["metric"].get("wallet")
+                    for r in data.get("data", {}).get("result", [])
+                    if r["metric"].get("wallet")
+                }
+                wallet_labels = sorted(labels)
+            except (ValueError, KeyError):
+                pass
         log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
         yield {
             "deployment": DeploymentInfo(
@@ -1297,7 +1317,7 @@ def monitoring_deployment(
             ),
             "namespace": namespace,
             "pod_name": pod_name,
-            "expected_wallet_labels": [],
+            "expected_wallet_labels": wallet_labels,
             "grafana_url": GRAFANA_URL,
             "prometheus_url": PROMETHEUS_URL,
         }
