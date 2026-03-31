@@ -12,11 +12,15 @@ config:
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "300"
 network:
-  ports:
-    prometheus:
-      - "9090"
-    grafana:
-      - "3000"
+  http-proxy:
+    - host-name: grafana.example.com
+      routes:
+        - path: /
+          proxy-to: grafana:3000
+    - host-name: prometheus.example.com
+      routes:
+        - path: /
+          proxy-to: prometheus:9090
 volumes:
   prometheus-data:
   grafana-data:

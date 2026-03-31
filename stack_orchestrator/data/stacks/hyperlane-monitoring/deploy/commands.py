@@ -1,10 +1,29 @@
 from pathlib import Path
+
 from stack_orchestrator.deploy.deployment_context import DeploymentContext
 
 
 def init(deploy_command_context):
-    """Return default spec content for the monitoring stack."""
-    return {}
+    """Return default spec content for the monitoring stack.
+
+    Provides http-proxy configuration for ingress routing to Grafana
+    and Prometheus. Pushgateway is not exposed (internal write endpoint).
+    """
+    return {
+        "network": {
+            "http-proxy": [
+                {
+                    "host-name": "grafana.example.com",
+                    "routes": [{"path": "/", "proxy-to": "grafana:3000"}],
+                },
+                {
+                    "host-name": "prometheus.example.com",
+                    "routes": [{"path": "/", "proxy-to": "prometheus:9090"}],
+                },
+            ],
+            "acme-email": "admin@example.com",
+        }
+    }
 
 
 def create(context: DeploymentContext, extra_args):
