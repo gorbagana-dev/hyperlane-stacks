@@ -27,6 +27,30 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - [Playwright](https://playwright.dev/python/) browser binary (for warp-ui browser tests): `playwright install chromium`
 - Xvfb (for warp-ui browser tests without a display): `apt install xvfb` — use `xvfb-run` to wrap pytest
 
+### Firewall (UFW)
+
+If UFW is enabled on the host, Kind pods won't be able to reach host services
+(Gorchain/Solana RPC nodes) via the Docker bridge network. The pods connect to
+the host's Docker bridge IP (e.g. `172.18.0.1`), which hits the INPUT chain —
+UFW's default `deny (incoming)` drops this traffic even though the services are
+listening on `0.0.0.0`.
+
+Allow the Kind/Docker network to reach the host:
+
+```bash
+# Check if UFW is active and blocking
+sudo ufw status verbose  # look for "deny (incoming)"
+
+# Allow the Docker bridge subnet
+sudo ufw allow from 172.18.0.0/16
+```
+
+Symptoms of this issue: deployer jobs fail with `ConnectionRefused` when trying
+to reach `gorchain-rpc:8899` or `solana-rpc:18899`, even though `curl
+localhost:8899/health` works fine on the host and the k8s Service/Endpoints
+exist with the correct IP. Ping from inside the Kind node to the host IP works
+(UFW allows ICMP by default), but TCP connections hang or are refused.
+
 ### Docker registry login
 
 Published container images are hosted on ghcr.io as private packages. You need a GitHub Personal Access Token (PAT) with `packages:read` scope:
