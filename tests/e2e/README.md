@@ -24,7 +24,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - [Solana CLI](https://docs.anza.xyz/cli/install) (`solana`, `solana-keygen`, `spl-token`)
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`cast`)
 - Docker — logged in to ghcr.io for pulling published images (see below)
-- [Playwright](https://playwright.dev/python/) browser binary (for warp-ui browser tests): `playwright install chromium`
+- [Playwright](https://playwright.dev/python/) browser binary and system dependencies (for warp-ui browser tests): `playwright install chromium && playwright install-deps chromium`
 - Xvfb (for warp-ui browser tests without a display): `apt install xvfb` — use `xvfb-run` to wrap pytest
 
 ### Firewall (UFW)
@@ -68,7 +68,8 @@ cd tests/e2e
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-playwright install chromium  # download browser binary for warp-ui tests
+playwright install chromium       # download browser binary for warp-ui tests
+playwright install-deps chromium  # install system libraries (libatk, libgdk, etc.)
 ```
 
 ## Running locally
