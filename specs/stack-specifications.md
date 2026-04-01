@@ -167,7 +167,7 @@ Single parameterized compose file. All chain-specific values come from env vars 
 
 | Service | Image | Notes |
 |---------|-------|-------|
-| agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
+| agent-config-init | `alpine/kubectl:1.35.3` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
 | validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | CLI args from env vars, metrics on :9090 |
 | kms-proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
 
@@ -218,7 +218,7 @@ Delivers cross-chain messages between Gorchain and Solana. Includes an IGP fee c
 
 | Service | Image | Notes |
 |---------|-------|-------|
-| agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
+| agent-config-init | `alpine/kubectl:1.35.3` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
 | relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
 | igp-fee-claim | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
 

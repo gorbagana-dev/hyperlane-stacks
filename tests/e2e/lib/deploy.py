@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,14 +20,14 @@ DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 # Shared namespace for all e2e stacks — derived from the Kind cluster name.
 E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 
-# TODO: Pin third-party images (bitnami/kubectl, prom/prometheus, prom/pushgateway,
+# TODO: Pin remaining third-party images (prom/prometheus, prom/pushgateway,
 # grafana/grafana) to specific versions to avoid Docker Hub rate limits and
 # imagePullPolicy: Always on :latest tags. ghcr.io/gorbagana-dev/* images are
 # fine as :latest — we control that registry.
 DEPLOYER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
 AGENT_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-agent:latest"
 KMS_PROXY_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest"
-KUBECTL_IMAGE = "bitnami/kubectl:latest"
+KUBECTL_IMAGE = "alpine/kubectl:1.35.3"
 MINIO_IMAGE = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
 MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
@@ -137,13 +138,47 @@ def build_deployer_image(stack_name: str = "hyperlane-svm-deployer") -> None:
     log_info("Deployer image built successfully")
 
 
+def _kind_load_image(image: str, cluster_name: str) -> None:
+    """Load a Docker image into a Kind cluster node.
+
+    Tries ``kind load docker-image`` first. If that fails (containerd v2
+    nodes choke on ``ctr import --all-platforms``), falls back to piping
+    ``docker save`` into ``ctr import`` without ``--all-platforms``.
+    """
+    result = subprocess.run(
+        ["kind", "load", "docker-image", image, "--name", cluster_name],
+        capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        return
+
+    log_info(f"kind load failed, falling back to manual ctr import for {image}")
+    node = f"{cluster_name}-control-plane"
+    save = subprocess.Popen(
+        ["docker", "save", image],
+        stdout=subprocess.PIPE,
+    )
+    ctr = subprocess.run(
+        [
+            "docker", "exec", "--privileged", "-i", node,
+            "ctr", "--namespace=k8s.io", "images", "import",
+            "--digests", "--snapshotter=overlayfs", "-",
+        ],
+        stdin=save.stdout,
+        capture_output=True, text=True,
+    )
+    save.wait()
+    if ctr.returncode != 0:
+        raise RuntimeError(f"Failed to load {image} into kind: {ctr.stderr.strip()}")
+
+
 def prefetch_deployer_image(cluster_name: str = "hyperlane-e2e") -> None:
     """Pull the published deployer image and load it into the kind cluster."""
     log_info(f"Pulling deployer image {DEPLOYER_IMAGE}...")
     run_cmd(["docker", "pull", DEPLOYER_IMAGE])
 
     log_info(f"Loading deployer image into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", DEPLOYER_IMAGE, "--name", cluster_name])
+    _kind_load_image(DEPLOYER_IMAGE, cluster_name)
 
     log_info("Deployer image loaded into kind cluster")
 
@@ -155,7 +190,7 @@ def build_kms_proxy_image(cluster_name: str = "hyperlane-e2e") -> None:
     run_cmd(["docker", "build", "-t", KMS_PROXY_IMAGE_LOCAL, str(kms_proxy_dir)])
 
     log_info(f"Loading kms-proxy image into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", KMS_PROXY_IMAGE_LOCAL, "--name", cluster_name])
+    _kind_load_image(KMS_PROXY_IMAGE_LOCAL, cluster_name)
 
     log_info("KMS proxy image built and loaded into kind cluster")
 
@@ -176,7 +211,7 @@ def build_agent_image(stack_name: str = "hyperlane-validator", cluster_name: str
 
     for image in (AGENT_IMAGE_LOCAL, KMS_PROXY_IMAGE_LOCAL):
         log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
-        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+        _kind_load_image(image, cluster_name)
 
     log_info("Agent and kms-proxy images built and loaded into kind cluster")
 
@@ -188,7 +223,7 @@ def prefetch_agent_images(cluster_name: str = "hyperlane-e2e") -> None:
         run_cmd(["docker", "pull", image])
 
         log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
-        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+        _kind_load_image(image, cluster_name)
 
     log_info("Agent images loaded into kind cluster")
 
@@ -199,7 +234,7 @@ def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
     run_cmd(["docker", "pull", KUBECTL_IMAGE])
 
     log_info(f"Loading {KUBECTL_IMAGE} into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", KUBECTL_IMAGE, "--name", cluster_name])
+    _kind_load_image(KUBECTL_IMAGE, cluster_name)
 
     log_info("Validator support images loaded into kind cluster")
 
@@ -215,7 +250,7 @@ def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui", cluster_name: str
     run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
 
     log_info(f"Loading {WARP_UI_IMAGE_LOCAL} into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", WARP_UI_IMAGE_LOCAL, "--name", cluster_name])
+    _kind_load_image(WARP_UI_IMAGE_LOCAL, cluster_name)
 
     log_info("Warp UI image built and loaded into kind cluster")
 
@@ -226,7 +261,7 @@ def prefetch_warp_ui_image(cluster_name: str = "hyperlane-e2e") -> None:
     run_cmd(["docker", "pull", WARP_UI_IMAGE])
 
     log_info(f"Loading warp-ui image into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", WARP_UI_IMAGE, "--name", cluster_name])
+    _kind_load_image(WARP_UI_IMAGE, cluster_name)
 
     log_info("Warp UI image loaded into kind cluster")
 
@@ -238,7 +273,7 @@ def prefetch_minio_images(cluster_name: str = "hyperlane-e2e") -> None:
         run_cmd(["docker", "pull", image])
 
         log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
-        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+        _kind_load_image(image, cluster_name)
 
     log_info("MinIO images loaded into kind cluster")
 
@@ -249,7 +284,7 @@ def prefetch_gas_oracle_image(cluster_name: str = "hyperlane-e2e") -> None:
     run_cmd(["docker", "pull", GAS_ORACLE_IMAGE])
 
     log_info(f"Loading gas oracle image into kind cluster '{cluster_name}'...")
-    run_cmd(["kind", "load", "docker-image", GAS_ORACLE_IMAGE, "--name", cluster_name])
+    _kind_load_image(GAS_ORACLE_IMAGE, cluster_name)
 
     log_info("Gas oracle image loaded into kind cluster")
 
@@ -268,7 +303,7 @@ def prefetch_monitoring_images(cluster_name: str = "hyperlane-e2e") -> None:
         run_cmd(["docker", "pull", image])
 
         log_info(f"Loading {image} into kind cluster '{cluster_name}'...")
-        run_cmd(["kind", "load", "docker-image", image, "--name", cluster_name])
+        _kind_load_image(image, cluster_name)
 
     log_info("Monitoring images loaded into kind cluster")
 

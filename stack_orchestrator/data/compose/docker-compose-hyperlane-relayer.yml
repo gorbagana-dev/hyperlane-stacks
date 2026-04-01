@@ -1,6 +1,6 @@
 services:
   agent-config-init:
-    image: bitnami/kubectl:latest
+    image: alpine/kubectl:1.35.3
     user: "0"
     labels:
       laconic.init-container: "true"
