@@ -92,6 +92,7 @@ jobs:
           path: |
             tests/e2e/.logs/
             tests/e2e/.deployments/
-            /tmp/solana-test-ledger/validator.log
+            tests/e2e/.data/test-validator-solana.stderr
+            tests/e2e/.data/test-ledger-solana/validator.log
           retention-days: 7
           include-hidden-files: true
