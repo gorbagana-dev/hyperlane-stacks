@@ -250,8 +250,8 @@ S3-compatible storage for validator checkpoints. Replaces shared PVCs (RWX) with
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| minio | `minio/minio:latest` | `server /data`, ports 9000 (S3) + 9001 (console) |
-| minio-init | `minio/mc:latest` | `restart: "no"`, creates validator buckets then exits |
+| minio | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `server /data`, ports 9000 (S3) + 9001 (console) |
+| minio-init | `minio/mc:RELEASE.2025-08-13T08-35-41Z` | `restart: "no"`, creates validator buckets then exits |
 
 ### Buckets Created
 - `hyperlane-validator-gorchain`

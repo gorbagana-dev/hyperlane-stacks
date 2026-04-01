@@ -19,12 +19,16 @@ DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 # Shared namespace for all e2e stacks — derived from the Kind cluster name.
 E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 
+# TODO: Pin third-party images (bitnami/kubectl, prom/prometheus, prom/pushgateway,
+# grafana/grafana) to specific versions to avoid Docker Hub rate limits and
+# imagePullPolicy: Always on :latest tags. ghcr.io/gorbagana-dev/* images are
+# fine as :latest — we control that registry.
 DEPLOYER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
 AGENT_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-agent:latest"
 KMS_PROXY_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest"
 KUBECTL_IMAGE = "bitnami/kubectl:latest"
-MINIO_IMAGE = "minio/minio:latest"
-MINIO_MC_IMAGE = "minio/mc:latest"
+MINIO_IMAGE = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
+MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
 GAS_ORACLE_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest"
 

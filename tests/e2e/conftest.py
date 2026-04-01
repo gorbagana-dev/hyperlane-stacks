@@ -37,7 +37,9 @@ from lib.common import (
     get_configmap_data,
     get_configmap_json,
     run_deployer_cli,
+    save_job_describe,
     save_job_logs,
+    save_pod_describe,
     save_pod_logs,
     wait_for_job_complete,
     wait_for_pod_phase,
@@ -445,11 +447,14 @@ def minio_deployment(
 
         log.info("Waiting for minio-init job to complete...")
         job_name = f"{cluster_id}-job-hyperlane-minio-init"
-        wait_for_job_complete(namespace, job_name, timeout=200)
+        wait_for_job_complete(namespace, job_name, timeout=300)
         save_job_logs(namespace, job_name)
         log.info("MinIO stack deployed and initialized")
     except Exception:
+        save_job_logs(namespace, f"{cluster_id}-job-hyperlane-minio-init")
+        save_job_describe(namespace, f"{cluster_id}-job-hyperlane-minio-init")
         save_pod_logs(namespace, f"app={cluster_id}", "minio")
+        save_pod_describe(namespace, f"app={cluster_id}", "minio")
         raise
 
     yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
@@ -529,6 +534,7 @@ def deployer_deployment(
         log.info("Core deployer job complete, artifacts available")
     except Exception:
         save_job_logs(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
+        save_job_describe(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
         raise
 
     yield deploy_info
@@ -660,6 +666,7 @@ def warp_deployment(
         log.info("Warp deployer job complete, artifacts available")
     except Exception:
         save_job_logs(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
+        save_job_describe(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
         raise
 
     ctx = {
@@ -825,6 +832,7 @@ def _deploy_validator(
         log.info("%s is running", stack_name)
     except Exception:
         save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
+        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
         raise
 
     yield ValidatorInfo(
@@ -983,6 +991,7 @@ def relayer_deployment(
         log.info("Relayer is running")
     except Exception:
         save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
+        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "relayer")
         raise
 
     yield RelayerInfo(deployment=deploy_info)
@@ -1128,6 +1137,7 @@ def gas_oracle_deployment(
         log.info("Gas oracle pod is running")
     except Exception:
         save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
         raise
 
     # Wait for the first successful oracle update
@@ -1370,6 +1380,7 @@ def monitoring_deployment(
         log.info("Monitoring pod is running")
     except Exception:
         save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "monitoring")
         raise
 
     # Get pod name for kubectl exec in tests
@@ -1388,6 +1399,7 @@ def monitoring_deployment(
         _wait_for_balance_monitor(namespace, pod_name)
     except TimeoutError:
         save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "monitoring")
         raise
 
     # Give Prometheus time to scrape the Pushgateway metrics
