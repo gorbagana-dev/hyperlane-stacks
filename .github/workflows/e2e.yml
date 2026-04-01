@@ -36,6 +36,7 @@ jobs:
           cd tests/e2e
           pip install -r requirements.txt
           playwright install chromium
+          playwright install-deps chromium
 
       - name: Install Xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
@@ -92,6 +93,7 @@ jobs:
           path: |
             tests/e2e/.logs/
             tests/e2e/.deployments/
-            /tmp/solana-test-ledger/validator.log
+            tests/e2e/.data/test-validator-solana.stderr
+            tests/e2e/.data/test-ledger-solana/validator.log
           retention-days: 7
           include-hidden-files: true

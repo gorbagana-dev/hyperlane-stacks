@@ -434,6 +434,43 @@ def save_pod_logs(namespace: str, label_selector: str, name: str) -> None:
     log_info(f"Pod logs for {name} saved to {LOGS_DIR}")
 
 
+def save_pod_describe(namespace: str, label_selector: str, name: str) -> None:
+    """Save ``kubectl describe`` output for pods matching a label selector."""
+    result = subprocess.run(
+        ["kubectl", "describe", "pods", "-n", namespace, "-l", label_selector],
+        capture_output=True, text=True,
+    )
+    if result.stdout:
+        out = LOGS_DIR / f"{name}_describe.txt"
+        out.write_text(result.stdout)
+        log_info(f"Pod describe for {name} saved to {out}")
+
+
+def save_job_describe(namespace: str, job_name: str) -> None:
+    """Save ``kubectl describe`` output for a Job and its pods."""
+    # Describe the Job itself
+    result = subprocess.run(
+        ["kubectl", "describe", "job", job_name, "-n", namespace],
+        capture_output=True, text=True,
+    )
+    parts = []
+    if result.stdout:
+        parts.append(result.stdout)
+
+    # Describe the Job's pods (labeled job-name=<job_name>)
+    pod_result = subprocess.run(
+        ["kubectl", "describe", "pods", "-n", namespace, "-l", f"job-name={job_name}"],
+        capture_output=True, text=True,
+    )
+    if pod_result.stdout:
+        parts.append(pod_result.stdout)
+
+    if parts:
+        out = LOGS_DIR / f"job_{job_name}_describe.txt"
+        out.write_text("\n---\n".join(parts))
+        log_info(f"Job describe for {job_name} saved to {out}")
+
+
 # ---------------------------------------------------------------------------
 # kubectl helper
 # ---------------------------------------------------------------------------

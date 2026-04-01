@@ -13,7 +13,7 @@ from conftest import MinioInfo
 
 from lib.common import PortForward
 
-MC_IMAGE = "minio/mc:latest"
+MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 
 
 # ---------------------------------------------------------------------------

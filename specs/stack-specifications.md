@@ -167,7 +167,7 @@ Single parameterized compose file. All chain-specific values come from env vars 
 
 | Service | Image | Notes |
 |---------|-------|-------|
-| agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
+| agent-config-init | `alpine/kubectl:1.35.3` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
 | validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | CLI args from env vars, metrics on :9090 |
 | kms-proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest` | Port 9999, proxies KMS Sign/GetPublicKey/DescribeKey to Privy |
 
@@ -218,7 +218,7 @@ Delivers cross-chain messages between Gorchain and Solana. Includes an IGP fee c
 
 | Service | Image | Notes |
 |---------|-------|-------|
-| agent-config-init | `bitnami/kubectl:latest` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
+| agent-config-init | `alpine/kubectl:1.35.3` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
 | relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
 | igp-fee-claim | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
 
@@ -250,8 +250,8 @@ S3-compatible storage for validator checkpoints. Replaces shared PVCs (RWX) with
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
-| minio | `minio/minio:latest` | `server /data`, ports 9000 (S3) + 9001 (console) |
-| minio-init | `minio/mc:latest` | `restart: "no"`, creates validator buckets then exits |
+| minio | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | `server /data`, ports 9000 (S3) + 9001 (console) |
+| minio-init | `minio/mc:RELEASE.2025-08-13T08-35-41Z` | `restart: "no"`, creates validator buckets then exits |
 
 ### Buckets Created
 - `hyperlane-validator-gorchain`

@@ -32,7 +32,7 @@ from lib.privy_mock import (
 
 log = logging.getLogger(__name__)
 
-MC_IMAGE = "minio/mc:latest"
+MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 
 # Mapping from chain name to MinIO bucket and validator wallet ID
 CHAIN_CONFIG = {
@@ -170,7 +170,7 @@ def _test_both_containers_ready(info: ValidatorInfo, timeout: int = 90) -> None:
         if statuses.get("validator") == "true" and statuses.get("kms-proxy") == "true":
             return
         if time.time() > deadline:
-            assert False, f"containers not ready after {timeout}s: {statuses}"
+            raise AssertionError(f"containers not ready after {timeout}s: {statuses}")
         time.sleep(5)
 
 
