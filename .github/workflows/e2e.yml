@@ -59,7 +59,7 @@ jobs:
       - name: Install laconic-so
         run: |
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
+          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 
