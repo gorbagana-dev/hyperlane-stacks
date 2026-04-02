@@ -153,7 +153,8 @@ def create_namespace(namespace: str) -> None:
         fail_exit(f"Failed to create namespace {namespace}: {result.stderr}")
 
 
-def apply_host_chain_services(namespace: str, fixture_path: Path | None = None) -> None:
+def get_host_ip() -> str:
+    """Detect the Kind network gateway IP (host IP from inside the cluster)."""
     log_info("Detecting host IP for kind network...")
     result = run_cmd(
         [
@@ -177,16 +178,7 @@ def apply_host_chain_services(namespace: str, fixture_path: Path | None = None) 
         fail_exit(f"Could not detect IPv4 host IP from kind network. Raw output: {result.stdout.strip()}")
 
     log_info(f"Host IP: {host_ip}")
-
-    if fixture_path is None:
-        fixture_path = E2E_DIR / "fixtures" / "host-chain-services.yaml"
-
-    log_info(f"Applying host-chain-services to namespace {namespace}...")
-    template = fixture_path.read_text()
-    rendered = template.replace("${HOST_IP}", host_ip).replace("${NAMESPACE}", namespace)
-
-    run_cmd(["kubectl", "apply", "-f", "-"], input_text=rendered)
-    log_info("Host chain services applied")
+    return host_ip
 
 
 def apply_rbac(namespace: str) -> None:

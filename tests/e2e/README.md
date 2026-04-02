@@ -147,7 +147,6 @@ tests/e2e/
 └── fixtures/
     ├── kind-config.yaml                 # Kind cluster with ingress ports
     ├── cert-manager-issuer.yaml         # Self-signed TLS issuer
-    ├── host-chain-services.yaml         # k8s Services pointing to host chain nodes + mock Privy
     ├── test-spec-deployer.yml           # laconic-so spec for core deployer
     ├── test-spec-warp-deployer.yml      # laconic-so spec for warp deployer
     ├── test-spec-minio.yml              # laconic-so spec for MinIO
@@ -170,9 +169,11 @@ single Kind cluster with a shared namespace. With cluster management enabled,
 `deploy stop` on any single stack would call `destroy_cluster()` and tear down
 the entire cluster — destroying all other running stacks.
 
-**Ordering constraints.** The tests need the namespace, secrets, RBAC, and
-host-chain-services to exist *before* `deploy start`. SO only creates the
-namespace during `deploy start`, which is too late for our setup sequence.
+**Ordering constraints.** The tests need the namespace, secrets, and RBAC
+to exist *before* `deploy start`. SO only creates the namespace during
+`deploy start`, which is too late for our setup sequence. Host-chain
+services (gorchain-rpc, solana-rpc, privy-mock) are now handled
+automatically by SO via the `external-services` spec key.
 
 **Ingress with TLS on Kind.** SO suppresses TLS on Kind clusters
 (`use_tls = not self.is_kind()`), so the Ingress it creates has no TLS config.

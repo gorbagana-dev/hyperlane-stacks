@@ -21,8 +21,8 @@ from lib.chain import (
 )
 from lib.cluster import (
     KIND_CLUSTER_NAME,
-    apply_host_chain_services,
     apply_rbac,
+    get_host_ip,
     create_kind_cluster,
     create_namespace,
     create_selfsigned_issuer,
@@ -250,6 +250,11 @@ def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
         ensure_hosts_entry("prometheus.test")
     else:
         log.info("Skipping cluster setup (--skip-cluster-setup)")
+
+    # Detect host IP for external-services (Kind gateway → host machine).
+    # Populates SPEC_REPLACEMENTS so test specs can use REPLACE_HOST_IP.
+    host_ip = get_host_ip()
+    SPEC_REPLACEMENTS["REPLACE_HOST_IP"] = host_ip
 
     yield
 
@@ -501,15 +506,11 @@ def deployer_deployment(
     )
     namespace = deploy_info.namespace
 
-    # TODO: revisit — manually creating the namespace is a workaround because
-    # laconic-so only creates it during deploy start, but we need it earlier
-    # for host-chain-services, RBAC, and secrets. Consider reordering or
-    # letting laconic-so handle this.
+    # Namespace must exist before deploy start for RBAC and secrets.
+    # Host-chain services (gorchain-rpc, solana-rpc, privy-mock) are now
+    # created automatically by laconic-so via the external-services spec key.
     log.info("Creating namespace %s...", namespace)
     create_namespace(namespace)
-
-    log.info("Applying host-chain-services to namespace %s...", namespace)
-    apply_host_chain_services(namespace)
 
     log.info("Applying RBAC to namespace %s...", namespace)
     apply_rbac(namespace)
