@@ -22,12 +22,12 @@ from lib.chain import (
 from lib.cluster import (
     KIND_CLUSTER_NAME,
     apply_rbac,
-    get_host_ip,
     create_kind_cluster,
     create_namespace,
     create_selfsigned_issuer,
     destroy_kind_cluster,
     ensure_hosts_entry,
+    get_host_ip,
     install_cert_manager,
     install_ingress_nginx,
 )
@@ -1608,6 +1608,51 @@ def bridge_setup(
             owner_keypair=igp_oracle_keypair,
         )
 
+    # Create bridge user keypairs and fund them for concurrent transfer tests.
+    num_bridge_users = 5
+    users: list[dict[str, str]] = []
+    solana_rpc = CHAINS["solana"]["rpc"]
+    gorchain_rpc = CHAINS["gorchain"]["rpc"]
+
+    log.info("Creating %d bridge user keypairs...", num_bridge_users)
+    for i in range(num_bridge_users):
+        kp_path = KEYS_DIR / f"bridge-user-{i}.json"
+        if not kp_path.exists():
+            subprocess.run(
+                [
+                    "solana-keygen", "new",
+                    "--no-bip39-passphrase", "--force",
+                    "-o", str(kp_path),
+                ],
+                capture_output=True, text=True, check=True,
+            )
+        pubkey = subprocess.run(
+            ["solana-keygen", "pubkey", str(kp_path)],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        users.append({"keypair_path": str(kp_path), "pubkey": pubkey})
+        log.info("  bridge-user-%d: %s", i, pubkey)
+
+    log.info("Funding bridge users with SOL...")
+    for i, user in enumerate(users):
+        label = f"bridge-user-{i}"
+        _airdrop(10, user["pubkey"], solana_rpc, f"{label} (Solana)")
+        _airdrop(10, user["pubkey"], gorchain_rpc, f"{label} (Gorchain)")
+
+    log.info("Funding bridge users with USDC on Solana...")
+    deployer_cfg = _write_solana_config(sender_keypair, solana_rpc)
+    deployer_cli = ["--config", deployer_cfg, "--url", solana_rpc]
+    for i, user in enumerate(users):
+        subprocess.run(
+            [
+                "spl-token", *deployer_cli,
+                "transfer", token_mint, "2", user["pubkey"],
+                "--fund-recipient",
+            ],
+            capture_output=True, text=True, check=True,
+        )
+        log.info("  bridge-user-%d: funded 2.0 USDC", i)
+
     return {
         "namespace": ns,
         "token_mint": token_mint,
@@ -1615,6 +1660,7 @@ def bridge_setup(
         "sender_keypair": sender_keypair,
         "warp_programs": warp_programs,
         "relayer_cluster_id": relayer_deployment.cluster_id,
+        "users": users,
     }
 
 
