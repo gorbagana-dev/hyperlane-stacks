@@ -35,7 +35,7 @@ secrets:
     - SOLANA_VALIDATOR_ADDRESS
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: REPLACE_WITH_GITHUB_USERNAME
   token-env: GHCR_PAT

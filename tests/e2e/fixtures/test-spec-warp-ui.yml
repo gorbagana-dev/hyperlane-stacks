@@ -20,7 +20,7 @@ config:
   WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
   WARP_SYNTHETIC_MINT: "REPLACE_AT_RUNTIME"
   NEXT_PUBLIC_WALLET_CONNECT_ID: "abb082e6cb1a18b07229ed1158a7b2eb"
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT

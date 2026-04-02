@@ -23,7 +23,7 @@ secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
     - PRIVY_ORACLE_WALLET_ID
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT

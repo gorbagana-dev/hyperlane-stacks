@@ -58,7 +58,7 @@ secrets:
     - PRIVY_APP_ID              # Privy application ID
     - PRIVY_APP_SECRET          # Privy application secret
     - PRIVY_ORACLE_WALLET_ID    # Privy server wallet ID (Ed25519, IGP account owner)
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT

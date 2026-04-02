@@ -42,7 +42,7 @@ WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
 def ensure_ghcr_pat() -> None:
     """Set GHCR_PAT env var from ~/.docker/config.json if not already set.
 
-    laconic-so's registry-credentials reads the token from the env var
+    laconic-so's image-pull-secret reads the token from the env var
     specified in ``token-env`` (GHCR_PAT) to create a k8s pull secret.
     This function extracts the ghcr.io token from Docker's config so the
     user only needs ``docker login ghcr.io`` as a prerequisite.
