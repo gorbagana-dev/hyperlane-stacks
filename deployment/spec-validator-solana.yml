@@ -35,3 +35,7 @@ image-pull-secret:
   server: ghcr.io
   username: REPLACE_WITH_GITHUB_USERNAME
   token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0

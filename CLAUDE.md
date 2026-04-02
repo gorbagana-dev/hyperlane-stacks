@@ -150,6 +150,16 @@ When making structural changes, update:
 - **Namespace derivation**: SO derives the k8s namespace from the stack name
   (`laconic-{stack_name}`), not the cluster-id. Specs with an explicit
   `namespace:` key override this.
+- **`external-services:`**: Declares external endpoints. Three modes:
+  `host:` (ExternalName/DNS), `ip:` (headless Service + static IP Endpoints),
+  `selector:` (headless Service + pod IP discovery). Test specs use `ip:` mode
+  with `REPLACE_HOST_IP` placeholder for the Kind gateway.
+- **`image-overrides:`**: Override container images at the spec level.
+  Keys are compose service names, values are full image refs. CLI `--image`
+  flags take precedence. All prod specs have commented examples.
+- **Ops commands**: `deployment update` is now `deployment update-envs`.
+  `deployment prepare` combines init + create. `deployment restart --image`
+  swaps a container image without full stop/start.
 
 ## Git workflow
 

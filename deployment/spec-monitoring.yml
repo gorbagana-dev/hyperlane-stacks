@@ -43,3 +43,8 @@ configmaps:
 secrets:
   hyperlane-monitoring-secrets:
     - GF_SECURITY_ADMIN_PASSWORD
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   prometheus: prom/prometheus:v2.53.0
+#   grafana: grafana/grafana:11.1.0
+#   balance-monitor: ghcr.io/gorbagana-dev/hyperlane-balance-monitor:v1.0.0
