@@ -313,6 +313,24 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
         --program-id "$IGP_ID" \
         --igp-account "$IGP_ACCOUNT" \
         "${IGP_ORACLE_PUBKEY}"
+
+      # Transfer overhead IGP account ownership to the same oracle wallet.
+      # The overhead IGP wraps the base IGP with per-domain gas overhead values.
+      # Keeping both under the same owner simplifies administration.
+      OVERHEAD_IGP_ACCOUNT=$(jq -r '.overhead_igp_account // empty' "${PROGRAMS_FILE}")
+      if [ -z "$OVERHEAD_IGP_ACCOUNT" ]; then
+        echo "FATAL: overhead_igp_account missing from ${CHAIN_OUTPUT} program-ids.json"
+        exit 1
+      fi
+      echo "Transferring overhead IGP account ownership to oracle wallet on ${CHAIN_OUTPUT}..."
+      echo "  IGP program: ${IGP_ID}, overhead IGP account: ${OVERHEAD_IGP_ACCOUNT}, new owner: ${IGP_ORACLE_PUBKEY}"
+      hyperlane-sealevel-client \
+        --url "$RPC_URL" \
+        --keypair "${DEPLOYER_KEY_FILE}" \
+        igp transfer-overhead-igp-ownership \
+        --program-id "$IGP_ID" \
+        --igp-account "$OVERHEAD_IGP_ACCOUNT" \
+        "${IGP_ORACLE_PUBKEY}"
     fi
   done
 fi

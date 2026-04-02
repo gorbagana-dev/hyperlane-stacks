@@ -174,16 +174,42 @@ fi
 # -------------------------------------------------------
 if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
   echo ""
-  echo "=== Transferring warp route ownership to hardware wallet ==="
-  echo "NOTE: Transfer of warp route program ownership requires the deployed"
-  echo "program addresses from the CLI output. This may need manual steps."
+  echo "=== Transferring warp route upgrade authority to hardware wallet ==="
+  echo "Hardware wallet pubkey: ${HARDWARE_WALLET_PUBKEY}"
 
-  # Transfer upgrade authority via solana CLI (if program addresses are known)
-  # The warp-route deploy output should contain the deployed program IDs.
-  # TODO: Parse warp-route deploy output for program addresses and transfer
-  # upgrade authority automatically.
-  echo "WARNING: Automatic warp route ownership transfer not yet implemented."
-  echo "Use 'solana program set-upgrade-authority' manually with the deployed program IDs."
+  # The warp-route deploy writes program-ids.json with per-chain entries:
+  #   {"solana": {"hex": "0x...", "base58": "..."}, "gorchain": {"hex": "0x...", "base58": "..."}}
+  WARP_PROGRAMS_FILE="${WARP_OUTPUT_DIR}/program-ids.json"
+  if [ ! -f "${WARP_PROGRAMS_FILE}" ]; then
+    echo "WARNING: ${WARP_PROGRAMS_FILE} not found, cannot transfer upgrade authority."
+    echo "Use 'solana program set-upgrade-authority' manually with the deployed program IDs."
+  else
+    # Map chain names to RPC URLs for the solana CLI
+    for CHAIN_NAME in $(jq -r 'keys[]' "${WARP_PROGRAMS_FILE}"); do
+      PROGRAM_ID=$(jq -r ".\"${CHAIN_NAME}\".base58 // empty" "${WARP_PROGRAMS_FILE}")
+      if [ -z "$PROGRAM_ID" ]; then
+        echo "WARNING: No base58 address for ${CHAIN_NAME} in warp program-ids.json, skipping."
+        continue
+      fi
+
+      # Determine RPC URL from chain name
+      CHAIN_UPPER=$(echo "$CHAIN_NAME" | tr '[:lower:]' '[:upper:]')
+      RPC_VAR="${CHAIN_UPPER}_RPC_URL"
+      RPC_URL=$(eval echo "\${${RPC_VAR}:-}")
+      if [ -z "$RPC_URL" ]; then
+        echo "WARNING: No RPC URL for ${CHAIN_NAME} (${RPC_VAR} not set), skipping."
+        continue
+      fi
+
+      echo "Transferring warp route upgrade authority on ${CHAIN_NAME}: ${PROGRAM_ID}..."
+      solana program set-upgrade-authority "$PROGRAM_ID" \
+        --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
+        --skip-new-upgrade-authority-signer-check \
+        --keypair "${DEPLOYER_KEY_FILE}" \
+        --url "$RPC_URL" \
+        || echo "WARNING: Failed to transfer upgrade authority for warp route on ${CHAIN_NAME}"
+    done
+  fi
 fi
 
 # -------------------------------------------------------

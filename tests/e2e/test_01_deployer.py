@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import subprocess
@@ -15,6 +16,7 @@ from lib.common import (
     wait_for_configmap,
 )
 from lib.deploy import DeploymentInfo
+from lib.keygen import KeypairSet
 
 log = logging.getLogger(__name__)
 
@@ -422,4 +424,118 @@ class TestDeployer:
             log.info(
                 "%s: IGP on-chain config verified (rate=%s, gas_price=%s, decimals=%s)",
                 chain_name, rate_match.group(1), gas_match.group(1), dec_match.group(1),
+            )
+
+    def test_program_upgrade_authority_transferred(
+        self, deployer_deployment: DeploymentInfo, keypairs: KeypairSet,
+    ) -> None:
+        """Verify core program upgrade authority was transferred to hardware wallet.
+
+        After deployment, all 4 core programs (mailbox, validator_announce,
+        multisig_ism_message_id, igp) should have their upgrade authority set
+        to the hardware wallet pubkey.
+        """
+        ns = deployer_deployment.namespace
+        expected_authority = keypairs.hardware_wallet_pubkey
+
+        for chain_name, chain_info in CHAINS.items():
+            program_ids = get_configmap_json(
+                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
+            )
+
+            for label, key in [
+                ("mailbox", "mailbox"),
+                ("validator_announce", "validator_announce"),
+                ("multisig_ism", "multisig_ism_message_id"),
+                ("igp", "igp_program_id"),
+            ]:
+                program_id = program_ids[key]
+                result = subprocess.run(
+                    [
+                        "solana", "program", "show", program_id,
+                        "--url", chain_info["rpc"],
+                        "--output", "json",
+                    ],
+                    capture_output=True, text=True, check=False,
+                )
+                assert result.returncode == 0, (
+                    f"{chain_name}: solana program show failed for {label}: "
+                    f"{result.stderr.strip()}"
+                )
+                info = json.loads(result.stdout)
+                actual_authority = info.get("authority")
+                assert actual_authority == expected_authority, (
+                    f"{chain_name}: {label} upgrade authority is {actual_authority}, "
+                    f"expected {expected_authority}"
+                )
+                log.info(
+                    "%s: %s upgrade authority verified (%s)",
+                    chain_name, label, actual_authority,
+                )
+
+    def test_igp_ownership_transferred(
+        self, deployer_deployment: DeploymentInfo, keypairs: KeypairSet,
+    ) -> None:
+        """Verify IGP and overhead IGP account ownership transferred to oracle wallet.
+
+        The base IGP account owner is queried via `igp query` (prints owner field).
+        The overhead IGP ownership is verified by attempting a no-op ownership
+        transfer from the oracle key to itself — this succeeds only if the oracle
+        key is already the owner.
+        """
+        ns = deployer_deployment.namespace
+        expected_owner = keypairs.igp_oracle_pubkey
+        oracle_keypair = str(keypairs.igp_oracle_path)
+
+        for chain_name, chain_info in CHAINS.items():
+            program_ids = get_configmap_json(
+                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
+            )
+            igp_id = program_ids["igp_program_id"]
+            igp_account = program_ids["igp_account"]
+            overhead_igp_account = program_ids["overhead_igp_account"]
+
+            # --- Base IGP: query and parse owner ---
+            result = run_deployer_cli(
+                "igp", "query",
+                "--program-id", igp_id,
+                "--igp-account", igp_account,
+                rpc=chain_info["rpc"],
+            )
+            output = result.stdout + result.stderr
+            assert result.returncode == 0, (
+                f"{chain_name}: IGP query failed: {output}"
+            )
+
+            owner_match = re.search(r"owner:\s+Some\(\s*(\S+?)\s*[,)]", output)
+            assert owner_match, (
+                f"{chain_name}: could not parse IGP owner from query output"
+            )
+            actual_owner = owner_match.group(1).rstrip(",)")
+            assert actual_owner == expected_owner, (
+                f"{chain_name}: IGP account owner is {actual_owner}, "
+                f"expected {expected_owner}"
+            )
+            log.info("%s: IGP account owner verified (%s)", chain_name, actual_owner)
+
+            # --- Overhead IGP: verify ownership via no-op transfer ---
+            # Transfer ownership from oracle → oracle (idempotent). Succeeds only
+            # if the oracle key is the current owner.
+            result = run_deployer_cli(
+                "igp", "transfer-overhead-igp-ownership",
+                "--program-id", igp_id,
+                "--igp-account", overhead_igp_account,
+                expected_owner,
+                keypair_path=oracle_keypair,
+                rpc=chain_info["rpc"],
+            )
+            output = result.stdout + result.stderr
+            assert result.returncode == 0, (
+                f"{chain_name}: overhead IGP ownership verification failed. "
+                f"transfer-overhead-igp-ownership with oracle key returned "
+                f"non-zero: {output}"
+            )
+            log.info(
+                "%s: overhead IGP account ownership verified (owner=%s)",
+                chain_name, expected_owner,
             )

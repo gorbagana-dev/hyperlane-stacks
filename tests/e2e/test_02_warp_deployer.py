@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import subprocess
 
 import pytest
 
@@ -14,6 +15,7 @@ from lib.common import (
     run_deployer_cli,
     wait_for_configmap,
 )
+from lib.keygen import KeypairSet
 
 log = logging.getLogger(__name__)
 
@@ -315,3 +317,46 @@ class TestWarpDeployer:
                 f"core overhead_igp_account {core_igps[chain_name]}"
             )
             log.info("%s: IGP matches core deployment", chain_name)
+
+    def test_warp_upgrade_authority_transferred(
+        self, warp_deployment: dict, keypairs: KeypairSet,
+    ) -> None:
+        """Verify warp route program upgrade authority was transferred to hardware wallet.
+
+        After deployment, both warp route programs (collateral on solana,
+        synthetic on gorchain) should have their upgrade authority set to
+        the hardware wallet pubkey — not the deployer key.
+        """
+        ns = warp_deployment["namespace"]
+        expected_authority = keypairs.hardware_wallet_pubkey
+
+        warp_programs = _get_warp_program_addresses(ns)
+        assert warp_programs, "No warp program addresses found"
+
+        for chain_name, program_id in warp_programs.items():
+            chain_info = CHAINS.get(chain_name)
+            if not chain_info:
+                continue
+
+            result = subprocess.run(
+                [
+                    "solana", "program", "show", program_id,
+                    "--url", chain_info["rpc"],
+                    "--output", "json",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            assert result.returncode == 0, (
+                f"{chain_name}: solana program show failed for warp route "
+                f"{program_id}: {result.stderr.strip()}"
+            )
+            info = json.loads(result.stdout)
+            actual_authority = info.get("authority")
+            assert actual_authority == expected_authority, (
+                f"{chain_name}: warp route upgrade authority is "
+                f"{actual_authority}, expected {expected_authority}"
+            )
+            log.info(
+                "%s: warp route upgrade authority verified (%s)",
+                chain_name, actual_authority,
+            )
