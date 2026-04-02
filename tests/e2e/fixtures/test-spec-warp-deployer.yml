@@ -39,7 +39,14 @@ secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
     - HARDWARE_WALLET_PUBKEY
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899

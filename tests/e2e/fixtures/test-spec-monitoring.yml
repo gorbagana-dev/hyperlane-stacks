@@ -23,3 +23,10 @@ configmaps:
 secrets:
   hyperlane-monitoring-secrets:
     - GF_SECURITY_ADMIN_PASSWORD
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899

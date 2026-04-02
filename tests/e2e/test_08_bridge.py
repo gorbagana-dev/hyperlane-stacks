@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import subprocess
 import time
@@ -16,9 +17,19 @@ from lib.deploy import E2E_NAMESPACE
 
 log = logging.getLogger(__name__)
 
-# Transfer amounts (6 decimals: 1 USDC = 1_000_000)
-TRANSFER_AMOUNT_SOL_TO_GOR = 1_000_000  # 1 USDC
-TRANSFER_AMOUNT_GOR_TO_SOL = 500_000  # 0.5 USDC
+# ---------------------------------------------------------------------------
+# Concurrent bridge config
+# ---------------------------------------------------------------------------
+NUM_BRIDGE_USERS = 5
+
+# Forward transfer amounts (6 decimals: 1 USDC = 1_000_000 base units).
+# User i sends FORWARD_BASE + i * FORWARD_STEP.
+FORWARD_BASE = 1_000_000  # 1.0 USDC
+FORWARD_STEP = 100_000  # +0.1 USDC per user
+
+# Reverse transfer amounts. User i sends REVERSE_BASE + i * REVERSE_STEP.
+REVERSE_BASE = 500_000  # 0.5 USDC
+REVERSE_STEP = 50_000  # +0.05 USDC per user
 
 RELAY_TIMEOUT = 120  # seconds to wait for relayer delivery
 POLL_INTERVAL = 5  # seconds between balance polls
@@ -26,6 +37,11 @@ POLL_INTERVAL = 5  # seconds between balance polls
 TRANSFER_RETRIES = 3  # retries for transfer-remote calls
 TRANSFER_RETRY_DELAY = 5  # seconds between retries
 SETTLE_DELAY = 10  # seconds to let validator settle state after relay delivery
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _get_sol_balance(rpc: str, address: str) -> float:
@@ -65,7 +81,10 @@ def _get_sender_pubkey(keypair_path: str) -> str:
     return result.stdout.strip()
 
 
-def _run_transfer_remote(*args: str, rpc: str, retries: int = TRANSFER_RETRIES) -> subprocess.CompletedProcess:
+def _run_transfer_remote(
+    *args: str, rpc: str, keypair_path: str | None = None,
+    retries: int = TRANSFER_RETRIES,
+) -> subprocess.CompletedProcess:
     """Run transfer-remote with retries for transient on-chain failures.
 
     Token-2022 CPI calls (especially BurnChecked on freshly-created ATAs)
@@ -73,7 +92,10 @@ def _run_transfer_remote(*args: str, rpc: str, retries: int = TRANSFER_RETRIES) 
     creates the account. Retrying after a short delay resolves this.
     """
     for attempt in range(1, retries + 1):
-        result = run_deployer_cli("token", "transfer-remote", *args, rpc=rpc)
+        result = run_deployer_cli(
+            "token", "transfer-remote", *args,
+            rpc=rpc, keypair_path=keypair_path,
+        )
         if result.returncode == 0:
             return result
         output = result.stdout + result.stderr
@@ -96,155 +118,218 @@ def _run_transfer_remote(*args: str, rpc: str, retries: int = TRANSFER_RETRIES) 
 
 @pytest.mark.slow
 class TestBridge:
-    """Cross-chain warp route transfer tests.
+    """Cross-chain warp route transfer tests with concurrent users.
 
-    Tests are ordered: Solana→Gorchain runs first (mints synthetic tokens),
-    then Gorchain→Solana uses those synthetic tokens for the reverse transfer.
+    Five bridge users transfer staggered amounts simultaneously:
+    - Forward: Solana collateral USDC → Gorchain synthetic gUSDC
+    - Reverse: Gorchain synthetic gUSDC → Solana collateral USDC
     """
 
-    def test_transfer_solana_to_gorchain(self, bridge_setup: dict) -> None:
-        """Transfer collateral USDC from Solana to synthetic gUSDC on Gorchain."""
-        sender = bridge_setup["sender_keypair"]
+    def test_concurrent_forward_transfers(self, bridge_setup: dict) -> None:
+        """Transfer collateral USDC from Solana to Gorchain for all users concurrently."""
+        users = bridge_setup["users"]
         token_mint = bridge_setup["token_mint"]
         synthetic_mint = bridge_setup["synthetic_mint"]
         solana_warp = bridge_setup["warp_programs"]["solana"]
-        recipient = _get_sender_pubkey(sender)
 
         solana_rpc = CHAINS["solana"]["rpc"]
         gorchain_rpc = CHAINS["gorchain"]["rpc"]
         gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
 
-        # Record initial balances
-        initial_solana = get_spl_token_balance(token_mint, sender, solana_rpc)
-        initial_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
-        log.info(
-            "Initial balances — Solana USDC: %s, Gorchain gUSDC: %s",
-            initial_solana, initial_gorchain,
-        )
+        # Record initial balances per user
+        initial_solana = {}
+        initial_gorchain = {}
+        for i, user in enumerate(users):
+            kp = user["keypair_path"]
+            initial_solana[i] = get_spl_token_balance(token_mint, kp, solana_rpc)
+            initial_gorchain[i] = get_spl_token_balance(synthetic_mint, kp, gorchain_rpc)
+            log.info(
+                "User %d initial — Solana USDC: %s, Gorchain gUSDC: %s",
+                i, initial_solana[i], initial_gorchain[i],
+            )
 
-        assert initial_solana >= TRANSFER_AMOUNT_SOL_TO_GOR / 1_000_000, (
-            f"Sender has insufficient USDC balance: {initial_solana}"
-        )
+        # Compute per-user transfer amounts
+        amounts = {}
+        for i in range(len(users)):
+            amounts[i] = FORWARD_BASE + i * FORWARD_STEP
+            expected_usdc = amounts[i] / 1_000_000
+            assert initial_solana[i] >= expected_usdc, (
+                f"User {i} has insufficient USDC: {initial_solana[i]} < {expected_usdc}"
+            )
 
-        # Execute transfer
-        log.info(
-            "Transferring %d base units from Solana to Gorchain (domain %s)...",
-            TRANSFER_AMOUNT_SOL_TO_GOR, gorchain_domain,
-        )
-        _log_igp_balances("before-sol-to-gor")
-        result = _run_transfer_remote(
-            "/tmp/key.json",
-            str(TRANSFER_AMOUNT_SOL_TO_GOR), gorchain_domain, recipient,
-            "collateral",
-            "--program-id", solana_warp,
-            rpc=solana_rpc,
-        )
-        output = result.stdout + result.stderr
-        log.info("transfer-remote output:\n%s", output[:2000])
-        assert result.returncode == 0, (
-            f"transfer-remote collateral failed: {output}"
-        )
+        # Submit all transfers concurrently
+        log.info("Submitting %d forward transfers (Sol→Gor)...", len(users))
+        _log_igp_balances("before-forward")
 
-        # Verify source balance decreased
-        post_solana = get_spl_token_balance(token_mint, sender, solana_rpc)
-        expected_decrease = TRANSFER_AMOUNT_SOL_TO_GOR / 1_000_000
-        assert initial_solana - post_solana >= expected_decrease - 0.001, (
-            f"Solana USDC balance didn't decrease enough: {initial_solana} -> {post_solana}"
-        )
-        log.info("Solana USDC balance after transfer: %s", post_solana)
+        results: dict[int, subprocess.CompletedProcess] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
+            futures = {}
+            for i, user in enumerate(users):
+                recipient = user["pubkey"]
+                fut = pool.submit(
+                    _run_transfer_remote,
+                    "/tmp/key.json",
+                    str(amounts[i]), gorchain_domain, recipient,
+                    "collateral",
+                    "--program-id", solana_warp,
+                    rpc=solana_rpc,
+                    keypair_path=user["keypair_path"],
+                )
+                futures[fut] = i
 
-        # Wait for relay delivery on Gorchain
-        expected_gorchain = initial_gorchain + TRANSFER_AMOUNT_SOL_TO_GOR / 1_000_000
-        log.info(
-            "Waiting for Gorchain gUSDC balance to reach %s...", expected_gorchain,
-        )
-        final_gorchain = wait_for_token_balance(
-            synthetic_mint, sender, gorchain_rpc,
-            expected_min=expected_gorchain,
-            timeout=RELAY_TIMEOUT,
-            poll_interval=POLL_INTERVAL,
-            label="Gorchain gUSDC",
-        )
-        log.info(
-            "Bridge Solana→Gorchain complete. gUSDC balance: %s", final_gorchain,
-        )
-        _log_igp_balances("after-sol-to-gor")
+            for fut in concurrent.futures.as_completed(futures):
+                idx = futures[fut]
+                results[idx] = fut.result()
 
-    def test_transfer_gorchain_to_solana(self, bridge_setup: dict) -> None:
-        """Transfer synthetic gUSDC from Gorchain back to collateral USDC on Solana."""
-        # Let gorchain validator settle state after the forward relay delivery.
-        # Token-2022 BurnChecked CPI fails with InvalidAccountData if the
-        # synthetic ATA was just created by the relayer and state hasn't settled.
+        # Assert all transfers succeeded
+        for i in range(len(users)):
+            result = results[i]
+            output = result.stdout + result.stderr
+            log.info("User %d transfer-remote output:\n%s", i, output[:1000])
+            assert result.returncode == 0, (
+                f"User {i} forward transfer failed: {output}"
+            )
+
+        # Verify source balances decreased
+        for i, user in enumerate(users):
+            post = get_spl_token_balance(token_mint, user["keypair_path"], solana_rpc)
+            expected_decrease = amounts[i] / 1_000_000
+            assert initial_solana[i] - post >= expected_decrease - 0.001, (
+                f"User {i} Solana USDC didn't decrease enough: "
+                f"{initial_solana[i]} -> {post}"
+            )
+            log.info("User %d Solana USDC after transfer: %s", i, post)
+
+        # Wait for all synthetic balances on Gorchain concurrently
+        log.info("Waiting for %d Gorchain gUSDC balances...", len(users))
+
+        def _wait_gorchain(idx: int) -> float:
+            user = users[idx]
+            expected = round(initial_gorchain[idx] + amounts[idx] / 1_000_000, 6)
+            return wait_for_token_balance(
+                synthetic_mint, user["keypair_path"], gorchain_rpc,
+                expected_min=expected,
+                timeout=RELAY_TIMEOUT,
+                poll_interval=POLL_INTERVAL,
+                label=f"User {idx} Gorchain gUSDC",
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
+            wait_futures = {pool.submit(_wait_gorchain, i): i for i in range(len(users))}
+            for fut in concurrent.futures.as_completed(wait_futures):
+                idx = wait_futures[fut]
+                balance = fut.result()
+                log.info(
+                    "User %d bridge Sol→Gor complete. gUSDC balance: %s",
+                    idx, balance,
+                )
+
+        _log_igp_balances("after-forward")
+
+    def test_concurrent_reverse_transfers(self, bridge_setup: dict) -> None:
+        """Transfer synthetic gUSDC from Gorchain back to Solana for all users concurrently."""
         log.info("Waiting %ds for validator state to settle...", SETTLE_DELAY)
         time.sleep(SETTLE_DELAY)
 
-        sender = bridge_setup["sender_keypair"]
+        users = bridge_setup["users"]
         token_mint = bridge_setup["token_mint"]
         synthetic_mint = bridge_setup["synthetic_mint"]
         gorchain_warp = bridge_setup["warp_programs"]["gorchain"]
-        recipient = _get_sender_pubkey(sender)
 
         solana_rpc = CHAINS["solana"]["rpc"]
         gorchain_rpc = CHAINS["gorchain"]["rpc"]
         solana_domain = str(CHAINS["solana"]["domain_id"])
 
-        # Record initial balances
-        initial_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
-        initial_solana = get_spl_token_balance(token_mint, sender, solana_rpc)
-        log.info(
-            "Initial balances — Gorchain gUSDC: %s, Solana USDC: %s",
-            initial_gorchain, initial_solana,
-        )
+        # Record initial balances per user
+        initial_gorchain = {}
+        initial_solana = {}
+        for i, user in enumerate(users):
+            kp = user["keypair_path"]
+            initial_gorchain[i] = get_spl_token_balance(synthetic_mint, kp, gorchain_rpc)
+            initial_solana[i] = get_spl_token_balance(token_mint, kp, solana_rpc)
+            log.info(
+                "User %d initial — Gorchain gUSDC: %s, Solana USDC: %s",
+                i, initial_gorchain[i], initial_solana[i],
+            )
 
-        assert initial_gorchain >= TRANSFER_AMOUNT_GOR_TO_SOL / 1_000_000, (
-            f"Sender has insufficient gUSDC balance: {initial_gorchain}. "
-            f"Did test_transfer_solana_to_gorchain run first?"
-        )
+        # Compute per-user transfer amounts
+        amounts = {}
+        for i in range(len(users)):
+            amounts[i] = REVERSE_BASE + i * REVERSE_STEP
+            expected_gusdc = amounts[i] / 1_000_000
+            assert initial_gorchain[i] >= expected_gusdc, (
+                f"User {i} has insufficient gUSDC: {initial_gorchain[i]} < {expected_gusdc}. "
+                f"Did test_concurrent_forward_transfers run first?"
+            )
 
-        # Execute transfer
-        log.info(
-            "Transferring %d base units from Gorchain to Solana (domain %s)...",
-            TRANSFER_AMOUNT_GOR_TO_SOL, solana_domain,
-        )
-        _log_igp_balances("before-gor-to-sol")
-        result = _run_transfer_remote(
-            "/tmp/key.json",
-            str(TRANSFER_AMOUNT_GOR_TO_SOL), solana_domain, recipient,
-            "synthetic",
-            "--program-id", gorchain_warp,
-            rpc=gorchain_rpc,
-        )
-        output = result.stdout + result.stderr
-        log.info("transfer-remote output:\n%s", output[:2000])
-        assert result.returncode == 0, (
-            f"transfer-remote synthetic failed: {output}"
-        )
+        # Submit all reverse transfers concurrently
+        log.info("Submitting %d reverse transfers (Gor→Sol)...", len(users))
+        _log_igp_balances("before-reverse")
 
-        # Verify source balance decreased
-        post_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
-        expected_decrease = TRANSFER_AMOUNT_GOR_TO_SOL / 1_000_000
-        assert initial_gorchain - post_gorchain >= expected_decrease - 0.001, (
-            f"Gorchain gUSDC balance didn't decrease enough: "
-            f"{initial_gorchain} -> {post_gorchain}"
-        )
-        log.info("Gorchain gUSDC balance after transfer: %s", post_gorchain)
+        results: dict[int, subprocess.CompletedProcess] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
+            futures = {}
+            for i, user in enumerate(users):
+                recipient = user["pubkey"]
+                fut = pool.submit(
+                    _run_transfer_remote,
+                    "/tmp/key.json",
+                    str(amounts[i]), solana_domain, recipient,
+                    "synthetic",
+                    "--program-id", gorchain_warp,
+                    rpc=gorchain_rpc,
+                    keypair_path=user["keypair_path"],
+                )
+                futures[fut] = i
 
-        # Wait for relay delivery on Solana
-        expected_solana = initial_solana + TRANSFER_AMOUNT_GOR_TO_SOL / 1_000_000
-        log.info(
-            "Waiting for Solana USDC balance to reach %s...", expected_solana,
-        )
-        final_solana = wait_for_token_balance(
-            token_mint, sender, solana_rpc,
-            expected_min=expected_solana,
-            timeout=RELAY_TIMEOUT,
-            poll_interval=POLL_INTERVAL,
-            label="Solana USDC",
-        )
-        log.info(
-            "Bridge Gorchain→Solana complete. USDC balance: %s", final_solana,
-        )
-        _log_igp_balances("after-gor-to-sol")
+            for fut in concurrent.futures.as_completed(futures):
+                idx = futures[fut]
+                results[idx] = fut.result()
+
+        # Assert all transfers succeeded
+        for i in range(len(users)):
+            result = results[i]
+            output = result.stdout + result.stderr
+            log.info("User %d transfer-remote output:\n%s", i, output[:1000])
+            assert result.returncode == 0, (
+                f"User {i} reverse transfer failed: {output}"
+            )
+
+        # Verify source balances decreased
+        for i, user in enumerate(users):
+            post = get_spl_token_balance(synthetic_mint, user["keypair_path"], gorchain_rpc)
+            expected_decrease = amounts[i] / 1_000_000
+            assert initial_gorchain[i] - post >= expected_decrease - 0.001, (
+                f"User {i} Gorchain gUSDC didn't decrease enough: "
+                f"{initial_gorchain[i]} -> {post}"
+            )
+            log.info("User %d Gorchain gUSDC after transfer: %s", i, post)
+
+        # Wait for all collateral balances on Solana concurrently
+        log.info("Waiting for %d Solana USDC balances...", len(users))
+
+        def _wait_solana(idx: int) -> float:
+            user = users[idx]
+            expected = round(initial_solana[idx] + amounts[idx] / 1_000_000, 6)
+            return wait_for_token_balance(
+                token_mint, user["keypair_path"], solana_rpc,
+                expected_min=expected,
+                timeout=RELAY_TIMEOUT,
+                poll_interval=POLL_INTERVAL,
+                label=f"User {idx} Solana USDC",
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
+            wait_futures = {pool.submit(_wait_solana, i): i for i in range(len(users))}
+            for fut in concurrent.futures.as_completed(wait_futures):
+                idx = wait_futures[fut]
+                balance = fut.result()
+                log.info(
+                    "User %d bridge Gor→Sol complete. USDC balance: %s",
+                    idx, balance,
+                )
+
+        _log_igp_balances("after-reverse")
 
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""

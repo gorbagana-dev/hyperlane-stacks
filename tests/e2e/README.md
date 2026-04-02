@@ -20,7 +20,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - Python 3.10+
 - [kind](https://kind.sigs.k8s.io/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [laconic-so](https://git.vdb.to/cerc-io/stack-orchestrator)
+- [laconic-so](https://github.com/cerc-io/stack-orchestrator) `v1.1.0-0bf1ea7-202604021227`
 - [Solana CLI](https://docs.anza.xyz/cli/install) (`solana`, `solana-keygen`, `spl-token`)
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`cast`)
 - Docker — logged in to ghcr.io for pulling published images (see below)
@@ -147,7 +147,6 @@ tests/e2e/
 └── fixtures/
     ├── kind-config.yaml                 # Kind cluster with ingress ports
     ├── cert-manager-issuer.yaml         # Self-signed TLS issuer
-    ├── host-chain-services.yaml         # k8s Services pointing to host chain nodes + mock Privy
     ├── test-spec-deployer.yml           # laconic-so spec for core deployer
     ├── test-spec-warp-deployer.yml      # laconic-so spec for warp deployer
     ├── test-spec-minio.yml              # laconic-so spec for MinIO
@@ -158,20 +157,23 @@ tests/e2e/
     └── test-spec-warp-ui.yml            # laconic-so spec for warp UI
 ```
 
-## Why custom cluster setup (not SO's `--skip-cluster-management`)
+## Why custom cluster setup (not SO's cluster management)
 
 The tests manage the Kind cluster lifecycle directly instead of letting
-`laconic-so` handle it via its built-in cluster management. All `deploy start`
-and `deploy stop` calls use `--skip-cluster-management`. Here's why:
+`laconic-so` handle it via its built-in cluster management. SO now defaults
+to `--skip-cluster-management` (no cluster create/destroy on start/stop),
+which aligns with how the tests work. Here's why this design was chosen:
 
 **Multiple stacks share one cluster.** The tests deploy 8+ stacks into a
-single Kind cluster with a shared namespace. Without `--skip-cluster-management`,
+single Kind cluster with a shared namespace. With cluster management enabled,
 `deploy stop` on any single stack would call `destroy_cluster()` and tear down
 the entire cluster — destroying all other running stacks.
 
-**Ordering constraints.** The tests need the namespace, secrets, RBAC, and
-host-chain-services to exist *before* `deploy start`. SO only creates the
-namespace during `deploy start`, which is too late for our setup sequence.
+**Ordering constraints.** The tests need the namespace, secrets, and RBAC
+to exist *before* `deploy start`. SO only creates the namespace during
+`deploy start`, which is too late for our setup sequence. Host-chain
+services (gorchain-rpc, solana-rpc, privy-mock) are now handled
+automatically by SO via the `external-services` spec key.
 
 **Ingress with TLS on Kind.** SO suppresses TLS on Kind clusters
 (`use_tls = not self.is_kind()`), so the Ingress it creates has no TLS config.

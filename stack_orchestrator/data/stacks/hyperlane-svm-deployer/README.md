@@ -100,7 +100,7 @@ The pod runs `deploy.sh` which:
 2. Deploys core contracts on both chains via `hyperlane-sealevel-client`
 3. Verifies deployed program hashes against local `.so` files using `solana-verify`
 4. Transfers program upgrade authority to `HARDWARE_WALLET_PUBKEY`
-5. Transfers IGP account ownership to `IGP_ORACLE_PUBKEY`
+5. Transfers IGP and overhead IGP account ownership to `IGP_ORACLE_PUBKEY`
 6. Configures 1-of-1 multisig ISM with validator addresses
 7. Builds `agent-config.json` from deployed program IDs
 8. Writes artifacts to k8s ConfigMaps: `hyperlane-program-ids`, `hyperlane-agent-config`, `hyperlane-gas-oracle-config`, `hyperlane-multisig-config`, `hyperlane-registry`

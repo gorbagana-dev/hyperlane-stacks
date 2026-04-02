@@ -35,7 +35,18 @@ secrets:
     - SOLANA_VALIDATOR_ADDRESS
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: REPLACE_WITH_GITHUB_USERNAME
   token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v1.0.0
+# Optional: external services reachable by IP (creates headless Service + Endpoints)
+# external-services:
+#   gorchain-rpc:
+#     ip: 10.0.0.1
+#     port: 8899
+#   solana-rpc:
+#     ip: 10.0.0.2
+#     port: 18899

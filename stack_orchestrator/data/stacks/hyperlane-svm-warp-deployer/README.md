@@ -87,6 +87,17 @@ kubectl create secret generic hyperlane-warp-deployer-secrets \
 laconic-so deployment --dir warp-deployer-deployment start
 ```
 
+The pod runs `deploy.sh` which:
+
+1. Checks idempotency — skips if `hyperlane-token-config` ConfigMap already exists (override with `FORCE_REDEPLOY=true`)
+2. Reads core program IDs from the `hyperlane-program-ids` ConfigMap
+3. Renders token config and registry templates via `envsubst`
+4. Deploys warp route programs (collateral + synthetic) via `hyperlane-sealevel-client`
+5. Verifies deployed program hashes against local `.so` files
+6. Transfers warp route program upgrade authority to `HARDWARE_WALLET_PUBKEY`
+7. Writes artifacts to k8s ConfigMaps: `hyperlane-token-config`, `hyperlane-warp-deploy-outputs`
+8. Shreds and deletes the deployer keypair from the pod
+
 The container exits after completion (`restart: "no"`).
 
 ## 7. Verify

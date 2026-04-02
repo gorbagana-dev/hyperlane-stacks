@@ -41,7 +41,10 @@ secrets:
     - HARDWARE_WALLET_PUBKEY
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: REPLACE_WITH_GITHUB_USERNAME
   token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-warp-deployer:v1.0.0

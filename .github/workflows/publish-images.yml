@@ -12,6 +12,9 @@ on:
       - '.github/trigger-publish-gas-oracle.txt'
   workflow_dispatch:
 
+env:
+  LACONIC_SO_VERSION: v1.1.0-0bf1ea7-202604021227
+
 jobs:
   # Detect which trigger files changed — works reliably with squash merges,
   # unlike github.event.head_commit.modified which only sees the last commit.
@@ -64,7 +67,7 @@ jobs:
       - name: Install laconic-so
         run: |
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 
@@ -129,7 +132,7 @@ jobs:
       - name: Install laconic-so
         run: |
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 
@@ -195,7 +198,7 @@ jobs:
       - name: Install laconic-so
         run: |
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 
@@ -258,7 +261,7 @@ jobs:
       - name: Install laconic-so
         run: |
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 
@@ -323,7 +326,7 @@ jobs:
       - name: Install laconic-so
         run: |
           mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://git.vdb.to/cerc-io/stack-orchestrator/releases/download/latest/laconic-so
+          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
           chmod +x ~/bin/laconic-so
           echo "$HOME/bin" >> $GITHUB_PATH
 

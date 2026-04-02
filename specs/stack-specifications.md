@@ -22,7 +22,7 @@ Stack-orchestrator (`laconic-so`) deploys containerized applications via three b
 - `network.ports:` — NodePort mappings
 - `security:` — privileged, capabilities, unlimited-memlock
 - `resources:` — CPU/memory limits
-- `registry-credentials:` — Private registry auth
+- `image-pull-secret:` — Private registry auth
 
 **deploy/commands.py** hooks:
 - `init()` — Returns default spec.yml content (called during `deploy init`)

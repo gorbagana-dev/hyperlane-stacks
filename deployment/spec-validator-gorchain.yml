@@ -31,7 +31,11 @@ secrets:
     - HYP_DEFAULTSIGNER_KEY
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
-registry-credentials:
+image-pull-secret:
   server: ghcr.io
   username: REPLACE_WITH_GITHUB_USERNAME
   token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0

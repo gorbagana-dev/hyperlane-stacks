@@ -42,7 +42,7 @@ WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
 def ensure_ghcr_pat() -> None:
     """Set GHCR_PAT env var from ~/.docker/config.json if not already set.
 
-    laconic-so's registry-credentials reads the token from the env var
+    laconic-so's image-pull-secret reads the token from the env var
     specified in ``token-env`` (GHCR_PAT) to create a k8s pull secret.
     This function extracts the ghcr.io token from Docker's config so the
     user only needs ``docker login ghcr.io`` as a prerequisite.
@@ -408,7 +408,7 @@ def deploy_start(deploy_dir: Path) -> None:
     log_info(f"Starting deployment in {deploy_dir}...")
     run_cmd([
         "laconic-so", "deployment", "--dir", str(deploy_dir),
-        "start", "--skip-cluster-management",
+        "start",
     ])
     log_info(f"Deployment in {deploy_dir} started")
 
@@ -444,7 +444,6 @@ def stop_stack(stack_name: str, deploy_dir: Path | None = None) -> None:
             str(deploy_dir),
             "stop",
             "--delete-volumes",
-            "--skip-cluster-management",
         ],
         check=False,
     )

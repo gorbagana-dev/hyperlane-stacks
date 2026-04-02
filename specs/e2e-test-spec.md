@@ -132,61 +132,24 @@ HOST_IP=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}}{{en
 # Typically 172.18.0.1 for kind networks
 ```
 
-Applied as a test fixture (`fixtures/host-chain-services.yaml`):
+Declared via the `external-services` spec key in each test spec. The host IP
+(`REPLACE_HOST_IP`) is discovered at test time from the Kind network gateway
+and patched into the spec before `deploy create`:
 ```yaml
-# Gorchain RPC
-apiVersion: v1
-kind: Service
-metadata:
-  name: gorchain-rpc
-spec:
-  ports:
-    - port: 8899
-      targetPort: 8899
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: gorchain-rpc
-subsets:
-  - addresses:
-      - ip: "${HOST_IP}"
-    ports:
-      - port: 8899
----
-# Solana RPC
-apiVersion: v1
-kind: Service
-metadata:
-  name: solana-rpc
-spec:
-  ports:
-    - port: 18899
-      targetPort: 18899
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: solana-rpc
-subsets:
-  - addresses:
-      - ip: "${HOST_IP}"
-    ports:
-      - port: 18899
-```
-
-The test setup script templates `${HOST_IP}` into the manifest and applies it:
-```bash
-HOST_IP=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
-sed "s/\${HOST_IP}/$HOST_IP/g" fixtures/host-chain-services.yaml | kubectl apply -f -
-```
-
-All stack spec files use the in-cluster DNS names:
-```yaml
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
 ```
+
+laconic-so creates headless k8s Services + Endpoints pointing at the host IP
+during `deploy start`, so the in-cluster DNS names resolve to the host machine.
 
 This keeps the host IP in a single place (the Endpoints manifest) and all other config uses stable DNS names.
 
@@ -371,7 +334,6 @@ tests/
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
-│       ├── host-chain-services.yaml  # k8s Services pointing to host chain nodes
 │       ├── test-spec-deployer.yml    # Core deployer test spec
 │       ├── test-spec-warp-deployer.yml  # Warp deployer test spec
 │       ├── test-spec-minio.yml       # MinIO test spec
@@ -400,7 +362,7 @@ tests/
  4. Wait: Gorchain RPC healthy + slot progression (10+ slots)
  5. Start Solana test validator (host process)
  6. Wait: Solana RPC healthy
- 7. Apply host-chain-services (k8s Services pointing to host IPs)
+ 7. Detect host IP from Kind network (for external-services spec key)
  8. Generate test keypairs + derive validator H160 addresses
  9. Fund test wallets on both chains (solana airdrop)
 10. Create + apply k8s Secrets from generated keypairs
@@ -1372,28 +1334,13 @@ Response:
 `http.server`. The mock also handles the `GetPublicKey` flow (KMS proxy calls
 `secp256k1_sign` on a known digest at startup to recover the public key).
 
-**Host service exposure:** Add `privy-mock` to `fixtures/host-chain-services.yaml`:
-
+**Host service exposure:** The `privy-mock` service is declared via
+`external-services` in the validator and gas-oracle test specs:
 ```yaml
-# Privy mock server
-apiVersion: v1
-kind: Service
-metadata:
-  name: privy-mock
-spec:
-  ports:
-    - port: 19876
-      targetPort: 19876
----
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: privy-mock
-subsets:
-  - addresses:
-      - ip: "${HOST_IP}"
-    ports:
-      - port: 19876
+external-services:
+  privy-mock:
+    ip: REPLACE_HOST_IP
+    port: 19876
 ```
 
 **Validator address derivation:** The mock's test keys determine the H160 validator

@@ -139,13 +139,27 @@ When making structural changes, update:
      name across stacks in the same namespace causes 409 AlreadyExists.
   At `deploy start`, SO reads files from `{deploy_dir}/configmaps/{name}/`,
   creates k8s ConfigMap objects, and mounts them into pods/jobs.
-- **cluster-id lifecycle**: `deploy create` generates random `laconic-{hex}` in
+- **cluster-id lifecycle**: `deploy create` generates `laconic-{id}` in
   `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
   Patch `deployment.yml` (not the spec) after create.
-- **`--skip-cluster-management`**: Without it, SO calls `create_cluster()` which
-  discovers existing Kind clusters (safe for start) but `down()` calls
-  `destroy_cluster()` (dangerous for stop). Always use the flag, and set
-  cluster-id to the actual Kind cluster name so the context resolves correctly.
+- **`--skip-cluster-management`**: Now the default. SO does not create or
+  destroy Kind clusters on `start`/`stop` unless `--perform-cluster-management`
+  is passed explicitly.
+- **`image-pull-secret:`** (formerly `registry-credentials:`): Spec key for
+  private registry auth. The old name is silently ignored by current SO.
+- **Namespace derivation**: SO derives the k8s namespace from the stack name
+  (`laconic-{stack_name}`), not the cluster-id. Specs with an explicit
+  `namespace:` key override this.
+- **`external-services:`**: Declares external endpoints. Three modes:
+  `host:` (ExternalName/DNS), `ip:` (headless Service + static IP Endpoints),
+  `selector:` (headless Service + pod IP discovery). Test specs use `ip:` mode
+  with `REPLACE_HOST_IP` placeholder for the Kind gateway.
+- **`image-overrides:`**: Override container images at the spec level.
+  Keys are compose service names, values are full image refs. CLI `--image`
+  flags take precedence. All prod specs have commented examples.
+- **Ops commands**: `deployment update` is now `deployment update-envs`.
+  `deployment prepare` combines init + create. `deployment restart --image`
+  swaps a container image without full stop/start.
 
 ## Git workflow
 
