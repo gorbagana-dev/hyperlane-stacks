@@ -158,14 +158,15 @@ tests/e2e/
     └── test-spec-warp-ui.yml            # laconic-so spec for warp UI
 ```
 
-## Why custom cluster setup (not SO's `--skip-cluster-management`)
+## Why custom cluster setup (not SO's cluster management)
 
 The tests manage the Kind cluster lifecycle directly instead of letting
-`laconic-so` handle it via its built-in cluster management. All `deploy start`
-and `deploy stop` calls use `--skip-cluster-management`. Here's why:
+`laconic-so` handle it via its built-in cluster management. SO now defaults
+to `--skip-cluster-management` (no cluster create/destroy on start/stop),
+which aligns with how the tests work. Here's why this design was chosen:
 
 **Multiple stacks share one cluster.** The tests deploy 8+ stacks into a
-single Kind cluster with a shared namespace. Without `--skip-cluster-management`,
+single Kind cluster with a shared namespace. With cluster management enabled,
 `deploy stop` on any single stack would call `destroy_cluster()` and tear down
 the entire cluster — destroying all other running stacks.
 

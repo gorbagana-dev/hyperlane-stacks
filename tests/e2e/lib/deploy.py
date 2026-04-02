@@ -408,7 +408,7 @@ def deploy_start(deploy_dir: Path) -> None:
     log_info(f"Starting deployment in {deploy_dir}...")
     run_cmd([
         "laconic-so", "deployment", "--dir", str(deploy_dir),
-        "start", "--skip-cluster-management",
+        "start",
     ])
     log_info(f"Deployment in {deploy_dir} started")
 
@@ -444,7 +444,6 @@ def stop_stack(stack_name: str, deploy_dir: Path | None = None) -> None:
             str(deploy_dir),
             "stop",
             "--delete-volumes",
-            "--skip-cluster-management",
         ],
         check=False,
     )
