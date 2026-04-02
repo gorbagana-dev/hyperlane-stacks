@@ -1643,13 +1643,17 @@ def bridge_setup(
     deployer_cfg = _write_solana_config(sender_keypair, solana_rpc)
     deployer_cli = ["--config", deployer_cfg, "--url", solana_rpc]
     for i, user in enumerate(users):
-        subprocess.run(
+        result = subprocess.run(
             [
                 "spl-token", *deployer_cli,
                 "transfer", token_mint, "2", user["pubkey"],
-                "--fund-recipient",
+                "--fund-recipient", "--allow-unfunded-recipient",
             ],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == 0, (
+            f"Failed to fund bridge-user-{i} with USDC: "
+            f"{result.stdout} {result.stderr}"
         )
         log.info("  bridge-user-%d: funded 2.0 USDC", i)
 
