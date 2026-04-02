@@ -205,7 +205,7 @@ class TestBridge:
 
         def _wait_gorchain(idx: int) -> float:
             user = users[idx]
-            expected = initial_gorchain[idx] + amounts[idx] / 1_000_000
+            expected = round(initial_gorchain[idx] + amounts[idx] / 1_000_000, 6)
             return wait_for_token_balance(
                 synthetic_mint, user["keypair_path"], gorchain_rpc,
                 expected_min=expected,
@@ -310,7 +310,7 @@ class TestBridge:
 
         def _wait_solana(idx: int) -> float:
             user = users[idx]
-            expected = initial_solana[idx] + amounts[idx] / 1_000_000
+            expected = round(initial_solana[idx] + amounts[idx] / 1_000_000, 6)
             return wait_for_token_balance(
                 token_mint, user["keypair_path"], solana_rpc,
                 expected_min=expected,
