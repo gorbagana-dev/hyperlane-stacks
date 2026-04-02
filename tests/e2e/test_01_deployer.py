@@ -454,6 +454,7 @@ class TestDeployer:
                     [
                         "solana", "program", "show", program_id,
                         "--url", chain_info["rpc"],
+                        "--keypair", str(keypairs.deployer_path),
                         "--output", "json",
                     ],
                     capture_output=True, text=True, check=False,
