@@ -55,7 +55,6 @@ from lib.deploy import (
     prefetch_gas_oracle_image,
     prefetch_minio_images,
     prefetch_monitoring_images,
-    prefetch_validator_images,
     prefetch_warp_ui_image,
     stop_stack,
 )
@@ -355,9 +354,6 @@ def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None
     else:
         log.info("Pre-fetching published agent images into kind cluster...")
         prefetch_agent_images()
-
-    log.info("Pre-fetching kubectl image into kind cluster...")
-    prefetch_validator_images()
 
 
 @pytest.fixture(scope="session")

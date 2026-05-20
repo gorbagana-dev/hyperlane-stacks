@@ -45,7 +45,12 @@ class BridgeStateLoader:
         self.state_dir = state_dir
 
     def expected_files_for(self, stack_name: str) -> list[str]:
-        return [src for src, _cm in CONSUMER_STATE_FILES.get(stack_name, [])]
+        if stack_name not in CONSUMER_STATE_FILES:
+            raise KeyError(
+                f"BridgeStateLoader: unknown stack {stack_name!r}. "
+                f"Known stacks: {sorted(CONSUMER_STATE_FILES)}"
+            )
+        return [src for src, _cm in CONSUMER_STATE_FILES[stack_name]]
 
     def assert_present(self, stack_name: str) -> None:
         missing = [
@@ -66,7 +71,7 @@ class BridgeStateLoader:
         SO then creates one k8s ConfigMap per <cm-name>.
         """
         self.assert_present(stack_name)
-        for src_rel, cm_name in CONSUMER_STATE_FILES.get(stack_name, []):
+        for src_rel, cm_name in CONSUMER_STATE_FILES[stack_name]:
             src = self.state_dir / src_rel
             dst_dir = deploy_dir / "configmaps" / cm_name
             dst_dir.mkdir(parents=True, exist_ok=True)

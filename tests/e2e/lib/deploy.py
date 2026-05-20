@@ -23,7 +23,6 @@ DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 DEPLOYER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
 AGENT_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-agent:latest"
 KMS_PROXY_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest"
-KUBECTL_IMAGE = "alpine/kubectl:1.35.3"
 MINIO_IMAGE = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
 MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
@@ -222,17 +221,6 @@ def prefetch_agent_images(cluster_name: str = "hyperlane-e2e") -> None:
         _kind_load_image(image, cluster_name)
 
     log_info("Agent images loaded into kind cluster")
-
-
-def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
-    """Pull public images needed by the validator pod and load into kind."""
-    log_info(f"Pulling {KUBECTL_IMAGE}...")
-    run_cmd(["docker", "pull", KUBECTL_IMAGE])
-
-    log_info(f"Loading {KUBECTL_IMAGE} into kind cluster '{cluster_name}'...")
-    _kind_load_image(KUBECTL_IMAGE, cluster_name)
-
-    log_info("Validator support images loaded into kind cluster")
 
 
 def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui", cluster_name: str = "hyperlane-e2e") -> None:
