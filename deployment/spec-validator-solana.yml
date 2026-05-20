@@ -2,7 +2,6 @@
 # Runs a validator for Solana using the hyperlane-validator stack.
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
   ORIGIN_CHAIN_NAME: solana

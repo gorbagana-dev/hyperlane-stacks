@@ -4,7 +4,6 @@
 # and submits SetGasOracleConfigs transactions signed by Privy server wallet.
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
   # --- Chain RPCs ---

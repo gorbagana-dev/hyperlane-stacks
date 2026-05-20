@@ -2,7 +2,6 @@
 # S3-compatible storage for validator checkpoints.
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 network:
   ports:

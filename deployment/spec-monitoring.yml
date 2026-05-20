@@ -2,7 +2,6 @@
 # Prometheus, Grafana, pushgateway, and balance monitoring.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"

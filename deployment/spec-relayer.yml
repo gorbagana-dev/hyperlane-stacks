@@ -2,7 +2,6 @@
 # Delivers cross-chain messages between Gorchain and Solana.
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
