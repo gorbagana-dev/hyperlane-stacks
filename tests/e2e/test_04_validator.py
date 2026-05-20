@@ -20,7 +20,6 @@ from conftest import MinioInfo, ValidatorInfo
 from lib.common import (
     CHAINS,
     PortForward,
-    get_configmap_json,
     run_deployer_cli,
 )
 from lib.deploy import DeploymentInfo
@@ -29,6 +28,7 @@ from lib.privy_mock import (
     SOLANA_WALLET_ID,
     derive_h160_address,
 )
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -318,18 +318,14 @@ def _test_metadata_in_minio(
 
 def _test_announce_on_chain(
     info: ValidatorInfo,
-    deployer_deployment: DeploymentInfo,
+    bridge_state_loader: BridgeStateLoader,
     privy_mock: dict[str, str],
     chain: str,
 ) -> None:
     """Verify the validator's announce transaction succeeded on-chain."""
     cfg = CHAIN_CONFIG[chain]
-    ns = deployer_deployment.namespace
 
-    # Get the validator_announce program ID from the core deployer ConfigMap
-    program_ids = get_configmap_json(
-        ns, "hyperlane-program-ids", f"{chain}-program-ids.json",
-    )
+    program_ids = bridge_state_loader.read_program_ids(chain)
     va_program_id = program_ids["validator_announce"]
 
     # Get the validator's H160 address
@@ -412,12 +408,12 @@ class TestValidatorGorchain:
 
     def test_announce_on_chain(
         self, validator_gorchain: ValidatorInfo,
-        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
         privy_mock: dict[str, str],
     ) -> None:
         """Validator announce tx succeeded on-chain (queried via sealevel-client)."""
         _test_announce_on_chain(
-            validator_gorchain, deployer_deployment, privy_mock, chain="gorchain",
+            validator_gorchain, bridge_state_loader, privy_mock, chain="gorchain",
         )
 
 
@@ -472,10 +468,10 @@ class TestValidatorSolana:
 
     def test_announce_on_chain(
         self, validator_solana: ValidatorInfo,
-        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
         privy_mock: dict[str, str],
     ) -> None:
         """Validator announce tx succeeded on-chain (queried via sealevel-client)."""
         _test_announce_on_chain(
-            validator_solana, deployer_deployment, privy_mock, chain="solana",
+            validator_solana, bridge_state_loader, privy_mock, chain="solana",
         )
