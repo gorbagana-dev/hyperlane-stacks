@@ -22,6 +22,8 @@ services:
       - deployer-gas-oracle-config:/config/gas-oracle:ro
       - deployer-multisig-config:/config/multisig:ro
       - deployer-registry-config:/config/registry:ro
+      - /mnt/bridge-state:/state
+      - /mnt/bridge-state-logs:/logs
 
 volumes:
   deployer-scripts-config:
