@@ -30,8 +30,8 @@ services:
       CONFIG_FILES: /config/agent-config.json
       # KMS proxy sidecar for Privy signing (same pod = localhost)
       AWS_ENDPOINT_URL_KMS: "http://localhost:9999"
-      # MinIO for checkpoint storage (cross-stack, k8s service DNS)
-      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
+      # MinIO for checkpoint storage (cross-namespace FQDN; PR2 replaces with external-services)
+      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio.laconic-hyperlane-minio.svc.cluster.local:9000"
       AWS_REGION: us-east-1
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — MinIO credentials

@@ -22,8 +22,8 @@ services:
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # HYP_CHAINS_GORCHAIN_SIGNER_KEY, HYP_CHAINS_SOLANA_SIGNER_KEY
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-      # MinIO for reading validator checkpoints
-      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
+      # MinIO for reading validator checkpoints (cross-namespace FQDN; PR2 replaces with external-services)
+      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio.laconic-hyperlane-minio.svc.cluster.local:9000"
       AWS_REGION: us-east-1
     volumes:
       - agent-config:/config:ro
