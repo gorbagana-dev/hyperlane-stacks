@@ -1,6 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
+STATE_DIR="${STATE_OUTPUT_DIR:-/state}"
+LOGS_DIR="${LOGS_OUTPUT_DIR:-/logs}"
+mkdir -p "${STATE_DIR}" "${LOGS_DIR}"
+
+LOG_FILE="${LOGS_DIR}/svm-warp-deployer-$(date -u +%Y%m%dT%H%M%SZ).log"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+echo "Logging to ${LOG_FILE}"
+
 echo "=== Hyperlane SVM Warp Route Deployer ==="
 echo "Token mint: ${WARP_TOKEN_MINT}"
 echo "Warp route name: ${WARP_ROUTE_NAME}"
@@ -13,19 +21,21 @@ echo "Synthetic chain: ${SYNTHETIC_CHAIN} (domain ${SYNTHETIC_DOMAIN_ID})"
 # -------------------------------------------------------
 echo ""
 echo "=== Checking core deployment artifacts ==="
-COLLATERAL_PROGRAMS=$(kubectl get configmap hyperlane-program-ids \
-  -o jsonpath="{.data.${COLLATERAL_CHAIN}-program-ids\.json}" 2>/dev/null || echo "")
-SYNTHETIC_PROGRAMS=$(kubectl get configmap hyperlane-program-ids \
-  -o jsonpath="{.data.${SYNTHETIC_CHAIN}-program-ids\.json}" 2>/dev/null || echo "")
-
-if [ -z "$COLLATERAL_PROGRAMS" ] || [ "$COLLATERAL_PROGRAMS" = "{}" ]; then
-  echo "ERROR: hyperlane-program-ids ConfigMap missing data for ${COLLATERAL_CHAIN}."
-  echo "Run the hyperlane-svm-deployer stack first."
+PROGRAM_IDS_FILE="${STATE_DIR}/program-ids.json"
+if [ ! -s "${PROGRAM_IDS_FILE}" ]; then
+  echo "ERROR: ${PROGRAM_IDS_FILE} missing. Run the hyperlane-svm-deployer stack first."
   exit 1
 fi
-if [ -z "$SYNTHETIC_PROGRAMS" ] || [ "$SYNTHETIC_PROGRAMS" = "{}" ]; then
-  echo "ERROR: hyperlane-program-ids ConfigMap missing data for ${SYNTHETIC_CHAIN}."
-  echo "Run the hyperlane-svm-deployer stack first."
+
+COLLATERAL_PROGRAMS=$(python3 -c "import json,sys;print(json.dumps(json.load(open('${PROGRAM_IDS_FILE}')).get('${COLLATERAL_CHAIN}', {})))")
+SYNTHETIC_PROGRAMS=$(python3 -c "import json,sys;print(json.dumps(json.load(open('${PROGRAM_IDS_FILE}')).get('${SYNTHETIC_CHAIN}', {})))")
+
+if [ "$COLLATERAL_PROGRAMS" = "{}" ]; then
+  echo "ERROR: program-ids.json missing data for ${COLLATERAL_CHAIN}."
+  exit 1
+fi
+if [ "$SYNTHETIC_PROGRAMS" = "{}" ]; then
+  echo "ERROR: program-ids.json missing data for ${SYNTHETIC_CHAIN}."
   exit 1
 fi
 
@@ -48,13 +58,15 @@ echo "Synthetic  ISM: ${SYNTHETIC_ISM}, IGP: ${SYNTHETIC_IGP}"
 # Idempotency check: skip if token-config already populated
 # -------------------------------------------------------
 if [ "${FORCE_REDEPLOY:-false}" != "true" ]; then
-  EXISTING=$(kubectl get configmap hyperlane-token-config \
-    -o jsonpath='{.data.token-config\.json}' 2>/dev/null || echo "")
-  if [ -n "$EXISTING" ] && [ "$EXISTING" != "{}" ] && [ "$EXISTING" != "null" ]; then
-    echo ""
-    echo "Warp route config already exists (hyperlane-token-config ConfigMap has data)."
-    echo "Set FORCE_REDEPLOY=true to override. Exiting."
-    exit 0
+  EXISTING_FILE="${STATE_DIR}/token-config.json"
+  if [ -s "${EXISTING_FILE}" ]; then
+    CONTENT=$(cat "${EXISTING_FILE}")
+    if [ "$CONTENT" != "{}" ] && [ "$CONTENT" != "null" ]; then
+      echo ""
+      echo "Warp route config already exists (${EXISTING_FILE} has data)."
+      echo "Set FORCE_REDEPLOY=true to override. Exiting."
+      exit 0
+    fi
   fi
 fi
 
@@ -243,39 +255,14 @@ TOKEN_EOF
 # Write deployment artifacts to k8s ConfigMaps
 # -------------------------------------------------------
 echo ""
-echo "=== Writing warp route artifacts to Kubernetes ConfigMaps ==="
+echo "=== Writing warp route artifacts to ${STATE_DIR} ==="
 
-kubectl create configmap hyperlane-token-config \
-  --from-file="token-config.json=${WORK_DIR}/output/token-config.json" \
-  --dry-run=client -o yaml | kubectl apply -f -
+cp "${WORK_DIR}/output/token-config.json" "${STATE_DIR}/token-config.json"
 
-# Copy any warp-route deploy outputs to ConfigMap if available
 if [ -d "${WARP_OUTPUT_DIR}" ]; then
-  WARP_FILES_ARGS=""
-  for f in "${WARP_OUTPUT_DIR}"/*.json; do
-    [ -f "$f" ] || continue
-    BASENAME=$(basename "$f")
-    WARP_FILES_ARGS="${WARP_FILES_ARGS} --from-file=${BASENAME}=${f}"
-  done
-  if [ -n "${WARP_FILES_ARGS}" ]; then
-    kubectl create configmap hyperlane-warp-deploy-outputs \
-      ${WARP_FILES_ARGS} \
-      --dry-run=client -o yaml | kubectl apply -f -
-  fi
-fi
-
-for CM in hyperlane-token-config; do
-  kubectl label configmap "$CM" \
-    app.kubernetes.io/managed-by=hyperlane-svm-warp-deployer \
-    app.kubernetes.io/component=deployment-artifacts \
-    --overwrite
-done
-
-if kubectl get configmap hyperlane-warp-deploy-outputs >/dev/null 2>&1; then
-  kubectl label configmap hyperlane-warp-deploy-outputs \
-    app.kubernetes.io/managed-by=hyperlane-svm-warp-deployer \
-    app.kubernetes.io/component=deployment-artifacts \
-    --overwrite
+  rm -rf "${STATE_DIR}/warp-deploy-outputs"
+  mkdir -p "${STATE_DIR}/warp-deploy-outputs"
+  cp -a "${WARP_OUTPUT_DIR}/." "${STATE_DIR}/warp-deploy-outputs/" 2>/dev/null || true
 fi
 
 # -------------------------------------------------------
@@ -283,11 +270,19 @@ fi
 # -------------------------------------------------------
 rm -f "${DEPLOYER_KEY_FILE}"
 
+# -------------------------------------------------------
+# Preflight: verify expected outputs
+# -------------------------------------------------------
+if [ ! -s "${STATE_DIR}/token-config.json" ]; then
+  echo "ERROR: warp-deployer preflight failed: ${STATE_DIR}/token-config.json missing or empty"
+  exit 1
+fi
+
 echo ""
 echo "=== Warp route deployment complete ==="
 echo "Collateral chain: ${COLLATERAL_CHAIN}"
 echo "Synthetic chain: ${SYNTHETIC_CHAIN}"
 echo ""
-echo "Artifacts written to ConfigMaps:"
-echo "  - hyperlane-token-config"
-echo "  - hyperlane-warp-deploy-outputs (if deploy produced output files)"
+echo "Artifacts written to ${STATE_DIR}:"
+echo "  - token-config.json"
+[ -d "${STATE_DIR}/warp-deploy-outputs" ] && echo "  - warp-deploy-outputs/"
