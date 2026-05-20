@@ -532,24 +532,30 @@ AWS_SECRET_ACCESS_KEY=<minio-secret-key>
 
 ## Artifact Passing (Deployer → Agents)
 
-**Decision:** Kubernetes ConfigMaps and Secrets.
+**Decision (2026-05-20, supersedes earlier "ConfigMaps and Secrets" decision):** Deployer Jobs write JSON state files to a host-path bind mount; an out-of-cluster loader (pytest fixture in dev, ansible in prod) copies the relevant files into each consumer stack's `{deploy_dir}/configmaps/<cm-name>/` before `deployment start`; SO creates plain ConfigMaps in each consumer's own namespace and pods mount them as normal volumes.
 
-- Deployer job outputs deployment artifacts as k8s ConfigMaps and Secrets
-- Agents stack references these by name
-- Enables independent lifecycle management of deployer and agents
+**Earlier model (deprecated):** Deployer Jobs `kubectl create configmap` directly; consumer pods `kubectl get configmap` at startup via an init container. That coupled consumers to the deployer's k8s cluster at runtime and required all stacks to share one namespace. It also bypassed SO's spec-driven ConfigMap mechanism.
 
-**Runtime configuration files (all via ConfigMaps, none baked into images):**
+**Why this changed:**
+- SO now enforces per-deployment namespace ownership; the shared-namespace pattern fails the check.
+- Multi-machine deployments (validators on separate hosts) need consumers to bootstrap without k8s API access to the deployer's cluster.
+- Git-tracked state files give an audited, reviewable artifact set that ansible can fan out across hosts.
 
-| ConfigMap | Contents | Created by | Consumed by |
-|-----------|----------|-----------|-------------|
-| `hyperlane-agent-config` | `agent-config.json` — chain definitions, RPC URLs, deployed contract addresses | Deployer (populates after deploy) | Validators, Relayer |
-| `hyperlane-gas-oracle-config` | `gas-oracle-configs.json` — token exchange rates, gas prices, overhead | Deployer (initial), Gas oracle service (updates) | Deployer (IGP configure) |
-| `hyperlane-multisig-config` | `multisig-config.json` per chain — validator addresses, threshold | Deployer | Deployer (ISM configure) |
-| `hyperlane-registry` | `metadata.yaml` — chain registry metadata | Pre-configured | Deployer, CLI tools |
-| `hyperlane-token-config` | `token-config.json` — warp route token configuration with contract addresses | Warp deployer (populates after deploy) | Warp deployer |
-| `hyperlane-program-ids` | `program-ids.json` per chain — deployed program addresses | Deployer (output) | Agents, Warp deployer, Ops |
+**State files (committed under `deployment/bridges/<bridge>/generated/`):**
 
-These correspond to the files in the `localnet5.patch` from hyperlane-demo, but with actual values populated at deploy time rather than hardcoded localhost URLs.
+| State file | Contents | Produced by | Consumed by |
+|---|---|---|---|
+| `agent-config.json` | chain definitions, RPC URLs, deployed contract addresses | hyperlane-svm-deployer | validator (CM mount), relayer (CM mount) |
+| `gas-oracle-config.json` | token exchange rates, gas prices, overhead | hyperlane-svm-deployer | gas-oracle (env-var injection) |
+| `multisig-config.json` | per-chain validator pubkeys + threshold | hyperlane-svm-deployer | conftest/ansible (env-var injection for monitoring, deployer ISM re-config) |
+| `program-ids.json` | per-chain deployed program addresses | hyperlane-svm-deployer | warp-deployer (direct disk read at runtime), all stacks (env-var injection) |
+| `registry/metadata.yaml` | chain registry metadata | hyperlane-svm-deployer | warp-ui (env-var injection) |
+| `token-config.json` | warp route token config with contract addresses | hyperlane-svm-warp-deployer | warp-ui (env-var injection) |
+| `warp-deploy-outputs/<file>` | per-warp-route program IDs (hex+base58) | hyperlane-svm-warp-deployer | bridge_setup, warp-ui |
+
+Distribution: `BridgeStateLoader.populate(stack, deploy_dir)` (in `tests/e2e/lib/state_loader.py`) for dev; ansible task (PR3) for prod. Both copy state files into each consumer's `{deploy_dir}/configmaps/`, where SO turns them into k8s ConfigMaps in the consumer's own namespace.
+
+Full design: `docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distribution-design.md`.
 
 ---
 
