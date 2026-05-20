@@ -125,9 +125,18 @@ def stop_solana_test_validator(port: int = 18899, name: str = "solana", delete_d
 
 
 def fetch_gorchain_stack() -> Path:
-    """Fetch the gorchain-stacks repo via laconic-so and return the stack path."""
+    """Fetch the gorchain-stacks repo via laconic-so and return the stack path.
+
+    Defaults to SSH so local devs with their GitHub SSH keys configured work
+    out of the box. CI sets E2E_GIT_HTTPS=1 to fall back to HTTPS, which the
+    workflow then makes work via a git insteadOf rewrite that injects a PAT.
+    """
     log_info("Fetching gorchain-stacks repo...")
-    run_cmd(["laconic-so", "fetch-stack", "--pull", GORCHAIN_STACKS_REPO])
+    cmd = ["laconic-so", "fetch-stack", "--pull"]
+    if not os.environ.get("E2E_GIT_HTTPS"):
+        cmd.append("--git-ssh")
+    cmd.append(GORCHAIN_STACKS_REPO)
+    run_cmd(cmd)
     stack_path = CERC_REPO_BASE_DIR / "gorchain-stacks" / "stack-orchestrator" / "stacks" / "gorchain"
     if not stack_path.is_dir():
         raise RuntimeError(f"Gorchain stack not found at {stack_path}")
