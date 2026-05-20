@@ -428,6 +428,7 @@ def _recover_minio_credentials(namespace: str) -> tuple[str, str]:
 def minio_deployment(
     request: pytest.FixtureRequest,
     kind_cluster: None,
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[MinioInfo, None, None]:
     """Deploy the hyperlane-minio stack.
 
@@ -475,6 +476,8 @@ def minio_deployment(
     log.info("Creating minio secrets in namespace %s...", namespace)
     create_minio_secrets(namespace, minio_user, minio_password)
 
+    bridge_state_loader.populate("hyperlane-minio", deploy_info.deploy_dir)
+
     log.info("Starting minio stack...")
     deploy_start(deploy_info.deploy_dir)
 
@@ -514,6 +517,7 @@ def deployer_deployment(
     keypairs: KeypairSet,
     kind_cluster: None,
     chain_nodes: None,
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[DeploymentInfo, None, None]:
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_core_deploy = request.config.getoption("--skip-core-deploy")
@@ -555,6 +559,8 @@ def deployer_deployment(
 
     log.info("Funding wallets...")
     fund_wallets(keypair_set=keypairs, gorchain_rpc="http://localhost:8899", solana_rpc="http://localhost:18899")
+
+    bridge_state_loader.populate("hyperlane-svm-deployer", deploy_info.deploy_dir)
 
     log.info("Starting deployer stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -689,6 +695,8 @@ def warp_deployment(
         cluster_id="warp-deployer",
     )
 
+    bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
+
     log.info("Starting warp deployer stack...")
     deploy_start(warp_info.deploy_dir)
 
@@ -805,6 +813,7 @@ def _deploy_validator(
     wallet_id: str,
     minio: MinioInfo,
     deployer: DeploymentInfo,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy a single validator stack for the given chain."""
@@ -857,6 +866,8 @@ def _deploy_validator(
         cluster_id=f"val-{chain}",
     )
 
+    bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
+
     log.info("Starting %s stack...", stack_name)
     deploy_start(deploy_info.deploy_dir)
 
@@ -887,6 +898,7 @@ def validator_gorchain(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     privy_mock: dict[str, str],
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy the gorchain validator."""
     yield from _deploy_validator(
@@ -895,6 +907,7 @@ def validator_gorchain(
         wallet_id=GORCHAIN_WALLET_ID,
         minio=minio_deployment,
         deployer=deployer_deployment,
+        bridge_state_loader=bridge_state_loader,
         request=request,
     )
 
@@ -905,6 +918,7 @@ def validator_solana(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     privy_mock: dict[str, str],
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy the solana validator."""
     yield from _deploy_validator(
@@ -913,6 +927,7 @@ def validator_solana(
         wallet_id=SOLANA_WALLET_ID,
         minio=minio_deployment,
         deployer=deployer_deployment,
+        bridge_state_loader=bridge_state_loader,
         request=request,
     )
 
@@ -1016,6 +1031,8 @@ def relayer_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="relayer",
     )
+
+    bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
 
     log.info("Starting relayer stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1157,6 +1174,8 @@ def gas_oracle_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="gas-oracle",
     )
+
+    bridge_state_loader.populate("hyperlane-gas-oracle", deploy_info.deploy_dir)
 
     log.info("Starting gas oracle stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1321,6 +1340,7 @@ def monitoring_deployment(
     keypairs: KeypairSet,
     kind_cluster: None,
     monitoring_images: None,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the hyperlane-monitoring stack and wait for metrics flow."""
@@ -1400,6 +1420,8 @@ def monitoring_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="monitoring",
     )
+
+    bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
 
     log.info("Starting monitoring stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1838,6 +1860,8 @@ def warp_ui_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="warp-ui",
     )
+
+    bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
 
     log.info("Starting warp-ui stack...")
     deploy_start(deploy_info.deploy_dir)
