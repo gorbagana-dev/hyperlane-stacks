@@ -560,9 +560,6 @@ def deployer_deployment(
     log.info("Creating deployer secrets...")
     create_deployer_secrets(namespace, keypairs)
 
-    log.info("Creating warp deployer secrets...")
-    create_warp_deployer_secrets(namespace, keypairs)
-
     log.info("Funding wallets...")
     fund_wallets(keypair_set=keypairs, gorchain_rpc="http://localhost:8899", solana_rpc="http://localhost:18899")
 
@@ -655,6 +652,7 @@ def _patch_warp_spec(token_mint: str) -> Path:
 def warp_deployment(
     deployer_deployment: DeploymentInfo,
     bridge_state_loader: BridgeStateLoader,
+    keypairs: KeypairSet,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the warp route stack once for the entire test session."""
@@ -699,6 +697,16 @@ def warp_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         deployment_id="warp-deployer",
     )
+
+    # Per-stack namespaces mean the warp-deployer Secret has to live in the
+    # warp-deployer's own namespace, not the core deployer's. Create the
+    # namespace explicitly so the Secret can land before `deploy start` —
+    # SO will find it already there during _ensure_namespace().
+    log.info("Creating namespace %s...", warp_info.namespace)
+    create_namespace(warp_info.namespace)
+
+    log.info("Creating warp deployer secrets...")
+    create_warp_deployer_secrets(warp_info.namespace, keypairs)
 
     bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
 
