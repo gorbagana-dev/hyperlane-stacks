@@ -1,6 +1,10 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
 kind-cluster-name: REPLACE_KIND_CLUSTER
+kind-mount-root: REPLACE_KIND_MOUNT_ROOT
+volumes:
+  bridge-state: REPLACE_KIND_MOUNT_ROOT/generated
+  bridge-logs: REPLACE_KIND_MOUNT_ROOT/logs
 configmaps:
   deployer-scripts-config: ./configmaps/deployer-scripts-config
   deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config

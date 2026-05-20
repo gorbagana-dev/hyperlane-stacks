@@ -21,7 +21,6 @@ from lib.chain import (
 )
 from lib.cluster import (
     KIND_CLUSTER_NAME,
-    apply_rbac,
     create_kind_cluster,
     create_namespace,
     create_selfsigned_issuer,
@@ -109,22 +108,25 @@ SPEC_REPLACEMENTS = {
 
 
 @pytest.fixture(scope="session")
-def bridge_state_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Host-path bind-mounted into Kind via extraMounts; deployer Jobs
-    write here, BridgeStateLoader reads here, consumer populate() copies
-    from here. One per pytest session."""
-    p = tmp_path_factory.mktemp("hyperlane-state")
-    log.info("Bridge state dir for this session: %s", p)
+def bridge_state_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Kind umbrella root. SO emits a single extraMount (hostPath=this →
+    containerPath=/mnt). Deployer Jobs write to subdirs (generated/, logs/)
+    which become writable hostPath PVs inside the cluster."""
+    p = tmp_path_factory.mktemp("hyperlane-bridge")
+    (p / "generated").mkdir()
+    (p / "logs").mkdir()
+    log.info("Bridge state root for this session: %s", p)
     return p
 
 
 @pytest.fixture(scope="session")
-def bridge_state_logs_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Host-path for deployer Job logs (tee'd stdout/stderr); separate
-    from state dir so logs survive even if state dir is cleared."""
-    p = tmp_path_factory.mktemp("hyperlane-state-logs")
-    log.info("Bridge state logs dir for this session: %s", p)
-    return p
+def bridge_state_dir(bridge_state_root: Path) -> Path:
+    return bridge_state_root / "generated"
+
+
+@pytest.fixture(scope="session")
+def bridge_state_logs_dir(bridge_state_root: Path) -> Path:
+    return bridge_state_root / "logs"
 
 
 @pytest.fixture(scope="session")
@@ -255,20 +257,15 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 @pytest.fixture(scope="session")
 def kind_cluster(
     request: pytest.FixtureRequest,
-    bridge_state_dir: Path,
-    bridge_state_logs_dir: Path,
+    bridge_state_root: Path,
 ) -> Generator[None, None, None]:
+    SPEC_REPLACEMENTS["REPLACE_KIND_MOUNT_ROOT"] = str(bridge_state_root)
     skip_setup = request.config.getoption("--skip-cluster-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
     if not skip_setup:
         log.info("Creating kind cluster...")
-        create_kind_cluster(
-            extra_mounts=[
-                (bridge_state_dir, "/mnt/bridge-state"),
-                (bridge_state_logs_dir, "/mnt/bridge-state-logs"),
-            ],
-        )
+        create_kind_cluster()
         log.info("Installing cert-manager...")
         install_cert_manager()
         log.info("Creating self-signed issuer...")
@@ -544,9 +541,6 @@ def deployer_deployment(
     # created automatically by laconic-so via the external-services spec key.
     log.info("Creating namespace %s...", namespace)
     create_namespace(namespace)
-
-    log.info("Applying RBAC to namespace %s...", namespace)
-    apply_rbac(namespace)
 
     log.info("Creating deployer secrets...")
     create_deployer_secrets(namespace, keypairs)
