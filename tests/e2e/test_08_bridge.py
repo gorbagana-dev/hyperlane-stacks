@@ -333,7 +333,7 @@ class TestBridge:
 
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""
-        ns = bridge_setup["namespace"]
+        ns = bridge_setup["relayer_namespace"]
         deployment_id = bridge_setup["relayer_deployment_id"]
 
         # Find relayer pod by its app label (set by laconic-so to the deployment-id)

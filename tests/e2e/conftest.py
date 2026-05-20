@@ -1650,7 +1650,6 @@ def bridge_setup(
     Also configures a dedicated IGP beneficiary (separate from the deployer)
     so that fee claim tests can observe balance changes.
     """
-    ns = warp_deployment["namespace"]
     token_mint = warp_deployment["token_mint"]
     sender_keypair = str(KEYS_DIR / "deployer.json")
 
@@ -1741,7 +1740,7 @@ def bridge_setup(
         log.info("  bridge-user-%d: funded 2.0 USDC", i)
 
     return {
-        "namespace": ns,
+        "relayer_namespace": relayer_deployment.namespace,
         "token_mint": token_mint,
         "synthetic_mint": synthetic_mint,
         "sender_keypair": sender_keypair,
