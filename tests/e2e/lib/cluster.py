@@ -2,15 +2,52 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
 from pathlib import Path
+
+import yaml
 
 from .common import E2E_DIR, REPO_ROOT, fail_exit, log_info, run_cmd
 
 KIND_CLUSTER_NAME = "hyperlane-e2e"
 
 
-def create_kind_cluster(config_path: Path | None = None) -> None:
+def _kind_config_with_mounts(
+    template_path: Path, extra_mounts: list[tuple[Path, str]]
+) -> Path:
+    """Return a temp Kind config derived from ``template_path`` with
+    ``extraMounts`` appended to the (single) control-plane node.
+
+    Each tuple is ``(host_path, container_path)``. Host paths are created
+    if they do not already exist.
+    """
+    cfg = yaml.safe_load(template_path.read_text())
+    nodes = cfg.get("nodes", [])
+    if not nodes:
+        raise ValueError(f"Kind template {template_path} has no nodes")
+    node = nodes[0]
+    mounts = node.setdefault("extraMounts", [])
+    for host_path, container_path in extra_mounts:
+        host_path.mkdir(parents=True, exist_ok=True)
+        mounts.append(
+            {
+                "hostPath": str(host_path),
+                "containerPath": container_path,
+            }
+        )
+    fd, tmp_path = tempfile.mkstemp(suffix=".yaml", prefix="kind-config-")
+    os.close(fd)
+    Path(tmp_path).write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return Path(tmp_path)
+
+
+def create_kind_cluster(
+    config_path: Path | None = None,
+    *,
+    extra_mounts: list[tuple[Path, str]] | None = None,
+) -> None:
     log_info(f"Creating kind cluster '{KIND_CLUSTER_NAME}'...")
 
     result = run_cmd(["kind", "get", "clusters"], check=False, quiet=True)
@@ -22,6 +59,9 @@ def create_kind_cluster(config_path: Path | None = None) -> None:
 
     if config_path is None:
         config_path = E2E_DIR / "fixtures" / "kind-config.yaml"
+
+    if extra_mounts:
+        config_path = _kind_config_with_mounts(config_path, extra_mounts)
 
     run_cmd(
         [

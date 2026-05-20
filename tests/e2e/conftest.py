@@ -256,13 +256,22 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 @pytest.fixture(scope="session")
-def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+def kind_cluster(
+    request: pytest.FixtureRequest,
+    bridge_state_dir: Path,
+    bridge_state_logs_dir: Path,
+) -> Generator[None, None, None]:
     skip_setup = request.config.getoption("--skip-cluster-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
     if not skip_setup:
         log.info("Creating kind cluster...")
-        create_kind_cluster()
+        create_kind_cluster(
+            extra_mounts=[
+                (bridge_state_dir, "/mnt/bridge-state"),
+                (bridge_state_logs_dir, "/mnt/bridge-state-logs"),
+            ],
+        )
         log.info("Installing cert-manager...")
         install_cert_manager()
         log.info("Creating self-signed issuer...")
