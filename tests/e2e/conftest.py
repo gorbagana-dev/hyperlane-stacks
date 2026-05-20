@@ -3,7 +3,6 @@ import dataclasses
 import logging
 import re
 import secrets
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,6 +33,7 @@ from lib.cluster import (
 from lib.common import (
     CHAINS,
     E2E_DIR,
+    force_rmtree,
     run_deployer_cli,
     save_job_describe,
     save_job_logs,
@@ -131,8 +131,10 @@ def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, N
     skip_setup = request.config.getoption("--skip-cluster-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
     if not skip_cleanup and not skip_setup:
+        # Deployer containers run as root and write root-owned files into
+        # this dir, so plain rmtree fails — force_rmtree falls back to sudo.
         log.info("Removing bridge state root: %s", p)
-        shutil.rmtree(p, ignore_errors=True)
+        force_rmtree(p)
 
 
 @pytest.fixture(scope="session")
