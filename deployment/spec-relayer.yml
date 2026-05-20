@@ -24,6 +24,7 @@ resources:
         storage: 5Gi
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
+  agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-relayer-secrets:
     - HYP_CHAINS_GORCHAIN_SIGNER_KEY

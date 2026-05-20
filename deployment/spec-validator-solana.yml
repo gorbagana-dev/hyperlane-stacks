@@ -13,15 +13,13 @@ annotations:
   prometheus.io/port: "9090"
 volumes:
   validator-data:
-  agent-config:
 resources:
   volumes:
     validator-data:
       reservations:
         storage: 5Gi
-    agent-config:
-      reservations:
-        storage: 100Mi
+configmaps:
+  agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-validator-secrets:
     - PRIVY_APP_ID

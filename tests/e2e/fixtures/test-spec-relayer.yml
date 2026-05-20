@@ -15,13 +15,6 @@ annotations:
   prometheus.io/port: "9091"
 resources:
   containers:
-    agent-config-init:
-      reservations:
-        cpus: "0.1"
-        memory: 64M
-      limits:
-        cpus: "0.25"
-        memory: 128M
     relayer:
       reservations:
         cpus: "0.25"
@@ -38,9 +31,9 @@ resources:
         memory: 128M
 volumes:
   relayer-data:
-  agent-config:
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
+  agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-relayer-secrets:
     - HYP_CHAINS_GORCHAIN_SIGNER_KEY
