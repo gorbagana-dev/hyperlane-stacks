@@ -34,8 +34,6 @@ from lib.cluster import (
 from lib.common import (
     CHAINS,
     E2E_DIR,
-    get_configmap_data,
-    get_configmap_json,
     run_deployer_cli,
     save_job_describe,
     save_job_logs,
@@ -644,6 +642,7 @@ def _patch_warp_spec(token_mint: str) -> Path:
 @pytest.fixture(scope="session")
 def warp_deployment(
     deployer_deployment: DeploymentInfo,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the warp route stack once for the entire test session."""
@@ -652,13 +651,13 @@ def warp_deployment(
 
     if skip_warp_deploy:
         # Reuse existing warp deployment — recover token_mint from the
-        # hyperlane-token-config ConfigMap written by the warp deployer job.
+        # token-config.json state file written by the warp deployer job.
         namespace = deployer_deployment.namespace
         log.info("Reusing existing warp deployment (namespace: %s)", namespace)
-        token_config = get_configmap_json(namespace, "hyperlane-token-config", "token-config.json")
+        token_config = bridge_state_loader.read_json("token-config.json")
         token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
-        assert token_mint, "Cannot recover token_mint from hyperlane-token-config (is warp deployed?)"
-        log.info("Recovered token mint from ConfigMap: %s", token_mint)
+        assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
+        log.info("Recovered token mint from state file: %s", token_mint)
 
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
         cluster_id = get_cluster_id(deploy_dir)
@@ -929,6 +928,7 @@ def relayer_deployment(
     minio_deployment: MinioInfo,
     validator_images: None,
     kind_cluster: None,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[RelayerInfo, None, None]:
     """Deploy the hyperlane-relayer stack."""
@@ -967,9 +967,9 @@ def relayer_deployment(
     _airdrop(1, fee_claim_addr, "http://localhost:18899", "relayer fee claim (solana)")
     relayer_keypair_json = (KEYS_DIR / "relayer-fee-claim.json").read_text().strip()
 
-    # Read IGP program IDs and accounts from the deployer ConfigMap
+    # Read IGP program IDs and accounts from the deployer state files
     for chain in ("gorchain", "solana"):
-        program_ids = get_configmap_json(namespace, "hyperlane-program-ids", f"{chain}-program-ids.json")
+        program_ids = bridge_state_loader.read_program_ids(chain)
         if chain == "gorchain":
             gorchain_igp_program_id = program_ids["igp_program_id"]
             gorchain_igp_account = program_ids["igp_account"]
@@ -1101,6 +1101,7 @@ def gas_oracle_deployment(
     privy_mock: dict[str, str],
     kind_cluster: None,
     gas_oracle_image: None,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the hyperlane-gas-oracle stack and wait for first update."""
@@ -1126,13 +1127,9 @@ def gas_oracle_deployment(
         }
         return
 
-    # Read IGP program IDs from the deployer ConfigMap
-    gorchain_program_ids = get_configmap_json(
-        namespace, "hyperlane-program-ids", "gorchain-program-ids.json",
-    )
-    solana_program_ids = get_configmap_json(
-        namespace, "hyperlane-program-ids", "solana-program-ids.json",
-    )
+    # Read IGP program IDs from the deployer state files
+    gorchain_program_ids = bridge_state_loader.read_program_ids("gorchain")
+    solana_program_ids = bridge_state_loader.read_program_ids("solana")
     gorchain_igp_program_id = gorchain_program_ids["igp_program_id"]
     solana_igp_program_id = solana_program_ids["igp_program_id"]
 
@@ -1519,16 +1516,21 @@ def monitoring_deployment(
 # ---------------------------------------------------------------------------
 
 
-def _get_warp_program_addresses(namespace: str) -> dict[str, str]:
-    """Fetch warp-deploy-outputs ConfigMap and return {chain: base58_address}."""
+def _get_warp_program_addresses(state_loader: BridgeStateLoader) -> dict[str, str]:
+    """Read warp-deploy-outputs state files and return {chain: base58_address}."""
     import json
 
-    data = get_configmap_data(namespace, "hyperlane-warp-deploy-outputs")
-    assert data, "hyperlane-warp-deploy-outputs has no data"
+    outputs_dir = state_loader.state_dir / "warp-deploy-outputs"
+    assert outputs_dir.is_dir(), f"{outputs_dir} does not exist"
+
+    files = list(outputs_dir.iterdir())
+    assert files, f"{outputs_dir} has no files"
 
     programs: dict[str, str] = {}
-    for _key, raw in data.items():
-        for chain_name, entry in json.loads(raw).items():
+    for f in files:
+        if not f.is_file():
+            continue
+        for chain_name, entry in json.loads(f.read_text()).items():
             if entry.get("base58"):
                 programs[chain_name] = entry["base58"]
     return programs
@@ -1590,6 +1592,7 @@ def bridge_setup(
     relayer_deployment: RelayerInfo,
     validator_gorchain: ValidatorInfo,
     validator_solana: ValidatorInfo,
+    bridge_state_loader: BridgeStateLoader,
 ) -> dict:
     """Set up bridge transfer context.
 
@@ -1604,7 +1607,7 @@ def bridge_setup(
     sender_keypair = str(KEYS_DIR / "deployer.json")
 
     log.info("Resolving warp program addresses...")
-    warp_programs = _get_warp_program_addresses(ns)
+    warp_programs = _get_warp_program_addresses(bridge_state_loader)
     assert "solana" in warp_programs, "No warp program for solana"
     assert "gorchain" in warp_programs, "No warp program for gorchain"
     log.info("Warp programs: %s", warp_programs)
@@ -1630,9 +1633,7 @@ def bridge_setup(
     igp_oracle_keypair = str(KEYS_DIR / "igp-oracle.json")
     log.info("Setting IGP beneficiary to %s...", beneficiary_pubkey)
     for chain in ("gorchain", "solana"):
-        program_ids = get_configmap_json(
-            ns, "hyperlane-program-ids", f"{chain}-program-ids.json",
-        )
+        program_ids = bridge_state_loader.read_program_ids(chain)
         _set_igp_beneficiary(
             rpc=CHAINS[chain]["rpc"],
             program_id=program_ids["igp_program_id"],
@@ -1758,21 +1759,22 @@ def warp_ui_deployment(
     warp_deployment: dict,
     deployer_deployment: DeploymentInfo,
     kind_cluster: None,
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[dict, None, None]:
-    """Deploy the warp-ui stack with resolved addresses from ConfigMaps."""
+    """Deploy the warp-ui stack with resolved addresses from state files."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
     namespace = E2E_NAMESPACE
 
-    # Resolve config values from existing ConfigMaps
-    log.info("Resolving mailbox addresses from program-ids ConfigMap...")
-    gorchain_programs = get_configmap_json(namespace, "hyperlane-program-ids", "gorchain-program-ids.json")
-    solana_programs = get_configmap_json(namespace, "hyperlane-program-ids", "solana-program-ids.json")
+    # Resolve config values from deployer state files
+    log.info("Resolving mailbox addresses from program-ids state files...")
+    gorchain_programs = bridge_state_loader.read_program_ids("gorchain")
+    solana_programs = bridge_state_loader.read_program_ids("solana")
     gorchain_mailbox = gorchain_programs["mailbox"]
     solana_mailbox = solana_programs["mailbox"]
     log.info("Mailboxes — gorchain: %s, solana: %s", gorchain_mailbox, solana_mailbox)
 
-    warp_programs = _get_warp_program_addresses(namespace)
+    warp_programs = _get_warp_program_addresses(bridge_state_loader)
     warp_collateral = warp_programs["solana"]
     warp_synthetic = warp_programs["gorchain"]
     log.info("Warp addresses — collateral: %s, synthetic: %s", warp_collateral, warp_synthetic)
