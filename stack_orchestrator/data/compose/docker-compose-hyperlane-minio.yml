@@ -8,9 +8,6 @@ services:
     # MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
     volumes:
       - minio-data:/data
-    ports:
-      - "9000"
-      - "9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s

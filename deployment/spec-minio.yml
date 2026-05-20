@@ -3,11 +3,6 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-network:
-  ports:
-    minio:
-      - "9000"
-      - "9001"
 volumes:
   minio-data:
 resources:
