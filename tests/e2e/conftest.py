@@ -860,6 +860,9 @@ def _deploy_validator(
     log.info("Funding chain signer %s on %s...", chain_signer_addr, chain)
     _airdrop(1, chain_signer_addr, rpc, f"{chain} chain signer")
 
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
+
     log.info("Creating validator secrets for %s...", chain)
     create_validator_secrets(
         namespace, chain,
@@ -1008,6 +1011,9 @@ def relayer_deployment(
         else:
             solana_igp_program_id = program_ids["igp_program_id"]
             solana_igp_account = program_ids["igp_account"]
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     # Create relayer secrets
     log.info("Creating relayer secrets...")
@@ -1165,6 +1171,9 @@ def gas_oracle_deployment(
     solana_program_ids = bridge_state_loader.read_program_ids("solana")
     gorchain_igp_program_id = gorchain_program_ids["igp_program_id"]
     solana_igp_program_id = solana_program_ids["igp_program_id"]
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     # Create gas oracle secrets (Privy creds — dummy values for mock)
     log.info("Creating gas oracle secrets...")
@@ -1410,6 +1419,9 @@ def monitoring_deployment(
     # Build wallet strings from keypairs
     wallet_string, wallet_labels = _build_wallet_string(keypairs)
     log.info("Monitoring wallet string: %s", wallet_string)
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     # Create monitoring secrets
     log.info("Creating monitoring secrets...")
