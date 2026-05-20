@@ -102,13 +102,19 @@ When making structural changes, update:
 ## Deployment order
 
 1. `hyperlane-minio` (no deps)
-2. `hyperlane-svm-deployer` (Job — creates program-ids, agent-config ConfigMaps)
-3. `hyperlane-svm-warp-deployer` (Job — reads program-ids, creates token-config)
-4. `hyperlane-validator` × 2 (gorchain + solana, reads agent-config)
-5. `hyperlane-relayer` (reads agent-config, needs MinIO)
-6. `hyperlane-gas-oracle` (reads IGP program IDs)
+2. `hyperlane-svm-deployer` (Job — writes state files to `/state` host-path)
+3. `hyperlane-svm-warp-deployer` (Job — reads `program-ids.json` from `/state`, writes `token-config.json`)
+4. `hyperlane-validator` × 2 (gorchain + solana, mounts agent-config CM populated by bridge_state_loader)
+5. `hyperlane-relayer` (mounts agent-config CM, needs MinIO via cross-namespace FQDN)
+6. `hyperlane-gas-oracle` (env vars populated from state files via conftest)
 7. `hyperlane-monitoring` (anytime)
-8. `hyperlane-warp-ui` (reads warp route addresses)
+8. `hyperlane-warp-ui` (env vars populated from state files via conftest)
+
+State flow: deployer Jobs write JSON files to `/state` (host-path via Kind `extraMounts`).
+Before each consumer's `deployment start`, `BridgeStateLoader.populate(stack, deploy_dir)`
+copies the relevant state files into `{deploy_dir}/configmaps/<cm-name>/`. SO then creates
+those as k8s ConfigMaps in each consumer's own namespace. See
+`docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distribution-design.md`.
 
 ## E2E tests
 
@@ -133,12 +139,13 @@ When making structural changes, update:
      `deploy create` reads spec keys, finds source dirs via
      `resolve_config_dir(stack, key)` → `data/config/{key}/`, copies to
      `{deploy_dir}/configmaps/{key}/`.
-  3. **`data/config/{volume-name}/`** — source directory. Must exist and match
-     the volume name exactly. Each stack must use unique volume names because
-     SO calls `create_namespaced_config_map` without idempotency — sharing a
-     name across stacks in the same namespace causes 409 AlreadyExists.
+  3. **`data/config/{volume-name}/`** — source directory for stack-internal configmaps.
+     For deployer-output configmaps (e.g. `agent-config`), `BridgeStateLoader.populate()`
+     fills `{deploy_dir}/configmaps/{name}/` from state files instead — no source dir
+     under `data/config/`.
   At `deploy start`, SO reads files from `{deploy_dir}/configmaps/{name}/`,
-  creates k8s ConfigMap objects, and mounts them into pods/jobs.
+  creates k8s ConfigMap objects in the stack's namespace, and mounts them into pods/jobs.
+  SO's ConfigMap creation is now idempotent (patches on 409 instead of failing).
 - **cluster-id lifecycle**: `deploy create` generates `laconic-{id}` in
   `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
   Patch `deployment.yml` (not the spec) after create.
