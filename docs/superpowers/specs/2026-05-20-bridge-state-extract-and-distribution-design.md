@@ -73,7 +73,7 @@ State lives under `deployment/bridges/<bridge-name>/` in this repo. The location
 
 ```
 deployment/bridges/<bridge-name>/
-├── generated/                      # deployer Job outputs — machine-produced
+├── generated/                      # deployer Job outputs — machine-produced (committed)
 │   ├── agent-config.json
 │   ├── program-ids.json
 │   ├── gas-oracle-config.json
@@ -83,8 +83,10 @@ deployment/bridges/<bridge-name>/
 │   │   ├── chains.yaml
 │   │   └── addresses.yaml
 │   └── warp-deploy-outputs/        # only present if warp-deployer produced files
-└── operator/                       # operator-supplied identity/policy config
-    └── minio-users.yaml            # per-validator MinIO users (PR2)
+├── operator/                       # operator-supplied identity/policy config (committed)
+│   └── minio-users.yaml            # per-validator MinIO users (PR2)
+└── logs/                           # deployer Job stdout/stderr — committed (audit trail)
+    └── <job>-<timestamp>.log
 ```
 
 The `generated/` vs `operator/` split makes diff review unambiguous about which kind of change is happening: re-running the deployer touches `generated/`; adjusting policies or adding a validator touches `operator/`.
@@ -93,7 +95,21 @@ File naming drops the `hyperlane-` prefix that ConfigMaps currently carry. Stack
 
 ## Deployer Job extract
 
-Both `hyperlane-svm-deployer` and `hyperlane-svm-warp-deployer` mount the same host-path volume at `/state` inside the container; the container always writes to `/state`. The compose-jobs files declare the volume; the spec / test fixture / ansible provides the host-side path. In dev (Kind), the host path lives under `/tmp/hyperlane-test-state/<run-id>` and is exposed to all Kind nodes via an `extraMounts` entry in the Kind config the test fixture generates.
+Both `hyperlane-svm-deployer` and `hyperlane-svm-warp-deployer` mount the same volume at `/state` inside the container; the container always writes to `/state`. The compose-jobs files declare the volume; the path inside the Kind node (e.g. `/state-host`) comes from the spec; the actual host path is plumbed via Kind's `extraMounts`. This is identical in dev and prod — only the host-side path differs:
+
+- **Dev (e2e):** `extraMounts.hostPath = /tmp/hyperlane-test-state/<run-id>`. Test fixture writes the Kind config and creates the directory.
+- **Prod:** `extraMounts.hostPath = <repo-clone>/deployment/bridges/<bridge>/generated/`. The operator's local Kind cluster has the repo's state directory directly bind-mounted into Kind. The Job's outputs land in the operator's working tree; `git status` shows the new files; operator commits.
+
+The Kind cluster that runs the deployer is local to the operator's machine and short-lived — it is **not** any production validator/relayer host. The deployer's only job is to produce committed artifacts. The cluster persists at the operator's discretion (post-mortem inspection via `kubectl logs`, re-runs, partial recovery); when the operator is done, they tear it down explicitly.
+
+### Log preservation across cluster tear-down
+
+`kubectl logs` only works while the cluster exists. To make the deployer Job's full output survive cluster destruction, both deployer scripts tee stdout/stderr to a host-path log file via a sibling `extraMounts` entry:
+
+- **Dev (e2e):** `extraMounts.hostPath = /tmp/hyperlane-test-state/<run-id>/logs/` → container path `/logs`. Scripts write to `/logs/<job>-<timestamp>.log`.
+- **Prod:** `extraMounts.hostPath = <repo-clone>/deployment/bridges/<bridge>/logs/` → container path `/logs`. Persists in the operator's working tree.
+
+The `logs/` directory under `deployment/bridges/<bridge>/` is committed alongside `generated/` and `operator/`. Each run produces a timestamped file, so logs accumulate as an audit trail rather than overwriting. Noisy, but the trail is worth more than the noise for forensics on a one-shot bridge bootstrap.
 
 ### Output contract (hardcoded, not discovered)
 
@@ -353,4 +369,3 @@ Deferred. v1 prod uses one shared MinIO with per-validator users + bucket-prefix
 - Specific format of `minio-users.yaml` (operator-supplied) — finalized during PR2.
 - Whether the dev test fixture should set up cert-manager unconditionally (slower, fuller fidelity) or behind a flag (skippable for fast iteration). Default: unconditional in PR2; revisit if setup time is painful.
 - Where ansible inventory lives (this repo's `deployment/ansible/`, a separate `hyperlane-bridge-deploy` repo, or `laconic-tech-ops/infra/hyperlane/`). Decided during PR3.
-- Where the deployer Job runs in prod. Two reasonable options: (a) compose-mode on the operator's machine — simplest permissions and outputs land directly on the operator's local filesystem for `git add`; (b) k8s-mode in some target cluster with a PVC the operator pulls via `kubectl cp`. (a) is simpler for v1; revisit if the deployer needs to run in a constrained environment.
