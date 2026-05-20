@@ -463,7 +463,7 @@ EXPECTED=(
   "${STATE_DIR}/agent-config.json"
   "${STATE_DIR}/gas-oracle-config.json"
   "${STATE_DIR}/multisig-config.json"
-  "${STATE_DIR}/registry/chains.yaml"
+  "${STATE_DIR}/registry/metadata.yaml"
 )
 
 MISSING=()
