@@ -9,15 +9,24 @@ echo "Solana domain: ${SOLANA_DOMAIN_ID}"
 # Idempotency check: if program-ids ConfigMap already has
 # data, a previous deploy succeeded. Skip unless FORCE_REDEPLOY=true.
 # -------------------------------------------------------
+STATE_DIR="${STATE_OUTPUT_DIR:-/state}"
+LOGS_DIR="${LOGS_OUTPUT_DIR:-/logs}"
+mkdir -p "${STATE_DIR}" "${STATE_DIR}/registry" "${LOGS_DIR}"
+
 if [ "${FORCE_REDEPLOY:-false}" != "true" ]; then
-  EXISTING=$(kubectl get configmap hyperlane-program-ids \
-    -o jsonpath='{.data.gorchain-program-ids\.json}' 2>/dev/null || echo "")
-  if [ -n "$EXISTING" ] && [ "$EXISTING" != "{}" ]; then
-    echo "Deployment artifacts already exist (hyperlane-program-ids ConfigMap has data)."
+  if [ -s "${STATE_DIR}/program-ids.json" ] \
+     && [ "$(cat "${STATE_DIR}/program-ids.json")" != "{}" ]; then
+    echo "Deployment artifacts already exist (${STATE_DIR}/program-ids.json)."
     echo "Set FORCE_REDEPLOY=true to override. Exiting."
     exit 0
   fi
 fi
+
+# Tee all subsequent stdout+stderr to a timestamped log so it survives
+# cluster tear-down.
+LOG_FILE="${LOGS_DIR}/svm-deployer-$(date -u +%Y%m%dT%H%M%SZ).log"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+echo "Logging to ${LOG_FILE}"
 
 # -------------------------------------------------------
 # Write deployer keypair to file (required by sealevel-client)
@@ -397,53 +406,79 @@ cat > "${WORK_DIR}/agent-config.json" <<AGENT_EOF
 AGENT_EOF
 
 # -------------------------------------------------------
-# Write deployment artifacts to k8s ConfigMaps
+# Write deployment artifacts to /state as JSON files
 # -------------------------------------------------------
 echo ""
-echo "=== Writing deployment artifacts to Kubernetes ConfigMaps ==="
+echo "=== Writing deployment artifacts to ${STATE_DIR} ==="
 
-# Program IDs ConfigMap
-kubectl create configmap hyperlane-program-ids \
-  --from-file="gorchain-program-ids.json=${GORCHAIN_PROGRAMS}" \
-  --from-file="solana-program-ids.json=${SOLANA_PROGRAMS}" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# program-ids.json: merge per-chain program ID files into one map
+python3 - <<PYEOF
+import json, pathlib
+out = {}
+for chain, src in (("gorchain", "${GORCHAIN_PROGRAMS}"),
+                   ("solana",   "${SOLANA_PROGRAMS}")):
+    p = pathlib.Path(src)
+    out[chain] = json.loads(p.read_text()) if p.exists() else {}
+pathlib.Path("${STATE_DIR}/program-ids.json").write_text(
+    json.dumps(out, indent=2, sort_keys=True) + "\n"
+)
+PYEOF
 
-# Agent config ConfigMap
-kubectl create configmap hyperlane-agent-config \
-  --from-file="agent-config.json=${WORK_DIR}/agent-config.json" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# agent-config.json: copy as-is
+cp "${WORK_DIR}/agent-config.json" "${STATE_DIR}/agent-config.json"
 
-# Gas oracle config (copy from input, skip if not mounted)
+# gas-oracle-config.json: copy from mount if present
 if [ -f "${GAS_ORACLE_CONFIG}" ]; then
-  kubectl create configmap hyperlane-gas-oracle-config \
-    --from-file="gas-oracle-configs.json=${GAS_ORACLE_CONFIG}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  cp "${GAS_ORACLE_CONFIG}" "${STATE_DIR}/gas-oracle-config.json"
 else
-  echo "WARNING: Gas oracle config not found at ${GAS_ORACLE_CONFIG}, skipping ConfigMap"
+  echo "WARNING: Gas oracle config not found at ${GAS_ORACLE_CONFIG}; not written"
 fi
 
-# Multisig config (already rendered during ISM configure step above)
-kubectl create configmap hyperlane-multisig-config \
-  --from-file="gorchain-multisig.json=${RENDERED_MULTISIG_DIR}/gorchain-multisig.json" \
-  --from-file="solana-multisig.json=${RENDERED_MULTISIG_DIR}/solana-multisig.json" \
-  --dry-run=client -o yaml | kubectl apply -f -
+# multisig-config.json: merge the two rendered per-chain files
+python3 - <<PYEOF
+import json, pathlib
+out = {}
+for chain in ("gorchain", "solana"):
+    p = pathlib.Path("${RENDERED_MULTISIG_DIR}") / f"{chain}-multisig.json"
+    out[chain] = json.loads(p.read_text()) if p.exists() else {}
+pathlib.Path("${STATE_DIR}/multisig-config.json").write_text(
+    json.dumps(out, indent=2, sort_keys=True) + "\n"
+)
+PYEOF
 
-# Registry metadata (already rendered during template rendering step above)
-if [ -f "${RENDERED_REGISTRY_DIR}/chains/metadata.yaml" ]; then
-  kubectl create configmap hyperlane-registry \
-    --from-file="${RENDERED_REGISTRY_DIR}/chains/" \
-    --dry-run=client -o yaml | kubectl apply -f -
+# registry/: copy the rendered chain-metadata directory
+if [ -d "${RENDERED_REGISTRY_DIR}/chains" ]; then
+  rm -rf "${STATE_DIR}/registry"
+  mkdir -p "${STATE_DIR}/registry"
+  cp -a "${RENDERED_REGISTRY_DIR}/chains/." "${STATE_DIR}/registry/"
 else
-  echo "WARNING: Registry config not found, skipping ConfigMap"
+  echo "WARNING: Registry config not found at ${RENDERED_REGISTRY_DIR}/chains; not written"
 fi
 
-# Label all output ConfigMaps
-for CM in hyperlane-program-ids hyperlane-agent-config hyperlane-gas-oracle-config hyperlane-multisig-config hyperlane-registry; do
-  kubectl label configmap "$CM" \
-    app.kubernetes.io/managed-by=hyperlane-svm-deployer \
-    app.kubernetes.io/component=deployment-artifacts \
-    --overwrite
+# -------------------------------------------------------
+# Preflight: verify all expected outputs are present
+# -------------------------------------------------------
+EXPECTED=(
+  "${STATE_DIR}/program-ids.json"
+  "${STATE_DIR}/agent-config.json"
+  "${STATE_DIR}/gas-oracle-config.json"
+  "${STATE_DIR}/multisig-config.json"
+  "${STATE_DIR}/registry/chains.yaml"
+)
+
+MISSING=()
+for f in "${EXPECTED[@]}"; do
+  if [ ! -s "$f" ]; then
+    MISSING+=("$f")
+  fi
 done
+
+if [ "${#MISSING[@]}" -ne 0 ]; then
+  echo ""
+  echo "ERROR: deployer preflight failed — expected outputs missing or empty:"
+  for f in "${MISSING[@]}"; do echo "  - $f"; done
+  exit 1
+fi
 
 # -------------------------------------------------------
 # Clean up deployer keypair
@@ -452,9 +487,7 @@ rm -f "${DEPLOYER_KEY_FILE}"
 
 echo ""
 echo "=== Deployment complete ==="
-echo "Artifacts written to ConfigMaps:"
-echo "  - hyperlane-program-ids"
-echo "  - hyperlane-agent-config"
-echo "  - hyperlane-gas-oracle-config"
-echo "  - hyperlane-multisig-config"
-echo "  - hyperlane-registry"
+echo "Artifacts written to ${STATE_DIR}:"
+for f in "${EXPECTED[@]}"; do
+  echo "  - ${f#${STATE_DIR}/}"
+done
