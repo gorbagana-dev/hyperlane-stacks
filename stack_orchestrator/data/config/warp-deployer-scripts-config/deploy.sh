@@ -27,8 +27,8 @@ if [ ! -s "${PROGRAM_IDS_FILE}" ]; then
   exit 1
 fi
 
-COLLATERAL_PROGRAMS=$(python3 -c "import json,sys;print(json.dumps(json.load(open('${PROGRAM_IDS_FILE}')).get('${COLLATERAL_CHAIN}', {})))")
-SYNTHETIC_PROGRAMS=$(python3 -c "import json,sys;print(json.dumps(json.load(open('${PROGRAM_IDS_FILE}')).get('${SYNTHETIC_CHAIN}', {})))")
+COLLATERAL_PROGRAMS=$(jq -c --arg chain "${COLLATERAL_CHAIN}" '.[$chain] // {}' "${PROGRAM_IDS_FILE}")
+SYNTHETIC_PROGRAMS=$(jq -c --arg chain "${SYNTHETIC_CHAIN}" '.[$chain] // {}' "${PROGRAM_IDS_FILE}")
 
 if [ "$COLLATERAL_PROGRAMS" = "{}" ]; then
   echo "ERROR: program-ids.json missing data for ${COLLATERAL_CHAIN}."

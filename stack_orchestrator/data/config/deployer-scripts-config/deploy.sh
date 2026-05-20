@@ -412,17 +412,12 @@ echo ""
 echo "=== Writing deployment artifacts to ${STATE_DIR} ==="
 
 # program-ids.json: merge per-chain program ID files into one map
-python3 - <<PYEOF
-import json, pathlib
-out = {}
-for chain, src in (("gorchain", "${GORCHAIN_PROGRAMS}"),
-                   ("solana",   "${SOLANA_PROGRAMS}")):
-    p = pathlib.Path(src)
-    out[chain] = json.loads(p.read_text()) if p.exists() else {}
-pathlib.Path("${STATE_DIR}/program-ids.json").write_text(
-    json.dumps(out, indent=2, sort_keys=True) + "\n"
-)
-PYEOF
+GORCHAIN_DATA="{}"
+[ -f "${GORCHAIN_PROGRAMS}" ] && GORCHAIN_DATA=$(cat "${GORCHAIN_PROGRAMS}")
+SOLANA_DATA="{}"
+[ -f "${SOLANA_PROGRAMS}" ] && SOLANA_DATA=$(cat "${SOLANA_PROGRAMS}")
+jq -nS --argjson g "${GORCHAIN_DATA}" --argjson s "${SOLANA_DATA}" \
+  '{gorchain: $g, solana: $s}' > "${STATE_DIR}/program-ids.json"
 
 # agent-config.json: copy as-is
 cp "${WORK_DIR}/agent-config.json" "${STATE_DIR}/agent-config.json"
@@ -435,16 +430,14 @@ else
 fi
 
 # multisig-config.json: merge the two rendered per-chain files
-python3 - <<PYEOF
-import json, pathlib
-out = {}
-for chain in ("gorchain", "solana"):
-    p = pathlib.Path("${RENDERED_MULTISIG_DIR}") / f"{chain}-multisig.json"
-    out[chain] = json.loads(p.read_text()) if p.exists() else {}
-pathlib.Path("${STATE_DIR}/multisig-config.json").write_text(
-    json.dumps(out, indent=2, sort_keys=True) + "\n"
-)
-PYEOF
+GORCHAIN_MS="{}"
+[ -f "${RENDERED_MULTISIG_DIR}/gorchain-multisig.json" ] && \
+  GORCHAIN_MS=$(cat "${RENDERED_MULTISIG_DIR}/gorchain-multisig.json")
+SOLANA_MS="{}"
+[ -f "${RENDERED_MULTISIG_DIR}/solana-multisig.json" ] && \
+  SOLANA_MS=$(cat "${RENDERED_MULTISIG_DIR}/solana-multisig.json")
+jq -nS --argjson g "${GORCHAIN_MS}" --argjson s "${SOLANA_MS}" \
+  '{gorchain: $g, solana: $s}' > "${STATE_DIR}/multisig-config.json"
 
 # registry/: copy the rendered chain-metadata directory
 if [ -d "${RENDERED_REGISTRY_DIR}/chains" ]; then
