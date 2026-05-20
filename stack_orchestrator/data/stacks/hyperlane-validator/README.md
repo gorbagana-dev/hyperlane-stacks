@@ -9,7 +9,7 @@ Each deployment runs two containers: the Hyperlane validator agent and a KMS pro
 - A running `k8s-kind` cluster
 - `laconic-so` (stack-orchestrator) installed
 - `hyperlane-minio` stack deployed (validators write checkpoints to S3)
-- `hyperlane-svm-deployer` stack deployed (provides `hyperlane-agent-config` ConfigMap)
+- `hyperlane-svm-deployer` stack deployed (provides state files; consumer stack will populate `agent-config` ConfigMap before starting)
 
 ## 1. Build container
 
@@ -30,19 +30,20 @@ Edit `validator-gorchain-spec.yml` (see `deployment/spec-validator-gorchain.yml`
 ```yaml
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+namespace: laconic-hyperlane-validator-gorchain
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain
+  PRIVY_WALLET_ID: "<wallet-id>"
 configmaps:
   agent-config: ./configmaps/agent-config
-config:
-  PRIVY_WALLET_ID: "<wallet-id>"
 secrets:
   hyperlane-validator-secrets:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
+    - HYP_DEFAULTSIGNER_KEY
 ```
 
 ```bash
@@ -59,7 +60,17 @@ laconic-so --stack hyperlane-validator deploy init --output validator-solana-spe
 laconic-so --stack hyperlane-validator deploy create --spec-file validator-solana-spec.yml --deployment-dir validator-solana-deployment
 ```
 
-## 4. Create secrets
+## 4. Populate agent-config ConfigMap
+
+Before starting the deployment, the `agent-config` ConfigMap must be populated from the deployer's state files. In dev, this happens via `BridgeStateLoader.populate()` in the test fixture. In production, use ansible to read `/state/agent-config.json` from the deployer's generated artifacts directory and populate the ConfigMap:
+
+```bash
+# Dev: handled by test framework
+# Prod: ansible reads deployment/bridges/<bridge>/generated/agent-config.json
+#       and creates the ConfigMap in the validator's namespace
+```
+
+## 5. Create secrets
 
 ```bash
 # Generate a chain signer key (ed25519 seed as 32-byte hex).
@@ -87,14 +98,14 @@ kubectl create secret generic hyperlane-validator-secrets \
 | `AWS_SECRET_ACCESS_KEY` | MinIO secret key for checkpoint storage |
 | `HYP_DEFAULTSIGNER_KEY` | Hot ed25519 hex key for announce tx (fund the derived Solana address) |
 
-## 5. Start
+## 6. Start
 
 ```bash
 laconic-so deployment --dir validator-gorchain-deployment start
 laconic-so deployment --dir validator-solana-deployment start
 ```
 
-## 6. Verify
+## 7. Verify
 
 ```bash
 # Check pods are running
@@ -105,4 +116,7 @@ kubectl logs -l app=hyperlane-validator -c validator --tail=50
 
 # Check KMS proxy is healthy
 kubectl logs -l app=hyperlane-validator -c kms-proxy --tail=20
+
+# Verify agent-config ConfigMap was populated from deployer state
+kubectl get configmap -A | grep agent-config
 ```
