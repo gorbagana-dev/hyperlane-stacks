@@ -33,6 +33,8 @@ services:
       - warp-deployer-scripts-config:/opt/scripts:ro
       - warp-deployer-token-config:/config/token:ro
       - warp-deployer-registry-config:/config/registry:ro
+      - /mnt/bridge-state:/state
+      - /mnt/bridge-state-logs:/logs
 
 volumes:
   warp-deployer-scripts-config:
