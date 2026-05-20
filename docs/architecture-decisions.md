@@ -559,6 +559,34 @@ Full design: `docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distrib
 
 ---
 
+## Kind Cluster Management
+
+**Decision (2026-05-20):** We bypass SO's built-in Kind cluster management today (`--skip-cluster-management`, now the SO default) and pre-create the cluster ourselves — in tests via a pytest fixture, in prod via ansible. We plan to revisit this in a focused follow-up PR.
+
+**Original reason for bypassing:** Early SO versions tied cluster lifecycle to a single deployment — every `deployment start` tried to create the cluster, every `deployment stop` tried to destroy it. With 8 stacks sharing one cluster that pattern was unworkable, so we lifted cluster lifecycle out of SO.
+
+**Why this can be revisited:** SO's `create_cluster()` (`stack_orchestrator/deploy/k8s/helpers.py:385-409`) is now explicitly designed for the shared-cluster case: *"There is only one kind cluster per host by design. Multiple deployments share this cluster. If a cluster already exists, it is reused."* It also runs `check_mounts_compatible()` against the running cluster to catch deployments declaring incompatible `extraMounts`. The original failure mode is gone.
+
+**Cost of carrying the workaround:**
+
+- **No Caddy ingress controller in tests.** SO's `install_ingress_for_kind()` runs only on the `not skip_cluster_management` branch of `_setup_cluster()` (`deploy_k8s.py:887-894`). So Ingress objects emitted by any stack's `http-proxy:` config exist in our test cluster but are inert (no controller picks them up).
+- **Duplicated kind-config.** `tests/e2e/fixtures/kind-config.yaml` re-implements what SO's `generate_kind_config()` already produces (`helpers.py:1295-1341`): `ingress-ready=true` node label, hostPort 80/443 mappings for Caddy, and per-stack `extraMounts` derived from `kind-mount-root`.
+- **Manual cluster lifecycle code.** `tests/e2e/lib/cluster.py` mirrors logic SO would handle automatically.
+
+**Switch plan (follow-up PR):**
+
+1. Delete `tests/e2e/fixtures/kind-config.yaml`.
+2. Slim `tests/e2e/lib/cluster.py` — drop `create_kind_cluster`; keep `destroy_kind_cluster` for session teardown only.
+3. `deploy_start` passes `--perform-cluster-management`; the first stack creates the cluster, the rest reuse it.
+4. `deploy_stop` keeps the default `--skip-cluster-management`; the test fixture handles final `kind delete cluster` at session teardown (so an early stop doesn't kill the cluster mid-test).
+5. Prod ansible: same model — first `deployment start` (the SVM deployer) creates the cluster + Caddy; subsequent stacks reuse.
+
+The first stack to start must declare the umbrella mount (`kind-mount-root: /srv/kind/hyperlane-bridge`) so the `/mnt` bind is active for everything else. The SVM deployer already does. All specs set `kind-cluster-name: hyperlane`, so all stacks resolve to the same kube context (`kind-hyperlane`).
+
+**Why this is its own PR:** The cluster-management switch is independent of state distribution. Bundling it would broaden this PR's scope and make any test regressions harder to isolate. The current PR retains the existing cluster-management posture verbatim.
+
+---
+
 ## Warp Route Token
 
 **Decision:** Pre-existing token mint only.
