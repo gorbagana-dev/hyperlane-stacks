@@ -1,21 +1,4 @@
 services:
-  agent-config-init:
-    image: alpine/kubectl:1.35.3
-    user: "0"
-    labels:
-      laconic.init-container: "true"
-    entrypoint:
-      - /bin/sh
-    command:
-      - -c
-      - |
-        echo "Fetching agent-config from ConfigMap..."
-        kubectl get configmap hyperlane-agent-config \
-          -o jsonpath='{.data.agent-config\.json}' > /config/agent-config.json
-        echo "agent-config.json written ($(wc -c < /config/agent-config.json) bytes)"
-    volumes:
-      - agent-config:/config
-
   validator:
     image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
     # image: gorbagana-dev/hyperlane-agent:local
@@ -85,9 +68,6 @@ services:
       start_period: 5s
 
 volumes:
-  # Agent config volume — PVC shared between init container (writer) and
-  # validator (reader). The init container fetches the real agent-config
-  # from the ConfigMap created by the deployer job.
+  # agent-config: ConfigMap volume sourced from BridgeStateLoader at deploy-create
   agent-config:
-  # Data volume — PVC for validator checkpoint DB
   validator-data:
