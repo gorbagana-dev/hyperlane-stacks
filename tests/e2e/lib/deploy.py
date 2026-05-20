@@ -86,7 +86,7 @@ def ensure_ghcr_pat() -> None:
 @dataclass
 class DeploymentInfo:
     deploy_dir: Path
-    cluster_id: str
+    deployment_id: str
     namespace: str
 
 
@@ -295,23 +295,26 @@ def prefetch_monitoring_images(cluster_name: str = "hyperlane-e2e") -> None:
 # ---------------------------------------------------------------------------
 # Deploy lifecycle
 # ---------------------------------------------------------------------------
-def set_cluster_id(deploy_dir: Path, cluster_id: str) -> None:
-    """Patch deployment.yml to use a human-readable cluster-id.
+def set_deployment_id(deploy_dir: Path, deployment_id: str) -> None:
+    """Patch deployment.yml to use a human-readable deployment-id.
 
     Must be called after ``deploy create`` but before ``deploy start``.
-    The cluster-id becomes the prefix for all k8s resource names
-    (Deployments, Jobs, Services, etc.).
+    The deployment-id becomes the prefix for all k8s resource names
+    (Deployments, Jobs, Services, ConfigMaps, PVs). It is distinct
+    from ``cluster-id`` (which identifies the shared kind cluster);
+    every stack joining the cluster gets its own deployment-id but
+    they all share the cluster.
     """
     deployment_yml = deploy_dir / "deployment.yml"
     content = deployment_yml.read_text()
     content = re.sub(
-        r"^(cluster-id:\s*).*$",
-        rf"\g<1>{cluster_id}",
+        r"^(deployment-id:\s*).*$",
+        rf"\g<1>{deployment_id}",
         content,
         flags=re.MULTILINE,
     )
     deployment_yml.write_text(content)
-    log_info(f"Patched cluster-id to '{cluster_id}'")
+    log_info(f"Patched deployment-id to '{deployment_id}'")
 
 
 def deploy_prepare(
@@ -320,7 +323,7 @@ def deploy_prepare(
     deploy_dir: Path | None = None,
     namespace: str | None = None,
     spec_replacements: dict[str, str] | None = None,
-    cluster_id: str | None = None,
+    deployment_id: str | None = None,
 ) -> DeploymentInfo:
     if deploy_dir is None:
         deploy_dir = DEPLOY_DIR / stack_name
@@ -370,23 +373,23 @@ def deploy_prepare(
         ]
     )
 
-    # Optionally replace the random cluster-id with a human-readable name
+    # Optionally replace the random deployment-id with a human-readable name
     # so k8s resources (pods, jobs, services) are easy to identify.
-    if cluster_id:
-        set_cluster_id(deploy_dir, cluster_id)
+    if deployment_id:
+        set_deployment_id(deploy_dir, deployment_id)
     else:
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
 
     # Mirror SO's namespace derivation: laconic-{stack_name} unless caller
     # overrides. The caller may pass `namespace=` to match a spec.yml override
     # (multi-instance stacks like multiple validators sharing one stack name).
     resolved_namespace = namespace or f"laconic-{stack_name}"
 
-    log_info(f"Stack '{stack_name}' prepared — cluster-id: {cluster_id}, namespace: {resolved_namespace}")
+    log_info(f"Stack '{stack_name}' prepared — deployment-id: {deployment_id}, namespace: {resolved_namespace}")
 
     return DeploymentInfo(
         deploy_dir=deploy_dir,
-        cluster_id=cluster_id,
+        deployment_id=deployment_id,
         namespace=resolved_namespace,
     )
 
@@ -438,17 +441,17 @@ def stop_stack(stack_name: str, deploy_dir: Path | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Cluster-id helpers
+# Deployment-id helpers
 # ---------------------------------------------------------------------------
-def get_cluster_id(deploy_dir: Path) -> str:
+def get_deployment_id(deploy_dir: Path) -> str:
     deployment_yml = deploy_dir / "deployment.yml"
     if not deployment_yml.is_file():
         fail_exit(f"deployment.yml not found in {deploy_dir}")
 
     content = deployment_yml.read_text()
-    match = re.search(r"cluster-id:\s*['\"]?([^'\"\s]+)", content)
+    match = re.search(r"^deployment-id:\s*['\"]?([^'\"\s]+)", content, re.MULTILINE)
     if not match:
-        fail_exit(f"Could not extract cluster-id from {deployment_yml}")
+        fail_exit(f"Could not extract deployment-id from {deployment_yml}")
         return ""  # unreachable
 
     return match.group(1)

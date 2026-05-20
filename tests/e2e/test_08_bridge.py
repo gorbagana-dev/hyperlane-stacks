@@ -334,19 +334,19 @@ class TestBridge:
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""
         ns = bridge_setup["namespace"]
-        cluster_id = bridge_setup["relayer_cluster_id"]
+        deployment_id = bridge_setup["relayer_deployment_id"]
 
-        # Find relayer pod by its app label (set by laconic-so to the cluster-id)
+        # Find relayer pod by its app label (set by laconic-so to the deployment-id)
         result = subprocess.run(
             [
                 "kubectl", "-n", ns, "get", "pods",
-                "-l", f"app={cluster_id}",
+                "-l", f"app={deployment_id}",
                 "-o", "jsonpath={.items[0].metadata.name}",
             ],
             capture_output=True, text=True, check=True,
         )
         pod_name = result.stdout.strip()
-        assert pod_name, f"No relayer pod found with label app={cluster_id}"
+        assert pod_name, f"No relayer pod found with label app={deployment_id}"
 
         with PortForward(ns, f"pod/{pod_name}", 19091, 9091):
             metrics_result = subprocess.run(

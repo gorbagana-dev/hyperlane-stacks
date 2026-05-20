@@ -56,11 +56,11 @@ class TestMinio:
     def test_minio_pod_running(self, minio_deployment: MinioInfo) -> None:
         """MinIO pod reaches Running phase."""
         ns = minio_deployment.namespace
-        cluster_id = minio_deployment.cluster_id
+        deployment_id = minio_deployment.deployment_id
 
         result = subprocess.run(
             ["kubectl", "get", "pods", "-n", ns,
-             "-l", f"app={cluster_id}",
+             "-l", f"app={deployment_id}",
              "-o", "jsonpath={.items[0].status.phase}"],
             capture_output=True, text=True, check=True,
         )
@@ -69,8 +69,8 @@ class TestMinio:
     def test_minio_init_job_completed(self, minio_deployment: MinioInfo) -> None:
         """minio-init job completed successfully (buckets created)."""
         ns = minio_deployment.namespace
-        cluster_id = minio_deployment.cluster_id
-        job_name = f"{cluster_id}-job-hyperlane-minio-init"
+        deployment_id = minio_deployment.deployment_id
+        job_name = f"{deployment_id}-job-hyperlane-minio-init"
 
         result = subprocess.run(
             ["kubectl", "get", "job", job_name, "-n", ns,
@@ -82,8 +82,8 @@ class TestMinio:
     def test_minio_s3_api_responds(self, minio_deployment: MinioInfo) -> None:
         """MinIO S3 API responds to requests via port-forward."""
         ns = minio_deployment.namespace
-        cluster_id = minio_deployment.cluster_id
-        pod_label = f"app={cluster_id}"
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
 
         # Find the minio pod name
         pod_name = subprocess.run(
@@ -102,8 +102,8 @@ class TestMinio:
     def test_minio_buckets_exist(self, minio_deployment: MinioInfo) -> None:
         """Both validator buckets were created by minio-init."""
         ns = minio_deployment.namespace
-        cluster_id = minio_deployment.cluster_id
-        pod_label = f"app={cluster_id}"
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
 
         pod_name = subprocess.run(
             ["kubectl", "get", "pods", "-n", ns, "-l", pod_label,
@@ -126,8 +126,8 @@ class TestMinio:
     def test_minio_console_accessible(self, minio_deployment: MinioInfo) -> None:
         """MinIO console (port 9001) responds to HTTP requests."""
         ns = minio_deployment.namespace
-        cluster_id = minio_deployment.cluster_id
-        pod_label = f"app={cluster_id}"
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
 
         pod_name = subprocess.run(
             ["kubectl", "get", "pods", "-n", ns, "-l", pod_label,

@@ -109,8 +109,8 @@ def _wait_for_minio_file(
     then returns the parsed JSON.
     """
     ns = minio.namespace
-    cluster_id = minio.cluster_id
-    pod_name = _find_pod_name(ns, f"app={cluster_id}")
+    deployment_id = minio.deployment_id
+    pod_name = _find_pod_name(ns, f"app={deployment_id}")
 
     deadline = time.time() + timeout
     last_err = ""
@@ -152,7 +152,7 @@ def _get_validator_h160(privy_mock: dict[str, str], wallet_id: str) -> str:
 def _test_validator_pod_running(info: ValidatorInfo) -> None:
     result = subprocess.run(
         ["kubectl", "get", "pods", "-n", info.namespace,
-         "-l", f"app={info.cluster_id}",
+         "-l", f"app={info.deployment_id}",
          "-o", "jsonpath={.items[0].status.phase}"],
         capture_output=True, text=True, check=True,
     )
@@ -163,7 +163,7 @@ def _test_both_containers_ready(info: ValidatorInfo, timeout: int = 90) -> None:
     # The validator may crash on first start if the KMS proxy sidecar isn't
     # ready yet (Connection refused). k8s restarts it and the second attempt
     # succeeds. Poll until both containers are ready.
-    pod_name = _find_pod_name(info.namespace, f"app={info.cluster_id}")
+    pod_name = _find_pod_name(info.namespace, f"app={info.deployment_id}")
     deadline = time.time() + timeout
     while True:
         statuses = _get_container_statuses(info.namespace, pod_name)
@@ -175,7 +175,7 @@ def _test_both_containers_ready(info: ValidatorInfo, timeout: int = 90) -> None:
 
 
 def _test_kms_proxy_health(info: ValidatorInfo, local_port: int) -> None:
-    pod_name = _find_pod_name(info.namespace, f"app={info.cluster_id}")
+    pod_name = _find_pod_name(info.namespace, f"app={info.deployment_id}")
 
     with PortForward(info.namespace, f"pod/{pod_name}", local_port, 9999):
         result = subprocess.run(
@@ -188,7 +188,7 @@ def _test_kms_proxy_health(info: ValidatorInfo, local_port: int) -> None:
 
 def _test_kms_proxy_recovered_key(info: ValidatorInfo) -> None:
     """KMS proxy logs show it successfully recovered the validator public key."""
-    pod_name = _find_pod_name(info.namespace, f"app={info.cluster_id}")
+    pod_name = _find_pod_name(info.namespace, f"app={info.deployment_id}")
     result = subprocess.run(
         ["kubectl", "logs", pod_name, "-c", "kms-proxy", "-n", info.namespace, "--tail=50"],
         capture_output=True, text=True, check=True,
@@ -208,7 +208,7 @@ def _test_kms_proxy_recovered_key(info: ValidatorInfo) -> None:
 
 def _test_validator_metrics(info: ValidatorInfo, chain: str, local_port: int) -> None:
     """Validator metrics endpoint has Hyperlane-specific metrics."""
-    pod_name = _find_pod_name(info.namespace, f"app={info.cluster_id}")
+    pod_name = _find_pod_name(info.namespace, f"app={info.deployment_id}")
 
     with PortForward(info.namespace, f"pod/{pod_name}", local_port, 9090):
         result = subprocess.run(
@@ -234,7 +234,7 @@ def _test_validator_metrics(info: ValidatorInfo, chain: str, local_port: int) ->
 
 
 def _test_validator_logs_no_fatal(info: ValidatorInfo) -> None:
-    pod_name = _find_pod_name(info.namespace, f"app={info.cluster_id}")
+    pod_name = _find_pod_name(info.namespace, f"app={info.deployment_id}")
     result = subprocess.run(
         ["kubectl", "logs", pod_name, "-c", "validator", "-n", info.namespace, "--tail=100"],
         capture_output=True, text=True, check=True,

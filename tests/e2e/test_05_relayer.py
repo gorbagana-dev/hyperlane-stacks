@@ -28,12 +28,12 @@ class TestRelayer:
     def test_relayer_pod_running(self, relayer_deployment: RelayerInfo) -> None:
         """Relayer pod reaches Running phase."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         result = run_cmd([
             "kubectl", "get", "pods",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-o", "jsonpath={.items[0].status.phase}",
         ])
         assert result.stdout.strip() == "Running", (
@@ -43,12 +43,12 @@ class TestRelayer:
     def test_all_containers_ready(self, relayer_deployment: RelayerInfo) -> None:
         """All containers in the relayer pod are ready."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         result = run_cmd([
             "kubectl", "get", "pods",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-o", "jsonpath={.items[0].status.containerStatuses[*].ready}",
         ])
         statuses = result.stdout.strip().split()
@@ -59,12 +59,12 @@ class TestRelayer:
     def test_relayer_agent_config_loaded(self, relayer_deployment: RelayerInfo) -> None:
         """Relayer loaded the agent config (no config file errors in logs)."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         result = run_cmd([
             "kubectl", "logs",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-c", "relayer",
             "--tail=100",
         ])
@@ -75,12 +75,12 @@ class TestRelayer:
     def test_relayer_metrics_endpoint(self, relayer_deployment: RelayerInfo) -> None:
         """Relayer exposes Prometheus metrics on port 9091."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         result = run_cmd([
             "kubectl", "get", "pods",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-o", "jsonpath={.items[0].metadata.name}",
         ])
         pod_name = result.stdout.strip()
@@ -98,12 +98,12 @@ class TestRelayer:
     def test_relayer_no_fatal_errors(self, relayer_deployment: RelayerInfo) -> None:
         """Relayer logs contain no FATAL or PANIC messages."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         result = run_cmd([
             "kubectl", "logs",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-c", "relayer",
             "--tail=200",
         ])
@@ -117,13 +117,13 @@ class TestRelayer:
     def test_igp_fee_claim_sidecar_running(self, relayer_deployment: RelayerInfo) -> None:
         """IGP fee claim sidecar container is running and started its loop."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         # Check container is running
         result = run_cmd([
             "kubectl", "get", "pods",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-o", "jsonpath={.items[0].status.containerStatuses[?(@.name==\"igp-fee-claim\")].state}",
         ])
         assert "running" in result.stdout.lower(), (
@@ -135,7 +135,7 @@ class TestRelayer:
         result = run_cmd([
             "kubectl", "logs",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-c", "igp-fee-claim",
             "--tail=50",
         ])
@@ -151,12 +151,12 @@ class TestRelayer:
     def test_relayer_checkpoint_syncer_connected(self, relayer_deployment: RelayerInfo) -> None:
         """Relayer is connecting to MinIO for checkpoint syncing (no S3 connection errors)."""
         ns = relayer_deployment.namespace
-        cluster_id = relayer_deployment.cluster_id
+        deployment_id = relayer_deployment.deployment_id
 
         result = run_cmd([
             "kubectl", "logs",
             "-n", ns,
-            "-l", f"app={cluster_id}",
+            "-l", f"app={deployment_id}",
             "-c", "relayer",
             "--tail=200",
         ])

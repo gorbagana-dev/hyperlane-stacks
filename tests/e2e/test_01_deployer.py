@@ -47,7 +47,7 @@ class TestDeployer:
     def test_deployer_job_succeeds(self, deployer_deployment: DeploymentInfo) -> None:
         """Verify the deployer Job completed (guaranteed by the fixture)."""
         ns = deployer_deployment.namespace
-        job_name = f"{deployer_deployment.cluster_id}-job-hyperlane-svm-deployer"
+        job_name = f"{deployer_deployment.deployment_id}-job-hyperlane-svm-deployer"
         result = subprocess.run(
             [
                 "kubectl", "-n", ns, "get", "job", job_name,

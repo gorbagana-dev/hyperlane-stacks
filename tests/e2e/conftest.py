@@ -50,7 +50,7 @@ from lib.deploy import (
     deploy_prepare,
     deploy_start,
     ensure_ghcr_pat,
-    get_cluster_id,
+    get_deployment_id,
     prefetch_agent_images,
     prefetch_deployer_image,
     prefetch_gas_oracle_image,
@@ -165,8 +165,8 @@ class MinioInfo:
         return self.deployment.namespace
 
     @property
-    def cluster_id(self) -> str:
-        return self.deployment.cluster_id
+    def deployment_id(self) -> str:
+        return self.deployment.deployment_id
 
     @property
     def deploy_dir(self) -> Path:
@@ -185,8 +185,8 @@ class ValidatorInfo:
         return self.deployment.namespace
 
     @property
-    def cluster_id(self) -> str:
-        return self.deployment.cluster_id
+    def deployment_id(self) -> str:
+        return self.deployment.deployment_id
 
     @property
     def deploy_dir(self) -> Path:
@@ -203,8 +203,8 @@ class RelayerInfo:
         return self.deployment.namespace
 
     @property
-    def cluster_id(self) -> str:
-        return self.deployment.cluster_id
+    def deployment_id(self) -> str:
+        return self.deployment.deployment_id
 
     @property
     def deploy_dir(self) -> Path:
@@ -444,7 +444,7 @@ def minio_deployment(
     """Deploy the hyperlane-minio stack.
 
     Self-contained: only requires a Kind cluster. Creates its own namespace
-    and secrets. Uses an independent cluster-id for unique resource names,
+    and secrets. Uses an independent deployment-id for unique resource names,
     with spec-level namespace override to share the e2e namespace.
     """
     skip_cleanup = request.config.getoption("--skip-cleanup")
@@ -452,12 +452,12 @@ def minio_deployment(
 
     if skip_minio:
         deploy_dir = DEPLOY_DIR / "hyperlane-minio"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         namespace = "laconic-hyperlane-minio"
         log.info("Reusing existing minio deployment (namespace: %s)", namespace)
         user, password = _recover_minio_credentials(namespace)
         yield MinioInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
             user=user,
             password=password,
         )
@@ -473,10 +473,10 @@ def minio_deployment(
     deploy_info = deploy_prepare(
         "hyperlane-minio", MINIO_SPEC,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="minio",
+        deployment_id="minio",
     )
     namespace = deploy_info.namespace
-    cluster_id = deploy_info.cluster_id
+    deployment_id = deploy_info.deployment_id
 
     # Create namespace before deploy start — secrets must exist before pods start.
     # Idempotent: no-ops if deployer_deployment already created it.
@@ -493,23 +493,23 @@ def minio_deployment(
 
     try:
         log.info("Waiting for minio pod to be running...")
-        wait_for_pod_phase(namespace, f"app={cluster_id}", "Running", timeout=120)
+        wait_for_pod_phase(namespace, f"app={deployment_id}", "Running", timeout=120)
 
         log.info("Waiting for minio-init job to complete...")
-        job_name = f"{cluster_id}-job-hyperlane-minio-init"
+        job_name = f"{deployment_id}-job-hyperlane-minio-init"
         wait_for_job_complete(namespace, job_name, timeout=300)
         save_job_logs(namespace, job_name)
         log.info("MinIO stack deployed and initialized")
     except Exception:
-        save_job_logs(namespace, f"{cluster_id}-job-hyperlane-minio-init")
-        save_job_describe(namespace, f"{cluster_id}-job-hyperlane-minio-init")
-        save_pod_logs(namespace, f"app={cluster_id}", "minio")
-        save_pod_describe(namespace, f"app={cluster_id}", "minio")
+        save_job_logs(namespace, f"{deployment_id}-job-hyperlane-minio-init")
+        save_job_describe(namespace, f"{deployment_id}-job-hyperlane-minio-init")
+        save_pod_logs(namespace, f"app={deployment_id}", "minio")
+        save_pod_describe(namespace, f"app={deployment_id}", "minio")
         raise
 
     yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
 
-    save_pod_logs(namespace, f"app={cluster_id}", "minio")
+    save_pod_logs(namespace, f"app={deployment_id}", "minio")
     if not skip_cleanup:
         log.info("Stopping minio stack...")
         stop_stack("hyperlane-minio")
@@ -537,17 +537,17 @@ def deployer_deployment(
         # The Solana test validator runs detached (start_new_session) so it
         # survives Ctrl+C — deployed programs and funded wallets persist.
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         namespace = "laconic-hyperlane-svm-deployer"
-        log.info("Reusing existing core deployment (cluster-id: %s, namespace: %s)", cluster_id, namespace)
-        yield DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace)
+        log.info("Reusing existing core deployment (deployment-id: %s, namespace: %s)", deployment_id, namespace)
+        yield DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace)
         return
 
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare(
         "hyperlane-svm-deployer", FIXTURE_SPEC,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="deployer",
+        deployment_id="deployer",
     )
     namespace = deploy_info.namespace
 
@@ -573,13 +573,13 @@ def deployer_deployment(
 
     try:
         log.info("Waiting for deployer job to complete...")
-        job_name = f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer"
+        job_name = f"{deploy_info.deployment_id}-job-hyperlane-svm-deployer"
         wait_for_job_complete(namespace, job_name)
         save_job_logs(namespace, job_name)
         log.info("Core deployer job complete, artifacts available")
     except Exception:
-        save_job_logs(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
-        save_job_describe(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
+        save_job_logs(namespace, f"{deploy_info.deployment_id}-job-hyperlane-svm-deployer")
+        save_job_describe(namespace, f"{deploy_info.deployment_id}-job-hyperlane-svm-deployer")
         raise
 
     yield deploy_info
@@ -672,11 +672,11 @@ def warp_deployment(
         log.info("Recovered token mint from state file: %s", token_mint)
 
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         yield {
             "deployment": DeploymentInfo(
                 deploy_dir=deploy_dir,
-                cluster_id=cluster_id,
+                deployment_id=deployment_id,
                 namespace=namespace,
             ),
             "token_mint": token_mint,
@@ -697,7 +697,7 @@ def warp_deployment(
         "hyperlane-svm-warp-deployer",
         patched_spec,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="warp-deployer",
+        deployment_id="warp-deployer",
     )
 
     bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
@@ -707,13 +707,13 @@ def warp_deployment(
 
     try:
         log.info("Waiting for warp deployer job to complete...")
-        job_name = f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer"
+        job_name = f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer"
         wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
         save_job_logs(warp_info.namespace, job_name)
         log.info("Warp deployer job complete, artifacts available")
     except Exception:
-        save_job_logs(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
-        save_job_describe(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
+        save_job_logs(warp_info.namespace, f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer")
+        save_job_describe(warp_info.namespace, f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer")
         raise
 
     ctx = {
@@ -834,10 +834,10 @@ def _deploy_validator(
 
     if skip_validator:
         deploy_dir = DEPLOY_DIR / stack_name
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
         yield ValidatorInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
             chain=chain,
             wallet_id=wallet_id,
         )
@@ -872,7 +872,7 @@ def _deploy_validator(
         deploy_dir=DEPLOY_DIR / stack_name,
         namespace=namespace,
         spec_replacements=validator_replacements,
-        cluster_id=f"val-{chain}",
+        deployment_id=f"val-{chain}",
     )
 
     bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
@@ -882,11 +882,11 @@ def _deploy_validator(
 
     try:
         log.info("Waiting for %s pod to be running...", stack_name)
-        wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+        wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120)
         log.info("%s is running", stack_name)
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", f"validator-{chain}")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", f"validator-{chain}")
         raise
 
     yield ValidatorInfo(
@@ -895,7 +895,7 @@ def _deploy_validator(
         wallet_id=wallet_id,
     )
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", f"validator-{chain}")
     if not skip_cleanup:
         log.info("Stopping %s stack...", stack_name)
         stop_stack("hyperlane-validator", deploy_dir=DEPLOY_DIR / stack_name)
@@ -962,10 +962,10 @@ def relayer_deployment(
 
     if skip_relayer:
         deploy_dir = DEPLOY_DIR / "hyperlane-relayer"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
         yield RelayerInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
         )
         return
 
@@ -1037,7 +1037,7 @@ def relayer_deployment(
     deploy_info = deploy_prepare(
         "hyperlane-relayer", patched_path,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="relayer",
+        deployment_id="relayer",
     )
 
     bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
@@ -1047,16 +1047,16 @@ def relayer_deployment(
 
     try:
         log.info("Waiting for relayer pod to be running...")
-        wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180)
+        wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=180)
         log.info("Relayer is running")
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "relayer")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "relayer")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "relayer")
         raise
 
     yield RelayerInfo(deployment=deploy_info)
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "relayer")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping relayer stack...")
@@ -1069,7 +1069,7 @@ def relayer_deployment(
 
 
 def _wait_for_oracle_update(
-    namespace: str, cluster_id: str, timeout: int = 120,
+    namespace: str, deployment_id: str, timeout: int = 120,
 ) -> dict:
     """Wait for the gas oracle to complete its first update cycle.
 
@@ -1091,7 +1091,7 @@ def _wait_for_oracle_update(
             result = subprocess.run(
                 [
                     "kubectl", "-n", namespace, "get", "pods",
-                    "-l", f"app={cluster_id}",
+                    "-l", f"app={deployment_id}",
                     "-o", "jsonpath={.items[0].metadata.name}",
                 ],
                 capture_output=True, text=True, check=False,
@@ -1136,17 +1136,17 @@ def gas_oracle_deployment(
 
     if skip_oracle:
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
         # Read current oracle values from the running pod
         oracle_values = {}
         try:
-            oracle_values = _wait_for_oracle_update(namespace, cluster_id, timeout=30)
+            oracle_values = _wait_for_oracle_update(namespace, deployment_id, timeout=30)
         except TimeoutError:
             log.warning("Could not read oracle values from running pod")
         yield {
             "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
+                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
             ),
             "oracle_values": oracle_values,
         }
@@ -1179,7 +1179,7 @@ def gas_oracle_deployment(
     deploy_info = deploy_prepare(
         "hyperlane-gas-oracle", patched_path,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="gas-oracle",
+        deployment_id="gas-oracle",
     )
 
     bridge_state_loader.populate("hyperlane-gas-oracle", deploy_info.deploy_dir)
@@ -1190,21 +1190,21 @@ def gas_oracle_deployment(
     try:
         log.info("Waiting for gas oracle pod to be running...")
         wait_for_pod_phase(
-            namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120,
+            namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120,
         )
         log.info("Gas oracle pod is running")
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
         raise
 
     # Wait for the first successful oracle update
     try:
         log.info("Waiting for gas oracle to complete first update...")
-        oracle_values = _wait_for_oracle_update(namespace, deploy_info.cluster_id)
+        oracle_values = _wait_for_oracle_update(namespace, deploy_info.deployment_id)
         log.info("Gas oracle update complete. Values: %s", oracle_values)
     except TimeoutError:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
         raise
 
     yield {
@@ -1212,7 +1212,7 @@ def gas_oracle_deployment(
         "oracle_values": oracle_values,
     }
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping gas oracle stack...")
@@ -1357,11 +1357,11 @@ def monitoring_deployment(
 
     if skip_monitoring:
         deploy_dir = DEPLOY_DIR / "hyperlane-monitoring"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         pod_name = subprocess.run(
             [
                 "kubectl", "-n", namespace, "get", "pods",
-                "-l", f"app={cluster_id}",
+                "-l", f"app={deployment_id}",
                 "-o", "jsonpath={.items[0].metadata.name}",
             ],
             capture_output=True, text=True, check=False,
@@ -1389,7 +1389,7 @@ def monitoring_deployment(
         log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
         yield {
             "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
+                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
             ),
             "namespace": namespace,
             "pod_name": pod_name,
@@ -1424,7 +1424,7 @@ def monitoring_deployment(
     deploy_info = deploy_prepare(
         "hyperlane-monitoring", patched_path,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="monitoring",
+        deployment_id="monitoring",
     )
 
     bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
@@ -1435,19 +1435,19 @@ def monitoring_deployment(
     try:
         log.info("Waiting for monitoring pod to be running...")
         wait_for_pod_phase(
-            namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180,
+            namespace, f"app={deploy_info.deployment_id}", "Running", timeout=180,
         )
         log.info("Monitoring pod is running")
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
         raise
 
     # Get pod name for kubectl exec in tests
     pod_name = subprocess.run(
         [
             "kubectl", "-n", namespace, "get", "pods",
-            "-l", f"app={deploy_info.cluster_id}",
+            "-l", f"app={deploy_info.deployment_id}",
             "-o", "jsonpath={.items[0].metadata.name}",
         ],
         capture_output=True, text=True, check=True,
@@ -1458,8 +1458,8 @@ def monitoring_deployment(
         log.info("Waiting for balance monitor to report wallets...")
         _wait_for_balance_monitor(namespace, pod_name)
     except TimeoutError:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
         raise
 
     # Give Prometheus time to scrape the Pushgateway metrics
@@ -1467,8 +1467,8 @@ def monitoring_deployment(
     time.sleep(20)
 
     # Create ingress for Grafana and Prometheus
-    grafana_service = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
-    prometheus_service = f"{deploy_info.cluster_id}-nodeport-9090-tcp"
+    grafana_service = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
+    prometheus_service = f"{deploy_info.deployment_id}-nodeport-9090-tcp"
 
     for name, template, hostname, service in [
         ("Grafana", GRAFANA_INGRESS_TEMPLATE, GRAFANA_HOSTNAME,
@@ -1532,7 +1532,7 @@ def monitoring_deployment(
         "prometheus_url": PROMETHEUS_URL,
     }
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping monitoring stack...")
@@ -1726,7 +1726,7 @@ def bridge_setup(
         "synthetic_mint": synthetic_mint,
         "sender_keypair": sender_keypair,
         "warp_programs": warp_programs,
-        "relayer_cluster_id": relayer_deployment.cluster_id,
+        "relayer_deployment_id": relayer_deployment.deployment_id,
         "users": users,
     }
 
@@ -1815,11 +1815,11 @@ def warp_ui_deployment(
 
     if skip_warp_ui:
         deploy_dir = DEPLOY_DIR / "hyperlane-warp-ui"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
 
         yield {
-            "deployment": DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            "deployment": DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
             "url": WARP_UI_URL,
             "gorchain_mailbox": gorchain_mailbox,
             "solana_mailbox": solana_mailbox,
@@ -1863,7 +1863,7 @@ def warp_ui_deployment(
     deploy_info = deploy_prepare(
         "hyperlane-warp-ui", patched_path,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="warp-ui",
+        deployment_id="warp-ui",
     )
 
     bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
@@ -1872,13 +1872,13 @@ def warp_ui_deployment(
     deploy_start(deploy_info.deploy_dir)
 
     log.info("Waiting for warp-ui pod to be running...")
-    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+    wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120)
     log.info("Warp UI is running")
 
     # Create Ingress with TLS via cert-manager self-signed issuer.
     # SO skips TLS on Kind clusters, so we create the Ingress ourselves.
-    # SO names services as {cluster_id}-nodeport-{port}-tcp.
-    service_name = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
+    # SO names services as {deployment_id}-nodeport-{port}-tcp.
+    service_name = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
     ingress_yaml = WARP_UI_INGRESS_TEMPLATE.format(
         namespace=namespace,
         hostname=WARP_UI_HOSTNAME,
@@ -1932,7 +1932,7 @@ def warp_ui_deployment(
         "synthetic_mint": synthetic_mint,
     }
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "warp-ui")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "warp-ui")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping warp-ui stack...")
