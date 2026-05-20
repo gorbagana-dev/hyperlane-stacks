@@ -87,6 +87,7 @@ from lib.privy_mock import (
     is_privy_mock_running,
     load_oracle_keypair,
 )
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +109,30 @@ SPEC_REPLACEMENTS = {
     "REPLACE_NAMESPACE": E2E_NAMESPACE,
     "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
 }
+
+
+@pytest.fixture(scope="session")
+def bridge_state_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Host-path bind-mounted into Kind via extraMounts; deployer Jobs
+    write here, BridgeStateLoader reads here, consumer populate() copies
+    from here. One per pytest session."""
+    p = tmp_path_factory.mktemp("hyperlane-state")
+    log.info("Bridge state dir for this session: %s", p)
+    return p
+
+
+@pytest.fixture(scope="session")
+def bridge_state_logs_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Host-path for deployer Job logs (tee'd stdout/stderr); separate
+    from state dir so logs survive even if state dir is cleared."""
+    p = tmp_path_factory.mktemp("hyperlane-state-logs")
+    log.info("Bridge state logs dir for this session: %s", p)
+    return p
+
+
+@pytest.fixture(scope="session")
+def bridge_state_loader(bridge_state_dir: Path) -> BridgeStateLoader:
+    return BridgeStateLoader(bridge_state_dir)
 
 
 @dataclasses.dataclass
