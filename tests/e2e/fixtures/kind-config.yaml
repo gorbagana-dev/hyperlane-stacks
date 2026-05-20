@@ -15,3 +15,11 @@ nodes:
       - containerPort: 443
         hostPort: 443
         protocol: TCP
+    # Umbrella mount for deployer-Job state. Must match BRIDGE_STATE_ROOT
+    # in tests/e2e/conftest.py — SO emits an extraMount with the same
+    # hostPath in each deployer's generated kind-config and validates at
+    # `deploy start` that the live cluster has the matching bind.
+    extraMounts:
+      - hostPath: /tmp/hyperlane-bridge-e2e
+        containerPath: /mnt
+        propagation: HostToContainer

@@ -3,6 +3,7 @@ import dataclasses
 import logging
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -105,17 +106,33 @@ SPEC_REPLACEMENTS = {
     "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
 }
 
+# Fixed host path bound to /mnt inside the kind node. Must match the
+# extraMounts.hostPath value in tests/e2e/fixtures/kind-config.yaml — SO
+# validates the live cluster's binds against each deployer's generated
+# kind-config at `deploy start`.
+BRIDGE_STATE_ROOT = Path("/tmp/hyperlane-bridge-e2e")
+
 
 @pytest.fixture(scope="session")
-def bridge_state_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, None]:
     """Kind umbrella root. SO emits a single extraMount (hostPath=this →
     containerPath=/mnt). Deployer Jobs write to subdirs (generated/, logs/)
-    which become writable hostPath PVs inside the cluster."""
-    p = tmp_path_factory.mktemp("hyperlane-bridge")
-    (p / "generated").mkdir()
-    (p / "logs").mkdir()
+    which become writable hostPath PVs inside the cluster.
+
+    Lifecycle is paired with the kind cluster: removed at session teardown
+    unless --skip-cleanup or --skip-cluster-setup is set, so a kept cluster
+    keeps its state and a fresh cluster always starts with fresh state."""
+    p = BRIDGE_STATE_ROOT
+    p.mkdir(parents=True, exist_ok=True)
+    (p / "generated").mkdir(exist_ok=True)
+    (p / "logs").mkdir(exist_ok=True)
     log.info("Bridge state root for this session: %s", p)
-    return p
+    yield p
+    skip_setup = request.config.getoption("--skip-cluster-setup")
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    if not skip_cleanup and not skip_setup:
+        log.info("Removing bridge state root: %s", p)
+        shutil.rmtree(p, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
