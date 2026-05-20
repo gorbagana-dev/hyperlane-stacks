@@ -1,21 +1,4 @@
 services:
-  agent-config-init:
-    image: alpine/kubectl:1.35.3
-    user: "0"
-    labels:
-      laconic.init-container: "true"
-    entrypoint:
-      - /bin/sh
-    command:
-      - -c
-      - |
-        echo "Fetching agent-config from ConfigMap..."
-        kubectl get configmap hyperlane-agent-config \
-          -o jsonpath='{.data.agent-config\.json}' > /config/agent-config.json
-        echo "agent-config.json written ($(wc -c < /config/agent-config.json) bytes)"
-    volumes:
-      - agent-config:/config
-
   relayer:
     image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
     # image: gorbagana-dev/hyperlane-agent:local
@@ -39,14 +22,12 @@ services:
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # HYP_CHAINS_GORCHAIN_SIGNER_KEY, HYP_CHAINS_SOLANA_SIGNER_KEY
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-      # MinIO for reading validator checkpoints
-      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
+      # MinIO for reading validator checkpoints (cross-namespace FQDN; PR2 replaces with external-services)
+      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio.laconic-hyperlane-minio.svc.cluster.local:9000"
       AWS_REGION: us-east-1
     volumes:
       - agent-config:/config:ro
       - relayer-data:/data
-    ports:
-      - "9091"
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9091 || exit 1"]
       interval: 30s
@@ -73,6 +54,7 @@ services:
       - igp-fee-claim-scripts-config:/opt/scripts:ro
 
 volumes:
+  # agent-config: ConfigMap volume sourced from BridgeStateLoader at deploy-create
   agent-config:
   relayer-data:
   igp-fee-claim-scripts-config:

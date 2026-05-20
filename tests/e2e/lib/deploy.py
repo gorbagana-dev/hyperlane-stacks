@@ -11,14 +11,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .cluster import KIND_CLUSTER_NAME
 from .common import E2E_DIR, REPO_ROOT, fail_exit, force_rmtree, log_info, run_cmd
 
 DEPLOY_DIR = E2E_DIR / ".deployments"
 DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
-
-# Shared namespace for all e2e stacks — derived from the Kind cluster name.
-E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 
 # TODO: Pin remaining third-party images (prom/prometheus, prom/pushgateway,
 # grafana/grafana) to specific versions to avoid Docker Hub rate limits and
@@ -27,7 +23,6 @@ E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 DEPLOYER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest"
 AGENT_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-agent:latest"
 KMS_PROXY_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-kms-proxy:latest"
-KUBECTL_IMAGE = "alpine/kubectl:1.35.3"
 MINIO_IMAGE = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
 MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
@@ -91,7 +86,7 @@ def ensure_ghcr_pat() -> None:
 @dataclass
 class DeploymentInfo:
     deploy_dir: Path
-    cluster_id: str
+    deployment_id: str
     namespace: str
 
 
@@ -228,17 +223,6 @@ def prefetch_agent_images(cluster_name: str = "hyperlane-e2e") -> None:
     log_info("Agent images loaded into kind cluster")
 
 
-def prefetch_validator_images(cluster_name: str = "hyperlane-e2e") -> None:
-    """Pull public images needed by the validator pod and load into kind."""
-    log_info(f"Pulling {KUBECTL_IMAGE}...")
-    run_cmd(["docker", "pull", KUBECTL_IMAGE])
-
-    log_info(f"Loading {KUBECTL_IMAGE} into kind cluster '{cluster_name}'...")
-    _kind_load_image(KUBECTL_IMAGE, cluster_name)
-
-    log_info("Validator support images loaded into kind cluster")
-
-
 def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui", cluster_name: str = "hyperlane-e2e") -> None:
     """Build the warp-ui image via laconic-so and load into kind."""
     stack_path = resolve_stack_path(stack_name)
@@ -311,23 +295,26 @@ def prefetch_monitoring_images(cluster_name: str = "hyperlane-e2e") -> None:
 # ---------------------------------------------------------------------------
 # Deploy lifecycle
 # ---------------------------------------------------------------------------
-def set_cluster_id(deploy_dir: Path, cluster_id: str) -> None:
-    """Patch deployment.yml to use a human-readable cluster-id.
+def set_deployment_id(deploy_dir: Path, deployment_id: str) -> None:
+    """Patch deployment.yml to use a human-readable deployment-id.
 
     Must be called after ``deploy create`` but before ``deploy start``.
-    The cluster-id becomes the prefix for all k8s resource names
-    (Deployments, Jobs, Services, etc.).
+    The deployment-id becomes the prefix for all k8s resource names
+    (Deployments, Jobs, Services, ConfigMaps, PVs). It is distinct
+    from ``cluster-id`` (which identifies the shared kind cluster);
+    every stack joining the cluster gets its own deployment-id but
+    they all share the cluster.
     """
     deployment_yml = deploy_dir / "deployment.yml"
     content = deployment_yml.read_text()
     content = re.sub(
-        r"^(cluster-id:\s*).*$",
-        rf"\g<1>{cluster_id}",
+        r"^(deployment-id:\s*).*$",
+        rf"\g<1>{deployment_id}",
         content,
         flags=re.MULTILINE,
     )
     deployment_yml.write_text(content)
-    log_info(f"Patched cluster-id to '{cluster_id}'")
+    log_info(f"Patched deployment-id to '{deployment_id}'")
 
 
 def deploy_prepare(
@@ -336,7 +323,7 @@ def deploy_prepare(
     deploy_dir: Path | None = None,
     namespace: str | None = None,
     spec_replacements: dict[str, str] | None = None,
-    cluster_id: str | None = None,
+    deployment_id: str | None = None,
 ) -> DeploymentInfo:
     if deploy_dir is None:
         deploy_dir = DEPLOY_DIR / stack_name
@@ -386,20 +373,23 @@ def deploy_prepare(
         ]
     )
 
-    # Optionally replace the random cluster-id with a human-readable name
+    # Optionally replace the random deployment-id with a human-readable name
     # so k8s resources (pods, jobs, services) are easy to identify.
-    if cluster_id:
-        set_cluster_id(deploy_dir, cluster_id)
+    if deployment_id:
+        set_deployment_id(deploy_dir, deployment_id)
     else:
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
 
-    resolved_namespace = namespace or f"laconic-{cluster_id}"
+    # Mirror SO's namespace derivation: laconic-{stack_name} unless caller
+    # overrides. The caller may pass `namespace=` to match a spec.yml override
+    # (multi-instance stacks like multiple validators sharing one stack name).
+    resolved_namespace = namespace or f"laconic-{stack_name}"
 
-    log_info(f"Stack '{stack_name}' prepared — cluster-id: {cluster_id}, namespace: {resolved_namespace}")
+    log_info(f"Stack '{stack_name}' prepared — deployment-id: {deployment_id}, namespace: {resolved_namespace}")
 
     return DeploymentInfo(
         deploy_dir=deploy_dir,
-        cluster_id=cluster_id,
+        deployment_id=deployment_id,
         namespace=resolved_namespace,
     )
 
@@ -451,17 +441,17 @@ def stop_stack(stack_name: str, deploy_dir: Path | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Cluster-id helpers
+# Deployment-id helpers
 # ---------------------------------------------------------------------------
-def get_cluster_id(deploy_dir: Path) -> str:
+def get_deployment_id(deploy_dir: Path) -> str:
     deployment_yml = deploy_dir / "deployment.yml"
     if not deployment_yml.is_file():
         fail_exit(f"deployment.yml not found in {deploy_dir}")
 
     content = deployment_yml.read_text()
-    match = re.search(r"cluster-id:\s*['\"]?([^'\"\s]+)", content)
+    match = re.search(r"^deployment-id:\s*['\"]?([^'\"\s]+)", content, re.MULTILINE)
     if not match:
-        fail_exit(f"Could not extract cluster-id from {deployment_yml}")
+        fail_exit(f"Could not extract deployment-id from {deployment_yml}")
         return ""  # unreachable
 
     return match.group(1)

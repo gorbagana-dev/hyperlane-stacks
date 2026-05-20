@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .common import E2E_DIR, REPO_ROOT, fail_exit, log_info, run_cmd
+from .common import E2E_DIR, fail_exit, log_info, run_cmd
 
 KIND_CLUSTER_NAME = "hyperlane-e2e"
 
@@ -179,20 +179,6 @@ def get_host_ip() -> str:
 
     log_info(f"Host IP: {host_ip}")
     return host_ip
-
-
-def apply_rbac(namespace: str) -> None:
-    log_info(f"Applying RBAC to namespace {namespace}...")
-
-    rbac_source = (
-        REPO_ROOT / "stack_orchestrator" / "data" / "stacks" / "hyperlane-svm-deployer" / "deploy" / "rbac.yaml"
-    )
-
-    content = rbac_source.read_text()
-    rendered = content.replace("namespace: default", f"namespace: {namespace}")
-
-    run_cmd(["kubectl", "apply", "-n", namespace, "-f", "-"], input_text=rendered)
-    log_info(f"RBAC applied to namespace {namespace}")
 
 
 def destroy_kind_cluster() -> None:

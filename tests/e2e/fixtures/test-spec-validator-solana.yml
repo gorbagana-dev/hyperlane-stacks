@@ -1,6 +1,6 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
-namespace: REPLACE_NAMESPACE
+namespace: laconic-hyperlane-validator-solana
 kind-cluster-name: REPLACE_KIND_CLUSTER
 config:
   ORIGIN_CHAIN_NAME: solana
@@ -12,13 +12,6 @@ annotations:
   prometheus.io/port: "9090"
 resources:
   containers:
-    agent-config-init:
-      reservations:
-        cpus: "0.1"
-        memory: 64M
-      limits:
-        cpus: "0.25"
-        memory: 128M
     validator:
       reservations:
         cpus: "0.25"
@@ -35,7 +28,8 @@ resources:
         memory: 128M
 volumes:
   validator-data:
-  agent-config:
+configmaps:
+  agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-validator-solana-secrets:
     - PRIVY_APP_ID

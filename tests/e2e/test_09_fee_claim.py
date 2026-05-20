@@ -16,9 +16,9 @@ import subprocess
 
 import pytest
 
-from lib.common import CHAINS, get_configmap_json, run_deployer_cli
-from lib.deploy import E2E_NAMESPACE
+from lib.common import CHAINS, run_deployer_cli
 from lib.keygen import KEYS_DIR
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -68,18 +68,17 @@ class TestFeeClaim:
     """Tests for IGP fee claiming on both chains."""
 
     @pytest.fixture(autouse=True)
-    def _igp_data(self, bridge_setup: dict) -> None:
-        """Load IGP program IDs and accounts from the deployer ConfigMap.
+    def _igp_data(
+        self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Load IGP program IDs and accounts from deployer state files.
 
         Depends on bridge_setup to ensure the full infrastructure (deployer,
         validators, relayer, bridge) is up before claiming fees.
         """
         self.igp = {}
         for chain in ("gorchain", "solana"):
-            program_ids = get_configmap_json(
-                E2E_NAMESPACE, "hyperlane-program-ids",
-                f"{chain}-program-ids.json",
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain)
             self.igp[chain] = {
                 "program_id": program_ids["igp_program_id"],
                 "igp_account": program_ids["igp_account"],

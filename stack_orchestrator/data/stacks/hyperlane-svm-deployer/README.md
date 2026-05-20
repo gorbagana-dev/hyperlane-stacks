@@ -1,6 +1,6 @@
 # hyperlane-svm-deployer
 
-Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce, merkle tree hook) on Gorchain and Solana SVM chains. Runs once, writes deployment artifacts to k8s ConfigMaps consumed by downstream stacks (validators, relayer, warp-deployer).
+Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce, merkle tree hook) on Gorchain and Solana SVM chains. Runs once, writes deployment artifacts to state files (`/state` host-path mount) consumed by downstream stacks (validators, relayer, warp-deployer).
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ Then create the deployment directory:
 laconic-so --stack hyperlane-svm-deployer deploy create --spec-file deployer-spec.yml --deployment-dir deployer-deployment
 ```
 
-This applies RBAC (via `deploy/commands.py`) granting the pod's ServiceAccount permission to create ConfigMaps.
+This applies RBAC (via `deploy/commands.py`) if needed by the deployment environment.
 
 ## 4. Create secrets
 
@@ -96,14 +96,14 @@ laconic-so deployment --dir deployer-deployment start
 
 The pod runs `deploy.sh` which:
 
-1. Checks idempotency — skips if `hyperlane-program-ids` ConfigMap already exists (override with `FORCE_REDEPLOY=true`)
+1. Checks idempotency — skips if `program-ids.json` file already exists at `/state/` (override with `FORCE_REDEPLOY=true`)
 2. Deploys core contracts on both chains via `hyperlane-sealevel-client`
 3. Verifies deployed program hashes against local `.so` files using `solana-verify`
 4. Transfers program upgrade authority to `HARDWARE_WALLET_PUBKEY`
 5. Transfers IGP and overhead IGP account ownership to `IGP_ORACLE_PUBKEY`
 6. Configures 1-of-1 multisig ISM with validator addresses
 7. Builds `agent-config.json` from deployed program IDs
-8. Writes artifacts to k8s ConfigMaps: `hyperlane-program-ids`, `hyperlane-agent-config`, `hyperlane-gas-oracle-config`, `hyperlane-multisig-config`, `hyperlane-registry`
+8. Writes artifacts to state files at `/state/`: `program-ids.json`, `agent-config.json`, `gas-oracle-config.json`, `multisig-config.json`, `registry/metadata.yaml`
 9. Shreds and deletes the deployer keypair from the pod
 
 The container exits after completion (`restart: "no"`).
@@ -114,19 +114,20 @@ The container exits after completion (`restart: "no"`).
 # Check pod completed successfully
 kubectl get pods -l app=hyperlane-svm-deployer
 
-# Check ConfigMaps were created
-kubectl get configmap hyperlane-program-ids -o jsonpath='{.data}'
-kubectl get configmap hyperlane-agent-config -o jsonpath='{.data}'
+# Check state files were written (dev: look in tmpdir; prod: in deployment/bridges/<bridge>/generated/)
+ls -la /state/
+cat /state/program-ids.json
+cat /state/agent-config.json
 ```
 
 ## Outputs
 
-These ConfigMaps are created in the cluster namespace and consumed by downstream stacks:
+These state files are written to `/state/` and consumed by downstream stacks (dev uses tmpdir bind-mount; prod uses ansible to populate ConfigMaps):
 
-| ConfigMap | Consumed by |
+| State file | Consumed by |
 |---|---|
-| `hyperlane-program-ids` | warp-deployer, ops jobs |
-| `hyperlane-agent-config` | validators, relayer |
-| `hyperlane-gas-oracle-config` | gas-oracle |
-| `hyperlane-multisig-config` | validators |
-| `hyperlane-registry` | validators, relayer |
+| `program-ids.json` | warp-deployer, ops jobs |
+| `agent-config.json` | validators, relayer |
+| `gas-oracle-config.json` | gas-oracle |
+| `multisig-config.json` | validators |
+| `registry/metadata.yaml` | validators, relayer |

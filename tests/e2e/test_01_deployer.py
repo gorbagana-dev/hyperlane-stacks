@@ -7,16 +7,13 @@ import pytest
 
 from lib.common import (
     CHAINS,
-    CONFIGMAP_TIMEOUT,
     assert_program_on_chain,
-    get_configmap_data,
-    get_configmap_json,
     is_base58_pubkey,
     run_deployer_cli,
-    wait_for_configmap,
 )
 from lib.deploy import DeploymentInfo
 from lib.keygen import KeypairSet
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +47,7 @@ class TestDeployer:
     def test_deployer_job_succeeds(self, deployer_deployment: DeploymentInfo) -> None:
         """Verify the deployer Job completed (guaranteed by the fixture)."""
         ns = deployer_deployment.namespace
-        job_name = f"{deployer_deployment.cluster_id}-job-hyperlane-svm-deployer"
+        job_name = f"{deployer_deployment.deployment_id}-job-hyperlane-svm-deployer"
         result = subprocess.run(
             [
                 "kubectl", "-n", ns, "get", "job", job_name,
@@ -60,14 +57,14 @@ class TestDeployer:
         )
         assert result.stdout.strip() == "True", f"Job {job_name} is not in Complete state"
 
-    def test_program_ids_configmap(self, deployer_deployment: DeploymentInfo) -> None:
-        """Validate program-ids ConfigMap has correct structure and valid pubkeys."""
-        ns = deployer_deployment.namespace
-        wait_for_configmap(ns, "hyperlane-program-ids", CONFIGMAP_TIMEOUT)
-
+    def test_program_ids_configmap(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Validate program-ids state file has correct structure and valid pubkeys."""
         for chain in CHAINS:
-            key = f"{chain}-program-ids.json"
-            program_ids = get_configmap_json(ns, "hyperlane-program-ids", key)
+            program_ids = bridge_state_loader.read_program_ids(chain)
 
             for field in CORE_PROGRAM_ID_FIELDS:
                 value = program_ids.get(field)
@@ -76,12 +73,13 @@ class TestDeployer:
                     f"{chain} program-ids.{field} is not a valid base58 pubkey: {value}"
                 )
 
-    def test_agent_config_configmap(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_agent_config_configmap(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Validate agent-config structure, field values, and cross-references."""
-        ns = deployer_deployment.namespace
-        wait_for_configmap(ns, "hyperlane-agent-config", CONFIGMAP_TIMEOUT)
-
-        agent_config = get_configmap_json(ns, "hyperlane-agent-config", "agent-config.json")
+        agent_config = bridge_state_loader.read_json("agent-config.json")
         chains = agent_config.get("chains")
         assert isinstance(chains, dict), "agent-config missing 'chains' object"
 
@@ -113,9 +111,7 @@ class TestDeployer:
 
         # Cross-reference agent-config addresses with program-ids
         for chain_name in CHAINS:
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             ac = chains[chain_name]
 
             assert ac["mailbox"] == program_ids["mailbox"], (
@@ -137,18 +133,17 @@ class TestDeployer:
                 f"program-ids.validator_announce"
             )
 
-    def test_gas_oracle_configmap(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_gas_oracle_configmap(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Validate gas oracle config has expected structure.
 
         Format is a nested map: {local_chain: {remote_chain: {oracleConfig: {...}, overhead: N}}}
         """
-        ns = deployer_deployment.namespace
-        wait_for_configmap(ns, "hyperlane-gas-oracle-config", CONFIGMAP_TIMEOUT)
-
-        configs = get_configmap_json(
-            ns, "hyperlane-gas-oracle-config", "gas-oracle-configs.json"
-        )
-        assert isinstance(configs, dict), "gas-oracle-configs is not a dict"
+        configs = bridge_state_loader.read_json("gas-oracle-config.json")
+        assert isinstance(configs, dict), "gas-oracle-config is not a dict"
 
         remote_chain = {"gorchain": "solana", "solana": "gorchain"}
 
@@ -186,21 +181,23 @@ class TestDeployer:
 
             assert "overhead" in entry, f"{chain}.{remote} missing 'overhead'"
 
-    def test_multisig_configmap(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_multisig_configmap(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Validate multisig configs have validators and threshold.
 
         Each chain's config is keyed by the remote chain name (gorchain's ISM
         validates messages from solana, so its key is "solana").
         """
-        ns = deployer_deployment.namespace
-        wait_for_configmap(ns, "hyperlane-multisig-config", CONFIGMAP_TIMEOUT)
-
         # Map each chain to its expected remote chain key
         remote_chain = {"gorchain": "solana", "solana": "gorchain"}
 
+        all_multisig = bridge_state_loader.read_json("multisig-config.json")
+
         for chain in CHAINS:
-            key = f"{chain}-multisig.json"
-            multisig = get_configmap_json(ns, "hyperlane-multisig-config", key)
+            multisig = all_multisig[chain]
 
             remote = remote_chain[chain]
             assert remote in multisig, (
@@ -222,14 +219,18 @@ class TestDeployer:
                 f"{chain}: multisig.{remote}.threshold must be int >= 1, got {threshold}"
             )
 
-    def test_registry_configmap(self, deployer_deployment: DeploymentInfo) -> None:
-        """Validate registry ConfigMap has chain metadata for both chains."""
-        ns = deployer_deployment.namespace
-        wait_for_configmap(ns, "hyperlane-registry", CONFIGMAP_TIMEOUT)
-
-        data = get_configmap_data(ns, "hyperlane-registry")
-        raw = data.get("metadata.yaml", "")
-        assert raw, "hyperlane-registry missing metadata.yaml"
+    def test_registry_configmap(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Validate registry state files contain chain metadata for both chains."""
+        metadata_path = bridge_state_loader.state_dir / "registry" / "metadata.yaml"
+        assert metadata_path.exists(), (
+            f"registry metadata.yaml missing at {metadata_path}"
+        )
+        raw = metadata_path.read_text()
+        assert raw, f"registry metadata.yaml is empty at {metadata_path}"
 
         # Verify both chains are present with key fields (simple string checks
         # to avoid adding pyyaml dependency)
@@ -243,14 +244,14 @@ class TestDeployer:
             assert "rpcUrls:" in raw, f"{chain_name}: registry missing rpcUrls"
             assert "isTestnet:" in raw, f"{chain_name}: registry missing isTestnet"
 
-    def test_programs_exist_on_chain(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_programs_exist_on_chain(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Verify core programs are actually deployed on-chain via RPC."""
-        ns = deployer_deployment.namespace
-
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
 
             # Check mailbox and validator_announce (real deployed programs)
             for program in ("mailbox", "validator_announce"):
@@ -261,28 +262,28 @@ class TestDeployer:
                     label=program,
                 )
 
-    def test_ism_configured_on_chain(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_ism_configured_on_chain(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Verify multisig ISM validators and threshold are set on-chain.
 
         For each chain, query the ISM program with the remote chain's domain ID
         and check that the configured validators and threshold match the multisig
-        ConfigMap.
+        state file.
         """
-        ns = deployer_deployment.namespace
         remote_chain = {"gorchain": "solana", "solana": "gorchain"}
+        all_multisig = bridge_state_loader.read_json("multisig-config.json")
 
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             ism_id = program_ids["multisig_ism_message_id"]
             remote = remote_chain[chain_name]
             remote_domain = str(CHAINS[remote]["domain_id"])
 
-            # Get expected config from ConfigMap
-            multisig = get_configmap_json(
-                ns, "hyperlane-multisig-config", f"{chain_name}-multisig.json"
-            )
+            # Get expected config from state file
+            multisig = all_multisig[chain_name]
             expected_validators = [
                 v.lower() for v in multisig[remote]["validators"]
             ]
@@ -329,25 +330,24 @@ class TestDeployer:
                 chain_name, on_chain_validators, expected_threshold,
             )
 
-    def test_igp_configured_on_chain(self, deployer_deployment: DeploymentInfo) -> None:
+    def test_igp_configured_on_chain(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Verify IGP gas oracle config is set on-chain.
 
         For each chain, query the IGP program and check that the gas oracle
         for the remote domain has the expected exchange rate, gas price, and
         token decimals.
         """
-        ns = deployer_deployment.namespace
         remote_chain = {"gorchain": "solana", "solana": "gorchain"}
 
-        # Load expected config from ConfigMap
-        gas_config = get_configmap_json(
-            ns, "hyperlane-gas-oracle-config", "gas-oracle-configs.json"
-        )
+        # Load expected config from state file
+        gas_config = bridge_state_loader.read_json("gas-oracle-config.json")
 
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             igp_id = program_ids["igp_program_id"]
             igp_account = program_ids["igp_account"]
             remote = remote_chain[chain_name]
@@ -427,7 +427,10 @@ class TestDeployer:
             )
 
     def test_program_upgrade_authority_transferred(
-        self, deployer_deployment: DeploymentInfo, keypairs: KeypairSet,
+        self,
+        deployer_deployment: DeploymentInfo,
+        keypairs: KeypairSet,
+        bridge_state_loader: BridgeStateLoader,
     ) -> None:
         """Verify core program upgrade authority was transferred to hardware wallet.
 
@@ -435,13 +438,10 @@ class TestDeployer:
         multisig_ism_message_id, igp) should have their upgrade authority set
         to the hardware wallet pubkey.
         """
-        ns = deployer_deployment.namespace
         expected_authority = keypairs.hardware_wallet_pubkey
 
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
 
             for label, key in [
                 ("mailbox", "mailbox"),
@@ -475,7 +475,10 @@ class TestDeployer:
                 )
 
     def test_igp_ownership_transferred(
-        self, deployer_deployment: DeploymentInfo, keypairs: KeypairSet,
+        self,
+        deployer_deployment: DeploymentInfo,
+        keypairs: KeypairSet,
+        bridge_state_loader: BridgeStateLoader,
     ) -> None:
         """Verify IGP and overhead IGP account ownership transferred to oracle wallet.
 
@@ -484,14 +487,11 @@ class TestDeployer:
         transfer from the oracle key to itself — this succeeds only if the oracle
         key is already the owner.
         """
-        ns = deployer_deployment.namespace
         expected_owner = keypairs.igp_oracle_pubkey
         oracle_keypair = str(keypairs.igp_oracle_path)
 
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             igp_id = program_ids["igp_program_id"]
             igp_account = program_ids["igp_account"]
             overhead_igp_account = program_ids["overhead_igp_account"]

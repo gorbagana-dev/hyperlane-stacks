@@ -23,8 +23,6 @@ services:
     image: prom/pushgateway:latest
     restart: unless-stopped
     hostname: pushgateway
-    ports:
-      - "9091"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9091/-/healthy"]
       interval: 15s

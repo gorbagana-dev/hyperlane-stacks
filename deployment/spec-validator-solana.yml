@@ -2,7 +2,6 @@
 # Runs a validator for Solana using the hyperlane-validator stack.
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
   ORIGIN_CHAIN_NAME: solana
@@ -13,15 +12,13 @@ annotations:
   prometheus.io/port: "9090"
 volumes:
   validator-data:
-  agent-config:
 resources:
   volumes:
     validator-data:
       reservations:
         storage: 5Gi
-    agent-config:
-      reservations:
-        storage: 100Mi
+configmaps:
+  agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-validator-secrets:
     - PRIVY_APP_ID

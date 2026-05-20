@@ -21,7 +21,6 @@ from lib.chain import (
 )
 from lib.cluster import (
     KIND_CLUSTER_NAME,
-    apply_rbac,
     create_kind_cluster,
     create_namespace,
     create_selfsigned_issuer,
@@ -34,8 +33,7 @@ from lib.cluster import (
 from lib.common import (
     CHAINS,
     E2E_DIR,
-    get_configmap_data,
-    get_configmap_json,
+    force_rmtree,
     run_deployer_cli,
     save_job_describe,
     save_job_logs,
@@ -46,20 +44,18 @@ from lib.common import (
 )
 from lib.deploy import (
     DEPLOY_DIR,
-    E2E_NAMESPACE,
     DeploymentInfo,
     build_agent_image,
     build_warp_ui_image,
     deploy_prepare,
     deploy_start,
     ensure_ghcr_pat,
-    get_cluster_id,
+    get_deployment_id,
     prefetch_agent_images,
     prefetch_deployer_image,
     prefetch_gas_oracle_image,
     prefetch_minio_images,
     prefetch_monitoring_images,
-    prefetch_validator_images,
     prefetch_warp_ui_image,
     stop_stack,
 )
@@ -87,6 +83,7 @@ from lib.privy_mock import (
     is_privy_mock_running,
     load_oracle_keypair,
 )
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -102,12 +99,57 @@ WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
 
 PRIVY_MOCK_PORT = 19876
 
-# Spec placeholder replacements for stacks that use independent cluster-ids
-# but share the e2e namespace and kind cluster.
+# Spec placeholder replacements shared across e2e test specs. Each stack uses
+# its own namespace (derived by SO as laconic-{stack_name}) but all share the
+# same kind cluster.
 SPEC_REPLACEMENTS = {
-    "REPLACE_NAMESPACE": E2E_NAMESPACE,
     "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
 }
+
+# Fixed host path bound to /mnt inside the kind node. Must match the
+# extraMounts.hostPath value in tests/e2e/fixtures/kind-config.yaml — SO
+# validates the live cluster's binds against each deployer's generated
+# kind-config at `deploy start`.
+BRIDGE_STATE_ROOT = Path("/tmp/hyperlane-bridge-e2e")
+
+
+@pytest.fixture(scope="session")
+def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, None]:
+    """Kind umbrella root. SO emits a single extraMount (hostPath=this →
+    containerPath=/mnt). Deployer Jobs write to subdirs (generated/, logs/)
+    which become writable hostPath PVs inside the cluster.
+
+    Lifecycle is paired with the kind cluster: removed at session teardown
+    unless --skip-cleanup or --skip-cluster-setup is set, so a kept cluster
+    keeps its state and a fresh cluster always starts with fresh state."""
+    p = BRIDGE_STATE_ROOT
+    p.mkdir(parents=True, exist_ok=True)
+    (p / "generated").mkdir(exist_ok=True)
+    (p / "logs").mkdir(exist_ok=True)
+    log.info("Bridge state root for this session: %s", p)
+    yield p
+    skip_setup = request.config.getoption("--skip-cluster-setup")
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    if not skip_cleanup and not skip_setup:
+        # Deployer containers run as root and write root-owned files into
+        # this dir, so plain rmtree fails — force_rmtree falls back to sudo.
+        log.info("Removing bridge state root: %s", p)
+        force_rmtree(p)
+
+
+@pytest.fixture(scope="session")
+def bridge_state_dir(bridge_state_root: Path) -> Path:
+    return bridge_state_root / "generated"
+
+
+@pytest.fixture(scope="session")
+def bridge_state_logs_dir(bridge_state_root: Path) -> Path:
+    return bridge_state_root / "logs"
+
+
+@pytest.fixture(scope="session")
+def bridge_state_loader(bridge_state_dir: Path) -> BridgeStateLoader:
+    return BridgeStateLoader(bridge_state_dir)
 
 
 @dataclasses.dataclass
@@ -123,8 +165,8 @@ class MinioInfo:
         return self.deployment.namespace
 
     @property
-    def cluster_id(self) -> str:
-        return self.deployment.cluster_id
+    def deployment_id(self) -> str:
+        return self.deployment.deployment_id
 
     @property
     def deploy_dir(self) -> Path:
@@ -143,8 +185,8 @@ class ValidatorInfo:
         return self.deployment.namespace
 
     @property
-    def cluster_id(self) -> str:
-        return self.deployment.cluster_id
+    def deployment_id(self) -> str:
+        return self.deployment.deployment_id
 
     @property
     def deploy_dir(self) -> Path:
@@ -161,8 +203,8 @@ class RelayerInfo:
         return self.deployment.namespace
 
     @property
-    def cluster_id(self) -> str:
-        return self.deployment.cluster_id
+    def deployment_id(self) -> str:
+        return self.deployment.deployment_id
 
     @property
     def deploy_dir(self) -> Path:
@@ -231,7 +273,11 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 @pytest.fixture(scope="session")
-def kind_cluster(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+def kind_cluster(
+    request: pytest.FixtureRequest,
+    bridge_state_root: Path,
+) -> Generator[None, None, None]:
+    SPEC_REPLACEMENTS["REPLACE_KIND_MOUNT_ROOT"] = str(bridge_state_root)
     skip_setup = request.config.getoption("--skip-cluster-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
@@ -328,9 +374,6 @@ def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None
         log.info("Pre-fetching published agent images into kind cluster...")
         prefetch_agent_images()
 
-    log.info("Pre-fetching kubectl image into kind cluster...")
-    prefetch_validator_images()
-
 
 @pytest.fixture(scope="session")
 def gas_oracle_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
@@ -396,11 +439,12 @@ def _recover_minio_credentials(namespace: str) -> tuple[str, str]:
 def minio_deployment(
     request: pytest.FixtureRequest,
     kind_cluster: None,
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[MinioInfo, None, None]:
     """Deploy the hyperlane-minio stack.
 
     Self-contained: only requires a Kind cluster. Creates its own namespace
-    and secrets. Uses an independent cluster-id for unique resource names,
+    and secrets. Uses an independent deployment-id for unique resource names,
     with spec-level namespace override to share the e2e namespace.
     """
     skip_cleanup = request.config.getoption("--skip-cleanup")
@@ -408,12 +452,12 @@ def minio_deployment(
 
     if skip_minio:
         deploy_dir = DEPLOY_DIR / "hyperlane-minio"
-        cluster_id = get_cluster_id(deploy_dir)
-        namespace = E2E_NAMESPACE
+        deployment_id = get_deployment_id(deploy_dir)
+        namespace = "laconic-hyperlane-minio"
         log.info("Reusing existing minio deployment (namespace: %s)", namespace)
         user, password = _recover_minio_credentials(namespace)
         yield MinioInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
             user=user,
             password=password,
         )
@@ -428,12 +472,11 @@ def minio_deployment(
     log.info("Preparing minio stack...")
     deploy_info = deploy_prepare(
         "hyperlane-minio", MINIO_SPEC,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="minio",
+        deployment_id="minio",
     )
     namespace = deploy_info.namespace
-    cluster_id = deploy_info.cluster_id
+    deployment_id = deploy_info.deployment_id
 
     # Create namespace before deploy start — secrets must exist before pods start.
     # Idempotent: no-ops if deployer_deployment already created it.
@@ -443,28 +486,30 @@ def minio_deployment(
     log.info("Creating minio secrets in namespace %s...", namespace)
     create_minio_secrets(namespace, minio_user, minio_password)
 
+    bridge_state_loader.populate("hyperlane-minio", deploy_info.deploy_dir)
+
     log.info("Starting minio stack...")
     deploy_start(deploy_info.deploy_dir)
 
     try:
         log.info("Waiting for minio pod to be running...")
-        wait_for_pod_phase(namespace, f"app={cluster_id}", "Running", timeout=120)
+        wait_for_pod_phase(namespace, f"app={deployment_id}", "Running", timeout=120)
 
         log.info("Waiting for minio-init job to complete...")
-        job_name = f"{cluster_id}-job-hyperlane-minio-init"
+        job_name = f"{deployment_id}-job-hyperlane-minio-init"
         wait_for_job_complete(namespace, job_name, timeout=300)
         save_job_logs(namespace, job_name)
         log.info("MinIO stack deployed and initialized")
     except Exception:
-        save_job_logs(namespace, f"{cluster_id}-job-hyperlane-minio-init")
-        save_job_describe(namespace, f"{cluster_id}-job-hyperlane-minio-init")
-        save_pod_logs(namespace, f"app={cluster_id}", "minio")
-        save_pod_describe(namespace, f"app={cluster_id}", "minio")
+        save_job_logs(namespace, f"{deployment_id}-job-hyperlane-minio-init")
+        save_job_describe(namespace, f"{deployment_id}-job-hyperlane-minio-init")
+        save_pod_logs(namespace, f"app={deployment_id}", "minio")
+        save_pod_describe(namespace, f"app={deployment_id}", "minio")
         raise
 
     yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
 
-    save_pod_logs(namespace, f"app={cluster_id}", "minio")
+    save_pod_logs(namespace, f"app={deployment_id}", "minio")
     if not skip_cleanup:
         log.info("Stopping minio stack...")
         stop_stack("hyperlane-minio")
@@ -482,6 +527,7 @@ def deployer_deployment(
     keypairs: KeypairSet,
     kind_cluster: None,
     chain_nodes: None,
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[DeploymentInfo, None, None]:
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_core_deploy = request.config.getoption("--skip-core-deploy")
@@ -491,18 +537,17 @@ def deployer_deployment(
         # The Solana test validator runs detached (start_new_session) so it
         # survives Ctrl+C — deployed programs and funded wallets persist.
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
-        cluster_id = get_cluster_id(deploy_dir)
-        namespace = E2E_NAMESPACE
-        log.info("Reusing existing core deployment (cluster-id: %s, namespace: %s)", cluster_id, namespace)
-        yield DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace)
+        deployment_id = get_deployment_id(deploy_dir)
+        namespace = "laconic-hyperlane-svm-deployer"
+        log.info("Reusing existing core deployment (deployment-id: %s, namespace: %s)", deployment_id, namespace)
+        yield DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace)
         return
 
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare(
         "hyperlane-svm-deployer", FIXTURE_SPEC,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="deployer",
+        deployment_id="deployer",
     )
     namespace = deploy_info.namespace
 
@@ -512,30 +557,26 @@ def deployer_deployment(
     log.info("Creating namespace %s...", namespace)
     create_namespace(namespace)
 
-    log.info("Applying RBAC to namespace %s...", namespace)
-    apply_rbac(namespace)
-
     log.info("Creating deployer secrets...")
     create_deployer_secrets(namespace, keypairs)
 
-    log.info("Creating warp deployer secrets...")
-    create_warp_deployer_secrets(namespace, keypairs)
-
     log.info("Funding wallets...")
     fund_wallets(keypair_set=keypairs, gorchain_rpc="http://localhost:8899", solana_rpc="http://localhost:18899")
+
+    bridge_state_loader.populate("hyperlane-svm-deployer", deploy_info.deploy_dir)
 
     log.info("Starting deployer stack...")
     deploy_start(deploy_info.deploy_dir)
 
     try:
         log.info("Waiting for deployer job to complete...")
-        job_name = f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer"
+        job_name = f"{deploy_info.deployment_id}-job-hyperlane-svm-deployer"
         wait_for_job_complete(namespace, job_name)
         save_job_logs(namespace, job_name)
         log.info("Core deployer job complete, artifacts available")
     except Exception:
-        save_job_logs(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
-        save_job_describe(namespace, f"{deploy_info.cluster_id}-job-hyperlane-svm-deployer")
+        save_job_logs(namespace, f"{deploy_info.deployment_id}-job-hyperlane-svm-deployer")
+        save_job_describe(namespace, f"{deploy_info.deployment_id}-job-hyperlane-svm-deployer")
         raise
 
     yield deploy_info
@@ -610,6 +651,8 @@ def _patch_warp_spec(token_mint: str) -> Path:
 @pytest.fixture(scope="session")
 def warp_deployment(
     deployer_deployment: DeploymentInfo,
+    bridge_state_loader: BridgeStateLoader,
+    keypairs: KeypairSet,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the warp route stack once for the entire test session."""
@@ -618,20 +661,20 @@ def warp_deployment(
 
     if skip_warp_deploy:
         # Reuse existing warp deployment — recover token_mint from the
-        # hyperlane-token-config ConfigMap written by the warp deployer job.
-        namespace = deployer_deployment.namespace
+        # token-config.json state file written by the warp deployer job.
+        namespace = "laconic-hyperlane-svm-warp-deployer"
         log.info("Reusing existing warp deployment (namespace: %s)", namespace)
-        token_config = get_configmap_json(namespace, "hyperlane-token-config", "token-config.json")
+        token_config = bridge_state_loader.read_json("token-config.json")
         token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
-        assert token_mint, "Cannot recover token_mint from hyperlane-token-config (is warp deployed?)"
-        log.info("Recovered token mint from ConfigMap: %s", token_mint)
+        assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
+        log.info("Recovered token mint from state file: %s", token_mint)
 
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         yield {
             "deployment": DeploymentInfo(
                 deploy_dir=deploy_dir,
-                cluster_id=cluster_id,
+                deployment_id=deployment_id,
                 namespace=namespace,
             ),
             "token_mint": token_mint,
@@ -651,23 +694,34 @@ def warp_deployment(
     warp_info = deploy_prepare(
         "hyperlane-svm-warp-deployer",
         patched_spec,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="warp-deployer",
+        deployment_id="warp-deployer",
     )
+
+    # Per-stack namespaces mean the warp-deployer Secret has to live in the
+    # warp-deployer's own namespace, not the core deployer's. Create the
+    # namespace explicitly so the Secret can land before `deploy start` —
+    # SO will find it already there during _ensure_namespace().
+    log.info("Creating namespace %s...", warp_info.namespace)
+    create_namespace(warp_info.namespace)
+
+    log.info("Creating warp deployer secrets...")
+    create_warp_deployer_secrets(warp_info.namespace, keypairs)
+
+    bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
 
     log.info("Starting warp deployer stack...")
     deploy_start(warp_info.deploy_dir)
 
     try:
         log.info("Waiting for warp deployer job to complete...")
-        job_name = f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer"
+        job_name = f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer"
         wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
         save_job_logs(warp_info.namespace, job_name)
         log.info("Warp deployer job complete, artifacts available")
     except Exception:
-        save_job_logs(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
-        save_job_describe(warp_info.namespace, f"{warp_info.cluster_id}-job-hyperlane-svm-warp-deployer")
+        save_job_logs(warp_info.namespace, f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer")
+        save_job_describe(warp_info.namespace, f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer")
         raise
 
     ctx = {
@@ -772,21 +826,26 @@ def _deploy_validator(
     wallet_id: str,
     minio: MinioInfo,
     deployer: DeploymentInfo,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy a single validator stack for the given chain."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_validator = request.config.getoption("--skip-validator-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    # Two validator deployments share the hyperlane-validator stack, so SO
+    # cannot derive distinct namespaces from the stack name alone. The test
+    # specs set namespace: laconic-hyperlane-validator-{chain} explicitly and
+    # we mirror that here.
+    namespace = f"laconic-hyperlane-validator-{chain}"
 
     stack_name = f"hyperlane-validator-{chain}"
 
     if skip_validator:
         deploy_dir = DEPLOY_DIR / stack_name
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
         yield ValidatorInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
             chain=chain,
             wallet_id=wallet_id,
         )
@@ -800,6 +859,9 @@ def _deploy_validator(
     rpc = "http://localhost:8899" if chain == "gorchain" else "http://localhost:18899"
     log.info("Funding chain signer %s on %s...", chain_signer_addr, chain)
     _airdrop(1, chain_signer_addr, rpc, f"{chain} chain signer")
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     log.info("Creating validator secrets for %s...", chain)
     create_validator_secrets(
@@ -819,21 +881,23 @@ def _deploy_validator(
         "hyperlane-validator",
         spec_file,
         deploy_dir=DEPLOY_DIR / stack_name,
-        namespace=E2E_NAMESPACE,
+        namespace=namespace,
         spec_replacements=validator_replacements,
-        cluster_id=f"val-{chain}",
+        deployment_id=f"val-{chain}",
     )
+
+    bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
 
     log.info("Starting %s stack...", stack_name)
     deploy_start(deploy_info.deploy_dir)
 
     try:
         log.info("Waiting for %s pod to be running...", stack_name)
-        wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+        wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120)
         log.info("%s is running", stack_name)
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", f"validator-{chain}")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", f"validator-{chain}")
         raise
 
     yield ValidatorInfo(
@@ -842,7 +906,7 @@ def _deploy_validator(
         wallet_id=wallet_id,
     )
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", f"validator-{chain}")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", f"validator-{chain}")
     if not skip_cleanup:
         log.info("Stopping %s stack...", stack_name)
         stop_stack("hyperlane-validator", deploy_dir=DEPLOY_DIR / stack_name)
@@ -854,6 +918,7 @@ def validator_gorchain(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     privy_mock: dict[str, str],
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy the gorchain validator."""
     yield from _deploy_validator(
@@ -862,6 +927,7 @@ def validator_gorchain(
         wallet_id=GORCHAIN_WALLET_ID,
         minio=minio_deployment,
         deployer=deployer_deployment,
+        bridge_state_loader=bridge_state_loader,
         request=request,
     )
 
@@ -872,6 +938,7 @@ def validator_solana(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     privy_mock: dict[str, str],
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[ValidatorInfo, None, None]:
     """Deploy the solana validator."""
     yield from _deploy_validator(
@@ -880,6 +947,7 @@ def validator_solana(
         wallet_id=SOLANA_WALLET_ID,
         minio=minio_deployment,
         deployer=deployer_deployment,
+        bridge_state_loader=bridge_state_loader,
         request=request,
     )
 
@@ -895,19 +963,20 @@ def relayer_deployment(
     minio_deployment: MinioInfo,
     validator_images: None,
     kind_cluster: None,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[RelayerInfo, None, None]:
     """Deploy the hyperlane-relayer stack."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_relayer = request.config.getoption("--skip-relayer-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-relayer"
 
     if skip_relayer:
         deploy_dir = DEPLOY_DIR / "hyperlane-relayer"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
         yield RelayerInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
         )
         return
 
@@ -933,15 +1002,18 @@ def relayer_deployment(
     _airdrop(1, fee_claim_addr, "http://localhost:18899", "relayer fee claim (solana)")
     relayer_keypair_json = (KEYS_DIR / "relayer-fee-claim.json").read_text().strip()
 
-    # Read IGP program IDs and accounts from the deployer ConfigMap
+    # Read IGP program IDs and accounts from the deployer state files
     for chain in ("gorchain", "solana"):
-        program_ids = get_configmap_json(namespace, "hyperlane-program-ids", f"{chain}-program-ids.json")
+        program_ids = bridge_state_loader.read_program_ids(chain)
         if chain == "gorchain":
             gorchain_igp_program_id = program_ids["igp_program_id"]
             gorchain_igp_account = program_ids["igp_account"]
         else:
             solana_igp_program_id = program_ids["igp_program_id"]
             solana_igp_account = program_ids["igp_account"]
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     # Create relayer secrets
     log.info("Creating relayer secrets...")
@@ -978,26 +1050,27 @@ def relayer_deployment(
     log.info("Preparing relayer stack...")
     deploy_info = deploy_prepare(
         "hyperlane-relayer", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="relayer",
+        deployment_id="relayer",
     )
+
+    bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
 
     log.info("Starting relayer stack...")
     deploy_start(deploy_info.deploy_dir)
 
     try:
         log.info("Waiting for relayer pod to be running...")
-        wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180)
+        wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=180)
         log.info("Relayer is running")
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "relayer")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "relayer")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "relayer")
         raise
 
     yield RelayerInfo(deployment=deploy_info)
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "relayer")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "relayer")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping relayer stack...")
@@ -1010,7 +1083,7 @@ def relayer_deployment(
 
 
 def _wait_for_oracle_update(
-    namespace: str, cluster_id: str, timeout: int = 120,
+    namespace: str, deployment_id: str, timeout: int = 120,
 ) -> dict:
     """Wait for the gas oracle to complete its first update cycle.
 
@@ -1032,7 +1105,7 @@ def _wait_for_oracle_update(
             result = subprocess.run(
                 [
                     "kubectl", "-n", namespace, "get", "pods",
-                    "-l", f"app={cluster_id}",
+                    "-l", f"app={deployment_id}",
                     "-o", "jsonpath={.items[0].metadata.name}",
                 ],
                 capture_output=True, text=True, check=False,
@@ -1067,40 +1140,40 @@ def gas_oracle_deployment(
     privy_mock: dict[str, str],
     kind_cluster: None,
     gas_oracle_image: None,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the hyperlane-gas-oracle stack and wait for first update."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_oracle = request.config.getoption("--skip-gas-oracle-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-gas-oracle"
 
     if skip_oracle:
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
         # Read current oracle values from the running pod
         oracle_values = {}
         try:
-            oracle_values = _wait_for_oracle_update(namespace, cluster_id, timeout=30)
+            oracle_values = _wait_for_oracle_update(namespace, deployment_id, timeout=30)
         except TimeoutError:
             log.warning("Could not read oracle values from running pod")
         yield {
             "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
+                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
             ),
             "oracle_values": oracle_values,
         }
         return
 
-    # Read IGP program IDs from the deployer ConfigMap
-    gorchain_program_ids = get_configmap_json(
-        namespace, "hyperlane-program-ids", "gorchain-program-ids.json",
-    )
-    solana_program_ids = get_configmap_json(
-        namespace, "hyperlane-program-ids", "solana-program-ids.json",
-    )
+    # Read IGP program IDs from the deployer state files
+    gorchain_program_ids = bridge_state_loader.read_program_ids("gorchain")
+    solana_program_ids = bridge_state_loader.read_program_ids("solana")
     gorchain_igp_program_id = gorchain_program_ids["igp_program_id"]
     solana_igp_program_id = solana_program_ids["igp_program_id"]
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     # Create gas oracle secrets (Privy creds — dummy values for mock)
     log.info("Creating gas oracle secrets...")
@@ -1122,10 +1195,11 @@ def gas_oracle_deployment(
     log.info("Preparing gas oracle stack...")
     deploy_info = deploy_prepare(
         "hyperlane-gas-oracle", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="gas-oracle",
+        deployment_id="gas-oracle",
     )
+
+    bridge_state_loader.populate("hyperlane-gas-oracle", deploy_info.deploy_dir)
 
     log.info("Starting gas oracle stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1133,21 +1207,21 @@ def gas_oracle_deployment(
     try:
         log.info("Waiting for gas oracle pod to be running...")
         wait_for_pod_phase(
-            namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120,
+            namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120,
         )
         log.info("Gas oracle pod is running")
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
         raise
 
     # Wait for the first successful oracle update
     try:
         log.info("Waiting for gas oracle to complete first update...")
-        oracle_values = _wait_for_oracle_update(namespace, deploy_info.cluster_id)
+        oracle_values = _wait_for_oracle_update(namespace, deploy_info.deployment_id)
         log.info("Gas oracle update complete. Values: %s", oracle_values)
     except TimeoutError:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
         raise
 
     yield {
@@ -1155,7 +1229,7 @@ def gas_oracle_deployment(
         "oracle_values": oracle_values,
     }
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "gas-oracle")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "gas-oracle")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping gas oracle stack...")
@@ -1290,20 +1364,21 @@ def monitoring_deployment(
     keypairs: KeypairSet,
     kind_cluster: None,
     monitoring_images: None,
+    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the hyperlane-monitoring stack and wait for metrics flow."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_monitoring = request.config.getoption("--skip-monitoring-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-monitoring"
 
     if skip_monitoring:
         deploy_dir = DEPLOY_DIR / "hyperlane-monitoring"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         pod_name = subprocess.run(
             [
                 "kubectl", "-n", namespace, "get", "pods",
-                "-l", f"app={cluster_id}",
+                "-l", f"app={deployment_id}",
                 "-o", "jsonpath={.items[0].metadata.name}",
             ],
             capture_output=True, text=True, check=False,
@@ -1331,7 +1406,7 @@ def monitoring_deployment(
         log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
         yield {
             "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace,
+                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
             ),
             "namespace": namespace,
             "pod_name": pod_name,
@@ -1344,6 +1419,9 @@ def monitoring_deployment(
     # Build wallet strings from keypairs
     wallet_string, wallet_labels = _build_wallet_string(keypairs)
     log.info("Monitoring wallet string: %s", wallet_string)
+
+    log.info("Creating namespace %s...", namespace)
+    create_namespace(namespace)
 
     # Create monitoring secrets
     log.info("Creating monitoring secrets...")
@@ -1365,10 +1443,11 @@ def monitoring_deployment(
     log.info("Preparing monitoring stack...")
     deploy_info = deploy_prepare(
         "hyperlane-monitoring", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="monitoring",
+        deployment_id="monitoring",
     )
+
+    bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
 
     log.info("Starting monitoring stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1376,19 +1455,19 @@ def monitoring_deployment(
     try:
         log.info("Waiting for monitoring pod to be running...")
         wait_for_pod_phase(
-            namespace, f"app={deploy_info.cluster_id}", "Running", timeout=180,
+            namespace, f"app={deploy_info.deployment_id}", "Running", timeout=180,
         )
         log.info("Monitoring pod is running")
     except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
         raise
 
     # Get pod name for kubectl exec in tests
     pod_name = subprocess.run(
         [
             "kubectl", "-n", namespace, "get", "pods",
-            "-l", f"app={deploy_info.cluster_id}",
+            "-l", f"app={deploy_info.deployment_id}",
             "-o", "jsonpath={.items[0].metadata.name}",
         ],
         capture_output=True, text=True, check=True,
@@ -1399,8 +1478,8 @@ def monitoring_deployment(
         log.info("Waiting for balance monitor to report wallets...")
         _wait_for_balance_monitor(namespace, pod_name)
     except TimeoutError:
-        save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
-        save_pod_describe(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
+        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
         raise
 
     # Give Prometheus time to scrape the Pushgateway metrics
@@ -1408,8 +1487,8 @@ def monitoring_deployment(
     time.sleep(20)
 
     # Create ingress for Grafana and Prometheus
-    grafana_service = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
-    prometheus_service = f"{deploy_info.cluster_id}-nodeport-9090-tcp"
+    grafana_service = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
+    prometheus_service = f"{deploy_info.deployment_id}-nodeport-9090-tcp"
 
     for name, template, hostname, service in [
         ("Grafana", GRAFANA_INGRESS_TEMPLATE, GRAFANA_HOSTNAME,
@@ -1473,7 +1552,7 @@ def monitoring_deployment(
         "prometheus_url": PROMETHEUS_URL,
     }
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "monitoring")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping monitoring stack...")
@@ -1485,16 +1564,21 @@ def monitoring_deployment(
 # ---------------------------------------------------------------------------
 
 
-def _get_warp_program_addresses(namespace: str) -> dict[str, str]:
-    """Fetch warp-deploy-outputs ConfigMap and return {chain: base58_address}."""
+def _get_warp_program_addresses(state_loader: BridgeStateLoader) -> dict[str, str]:
+    """Read warp-deploy-outputs state files and return {chain: base58_address}."""
     import json
 
-    data = get_configmap_data(namespace, "hyperlane-warp-deploy-outputs")
-    assert data, "hyperlane-warp-deploy-outputs has no data"
+    outputs_dir = state_loader.state_dir / "warp-deploy-outputs"
+    assert outputs_dir.is_dir(), f"{outputs_dir} does not exist"
+
+    files = list(outputs_dir.iterdir())
+    assert files, f"{outputs_dir} has no files"
 
     programs: dict[str, str] = {}
-    for _key, raw in data.items():
-        for chain_name, entry in json.loads(raw).items():
+    for f in files:
+        if not f.is_file():
+            continue
+        for chain_name, entry in json.loads(f.read_text()).items():
             if entry.get("base58"):
                 programs[chain_name] = entry["base58"]
     return programs
@@ -1556,6 +1640,7 @@ def bridge_setup(
     relayer_deployment: RelayerInfo,
     validator_gorchain: ValidatorInfo,
     validator_solana: ValidatorInfo,
+    bridge_state_loader: BridgeStateLoader,
 ) -> dict:
     """Set up bridge transfer context.
 
@@ -1565,12 +1650,11 @@ def bridge_setup(
     Also configures a dedicated IGP beneficiary (separate from the deployer)
     so that fee claim tests can observe balance changes.
     """
-    ns = warp_deployment["namespace"]
     token_mint = warp_deployment["token_mint"]
     sender_keypair = str(KEYS_DIR / "deployer.json")
 
     log.info("Resolving warp program addresses...")
-    warp_programs = _get_warp_program_addresses(ns)
+    warp_programs = _get_warp_program_addresses(bridge_state_loader)
     assert "solana" in warp_programs, "No warp program for solana"
     assert "gorchain" in warp_programs, "No warp program for gorchain"
     log.info("Warp programs: %s", warp_programs)
@@ -1596,9 +1680,7 @@ def bridge_setup(
     igp_oracle_keypair = str(KEYS_DIR / "igp-oracle.json")
     log.info("Setting IGP beneficiary to %s...", beneficiary_pubkey)
     for chain in ("gorchain", "solana"):
-        program_ids = get_configmap_json(
-            ns, "hyperlane-program-ids", f"{chain}-program-ids.json",
-        )
+        program_ids = bridge_state_loader.read_program_ids(chain)
         _set_igp_beneficiary(
             rpc=CHAINS[chain]["rpc"],
             program_id=program_ids["igp_program_id"],
@@ -1658,12 +1740,12 @@ def bridge_setup(
         log.info("  bridge-user-%d: funded 2.0 USDC", i)
 
     return {
-        "namespace": ns,
+        "relayer_namespace": relayer_deployment.namespace,
         "token_mint": token_mint,
         "synthetic_mint": synthetic_mint,
         "sender_keypair": sender_keypair,
         "warp_programs": warp_programs,
-        "relayer_cluster_id": relayer_deployment.cluster_id,
+        "relayer_deployment_id": relayer_deployment.deployment_id,
         "users": users,
     }
 
@@ -1724,21 +1806,22 @@ def warp_ui_deployment(
     warp_deployment: dict,
     deployer_deployment: DeploymentInfo,
     kind_cluster: None,
+    bridge_state_loader: BridgeStateLoader,
 ) -> Generator[dict, None, None]:
-    """Deploy the warp-ui stack with resolved addresses from ConfigMaps."""
+    """Deploy the warp-ui stack with resolved addresses from state files."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-warp-ui"
 
-    # Resolve config values from existing ConfigMaps
-    log.info("Resolving mailbox addresses from program-ids ConfigMap...")
-    gorchain_programs = get_configmap_json(namespace, "hyperlane-program-ids", "gorchain-program-ids.json")
-    solana_programs = get_configmap_json(namespace, "hyperlane-program-ids", "solana-program-ids.json")
+    # Resolve config values from deployer state files
+    log.info("Resolving mailbox addresses from program-ids state files...")
+    gorchain_programs = bridge_state_loader.read_program_ids("gorchain")
+    solana_programs = bridge_state_loader.read_program_ids("solana")
     gorchain_mailbox = gorchain_programs["mailbox"]
     solana_mailbox = solana_programs["mailbox"]
     log.info("Mailboxes — gorchain: %s, solana: %s", gorchain_mailbox, solana_mailbox)
 
-    warp_programs = _get_warp_program_addresses(namespace)
+    warp_programs = _get_warp_program_addresses(bridge_state_loader)
     warp_collateral = warp_programs["solana"]
     warp_synthetic = warp_programs["gorchain"]
     log.info("Warp addresses — collateral: %s, synthetic: %s", warp_collateral, warp_synthetic)
@@ -1751,11 +1834,11 @@ def warp_ui_deployment(
 
     if skip_warp_ui:
         deploy_dir = DEPLOY_DIR / "hyperlane-warp-ui"
-        cluster_id = get_cluster_id(deploy_dir)
+        deployment_id = get_deployment_id(deploy_dir)
         log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
 
         yield {
-            "deployment": DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace),
+            "deployment": DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
             "url": WARP_UI_URL,
             "gorchain_mailbox": gorchain_mailbox,
             "solana_mailbox": solana_mailbox,
@@ -1798,22 +1881,23 @@ def warp_ui_deployment(
     log.info("Preparing warp-ui stack...")
     deploy_info = deploy_prepare(
         "hyperlane-warp-ui", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
-        cluster_id="warp-ui",
+        deployment_id="warp-ui",
     )
+
+    bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
 
     log.info("Starting warp-ui stack...")
     deploy_start(deploy_info.deploy_dir)
 
     log.info("Waiting for warp-ui pod to be running...")
-    wait_for_pod_phase(namespace, f"app={deploy_info.cluster_id}", "Running", timeout=120)
+    wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120)
     log.info("Warp UI is running")
 
     # Create Ingress with TLS via cert-manager self-signed issuer.
     # SO skips TLS on Kind clusters, so we create the Ingress ourselves.
-    # SO names services as {cluster_id}-nodeport-{port}-tcp.
-    service_name = f"{deploy_info.cluster_id}-nodeport-3000-tcp"
+    # SO names services as {deployment_id}-nodeport-{port}-tcp.
+    service_name = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
     ingress_yaml = WARP_UI_INGRESS_TEMPLATE.format(
         namespace=namespace,
         hostname=WARP_UI_HOSTNAME,
@@ -1867,7 +1951,7 @@ def warp_ui_deployment(
         "synthetic_mint": synthetic_mint,
     }
 
-    save_pod_logs(namespace, f"app={deploy_info.cluster_id}", "warp-ui")
+    save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "warp-ui")
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping warp-ui stack...")

@@ -2,7 +2,6 @@
 # Browser-based bridge UI for cross-chain token transfers.
 stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
-namespace: laconic-hyperlane
 kind-cluster-name: hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"

@@ -484,13 +484,13 @@ def kubectl_json(args: list[str]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 def get_namespace(
     deploy_namespace: str | None = None,
-    cluster_id: str | None = None,
+    deployment_id: str | None = None,
 ) -> str:
     if deploy_namespace:
         return deploy_namespace
-    if cluster_id:
-        return f"laconic-{cluster_id}"
-    fail_exit("Neither deploy_namespace nor cluster_id is provided")
+    if deployment_id:
+        return f"laconic-{deployment_id}"
+    fail_exit("Neither deploy_namespace nor deployment_id is provided")
     return ""  # unreachable, keeps type checker happy
 
 

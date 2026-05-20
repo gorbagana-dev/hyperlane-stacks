@@ -1,6 +1,5 @@
 stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
-namespace: REPLACE_NAMESPACE
 kind-cluster-name: REPLACE_KIND_CLUSTER
 config:
   # Browser-accessible URLs — the warp-ui JS bundles run in the browser

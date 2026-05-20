@@ -15,6 +15,15 @@ LEDGER_BASE = Path(__file__).resolve().parent.parent / ".data"
 GORCHAIN_STACKS_REPO = "github.com/gorbagana-dev/gorchain-stacks@main"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
 
+# Images pulled before `laconic-so deployment start` for gorchain. They're
+# referenced as `:latest` in gorchain-stacks/.../docker-compose-gorchain.yml,
+# but `docker compose up` does not refresh `:latest` if a local copy already
+# exists, so we pull explicitly to pick up newly published versions.
+GORCHAIN_IMAGES = (
+    "ghcr.io/gorbagana-dev/gorchain-validator:latest",
+    "ghcr.io/gorbagana-dev/gorchain-restarter:latest",
+)
+
 
 def _is_port_open(port: int) -> bool:
     """Check if something is listening on the given port."""
@@ -125,9 +134,18 @@ def stop_solana_test_validator(port: int = 18899, name: str = "solana", delete_d
 
 
 def fetch_gorchain_stack() -> Path:
-    """Fetch the gorchain-stacks repo via laconic-so and return the stack path."""
+    """Fetch the gorchain-stacks repo via laconic-so and return the stack path.
+
+    Defaults to SSH so local devs with their GitHub SSH keys configured work
+    out of the box. CI sets E2E_GIT_HTTPS=1 to fall back to HTTPS, which the
+    workflow then makes work via a git insteadOf rewrite that injects a PAT.
+    """
     log_info("Fetching gorchain-stacks repo...")
-    run_cmd(["laconic-so", "fetch-stack", "--pull", GORCHAIN_STACKS_REPO])
+    cmd = ["laconic-so", "fetch-stack", "--pull"]
+    if not os.environ.get("E2E_GIT_HTTPS"):
+        cmd.append("--git-ssh")
+    cmd.append(GORCHAIN_STACKS_REPO)
+    run_cmd(cmd)
     stack_path = CERC_REPO_BASE_DIR / "gorchain-stacks" / "stack-orchestrator" / "stacks" / "gorchain"
     if not stack_path.is_dir():
         raise RuntimeError(f"Gorchain stack not found at {stack_path}")
@@ -169,6 +187,10 @@ def start_gorchain_stack(deploy_dir: Path) -> None:
         "GORCHAIN_DEV_RPC=true\n"
     )
     log_info(f"Wrote gorchain config to {config_env}")
+
+    for image in GORCHAIN_IMAGES:
+        log_info(f"Pulling {image}...")
+        run_cmd(["docker", "pull", image])
 
     log_info("Starting gorchain stack...")
     run_cmd(["laconic-so", "deployment", "--dir", str(deploy_dir), "start"])

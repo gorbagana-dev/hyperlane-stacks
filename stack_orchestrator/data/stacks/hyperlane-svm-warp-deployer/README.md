@@ -1,6 +1,6 @@
 # hyperlane-svm-warp-deployer
 
-Deploys warp route contracts (collateral lock + synthetic mint) for a specific token pair across Gorchain and Solana SVM chains. Runs once per token pair, writes warp route addresses to k8s ConfigMaps consumed by the warp UI.
+Deploys warp route contracts (collateral lock + synthetic mint) for a specific token pair across Gorchain and Solana SVM chains. Runs once per token pair, writes warp route addresses to state files (`/state` host-path mount) consumed by the warp UI.
 
 ## Prerequisites
 
@@ -89,13 +89,13 @@ laconic-so deployment --dir warp-deployer-deployment start
 
 The pod runs `deploy.sh` which:
 
-1. Checks idempotency — skips if `hyperlane-token-config` ConfigMap already exists (override with `FORCE_REDEPLOY=true`)
-2. Reads core program IDs from the `hyperlane-program-ids` ConfigMap
+1. Checks idempotency — skips if `token-config.json` file already exists at `/state/` (override with `FORCE_REDEPLOY=true`)
+2. Reads core program IDs from the `program-ids.json` state file (mounted at `/state/`)
 3. Renders token config and registry templates via `envsubst`
 4. Deploys warp route programs (collateral + synthetic) via `hyperlane-sealevel-client`
 5. Verifies deployed program hashes against local `.so` files
 6. Transfers warp route program upgrade authority to `HARDWARE_WALLET_PUBKEY`
-7. Writes artifacts to k8s ConfigMaps: `hyperlane-token-config`, `hyperlane-warp-deploy-outputs`
+7. Writes artifacts to state files at `/state/`: `token-config.json`, `warp-deploy-outputs/`
 8. Shreds and deletes the deployer keypair from the pod
 
 The container exits after completion (`restart: "no"`).

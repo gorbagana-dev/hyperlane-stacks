@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  LACONIC_SO_VERSION: v1.1.0-0bf1ea7-202604021227
+  LACONIC_SO_VERSION: v1.1.0-b3e9366-202605111309
 
 jobs:
   e2e:
@@ -74,6 +74,10 @@ jobs:
       - name: Run E2E tests
         env:
           GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
+          # Force HTTPS fetch for laconic-so fetch-stack; the workflow's
+          # git insteadOf rewrite (above) supplies the PAT. SSH would fail
+          # on the runner because no key is configured.
+          E2E_GIT_HTTPS: "1"
         run: |
           cd tests/e2e
           xvfb-run pytest -v -x

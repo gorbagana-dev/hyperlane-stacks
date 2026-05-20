@@ -62,11 +62,11 @@ class TestWarpUI:
     def test_warp_ui_pod_healthy(self, warp_ui_deployment: dict) -> None:
         """Verify the warp-ui pod is Running."""
         ns = warp_ui_deployment["deployment"].namespace
-        cluster_id = warp_ui_deployment["deployment"].cluster_id
+        deployment_id = warp_ui_deployment["deployment"].deployment_id
         result = subprocess.run(
             [
                 "kubectl", "-n", ns, "get", "pods",
-                "-l", f"app={cluster_id}",
+                "-l", f"app={deployment_id}",
                 "-o", "jsonpath={.items[0].status.phase}",
             ],
             capture_output=True, text=True, check=True,

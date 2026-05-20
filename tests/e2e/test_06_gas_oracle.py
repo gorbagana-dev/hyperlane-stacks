@@ -12,7 +12,8 @@ import re
 
 import pytest
 
-from lib.common import CHAINS, get_configmap_json, run_deployer_cli
+from lib.common import CHAINS, run_deployer_cli
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -42,9 +43,12 @@ class TestGasOracle:
         )
         log.info("Oracle values: %s", oracle_values)
 
-    def test_oracle_updated_on_chain(self, gas_oracle_deployment: dict) -> None:
+    def test_oracle_updated_on_chain(
+        self,
+        gas_oracle_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Verify on-chain IGP state matches oracle's submitted values."""
-        ns = gas_oracle_deployment["deployment"].namespace
         oracle_values = gas_oracle_deployment["oracle_values"]
         remote_chain = {"gorchain": "solana", "solana": "gorchain"}
 
@@ -61,9 +65,7 @@ class TestGasOracle:
         }
 
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json",
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             igp_id = program_ids["igp_program_id"]
             igp_account = program_ids["igp_account"]
             remote_domain = CHAINS[remote_chain[chain_name]]["domain_id"]
@@ -115,14 +117,14 @@ class TestGasOracle:
                 chain_name, rate_match.group(1), gas_match.group(1),
             )
 
-    def test_oracle_rates_reasonable(self, gas_oracle_deployment: dict) -> None:
+    def test_oracle_rates_reasonable(
+        self,
+        gas_oracle_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Sanity check that oracle-set values are in plausible ranges."""
-        ns = gas_oracle_deployment["deployment"].namespace
-
         for chain_name, chain_info in CHAINS.items():
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json",
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             igp_id = program_ids["igp_program_id"]
             igp_account = program_ids["igp_account"]
 

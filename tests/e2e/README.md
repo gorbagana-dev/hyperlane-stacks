@@ -4,8 +4,8 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 
 ## What's tested
 
-- **Core deployer** -- deploys Hyperlane core contracts (Mailbox, IGP, ISM, etc.) on both chains, verifies ConfigMap outputs (`hyperlane-program-ids`, `hyperlane-agent-config`, `hyperlane-gas-oracle-config`, `hyperlane-multisig-config`)
-- **Warp deployer** -- deploys warp route contracts for a test SPL token, verifies ConfigMap outputs (`hyperlane-token-config`, `hyperlane-warp-deploy-outputs`)
+- **Core deployer** -- deploys Hyperlane core contracts (Mailbox, IGP, ISM, etc.) on both chains, verifies state file outputs (`agent-config.json`, `program-ids.json`, `gas-oracle-config.json`, `multisig-config.json`) via `BridgeStateLoader` reads
+- **Warp deployer** -- deploys warp route contracts for a test SPL token, verifies state file outputs (`token-config.json`, `warp-deploy-outputs/`) via `BridgeStateLoader` reads
 - **MinIO** -- deploys the S3-compatible checkpoint storage, verifies pod health, bucket creation, and API accessibility
 - **Validators** -- deploys gorchain and solana validators with a mock Privy server, verifies pod health, KMS proxy connectivity, metrics endpoint, log sanity, and checkpoint writing to MinIO
 - **Relayer** -- deploys the hyperlane relayer, verifies pod health and metrics endpoint
@@ -20,7 +20,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - Python 3.10+
 - [kind](https://kind.sigs.k8s.io/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [laconic-so](https://github.com/cerc-io/stack-orchestrator) `v1.1.0-0bf1ea7-202604021227`
+- [laconic-so](https://github.com/cerc-io/stack-orchestrator) `v1.1.0-b3e9366-202605111309`
 - [Solana CLI](https://docs.anza.xyz/cli/install) (`solana`, `solana-keygen`, `spl-token`)
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`cast`)
 - Docker — logged in to ghcr.io for pulling published images (see below)
@@ -205,14 +205,14 @@ a `letsencrypt-prod` ClusterIssuer, and SO handles TLS ingress automatically.
 5. **Chain nodes** start a Solana test validator on the host (`chain_nodes` fixture)
 6. **MinIO deployment** deploys the checkpoint storage stack (`minio_deployment` fixture)
 7. **Mock Privy server** starts a local HTTP server that implements the Privy wallet signing API, used by the KMS proxy sidecar in validator pods (`privy_mock` fixture)
-8. **Deployer deployment** exposes host chain nodes to the cluster via k8s Service+Endpoints, funds wallets, creates secrets, and starts the deployer stack (`deployer_deployment` fixture)
-9. **Validator deployment** deploys gorchain and solana validators, copies agent-config from deployer ConfigMap, creates per-chain secrets (`validator_gorchain`, `validator_solana` fixtures)
-10. **Relayer deployment** deploys the hyperlane relayer with chain signer keys and IGP configuration (`relayer_deployment` fixture)
+8. **Deployer deployment** exposes host chain nodes to the cluster via k8s Service+Endpoints, funds wallets, creates secrets, and starts the deployer stack (`deployer_deployment` fixture). Deployer writes state files to `/state` (host-path mount).
+9. **Validator deployment** deploys gorchain and solana validators with per-chain namespaces, populates `agent-config` ConfigMap from deployer state files via `BridgeStateLoader`, creates per-chain secrets (`validator_gorchain`, `validator_solana` fixtures)
+10. **Relayer deployment** deploys the hyperlane relayer with chain signer keys and IGP configuration, populates `agent-config` ConfigMap from deployer state files via `BridgeStateLoader` (`relayer_deployment` fixture)
 11. **Gas oracle deployment** deploys the gas oracle with mock Privy signing, waits for first price update, captures computed exchange rates and gas prices (`gas_oracle_deployment` fixture)
 12. **Bridge transfers** executes cross-chain warp route transfers via CLI (`bridge_setup` fixture)
 13. **Warp UI deployment** builds and deploys the warp-ui stack with resolved mailbox/warp addresses (`warp_ui_deployment` fixture)
 14. **Warp UI browser tests** launches a Playwright browser with a mock Solana wallet injected (`warp_ui_browser` fixture)
-15. **Test functions** verify deployment outputs: ConfigMaps, pod health, container readiness, metrics endpoints, log sanity, checkpoint files in MinIO, bridge transfers, UI rendering
+15. **Test functions** verify deployment outputs: state files (via `BridgeStateLoader` reads), pod health, container readiness, metrics endpoints, log sanity, checkpoint files in MinIO, bridge transfers, UI rendering
 16. **Teardown** is handled automatically by fixture finalizers -- stopping stacks, chain nodes, and destroying the kind cluster (unless `--skip-cleanup` is passed)
 
 ## Logs
