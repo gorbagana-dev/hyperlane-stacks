@@ -585,10 +585,12 @@ The first stack to start must declare the umbrella mount (`kind-mount-root: /srv
 
 **Why this is its own PR:** The cluster-management switch is independent of state distribution. Bundling it would broaden this PR's scope and make any test regressions harder to isolate. The current PR retains the existing cluster-management posture verbatim.
 
-**Coupled follow-up: wire `http-proxy` + self-signed TLS through tests.** The test fixture (`tests/e2e/lib/cluster.py`) already installs cert-manager, a self-signed `ClusterIssuer`, the nginx ingress controller, and `/etc/hosts` entries for `bridge.test`, `grafana.test`, `prometheus.test`. None of it is exercised today: no test fixture declares `http-proxy`, and no test references the `.test` hostnames. Two pieces are missing:
+**Coupled follow-up: route `.test` hostnames through SO's `http-proxy` instead of hand-rolled Ingress.** The test fixture (`tests/e2e/lib/cluster.py`) installs cert-manager, a self-signed `ClusterIssuer`, the nginx ingress controller, and `/etc/hosts` entries for `bridge.test`, `grafana.test`, `prometheus.test`. The conftest (`conftest.py:1485-1508`, `1897-1906`) currently uses that infrastructure by hand-constructing `Ingress` manifests with `ingressClassName: nginx`, pointing the backends at the auto-NodePort Services (`{deployment-id}-nodeport-{port}-tcp`) that SO emits from compose `ports:`. It works, but it's parallel plumbing: the test code reimplements what SO's `http-proxy:` spec key would emit declaratively.
 
-1. SO emits Ingress with `kubernetes.io/ingress.class: caddy` hardcoded (`cluster_info.py:278`). Our test cluster only has nginx, so any Caddy-class Ingress would be ignored. After switching to SO cluster management, Caddy is installed automatically and this resolves itself; the nginx install in the fixture becomes dead code and can be removed.
-2. The test fixtures need `http-proxy:` entries pointing at the `.test` hostnames plus a `cluster-issuer:` reference (or the equivalent `certificates:` block) so SO requests certs from the self-signed issuer.
+Two pieces would let `http-proxy:` take over:
+
+1. SO emits Ingress with `kubernetes.io/ingress.class: caddy` hardcoded (`cluster_info.py:278`). After switching to SO cluster management, Caddy is installed automatically; the nginx install in the fixture (and the manual Ingress manifests in conftest) can be removed.
+2. The test fixtures need `http-proxy:` entries for the `.test` hostnames plus a `cluster-issuer:` reference so SO requests certs from the self-signed issuer instead of Let's Encrypt. The ClusterIP Service that `http-proxy` auto-creates (`{deployment-id}-service`) then becomes the Ingress backend, and the related compose `ports:` declarations can be dropped to eliminate the unused NodePort Services.
 
 Bundling this with the cluster-management switch is natural — Caddy comes for free once SO owns the cluster, and the wiring is mechanical from there.
 
