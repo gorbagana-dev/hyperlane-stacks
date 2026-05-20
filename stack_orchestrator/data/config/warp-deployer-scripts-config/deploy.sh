@@ -263,6 +263,11 @@ if [ -d "${WARP_OUTPUT_DIR}" ]; then
   rm -rf "${STATE_DIR}/warp-deploy-outputs"
   mkdir -p "${STATE_DIR}/warp-deploy-outputs"
   cp -a "${WARP_OUTPUT_DIR}/." "${STATE_DIR}/warp-deploy-outputs/" 2>/dev/null || true
+  # Drop the program-id and buffer keypairs the sealevel-client emits.
+  # Buffer keypairs are dead post-deploy; program-id keypairs lock in the
+  # deployment identity but no consumer reads them and the upgrade-authority
+  # key (Ledger in prod) already covers any real recovery scenario.
+  rm -rf "${STATE_DIR}/warp-deploy-outputs/keys"
 fi
 
 # -------------------------------------------------------
