@@ -11,14 +11,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .cluster import KIND_CLUSTER_NAME
 from .common import E2E_DIR, REPO_ROOT, fail_exit, force_rmtree, log_info, run_cmd
 
 DEPLOY_DIR = E2E_DIR / ".deployments"
 DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
-
-# Shared namespace for all e2e stacks — derived from the Kind cluster name.
-E2E_NAMESPACE = f"laconic-{KIND_CLUSTER_NAME}"
 
 # TODO: Pin remaining third-party images (prom/prometheus, prom/pushgateway,
 # grafana/grafana) to specific versions to avoid Docker Hub rate limits and
@@ -393,7 +389,10 @@ def deploy_prepare(
     else:
         cluster_id = get_cluster_id(deploy_dir)
 
-    resolved_namespace = namespace or f"laconic-{cluster_id}"
+    # Mirror SO's namespace derivation: laconic-{stack_name} unless caller
+    # overrides. The caller may pass `namespace=` to match a spec.yml override
+    # (multi-instance stacks like multiple validators sharing one stack name).
+    resolved_namespace = namespace or f"laconic-{stack_name}"
 
     log_info(f"Stack '{stack_name}' prepared — cluster-id: {cluster_id}, namespace: {resolved_namespace}")
 

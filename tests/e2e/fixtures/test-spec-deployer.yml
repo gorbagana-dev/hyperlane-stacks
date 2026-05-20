@@ -1,6 +1,5 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
-namespace: REPLACE_NAMESPACE
 kind-cluster-name: REPLACE_KIND_CLUSTER
 configmaps:
   deployer-scripts-config: ./configmaps/deployer-scripts-config

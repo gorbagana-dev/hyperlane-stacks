@@ -1,6 +1,6 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
-namespace: REPLACE_NAMESPACE
+namespace: laconic-hyperlane-validator-gorchain
 kind-cluster-name: REPLACE_KIND_CLUSTER
 config:
   ORIGIN_CHAIN_NAME: gorchain

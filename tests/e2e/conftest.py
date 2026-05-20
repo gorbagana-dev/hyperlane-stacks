@@ -44,7 +44,6 @@ from lib.common import (
 )
 from lib.deploy import (
     DEPLOY_DIR,
-    E2E_NAMESPACE,
     DeploymentInfo,
     build_agent_image,
     build_warp_ui_image,
@@ -101,10 +100,10 @@ WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
 
 PRIVY_MOCK_PORT = 19876
 
-# Spec placeholder replacements for stacks that use independent cluster-ids
-# but share the e2e namespace and kind cluster.
+# Spec placeholder replacements shared across e2e test specs. Each stack uses
+# its own namespace (derived by SO as laconic-{stack_name}) but all share the
+# same kind cluster.
 SPEC_REPLACEMENTS = {
-    "REPLACE_NAMESPACE": E2E_NAMESPACE,
     "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
 }
 
@@ -442,7 +441,7 @@ def minio_deployment(
     if skip_minio:
         deploy_dir = DEPLOY_DIR / "hyperlane-minio"
         cluster_id = get_cluster_id(deploy_dir)
-        namespace = E2E_NAMESPACE
+        namespace = "laconic-hyperlane-minio"
         log.info("Reusing existing minio deployment (namespace: %s)", namespace)
         user, password = _recover_minio_credentials(namespace)
         yield MinioInfo(
@@ -461,7 +460,6 @@ def minio_deployment(
     log.info("Preparing minio stack...")
     deploy_info = deploy_prepare(
         "hyperlane-minio", MINIO_SPEC,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="minio",
     )
@@ -528,7 +526,7 @@ def deployer_deployment(
         # survives Ctrl+C — deployed programs and funded wallets persist.
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
         cluster_id = get_cluster_id(deploy_dir)
-        namespace = E2E_NAMESPACE
+        namespace = "laconic-hyperlane-svm-deployer"
         log.info("Reusing existing core deployment (cluster-id: %s, namespace: %s)", cluster_id, namespace)
         yield DeploymentInfo(deploy_dir=deploy_dir, cluster_id=cluster_id, namespace=namespace)
         return
@@ -536,7 +534,6 @@ def deployer_deployment(
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare(
         "hyperlane-svm-deployer", FIXTURE_SPEC,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="deployer",
     )
@@ -658,7 +655,7 @@ def warp_deployment(
     if skip_warp_deploy:
         # Reuse existing warp deployment — recover token_mint from the
         # token-config.json state file written by the warp deployer job.
-        namespace = deployer_deployment.namespace
+        namespace = "laconic-hyperlane-svm-warp-deployer"
         log.info("Reusing existing warp deployment (namespace: %s)", namespace)
         token_config = bridge_state_loader.read_json("token-config.json")
         token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
@@ -690,7 +687,6 @@ def warp_deployment(
     warp_info = deploy_prepare(
         "hyperlane-svm-warp-deployer",
         patched_spec,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="warp-deployer",
     )
@@ -819,7 +815,11 @@ def _deploy_validator(
     """Deploy a single validator stack for the given chain."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_validator = request.config.getoption("--skip-validator-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    # Two validator deployments share the hyperlane-validator stack, so SO
+    # cannot derive distinct namespaces from the stack name alone. The test
+    # specs set namespace: laconic-hyperlane-validator-{chain} explicitly and
+    # we mirror that here.
+    namespace = f"laconic-hyperlane-validator-{chain}"
 
     stack_name = f"hyperlane-validator-{chain}"
 
@@ -861,7 +861,7 @@ def _deploy_validator(
         "hyperlane-validator",
         spec_file,
         deploy_dir=DEPLOY_DIR / stack_name,
-        namespace=E2E_NAMESPACE,
+        namespace=namespace,
         spec_replacements=validator_replacements,
         cluster_id=f"val-{chain}",
     )
@@ -949,7 +949,7 @@ def relayer_deployment(
     """Deploy the hyperlane-relayer stack."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_relayer = request.config.getoption("--skip-relayer-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-relayer"
 
     if skip_relayer:
         deploy_dir = DEPLOY_DIR / "hyperlane-relayer"
@@ -1027,7 +1027,6 @@ def relayer_deployment(
     log.info("Preparing relayer stack...")
     deploy_info = deploy_prepare(
         "hyperlane-relayer", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="relayer",
     )
@@ -1124,7 +1123,7 @@ def gas_oracle_deployment(
     """Deploy the hyperlane-gas-oracle stack and wait for first update."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_oracle = request.config.getoption("--skip-gas-oracle-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-gas-oracle"
 
     if skip_oracle:
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
@@ -1170,7 +1169,6 @@ def gas_oracle_deployment(
     log.info("Preparing gas oracle stack...")
     deploy_info = deploy_prepare(
         "hyperlane-gas-oracle", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="gas-oracle",
     )
@@ -1346,7 +1344,7 @@ def monitoring_deployment(
     """Deploy the hyperlane-monitoring stack and wait for metrics flow."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_monitoring = request.config.getoption("--skip-monitoring-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-monitoring"
 
     if skip_monitoring:
         deploy_dir = DEPLOY_DIR / "hyperlane-monitoring"
@@ -1416,7 +1414,6 @@ def monitoring_deployment(
     log.info("Preparing monitoring stack...")
     deploy_info = deploy_prepare(
         "hyperlane-monitoring", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="monitoring",
     )
@@ -1786,7 +1783,7 @@ def warp_ui_deployment(
     """Deploy the warp-ui stack with resolved addresses from state files."""
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
-    namespace = E2E_NAMESPACE
+    namespace = "laconic-hyperlane-warp-ui"
 
     # Resolve config values from deployer state files
     log.info("Resolving mailbox addresses from program-ids state files...")
@@ -1856,7 +1853,6 @@ def warp_ui_deployment(
     log.info("Preparing warp-ui stack...")
     deploy_info = deploy_prepare(
         "hyperlane-warp-ui", patched_path,
-        namespace=E2E_NAMESPACE,
         spec_replacements=SPEC_REPLACEMENTS,
         cluster_id="warp-ui",
     )

@@ -8,12 +8,11 @@ import pytest
 from lib.common import (
     CHAINS,
     PortForward,
-    get_configmap_json,
     get_spl_token_balance,
     run_deployer_cli,
     wait_for_token_balance,
 )
-from lib.deploy import E2E_NAMESPACE
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -53,14 +52,11 @@ def _get_sol_balance(rpc: str, address: str) -> float:
     return float(result.stdout.strip().split()[0])
 
 
-def _log_igp_balances(label: str) -> None:
+def _log_igp_balances(label: str, bridge_state_loader: BridgeStateLoader) -> None:
     """Log IGP account balances for debugging fee collection."""
     for chain in ("gorchain", "solana"):
         try:
-            program_ids = get_configmap_json(
-                E2E_NAMESPACE, "hyperlane-program-ids",
-                f"{chain}-program-ids.json",
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain)
             igp_account = program_ids["igp_account"]
             rpc = CHAINS[chain]["rpc"]
             balance = _get_sol_balance(rpc, igp_account)
@@ -125,7 +121,9 @@ class TestBridge:
     - Reverse: Gorchain synthetic gUSDC → Solana collateral USDC
     """
 
-    def test_concurrent_forward_transfers(self, bridge_setup: dict) -> None:
+    def test_concurrent_forward_transfers(
+        self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Transfer collateral USDC from Solana to Gorchain for all users concurrently."""
         users = bridge_setup["users"]
         token_mint = bridge_setup["token_mint"]
@@ -159,7 +157,7 @@ class TestBridge:
 
         # Submit all transfers concurrently
         log.info("Submitting %d forward transfers (Sol→Gor)...", len(users))
-        _log_igp_balances("before-forward")
+        _log_igp_balances("before-forward", bridge_state_loader)
 
         results: dict[int, subprocess.CompletedProcess] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
@@ -224,9 +222,11 @@ class TestBridge:
                     idx, balance,
                 )
 
-        _log_igp_balances("after-forward")
+        _log_igp_balances("after-forward", bridge_state_loader)
 
-    def test_concurrent_reverse_transfers(self, bridge_setup: dict) -> None:
+    def test_concurrent_reverse_transfers(
+        self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Transfer synthetic gUSDC from Gorchain back to Solana for all users concurrently."""
         log.info("Waiting %ds for validator state to settle...", SETTLE_DELAY)
         time.sleep(SETTLE_DELAY)
@@ -264,7 +264,7 @@ class TestBridge:
 
         # Submit all reverse transfers concurrently
         log.info("Submitting %d reverse transfers (Gor→Sol)...", len(users))
-        _log_igp_balances("before-reverse")
+        _log_igp_balances("before-reverse", bridge_state_loader)
 
         results: dict[int, subprocess.CompletedProcess] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
@@ -329,7 +329,7 @@ class TestBridge:
                     idx, balance,
                 )
 
-        _log_igp_balances("after-reverse")
+        _log_igp_balances("after-reverse", bridge_state_loader)
 
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""
