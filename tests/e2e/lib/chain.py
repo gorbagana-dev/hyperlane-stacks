@@ -12,8 +12,7 @@ from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
 
 LEDGER_BASE = Path(__file__).resolve().parent.parent / ".data"
 
-# TODO: Switch back to @main once gorchain-stacks image publishing is resolved
-GORCHAIN_STACKS_REPO = "github.com/gorbagana-dev/gorchain-stacks@337aefefa4103dc11368b33d08b32ff75f360131"
+GORCHAIN_STACKS_REPO = "github.com/gorbagana-dev/gorchain-stacks@main"
 CERC_REPO_BASE_DIR = Path(os.environ.get("CERC_REPO_BASE_DIR", os.path.expanduser("~/cerc")))
 
 
@@ -167,6 +166,7 @@ def start_gorchain_stack(deploy_dir: Path) -> None:
     config_env.write_text(
         "PUBLIC_GOSSIP_HOST=127.0.0.1\n"
         "PUBLIC_RPC_ADDRESS=127.0.0.1:8899\n"
+        "GORCHAIN_DEV_RPC=true\n"
     )
     log_info(f"Wrote gorchain config to {config_env}")
 
