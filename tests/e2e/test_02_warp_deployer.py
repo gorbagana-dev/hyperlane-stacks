@@ -2,20 +2,18 @@ import json
 import logging
 import re
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from lib.common import (
     CHAINS,
-    CONFIGMAP_TIMEOUT,
     assert_program_on_chain,
-    get_configmap_data,
-    get_configmap_json,
     is_base58_pubkey,
     run_deployer_cli,
-    wait_for_configmap,
 )
 from lib.keygen import KeypairSet
+from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
@@ -100,16 +98,20 @@ def _parse_token_query_output(output: str) -> dict:
     return info
 
 
-def _get_warp_program_addresses(namespace: str) -> dict[str, str]:
-    """Fetch warp-deploy-outputs ConfigMap and return {chain: base58_address}."""
-    data = get_configmap_data(namespace, "hyperlane-warp-deploy-outputs")
-    assert data, "hyperlane-warp-deploy-outputs has no data"
+def _get_warp_program_addresses(state_dir: Path) -> dict[str, str]:
+    """Read warp-deploy-outputs dir and return {chain: base58_address}."""
+    outputs = state_dir / "warp-deploy-outputs"
+    assert outputs.is_dir(), f"warp-deploy-outputs missing at {outputs}"
 
     programs: dict[str, str] = {}
-    for _key, raw in data.items():
-        for chain_name, entry in json.loads(raw).items():
+    for f in outputs.iterdir():
+        if not f.is_file():
+            continue
+        parsed = json.loads(f.read_text())
+        for chain_name, entry in parsed.items():
             if entry.get("base58"):
                 programs[chain_name] = entry["base58"]
+    assert programs, f"no base58 program addresses found in {outputs}"
     return programs
 
 
@@ -120,13 +122,14 @@ def _get_warp_program_addresses(namespace: str) -> dict[str, str]:
 
 @pytest.mark.slow
 class TestWarpDeployer:
-    def test_warp_token_configmap(self, warp_deployment: dict) -> None:
-        """Validate warp token-config has correct structure and references."""
-        ns = warp_deployment["namespace"]
+    def test_warp_token_configmap(
+        self,
+        warp_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Validate warp token-config state file has correct structure and references."""
         token_mint = warp_deployment["token_mint"]
-
-        wait_for_configmap(ns, "hyperlane-token-config", CONFIGMAP_TIMEOUT)
-        parsed = get_configmap_json(ns, "hyperlane-token-config", "token-config.json")
+        parsed = bridge_state_loader.read_json("token-config.json")
 
         warp_route = parsed.get("warpRoute")
         assert isinstance(warp_route, dict), "token-config missing 'warpRoute' object"
@@ -156,17 +159,21 @@ class TestWarpDeployer:
                 f"warpRoute.{side_name}.mailbox is not valid base58: {mailbox}"
             )
 
-    def test_warp_deploy_outputs(self, warp_deployment: dict) -> None:
-        """Validate warp-deploy-outputs has program IDs in hex+base58 format."""
-        ns = warp_deployment["namespace"]
-        wait_for_configmap(ns, "hyperlane-warp-deploy-outputs", CONFIGMAP_TIMEOUT)
-
-        data = get_configmap_data(ns, "hyperlane-warp-deploy-outputs")
-        assert data, "hyperlane-warp-deploy-outputs has no data"
+    def test_warp_deploy_outputs(
+        self,
+        warp_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Validate warp-deploy-outputs dir has program IDs in hex+base58 format."""
+        outputs_dir = bridge_state_loader.state_dir / "warp-deploy-outputs"
+        assert outputs_dir.is_dir(), f"warp-deploy-outputs dir missing at {outputs_dir}"
+        files = [f for f in outputs_dir.iterdir() if f.is_file()]
+        assert files, f"warp-deploy-outputs directory is empty: {outputs_dir}"
 
         # The CLI writes program-ids.json with chain -> {hex, base58} entries
-        for key, raw in data.items():
-            parsed = json.loads(raw)
+        for f in files:
+            parsed = json.loads(f.read_text())
+            key = f.name
             assert isinstance(parsed, dict), f"warp output '{key}' is not a JSON object"
 
             for chain_name, entry in parsed.items():
@@ -182,10 +189,13 @@ class TestWarpDeployer:
                     f"warp output '{key}'.{chain_name}.base58 not valid: {base58_val}"
                 )
 
-    def test_warp_programs_exist_on_chain(self, warp_deployment: dict) -> None:
+    def test_warp_programs_exist_on_chain(
+        self,
+        warp_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Verify warp route programs are actually deployed on-chain."""
-        ns = warp_deployment["namespace"]
-        warp_programs = _get_warp_program_addresses(ns)
+        warp_programs = _get_warp_program_addresses(bridge_state_loader.state_dir)
 
         for chain_name, addr in warp_programs.items():
             chain_info = CHAINS.get(chain_name)
@@ -196,26 +206,27 @@ class TestWarpDeployer:
                 chain_name, chain_info["rpc"], addr, label="warp-token",
             )
 
-    def test_warp_token_state_on_chain(self, warp_deployment: dict) -> None:
+    def test_warp_token_state_on_chain(
+        self,
+        warp_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
         """Query warp token accounts and validate on-chain state.
 
         Uses `hyperlane-sealevel-client token query` (via docker run) to
         inspect the deployed warp token programs. Validates mailbox matches
         core deployment, remote routers are configured, and decimals are correct.
         """
-        ns = warp_deployment["namespace"]
         token_mint = warp_deployment["token_mint"]
 
-        warp_programs = _get_warp_program_addresses(ns)
+        warp_programs = _get_warp_program_addresses(bridge_state_loader.state_dir)
 
         # Get core program addresses for cross-reference
         core_mailboxes: dict[str, str] = {}
         core_isms: dict[str, str] = {}
         core_igps: dict[str, str] = {}
         for chain_name in CHAINS:
-            program_ids = get_configmap_json(
-                ns, "hyperlane-program-ids", f"{chain_name}-program-ids.json"
-            )
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
             core_mailboxes[chain_name] = program_ids["mailbox"]
             core_isms[chain_name] = program_ids["multisig_ism_message_id"]
             core_igps[chain_name] = program_ids["overhead_igp_account"]
@@ -319,7 +330,10 @@ class TestWarpDeployer:
             log.info("%s: IGP matches core deployment", chain_name)
 
     def test_warp_upgrade_authority_transferred(
-        self, warp_deployment: dict, keypairs: KeypairSet,
+        self,
+        warp_deployment: dict,
+        keypairs: KeypairSet,
+        bridge_state_loader: BridgeStateLoader,
     ) -> None:
         """Verify warp route program upgrade authority was transferred to hardware wallet.
 
@@ -327,10 +341,9 @@ class TestWarpDeployer:
         synthetic on gorchain) should have their upgrade authority set to
         the hardware wallet pubkey — not the deployer key.
         """
-        ns = warp_deployment["namespace"]
         expected_authority = keypairs.hardware_wallet_pubkey
 
-        warp_programs = _get_warp_program_addresses(ns)
+        warp_programs = _get_warp_program_addresses(bridge_state_loader.state_dir)
         assert warp_programs, "No warp program addresses found"
 
         for chain_name, program_id in warp_programs.items():
