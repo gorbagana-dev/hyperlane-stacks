@@ -1,6 +1,7 @@
 import base64
 import dataclasses
 import logging
+import os
 import re
 import secrets
 import subprocess
@@ -21,7 +22,6 @@ from lib.chain import (
 )
 from lib.cluster import (
     TEST_HOSTNAMES,
-    create_namespace,
     destroy_kind_cluster,
     ensure_hosts_entry,
     ensure_kind_network,
@@ -71,13 +71,6 @@ from lib.keygen import (
     KEYS_DIR,
     KeypairSet,
     _airdrop,
-    create_deployer_secrets,
-    create_gas_oracle_secrets,
-    create_minio_secrets,
-    create_monitoring_secrets,
-    create_relayer_secrets,
-    create_validator_secrets,
-    create_warp_deployer_secrets,
     fund_wallets,
     generate_chain_signer,
     generate_test_keypairs,
@@ -516,15 +509,10 @@ def minio_deployment(
     namespace = deploy_info.namespace
     deployment_id = deploy_info.deployment_id
 
-    # Create namespace before deploy start — secrets must exist before pods start.
-    # Idempotent: no-ops if deployer_deployment already created it.
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    log.info("Creating minio secrets in namespace %s...", namespace)
-    create_minio_secrets(namespace, minio_user, minio_password)
-
     bridge_state_loader.populate("hyperlane-minio", deploy_info.deploy_dir)
+
+    os.environ["MINIO_ROOT_USER"] = minio_user
+    os.environ["MINIO_ROOT_PASSWORD"] = minio_password
 
     log.info("Starting minio stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -589,19 +577,18 @@ def deployer_deployment(
     )
     namespace = deploy_info.namespace
 
-    # Namespace must exist before deploy start for RBAC and secrets.
-    # Host-chain services (gorchain-rpc, solana-rpc, privy-mock) are now
-    # created automatically by laconic-so via the external-services spec key.
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    log.info("Creating deployer secrets...")
-    create_deployer_secrets(namespace, keypairs)
-
     log.info("Funding wallets...")
     fund_wallets(keypair_set=keypairs, gorchain_rpc="http://localhost:8899", solana_rpc="http://localhost:18899")
 
     bridge_state_loader.populate("hyperlane-svm-deployer", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "DEPLOYER_KEYPAIR":           keypairs.deployer_keypair,
+        "HARDWARE_WALLET_PUBKEY":     keypairs.hardware_wallet_pubkey,
+        "IGP_ORACLE_PUBKEY":          keypairs.igp_oracle_pubkey,
+        "GORCHAIN_VALIDATOR_ADDRESS": keypairs.gorchain_validator_address,
+        "SOLANA_VALIDATOR_ADDRESS":   keypairs.solana_validator_address,
+    })
 
     log.info("Starting deployer stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -736,17 +723,12 @@ def warp_deployment(
         deployment_id="warp-deployer",
     )
 
-    # Per-stack namespaces mean the warp-deployer Secret has to live in the
-    # warp-deployer's own namespace, not the core deployer's. Create the
-    # namespace explicitly so the Secret can land before `deploy start` —
-    # SO will find it already there during _ensure_namespace().
-    log.info("Creating namespace %s...", warp_info.namespace)
-    create_namespace(warp_info.namespace)
-
-    log.info("Creating warp deployer secrets...")
-    create_warp_deployer_secrets(warp_info.namespace, keypairs)
-
     bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
+
+    os.environ.update({
+        "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
+        "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
+    })
 
     log.info("Starting warp deployer stack...")
     deploy_start(warp_info.deploy_dir)
@@ -898,17 +880,6 @@ def _deploy_validator(
     log.info("Funding chain signer %s on %s...", chain_signer_addr, chain)
     _airdrop(1, chain_signer_addr, rpc, f"{chain} chain signer")
 
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    log.info("Creating validator secrets for %s...", chain)
-    create_validator_secrets(
-        namespace, chain,
-        minio_user=minio.user,
-        minio_password=minio.password,
-        chain_signer_key=chain_signer_key,
-    )
-
     validator_replacements = {
         **SPEC_REPLACEMENTS,
         "REPLACE_PRIVY_WALLET_ID": wallet_id,
@@ -925,6 +896,14 @@ def _deploy_validator(
     )
 
     bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "PRIVY_APP_ID":           "test-app-id",
+        "PRIVY_APP_SECRET":       "test-app-secret",
+        "AWS_ACCESS_KEY_ID":      minio.user,
+        "AWS_SECRET_ACCESS_KEY":  minio.password,
+        "HYP_DEFAULTSIGNER_KEY":  chain_signer_key,
+    })
 
     log.info("Starting %s stack...", stack_name)
     deploy_start(deploy_info.deploy_dir)
@@ -1050,20 +1029,6 @@ def relayer_deployment(
             solana_igp_program_id = program_ids["igp_program_id"]
             solana_igp_account = program_ids["igp_account"]
 
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    # Create relayer secrets
-    log.info("Creating relayer secrets...")
-    create_relayer_secrets(
-        namespace,
-        gorchain_signer_key=gorchain_signer_key,
-        solana_signer_key=solana_signer_key,
-        minio_user=minio_deployment.user,
-        minio_password=minio_deployment.password,
-        relayer_keypair_json=relayer_keypair_json,
-    )
-
     # Patch the spec with actual IGP values
     content = RELAYER_SPEC.read_text()
     content = content.replace(
@@ -1093,6 +1058,14 @@ def relayer_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "HYP_CHAINS_GORCHAIN_SIGNER_KEY": gorchain_signer_key,
+        "HYP_CHAINS_SOLANA_SIGNER_KEY":   solana_signer_key,
+        "AWS_ACCESS_KEY_ID":              minio_deployment.user,
+        "AWS_SECRET_ACCESS_KEY":          minio_deployment.password,
+        "RELAYER_KEYPAIR_JSON":           relayer_keypair_json,
+    })
 
     log.info("Starting relayer stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1210,13 +1183,6 @@ def gas_oracle_deployment(
     gorchain_igp_program_id = gorchain_program_ids["igp_program_id"]
     solana_igp_program_id = solana_program_ids["igp_program_id"]
 
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    # Create gas oracle secrets (Privy creds — dummy values for mock)
-    log.info("Creating gas oracle secrets...")
-    create_gas_oracle_secrets(namespace, ORACLE_WALLET_ID)
-
     # Patch the spec with actual IGP program IDs
     content = GAS_ORACLE_SPEC.read_text()
     content = content.replace(
@@ -1238,6 +1204,12 @@ def gas_oracle_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-gas-oracle", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "PRIVY_APP_ID":           "test-app-id",
+        "PRIVY_APP_SECRET":       "test-app-secret",
+        "PRIVY_ORACLE_WALLET_ID": ORACLE_WALLET_ID,
+    })
 
     log.info("Starting gas oracle stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1403,13 +1375,6 @@ def monitoring_deployment(
     wallet_string, wallet_labels = _build_wallet_string(keypairs)
     log.info("Monitoring wallet string: %s", wallet_string)
 
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    # Create monitoring secrets
-    log.info("Creating monitoring secrets...")
-    create_monitoring_secrets(namespace, GRAFANA_ADMIN_PASSWORD)
-
     # Patch spec with wallet strings
     content = MONITORING_SPEC.read_text()
     content = content.replace(
@@ -1431,6 +1396,8 @@ def monitoring_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
+
+    os.environ["GF_SECURITY_ADMIN_PASSWORD"] = GRAFANA_ADMIN_PASSWORD
 
     log.info("Starting monitoring stack...")
     deploy_start(deploy_info.deploy_dir)
