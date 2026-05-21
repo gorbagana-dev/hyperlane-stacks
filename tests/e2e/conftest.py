@@ -1341,7 +1341,7 @@ def monitoring_deployment(
         # Recover wallet labels from Prometheus metrics
         wallet_labels = []
         probe = subprocess.run(
-            ["curl", "-s", "-k",
+            ["curl", "-s",
              f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
             capture_output=True, text=True, check=False,
         )
