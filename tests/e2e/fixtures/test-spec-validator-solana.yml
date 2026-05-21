@@ -1,7 +1,9 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 namespace: laconic-hyperlane-validator-solana
-kind-cluster-name: REPLACE_KIND_CLUSTER
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
+acme-email: e2e@example.test
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana

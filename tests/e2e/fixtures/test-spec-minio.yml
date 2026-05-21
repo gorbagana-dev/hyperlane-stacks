@@ -1,6 +1,8 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
+acme-email: e2e@example.test
 resources:
   containers:
     minio:
