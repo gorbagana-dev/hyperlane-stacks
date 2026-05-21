@@ -68,17 +68,18 @@ These tests need `mkcert` to generate browser-trusted TLS certificates for the
 system + browser trust stores so `curl` / Playwright / Python `requests` don't
 need to disable cert verification.
 
-    # Linux (Ubuntu/Debian):
-    sudo apt-get install -y libnss3-tools
-    curl -L -o /tmp/mkcert \
-      https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
-    sudo install /tmp/mkcert /usr/local/bin/mkcert
+```bash
+# Linux (Ubuntu/Debian):
+sudo apt-get install -y libnss3-tools
+curl -L -o /tmp/mkcert https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+sudo install /tmp/mkcert /usr/local/bin/mkcert
 
-    # macOS:
-    brew install mkcert nss
+# macOS:
+brew install mkcert nss
 
-    # One-time CA install (both platforms):
-    mkcert -install
+# One-time CA install (both platforms):
+mkcert -install
+```
 
 Remove with `mkcert -uninstall` later if needed; the generated cert files persist
 under the test state directory and are wiped on full teardown.
@@ -99,7 +100,7 @@ playwright install-deps chromium  # install system libraries (libatk, libgdk, et
 ```bash
 # Full run (builds images, creates cluster, starts chains, runs tests, tears down)
 # -x stops on first failure (tests are sequential — downstream tests can't pass if earlier ones fail)
-cd tests/e2e && xvfb-run pytest -v -x
+xvfb-run pytest -v -x
 
 # Skip cluster creation (reuse an existing kind cluster)
 pytest -v -x --skip-cluster-setup
