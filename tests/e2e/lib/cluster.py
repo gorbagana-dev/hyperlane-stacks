@@ -43,18 +43,6 @@ def ensure_hosts_entry(hostname: str, ip: str = "127.0.0.1") -> None:
     log_info(f"Added /etc/hosts entry: {ip} {hostname}")
 
 
-def create_namespace(namespace: str) -> None:
-    log_info(f"Creating namespace {namespace}...")
-    result = run_cmd(["kubectl", "create", "namespace", namespace], check=False)
-    if result.returncode == 0:
-        log_info(f"Namespace {namespace} created")
-    elif "AlreadyExists" in (result.stderr or ""):
-        log_info(f"Namespace {namespace} already exists")
-    else:
-        from .common import fail_exit
-        fail_exit(f"Failed to create namespace {namespace}: {result.stderr}")
-
-
 def ensure_kind_network() -> None:
     """Ensure the `kind` Docker network exists. SO's later `kind create cluster`
     reuses a pre-existing network with this name, so we can pre-create it here
