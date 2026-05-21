@@ -18,20 +18,24 @@ once the bridge is live.
 
 The bridge fits comfortably on Helius's **Developer tier ($49/month)** at
 launch under realistic load, provided we set the Hyperlane agent polling
-intervals (validator + relayer indexer) to a sane value (30s). The default
-5s would push us into the **Business tier ($499/month)** before any user
-traffic.
+intervals (validator + relayer indexer) to a sane value (30s, or 15s if
+we want tighter latency). The default 5s would push us into the
+**Business tier ($499/month)** before any user traffic.
 
-| Scenario | Polling | Bridge tx/day | Credits/month | Tier | $/month |
-|---|---|---|---|---|---|
-| **Canonical** (planned) | 30s | low (~10) | **~2.5 M** | Developer | **$49** |
-| Moderate | 30s | 100 | ~2.6 M | Developer | $49 |
-| Heavy | 30s | 1,000 | ~3.5 M | Developer | $49 |
-| Stress | 30s | 10,000 | ~12.8 M | Business | $499 |
-| (Without polling change) | 5s | low | ~13.1 M | Business | $499 |
+| Scenario | Bridge tx/day | **30s polling** (canonical) | **15s polling** (tighter, see §4) |
+|---|---|---|---|
+| **Canonical** | low (~10) | **~2.5 M → Developer** | ~4.6 M → Developer |
+| Moderate | 100 | ~2.6 M → Developer | ~4.7 M → Developer |
+| Heavy | 1,000 | ~3.5 M → Developer | ~5.7 M → Developer |
+| Stress | 10,000 | ~12.8 M → Business | ~15.0 M → Business |
 
-We treat 30s polling as a configuration decision baked into the deployment.
-The 5s row is shown for contrast, not as a deployment target.
+Developer rows = **$49/month**; Business rows = **$499/month**. The 5s
+default (no polling change) lands the Canonical scenario at ~13.1 M
+credits / Business / $499 — shown for contrast, not a deployment target.
+
+Pick **30s** for the most cost margin, or **15s** for ~10-20s less
+worst-case bridge latency at ~2× the credit cost (still Developer in all
+realistic load scenarios).
 
 ---
 

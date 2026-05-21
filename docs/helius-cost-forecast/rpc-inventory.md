@@ -197,10 +197,9 @@ credits/day per wallet**. Expected tracked wallets at launch: 1-3.
 
 ---
 
-## 3. Scenario math (canonical-first)
+## 3. Scenario math
 
-Daily credits/day under the canonical 30s polling, plus stress and a
-"without the polling change" row at the bottom.
+### 3.1 Canonical: 30s polling
 
 | Component | Low (10 tx/d) | Moderate (100) | Heavy (1k) | Stress (10k) |
 |---|---|---|---|---|
@@ -215,7 +214,30 @@ Daily credits/day under the canonical 30s polling, plus stress and a
 | **Tier** | Developer | Developer | Developer | Business |
 | **Cost** | $49 | $49 | $49 | $499 |
 
-**Without the polling change (5s default), low traffic:**
+### 3.2 Tighter alternative: 15s polling
+
+Polling cadence doubles from 30s, so the relayer and validator polling
+floors double (every other line item is independent of polling cadence).
+
+| Component | Low (10 tx/d) | Moderate (100) | Heavy (1k) | Stress (10k) |
+|---|---|---|---|---|
+| Relayer | 115,360 | 116,550 | 128,700 | 250,200 |
+| Validator | 28,800 | 29,000 | 29,500 | 30,000 |
+| Gas oracle | 290 | 290 | 290 | 290 |
+| Warp-UI | 210 | 2,100 | 21,000 | 210,000 |
+| Explorer (2 wallets) | 10,000 | 10,000 | 10,000 | 10,000 |
+| Deployer (amortized) | 100 | 100 | 100 | 100 |
+| **Total / day** | **~154,800** | **~158,000** | **~189,600** | **~500,600** |
+| **Total / month** (×30) | **~4.6 M** | **~4.7 M** | **~5.7 M** | **~15.0 M** |
+| **Tier** | Developer | Developer | Developer | Business |
+| **Cost** | $49 | $49 | $49 | $499 |
+
+Low / Moderate / Heavy all stay on Developer with ~4-5 M headroom under
+the 10 M ceiling. Stress moves to Business at both 30s and 15s polling —
+the polling cadence isn't the differentiator at extreme load; warp-UI
+traffic is.
+
+### 3.3 Without the polling change: 5s default, low traffic
 
 | Component | Credits/day |
 |---|---|
@@ -227,9 +249,10 @@ Daily credits/day under the canonical 30s polling, plus stress and a
 | Total / day | **~437,500** |
 | Total / month | **~13.1 M** → **Business / $499** |
 
-The canonical row at low traffic is **~5.7× cheaper** than the
-no-polling-change row at low traffic. That gap closes only at very high
-user traffic; at sub-1000 tx/day the polling floor dominates.
+The 30s canonical row at low traffic is **~5.7× cheaper** than the
+no-polling-change row; the 15s alternative is **~2.9× cheaper**. The gap
+closes only at very high user traffic; at sub-1000 tx/day the polling
+floor dominates.
 
 ---
 
