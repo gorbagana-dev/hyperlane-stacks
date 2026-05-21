@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import time
 from pathlib import Path
 
@@ -199,8 +200,6 @@ def destroy_kind_cluster() -> None:
     log_info("Kind cluster destroyed")
 
 
-import base64
-
 CADDY_SECRET_PREFIX = (
     "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory"
 )
@@ -239,8 +238,8 @@ def ensure_mkcert_installed() -> None:
     """Run `mkcert -install` idempotently. Skip if CAROOT already contains a
     rootCA. Raise with a pointer to README if mkcert isn't on PATH.
     """
-    check = run_cmd(["which", "mkcert"], check=False, quiet=True)
-    if check.returncode != 0:
+    probe = run_cmd(["which", "mkcert"], check=False, quiet=True)
+    if probe.returncode != 0:
         fail_exit(
             "mkcert not found on PATH. See tests/e2e/README.md "
             "for one-time setup instructions."
