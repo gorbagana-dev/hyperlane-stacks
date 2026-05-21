@@ -197,10 +197,9 @@ credits/day per wallet**. Expected tracked wallets at launch: 1-3.
 
 ---
 
-## 3. Scenario math (canonical-first)
+## 3. Scenario math
 
-Daily credits/day under the canonical 30s polling, plus stress and a
-"without the polling change" row at the bottom.
+### 3.1 Canonical: 30s polling
 
 | Component | Low (10 tx/d) | Moderate (100) | Heavy (1k) | Stress (10k) |
 |---|---|---|---|---|
@@ -215,21 +214,51 @@ Daily credits/day under the canonical 30s polling, plus stress and a
 | **Tier** | Developer | Developer | Developer | Business |
 | **Cost** | $49 | $49 | $49 | $499 |
 
-**Without the polling change (5s default), low traffic:**
+### 3.2 Tighter alternative: 15s polling
 
-| Component | Credits/day |
-|---|---|
-| Relayer | 345,600 |
-| Validator | 86,400 |
-| Gas oracle | 290 |
-| Warp-UI (low) | 210 |
-| Explorer | 5,000 |
-| Total / day | **~437,500** |
-| Total / month | **~13.1 M** → **Business / $499** |
+Polling cadence doubles from 30s, so the relayer and validator polling
+floors double (every other line item is independent of polling cadence).
 
-The canonical row at low traffic is **~5.7× cheaper** than the
-no-polling-change row at low traffic. That gap closes only at very high
-user traffic; at sub-1000 tx/day the polling floor dominates.
+| Component | Low (10 tx/d) | Moderate (100) | Heavy (1k) | Stress (10k) |
+|---|---|---|---|---|
+| Relayer | 115,360 | 116,550 | 128,700 | 250,200 |
+| Validator | 28,800 | 29,000 | 29,500 | 30,000 |
+| Gas oracle | 290 | 290 | 290 | 290 |
+| Warp-UI | 210 | 2,100 | 21,000 | 210,000 |
+| Explorer (2 wallets) | 10,000 | 10,000 | 10,000 | 10,000 |
+| Deployer (amortized) | 100 | 100 | 100 | 100 |
+| **Total / day** | **~154,800** | **~158,000** | **~189,600** | **~500,600** |
+| **Total / month** (×30) | **~4.6 M** | **~4.7 M** | **~5.7 M** | **~15.0 M** |
+| **Tier** | Developer | Developer | Developer | Business |
+| **Cost** | $49 | $49 | $49 | $499 |
+
+Low / Moderate / Heavy all stay on Developer with ~4-5 M headroom under
+the 10 M ceiling. Stress moves to Business at both 30s and 15s polling —
+the polling cadence isn't the differentiator at extreme load; warp-UI
+traffic is.
+
+### 3.3 Without the polling change: 5s default
+
+Shown for contrast — 5s polling is below Solana's ~12s finality, so it
+re-reads settled state without latency benefit. Not a deployment target.
+
+| Component | Low (10 tx/d) | Moderate (100) | Heavy (1k) | Stress (10k) |
+|---|---|---|---|---|
+| Relayer | 345,735 | 346,950 | 359,100 | 480,600 |
+| Validator | 86,400 | 86,500 | 86,500 | 87,000 |
+| Gas oracle | 290 | 290 | 290 | 290 |
+| Warp-UI | 210 | 2,100 | 21,000 | 210,000 |
+| Explorer (2 wallets) | 10,000 | 10,000 | 10,000 | 10,000 |
+| Deployer (amortized) | 100 | 100 | 100 | 100 |
+| **Total / day** | **~442,700** | **~445,900** | **~477,000** | **~788,000** |
+| **Total / month** (×30) | **~13.3 M** | **~13.4 M** | **~14.3 M** | **~23.6 M** |
+| **Tier** | Business | Business | Business | Business |
+| **Cost** | $499 | $499 | $499 | $499 |
+
+At low traffic, 30s polling is **~5.3× cheaper** than 5s; 15s is
+**~2.9× cheaper**. The gap closes only at extreme user traffic where
+warp-UI dominates; at sub-1000 tx/day the polling floor is the line item
+that matters.
 
 ---
 

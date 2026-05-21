@@ -18,20 +18,25 @@ once the bridge is live.
 
 The bridge fits comfortably on Helius's **Developer tier ($49/month)** at
 launch under realistic load, provided we set the Hyperlane agent polling
-intervals (validator + relayer indexer) to a sane value (30s). The default
-5s would push us into the **Business tier ($499/month)** before any user
-traffic.
+intervals (validator + relayer indexer) to a sane value (30s, or 15s if
+we want tighter latency). The default 5s would push us into the
+**Business tier ($499/month)** before any user traffic.
 
-| Scenario | Polling | Bridge tx/day | Credits/month | Tier | $/month |
-|---|---|---|---|---|---|
-| **Canonical** (planned) | 30s | low (~10) | **~2.5 M** | Developer | **$49** |
-| Moderate | 30s | 100 | ~2.6 M | Developer | $49 |
-| Heavy | 30s | 1,000 | ~3.5 M | Developer | $49 |
-| Stress | 30s | 10,000 | ~12.8 M | Business | $499 |
-| (Without polling change) | 5s | low | ~13.1 M | Business | $499 |
+| Scenario | Bridge tx/day | **30s polling** (canonical) | **15s polling** (tighter, see §4) | 5s default (no change) |
+|---|---|---|---|---|
+| **Canonical** | low (~10) | **~2.5 M → Developer** | ~4.6 M → Developer | ~13.3 M → Business |
+| Moderate | 100 | ~2.6 M → Developer | ~4.7 M → Developer | ~13.4 M → Business |
+| Heavy | 1,000 | ~3.5 M → Developer | ~5.7 M → Developer | ~14.3 M → Business |
+| Stress | 10,000 | ~12.8 M → Business | ~15.0 M → Business | ~23.6 M → Business |
 
-We treat 30s polling as a configuration decision baked into the deployment.
-The 5s row is shown for contrast, not as a deployment target.
+Developer rows = **$49/month**; Business rows = **$499/month**. The 5s
+column is shown for contrast — it's wasteful (Solana finality is ~12s,
+so faster polling re-reads settled state with no latency benefit) and is
+not a deployment target.
+
+Pick **30s** for the most cost margin, or **15s** for ~10-20s less
+worst-case bridge latency at ~2× the credit cost (still Developer in all
+realistic load scenarios).
 
 ---
 
@@ -81,11 +86,38 @@ Helius feature / credit-cost claims below sourced from
 <https://www.helius.dev/docs/billing/credits> and
 <https://www.helius.dev/pricing>.
 
-1. **Set agent polling intervals to 30s.** Already baked into the canonical
-   scenario above. The single largest lever; ~6× cost reduction vs the 5s
-   default. Latency cost: ~12-30s additional bridge-message latency under
-   load — acceptable for our use case. Configured via `HYP_VALIDATOR_INTERVAL`
-   and the relayer `SLEEP_DURATION` override in the agent config we generate.
+1. **Set agent polling intervals.** The single largest cost lever — and
+   the one the canonical scenario already assumes.
+
+   *What it controls.* The relayer and validator are pull-based: they
+   poll Solana on a timer for new mailbox state (dispatched messages,
+   processed messages, merkle root insertions). The interval governs how
+   often that polling happens. The indexer uses `finalized` commitment
+   (`hyperlane-sealevel/src/account.rs:47`), so it only ever sees state
+   Solana has already settled.
+
+   *Why 5s is wasteful.* Solana's `finalized` commitment takes ~32 slots
+   ≈ 12-13 seconds. Polling more often than that re-reads the same
+   finalized state — strictly wasted RPC budget, no latency benefit.
+
+   *Trade-off.* Raising the interval adds bridge-transfer latency on
+   Solana-origin messages, because the validator and relayer both gate
+   the critical path and each adds up to one interval of detection
+   delay. It does **not** weaken security, change correctness, drop
+   messages, or expand reorg surface — the trust model is unaffected.
+
+   *Sane settings:*
+   - **30s (canonical):** ~6× cost reduction vs default. Worst-case
+     adds ~25-50s detection latency on Solana-origin transfers. The
+     comfortable default.
+   - **15-20s (tighter alternative):** ~3-4× cost reduction vs default.
+     Worst-case adds ~10-30s. Just above Solana finality, so still no
+     wasted polls. Still fits Developer tier; pick this if user-perceived
+     bridge time matters more than the extra cost margin.
+   - **Below ~15s:** over-polling, no latency benefit, higher bill.
+
+   Configured via `HYP_VALIDATOR_INTERVAL` and the relayer's
+   `SLEEP_DURATION` override in the agent config we generate.
 
 2. **Adopt `getProgramAccountsV2` in the Sealevel indexer** (1 credit vs 10).
    Our patch to make. Requires modifying the Hyperlane SVM indexer in our
@@ -157,8 +189,10 @@ its differentiator over Business is throughput we won't use.
 
 ## 6. Tier recommendation
 
-**Provision Helius Developer ($49/month).** Apply the 30s polling
-configuration in the agent generation script before launch.
+**Provision Helius Developer ($49/month).** Apply a 30s polling interval
+to validator + relayer in the agent generation script before launch — or
+15-20s if we want tighter latency at a modest cost margin (see §4
+lever 1). Both fit Developer comfortably.
 
 **Triggers to upgrade to Business ($499):**
 
