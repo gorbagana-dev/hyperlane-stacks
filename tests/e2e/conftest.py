@@ -1255,61 +1255,6 @@ GRAFANA_URL = f"https://{GRAFANA_HOSTNAME}"
 PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
-GRAFANA_INGRESS_TEMPLATE = """\
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: grafana-ingress
-  namespace: {namespace}
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - {hostname}
-      secretName: grafana-tls
-  rules:
-    - host: {hostname}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {service_name}
-                port:
-                  number: 3000
-"""
-
-PROMETHEUS_INGRESS_TEMPLATE = """\
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: prometheus-ingress
-  namespace: {namespace}
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - {hostname}
-      secretName: prometheus-tls
-  rules:
-    - host: {hostname}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {service_name}
-                port:
-                  number: 9090
-"""
-
-
 def _wait_for_balance_monitor(
     namespace: str, pod_name: str, timeout: int = 60,
 ) -> None:
@@ -1495,53 +1440,14 @@ def monitoring_deployment(
     log.info("Waiting for Prometheus to scrape balance metrics...")
     time.sleep(20)
 
-    # Create ingress for Grafana and Prometheus
-    grafana_service = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
-    prometheus_service = f"{deploy_info.deployment_id}-nodeport-9090-tcp"
-
-    for name, template, hostname, service in [
-        ("Grafana", GRAFANA_INGRESS_TEMPLATE, GRAFANA_HOSTNAME,
-         grafana_service),
-        ("Prometheus", PROMETHEUS_INGRESS_TEMPLATE, PROMETHEUS_HOSTNAME,
-         prometheus_service),
-    ]:
-        ingress_yaml = template.format(
-            namespace=namespace,
-            hostname=hostname,
-            service_name=service,
-        )
-        log.info("Creating %s Ingress with TLS (host: %s)...", name, hostname)
-        subprocess.run(
-            ["kubectl", "apply", "-f", "-"],
-            input=ingress_yaml, text=True, check=True,
-        )
-
-    # Wait for TLS certificates
-    for tls_secret in ("grafana-tls", "prometheus-tls"):
-        log.info("Waiting for TLS certificate %s...", tls_secret)
+    # Caddy serves grafana.test and prometheus.test via SO's http-proxy emission;
+    # the cert was pre-loaded into caddy-system at install time.
+    for url, health_path in [(GRAFANA_URL, "/api/health"),
+                             (PROMETHEUS_URL, "/-/healthy")]:
+        log.info("Waiting for %s to respond via Caddy ingress...", url)
         for _ in range(30):
-            result = subprocess.run(
-                [
-                    "kubectl", "-n", namespace, "get", "certificate", tls_secret,
-                    "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
-                ],
-                capture_output=True, text=True, check=False,
-            )
-            if result.stdout.strip() == "True":
-                break
-            time.sleep(2)
-        else:
-            log.warning("TLS certificate %s not ready after 60s", tls_secret)
-
-    # HTTP probe both endpoints (use health endpoints, not / which redirects)
-    for name, url, health_path in [
-        ("Grafana", GRAFANA_URL, "/api/health"),
-        ("Prometheus", PROMETHEUS_URL, "/-/healthy"),
-    ]:
-        log.info("Waiting for %s to respond via TLS ingress...", name)
-        for _ in range(5):
             probe = subprocess.run(
-                ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                  f"{url}{health_path}"],
                 capture_output=True, text=True, check=False,
             )
@@ -1549,8 +1455,8 @@ def monitoring_deployment(
                 break
             time.sleep(2)
         else:
-            log.warning("%s not returning 200 after 10s", name)
-        log.info("%s ingress ready at %s", name, url)
+            log.warning("%s not returning 200 after 60s", url)
+        log.info("Ingress ready at %s", url)
 
     yield {
         "deployment": deploy_info,
@@ -1766,35 +1672,6 @@ def bridge_setup(
 WARP_UI_HOSTNAME = "bridge.test"
 WARP_UI_URL = f"https://{WARP_UI_HOSTNAME}"
 
-# Ingress manifest template for warp-ui with TLS via cert-manager
-WARP_UI_INGRESS_TEMPLATE = """\
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: warp-ui-ingress
-  namespace: {namespace}
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - {hostname}
-      secretName: warp-ui-tls
-  rules:
-    - host: {hostname}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {service_name}
-                port:
-                  number: 3000
-"""
-
-
 @pytest.fixture(scope="session")
 def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Build or pre-fetch the warp-ui image and load it into the kind cluster."""
@@ -1903,42 +1780,11 @@ def warp_ui_deployment(
     wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120)
     log.info("Warp UI is running")
 
-    # Create Ingress with TLS via cert-manager self-signed issuer.
-    # SO skips TLS on Kind clusters, so we create the Ingress ourselves.
-    # SO names services as {deployment_id}-nodeport-{port}-tcp.
-    service_name = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
-    ingress_yaml = WARP_UI_INGRESS_TEMPLATE.format(
-        namespace=namespace,
-        hostname=WARP_UI_HOSTNAME,
-        service_name=service_name,
-    )
-    log.info("Creating warp-ui Ingress with TLS (host: %s)...", WARP_UI_HOSTNAME)
-    subprocess.run(
-        ["kubectl", "apply", "-f", "-"],
-        input=ingress_yaml, text=True, check=True,
-    )
-
-    # Wait for the TLS certificate to be issued
-    log.info("Waiting for TLS certificate to be ready...")
+    # Caddy serves bridge.test via SO's http-proxy emission.
+    log.info("Waiting for warp-ui to respond via Caddy ingress...")
     for _ in range(30):
-        result = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "get", "certificate", "warp-ui-tls",
-                "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        if result.stdout.strip() == "True":
-            break
-        time.sleep(2)
-    else:
-        log.warning("TLS certificate not ready after 60s — tests may fail")
-
-    # Wait for the full TLS ingress to return HTTP 200
-    log.info("Waiting for warp-ui to respond via TLS ingress...")
-    for _attempt in range(30):
         probe = subprocess.run(
-            ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
              f"{WARP_UI_URL}/"],
             capture_output=True, text=True, check=False,
         )
@@ -1946,7 +1792,7 @@ def warp_ui_deployment(
             break
         time.sleep(2)
     else:
-        log.warning("Warp UI not returning 200 after 60s — tests may fail")
+        log.warning("Warp UI not returning 200 after 60s")
     log.info("Warp UI ingress ready at %s", WARP_UI_URL)
 
     yield {
