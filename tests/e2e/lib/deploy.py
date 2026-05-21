@@ -398,7 +398,7 @@ def deploy_start(deploy_dir: Path) -> None:
     log_info(f"Starting deployment in {deploy_dir}...")
     run_cmd([
         "laconic-so", "deployment", "--dir", str(deploy_dir),
-        "start",
+        "start", "--perform-cluster-management",
     ])
     log_info(f"Deployment in {deploy_dir} started")
 
