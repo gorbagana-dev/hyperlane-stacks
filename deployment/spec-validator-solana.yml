@@ -22,13 +22,13 @@ resources:
 configmaps:
   agent-config: ./configmaps/agent-config
 # Before deploying, place the keyfile on the host:
-#   ~/secrets/hyperlane/validator-solana.key (hex-encoded validator signing key)
+#   ~/.credentials/hyperlane/validator-solana.key (hex-encoded validator signing key)
 # and export these env vars in the shell that runs `laconic-so`:
 #   PRIVY_APP_ID, PRIVY_APP_SECRET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 secrets:
   hyperlane-validator-secrets:
     keys:
-      HYP_DEFAULTSIGNER_KEY:  { file: ~/secrets/hyperlane/validator-solana.key }
+      HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-solana.key }
       PRIVY_APP_ID:           { env: PRIVY_APP_ID }
       PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
       AWS_ACCESS_KEY_ID:      { env: AWS_ACCESS_KEY_ID }

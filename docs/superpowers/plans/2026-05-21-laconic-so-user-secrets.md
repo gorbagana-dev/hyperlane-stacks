@@ -640,14 +640,14 @@ Example for `spec-deployer.yml`:
 
 ```yaml
 # Before deploying, place these on the deploy host:
-#   ~/secrets/hyperlane/deployer-keypair.json (Solana keypair JSON array)
+#   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export these env vars:
 #   HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY,
 #   GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
 secrets:
   hyperlane-deployer-secrets:
     keys:
-      DEPLOYER_KEYPAIR:           { file: ~/secrets/hyperlane/deployer-keypair.json }
+      DEPLOYER_KEYPAIR:           { file: ~/.credentials/hyperlane/deployer-keypair.json }
       HARDWARE_WALLET_PUBKEY:     { env: HARDWARE_WALLET_PUBKEY }
       IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
       GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
@@ -659,16 +659,16 @@ differ):
 
 | Spec | Key | Source |
 |---|---|---|
-| deployer | DEPLOYER_KEYPAIR | file: `~/secrets/hyperlane/deployer-keypair.json` |
+| deployer | DEPLOYER_KEYPAIR | file: `~/.credentials/hyperlane/deployer-keypair.json` |
 | deployer | (other 4) | env |
-| warp-deployer | DEPLOYER_KEYPAIR | file: `~/secrets/hyperlane/deployer-keypair.json` |
+| warp-deployer | DEPLOYER_KEYPAIR | file: `~/.credentials/hyperlane/deployer-keypair.json` |
 | warp-deployer | HARDWARE_WALLET_PUBKEY | env |
-| validator-gorchain | HYP_DEFAULTSIGNER_KEY | file: `~/secrets/hyperlane/validator-gorchain.key` |
+| validator-gorchain | HYP_DEFAULTSIGNER_KEY | file: `~/.credentials/hyperlane/validator-gorchain.key` |
 | validator-gorchain | (other 4) | env |
-| validator-solana | HYP_DEFAULTSIGNER_KEY | file: `~/secrets/hyperlane/validator-solana.key` |
+| validator-solana | HYP_DEFAULTSIGNER_KEY | file: `~/.credentials/hyperlane/validator-solana.key` |
 | validator-solana | (other 4) | env |
-| relayer | HYP_CHAINS_*_SIGNER_KEY | file: `~/secrets/hyperlane/relayer-{chain}.key` |
-| relayer | RELAYER_KEYPAIR_JSON | file: `~/secrets/hyperlane/relayer-fee-claim.json` |
+| relayer | HYP_CHAINS_*_SIGNER_KEY | file: `~/.credentials/hyperlane/relayer-{chain}.key` |
+| relayer | RELAYER_KEYPAIR_JSON | file: `~/.credentials/hyperlane/relayer-fee-claim.json` |
 | relayer | AWS_*_KEY | env (operator copies from minio host) |
 | gas-oracle | PRIVY_* | env |
 | monitoring | GF_SECURITY_ADMIN_PASSWORD | env |

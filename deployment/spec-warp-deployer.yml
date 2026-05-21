@@ -40,13 +40,13 @@ configmaps:
   warp-deployer-token-config: ./configmaps/warp-deployer-token-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
 # Before deploying, place the keyfile on the host:
-#   ~/secrets/hyperlane/deployer-keypair.json (Solana keypair JSON array)
+#   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export this env var in the shell that runs `laconic-so`:
 #   HARDWARE_WALLET_PUBKEY
 secrets:
   hyperlane-warp-deployer-secrets:
     keys:
-      DEPLOYER_KEYPAIR:       { file: ~/secrets/hyperlane/deployer-keypair.json }
+      DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
       HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
