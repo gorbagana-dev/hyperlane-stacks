@@ -21,14 +21,14 @@ from lib.chain import (
 )
 from lib.cluster import (
     KIND_CLUSTER_NAME,
-    create_kind_cluster,
+    TEST_HOSTNAMES,
     create_namespace,
-    create_selfsigned_issuer,
     destroy_kind_cluster,
     ensure_hosts_entry,
+    ensure_mkcert_cert,
+    ensure_mkcert_installed,
     get_host_ip,
-    install_cert_manager,
-    install_ingress_nginx,
+    write_caddy_cert_backup,
 )
 from lib.common import (
     CHAINS,
@@ -273,32 +273,39 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 @pytest.fixture(scope="session")
-def kind_cluster(
+def host_prep(
     request: pytest.FixtureRequest,
     bridge_state_root: Path,
 ) -> Generator[None, None, None]:
+    """Host-side prep: /etc/hosts entries + mkcert cert + Caddy cert-backup.
+    Cluster creation happens via SO at the first `deploy_start
+    --perform-cluster-management`.
+    """
     SPEC_REPLACEMENTS["REPLACE_KIND_MOUNT_ROOT"] = str(bridge_state_root)
     skip_setup = request.config.getoption("--skip-cluster-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
     if not skip_setup:
-        log.info("Creating kind cluster...")
-        create_kind_cluster()
-        log.info("Installing cert-manager...")
-        install_cert_manager()
-        log.info("Creating self-signed issuer...")
-        create_selfsigned_issuer()
-        log.info("Installing nginx ingress controller...")
-        install_ingress_nginx()
         log.info("Adding test hostnames to /etc/hosts...")
-        ensure_hosts_entry("bridge.test")
-        ensure_hosts_entry("grafana.test")
-        ensure_hosts_entry("prometheus.test")
-    else:
-        log.info("Skipping cluster setup (--skip-cluster-setup)")
+        for hostname in TEST_HOSTNAMES:
+            ensure_hosts_entry(hostname)
 
-    # Detect host IP for external-services (Kind gateway → host machine).
-    # Populates SPEC_REPLACEMENTS so test specs can use REPLACE_HOST_IP.
+        log.info("Ensuring mkcert is installed...")
+        ensure_mkcert_installed()
+
+        log.info("Generating mkcert cert covering test hostnames...")
+        cert, key = ensure_mkcert_cert(
+            bridge_state_root / "local-certs", list(TEST_HOSTNAMES)
+        )
+
+        log.info("Writing Caddy cert-backup for SO to pre-load...")
+        write_caddy_cert_backup(
+            bridge_state_root / "caddy-cert-backup" / "caddy-secrets.yaml",
+            cert, key, list(TEST_HOSTNAMES),
+        )
+    else:
+        log.info("Skipping host prep (--skip-cluster-setup)")
+
     host_ip = get_host_ip()
     SPEC_REPLACEMENTS["REPLACE_HOST_IP"] = host_ip
 
@@ -347,7 +354,7 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session")
-def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+def deployer_image(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Build or pre-fetch the deployer image and load it into the kind cluster."""
     if request.config.getoption("--skip-core-deploy") and request.config.getoption("--skip-warp-deploy"):
         log.info("Skipping deployer image build (--skip-core-deploy + --skip-warp-deploy)")
@@ -362,7 +369,7 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
 
 
 @pytest.fixture(scope="session")
-def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+def validator_images(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Build or pre-fetch agent + kms-proxy images, pull kubectl image, load all into kind."""
     if request.config.getoption("--skip-validator-deploy", default=False):
         log.info("Skipping validator image builds (--skip-validator-deploy)")
@@ -376,7 +383,7 @@ def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None
 
 
 @pytest.fixture(scope="session")
-def gas_oracle_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+def gas_oracle_image(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Pre-fetch the gas oracle image and load it into the kind cluster."""
     if request.config.getoption("--skip-gas-oracle-deploy", default=False):
         log.info("Skipping gas oracle image prefetch (--skip-gas-oracle-deploy)")
@@ -386,7 +393,7 @@ def gas_oracle_image(request: pytest.FixtureRequest, kind_cluster: None) -> None
 
 
 @pytest.fixture(scope="session")
-def monitoring_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+def monitoring_images(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Pre-fetch monitoring stack images and load them into the kind cluster."""
     if request.config.getoption("--skip-monitoring-deploy", default=False):
         log.info("Skipping monitoring image prefetch (--skip-monitoring-deploy)")
@@ -438,7 +445,7 @@ def _recover_minio_credentials(namespace: str) -> tuple[str, str]:
 @pytest.fixture(scope="session")
 def minio_deployment(
     request: pytest.FixtureRequest,
-    kind_cluster: None,
+    host_prep: None,
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[MinioInfo, None, None]:
     """Deploy the hyperlane-minio stack.
@@ -525,7 +532,7 @@ def deployer_deployment(
     request: pytest.FixtureRequest,
     all_images: None,
     keypairs: KeypairSet,
-    kind_cluster: None,
+    host_prep: None,
     chain_nodes: None,
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[DeploymentInfo, None, None]:
@@ -962,7 +969,7 @@ def relayer_deployment(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     validator_images: None,
-    kind_cluster: None,
+    host_prep: None,
     bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[RelayerInfo, None, None]:
@@ -1138,7 +1145,7 @@ def _wait_for_oracle_update(
 def gas_oracle_deployment(
     deployer_deployment: DeploymentInfo,
     privy_mock: dict[str, str],
-    kind_cluster: None,
+    host_prep: None,
     gas_oracle_image: None,
     bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
@@ -1362,7 +1369,7 @@ def _build_wallet_string(keypairs: KeypairSet) -> tuple[str, list[str]]:
 def monitoring_deployment(
     deployer_deployment: DeploymentInfo,
     keypairs: KeypairSet,
-    kind_cluster: None,
+    host_prep: None,
     monitoring_images: None,
     bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
@@ -1787,7 +1794,7 @@ spec:
 
 
 @pytest.fixture(scope="session")
-def warp_ui_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
+def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Build or pre-fetch the warp-ui image and load it into the kind cluster."""
     if request.config.getoption("--skip-warp-ui-deploy", default=False):
         log.info("Skipping warp-ui image build (--skip-warp-ui-deploy)")
@@ -1805,7 +1812,7 @@ def warp_ui_deployment(
     request: pytest.FixtureRequest,
     warp_deployment: dict,
     deployer_deployment: DeploymentInfo,
-    kind_cluster: None,
+    host_prep: None,
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[dict, None, None]:
     """Deploy the warp-ui stack with resolved addresses from state files."""
