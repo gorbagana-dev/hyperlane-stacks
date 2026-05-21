@@ -3,6 +3,9 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane-bridge
+# Replace with operator email for Let's Encrypt registration:
+acme-email: ops@example.com
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana
@@ -32,6 +35,12 @@ image-pull-secret:
   server: ghcr.io
   username: REPLACE_WITH_GITHUB_USERNAME
   token-env: GHCR_PAT
+network:
+  http-proxy:
+    - host-name: validator-solana.example.com
+      routes:
+        - path: /
+          proxy-to: validator:9090
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0

@@ -3,6 +3,9 @@
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane-bridge
+# Replace with operator email for Let's Encrypt registration:
+acme-email: ops@example.com
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"

@@ -3,6 +3,9 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane-bridge
+# Replace with operator email for Let's Encrypt registration:
+acme-email: ops@example.com
 volumes:
   minio-data:
 resources:
@@ -10,6 +13,12 @@ resources:
     minio-data:
       reservations:
         storage: 10Gi
+network:
+  http-proxy:
+    - host-name: minio-console.example.com
+      routes:
+        - path: /
+          proxy-to: minio:9001
 secrets:
   hyperlane-minio-secrets:
     - MINIO_ROOT_USER

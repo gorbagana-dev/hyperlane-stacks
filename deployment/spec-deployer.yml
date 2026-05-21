@@ -5,6 +5,8 @@ stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane-bridge
+# Replace with operator email for Let's Encrypt registration:
+acme-email: ops@example.com
 volumes:
   bridge-state: /srv/kind/hyperlane-bridge/generated
   bridge-logs: /srv/kind/hyperlane-bridge/logs
