@@ -16,15 +16,16 @@ def test_write_caddy_cert_backup_writes_one_secret_per_hostname(tmp_path: Path):
     write_caddy_cert_backup(out, cert, key, ["a.test", "b.test"])
 
     assert out.is_file()
-    docs = list(yaml.safe_load_all(out.read_text()))
-    docs = [d for d in docs if d]  # drop trailing None from --- separators
-    assert len(docs) == 2
-    names = {d["metadata"]["name"] for d in docs}
+    doc = yaml.safe_load(out.read_text())
+    assert doc["kind"] == "List"
+    items = doc["items"]
+    assert len(items) == 2
+    names = {d["metadata"]["name"] for d in items}
     assert names == {
         "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory--a.test",
         "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory--b.test",
     }
-    for d in docs:
+    for d in items:
         assert d["metadata"]["namespace"] == "caddy-system"
         assert d["type"] == "Opaque"
         assert base64.b64decode(d["data"]["tls.crt"]) == b"CERT-CONTENT"

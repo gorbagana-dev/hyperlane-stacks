@@ -4,7 +4,8 @@ image-overrides:
   gas-oracle: REPLACE_GAS_ORACLE_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-acme-email: e2e@example.test
+network:
+  acme-email: e2e@example.test
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"

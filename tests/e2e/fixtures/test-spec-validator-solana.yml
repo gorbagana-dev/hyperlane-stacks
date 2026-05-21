@@ -6,7 +6,6 @@ image-overrides:
 namespace: laconic-hyperlane-validator-solana
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-acme-email: e2e@example.test
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana
@@ -58,6 +57,7 @@ external-services:
     ip: REPLACE_HOST_IP
     port: 19876
 network:
+  acme-email: e2e@example.test
   http-proxy:
     - host-name: validator-solana.test
       routes:

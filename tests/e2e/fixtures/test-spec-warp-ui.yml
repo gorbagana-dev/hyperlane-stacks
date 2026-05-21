@@ -4,7 +4,6 @@ image-overrides:
   warp-ui: REPLACE_WARP_UI_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-acme-email: e2e@example.test
 config:
   # Browser-accessible URLs — the warp-ui JS bundles run in the browser
   # on the host, not inside the cluster, so they need localhost URLs.
@@ -37,6 +36,7 @@ resources:
         cpus: "0.5"
         memory: 512M
 network:
+  acme-email: e2e@example.test
   http-proxy:
     - host-name: bridge.test
       routes:

@@ -111,13 +111,16 @@ def write_caddy_cert_backup(
     """Render caddy-secrets.yaml with one k8s Secret per hostname referencing
     the same cert+key, formatted for SO's _restore_caddy_certs to load before
     Caddy starts.
+
+    SO's _restore_caddy_certs reads this with yaml.safe_load and pulls items
+    from a kind: List wrapper (matches the cert-backup CronJob's
+    `kubectl get -o yaml` output). Multi-document YAML is silently ignored.
     """
     cert_b64 = base64.b64encode(cert_path.read_bytes()).decode("ascii")
     key_b64 = base64.b64encode(key_path.read_bytes()).decode("ascii")
 
-    docs = []
-    for host in hostnames:
-        docs.append({
+    items = [
+        {
             "apiVersion": "v1",
             "kind": "Secret",
             "metadata": {
@@ -126,11 +129,15 @@ def write_caddy_cert_backup(
             },
             "type": "Opaque",
             "data": {"tls.crt": cert_b64, "tls.key": key_b64},
-        })
+        }
+        for host in hostnames
+    ]
 
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml as _yaml
-    backup_path.write_text(_yaml.safe_dump_all(docs))
+    backup_path.write_text(
+        _yaml.safe_dump({"apiVersion": "v1", "kind": "List", "items": items})
+    )
 
 
 def ensure_mkcert_installed() -> None:

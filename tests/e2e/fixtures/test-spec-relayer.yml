@@ -5,7 +5,6 @@ image-overrides:
   igp-fee-claim: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-acme-email: e2e@example.test
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
@@ -58,6 +57,7 @@ external-services:
     ip: REPLACE_HOST_IP
     port: 18899
 network:
+  acme-email: e2e@example.test
   http-proxy:
     - host-name: relayer.test
       routes:

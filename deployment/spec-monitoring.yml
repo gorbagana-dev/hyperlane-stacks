@@ -4,7 +4,6 @@ stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane-bridge
-acme-email: admin@gorbagana.wtf
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
@@ -15,6 +14,7 @@ config:
   BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
   BALANCE_CHECK_INTERVAL: "300"
 network:
+  acme-email: admin@gorbagana.wtf
   http-proxy:
     - host-name: grafana.bridge.gorbagana.wtf
       routes:

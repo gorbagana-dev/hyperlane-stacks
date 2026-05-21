@@ -8,7 +8,8 @@ stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane-bridge
-acme-email: admin@gorbagana.wtf
+network:
+  acme-email: admin@gorbagana.wtf
 volumes:
   bridge-state: /srv/kind/hyperlane-bridge/generated
   bridge-logs: /srv/kind/hyperlane-bridge/logs

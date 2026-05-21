@@ -4,7 +4,8 @@ image-overrides:
   deployer: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-acme-email: e2e@example.test
+network:
+  acme-email: e2e@example.test
 volumes:
   bridge-state: REPLACE_KIND_MOUNT_ROOT/generated
   bridge-logs: REPLACE_KIND_MOUNT_ROOT/logs

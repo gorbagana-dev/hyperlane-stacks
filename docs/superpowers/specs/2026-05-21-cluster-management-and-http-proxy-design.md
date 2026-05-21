@@ -33,8 +33,8 @@ Hand the kind-cluster + ingress + TLS-termination story off to stack-orchestrato
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Layer 3: Stack specs (per stack, per environment)                    │
 │   network.http-proxy: [ {host-name, routes: [{path, proxy-to}]} ]    │
+│   network.acme-email: <operator email or test sentinel>              │
 │   kind-mount-root: <per-host path>                                   │
-│   acme-email: <operator email or test sentinel>                      │
 └──────────────────────────────────────────────────────────────────────┘
                               │ deploy_start --perform-cluster-management
                               ▼
@@ -112,11 +112,12 @@ One thing to know but not fix: the `cert-manager.io/cluster-issuer: letsencrypt-
 
 ### 2. Stack specs
 
-Every long-running stack spec gets two new top-level fields:
+Every long-running stack spec gets a top-level `kind-mount-root` and a `network.acme-email` (under `network:`, alongside `http-proxy:`):
 
 ```yaml
 kind-mount-root: <per-environment value>
-acme-email: <operator-or-test value>
+network:
+  acme-email: <operator-or-test value>
 ```
 
 Plus, for stacks with externally-reachable HTTP endpoints, an `http-proxy:` block under `network:`. The full stack matrix:
