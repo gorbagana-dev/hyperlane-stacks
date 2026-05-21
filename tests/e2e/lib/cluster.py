@@ -197,3 +197,92 @@ def destroy_kind_cluster() -> None:
         check=False,
     )
     log_info("Kind cluster destroyed")
+
+
+import base64
+
+CADDY_SECRET_PREFIX = (
+    "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory"
+)
+CADDY_NAMESPACE = "caddy-system"
+
+
+def write_caddy_cert_backup(
+    backup_path: Path, cert_path: Path, key_path: Path, hostnames: list[str]
+) -> None:
+    """Render caddy-secrets.yaml with one k8s Secret per hostname referencing
+    the same cert+key, formatted for SO's _restore_caddy_certs to load before
+    Caddy starts.
+    """
+    cert_b64 = base64.b64encode(cert_path.read_bytes()).decode("ascii")
+    key_b64 = base64.b64encode(key_path.read_bytes()).decode("ascii")
+
+    docs = []
+    for host in hostnames:
+        docs.append({
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": f"{CADDY_SECRET_PREFIX}--{host}",
+                "namespace": CADDY_NAMESPACE,
+            },
+            "type": "Opaque",
+            "data": {"tls.crt": cert_b64, "tls.key": key_b64},
+        })
+
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    import yaml as _yaml
+    backup_path.write_text(_yaml.safe_dump_all(docs))
+
+
+def ensure_mkcert_installed() -> None:
+    """Run `mkcert -install` idempotently. Skip if CAROOT already contains a
+    rootCA. Raise with a pointer to README if mkcert isn't on PATH.
+    """
+    check = run_cmd(["which", "mkcert"], check=False, quiet=True)
+    if check.returncode != 0:
+        fail_exit(
+            "mkcert not found on PATH. See tests/e2e/README.md "
+            "for one-time setup instructions."
+        )
+
+    caroot = run_cmd(["mkcert", "-CAROOT"], quiet=True).stdout.strip()
+    if (Path(caroot) / "rootCA.pem").is_file():
+        log_info(f"mkcert CA already installed at {caroot}")
+        return
+
+    log_info("Running `mkcert -install` (installs root CA into system trust store)")
+    run_cmd(["mkcert", "-install"])
+
+
+def ensure_mkcert_cert(
+    cert_dir: Path, hostnames: list[str]
+) -> tuple[Path, Path]:
+    """Generate (or reuse) a multi-SAN mkcert cert covering hostnames.
+    Returns (cert_path, key_path). Idempotent — regenerates if the existing
+    cert's SANs don't cover the requested hostnames.
+    """
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    cert = cert_dir / "hyperlane.test.crt"
+    key = cert_dir / "hyperlane.test.key"
+
+    if cert.is_file() and key.is_file():
+        # Check existing cert covers all requested SANs
+        result = run_cmd(
+            ["openssl", "x509", "-in", str(cert), "-noout", "-ext",
+             "subjectAltName"],
+            check=False, quiet=True,
+        )
+        if result.returncode == 0 and all(h in result.stdout for h in hostnames):
+            log_info(f"Reusing existing mkcert cert at {cert}")
+            return cert, key
+        log_info("Existing cert SANs out of date; regenerating")
+
+    log_info(f"Generating mkcert cert for {len(hostnames)} hostnames")
+    run_cmd(
+        ["mkcert",
+         "-cert-file", str(cert),
+         "-key-file", str(key),
+         *hostnames],
+    )
+    return cert, key
