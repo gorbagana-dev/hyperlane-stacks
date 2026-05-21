@@ -7,7 +7,16 @@ from pathlib import Path
 
 from .common import E2E_DIR, fail_exit, log_info, run_cmd
 
-KIND_CLUSTER_NAME = "hyperlane-e2e"
+KIND_CLUSTER_NAME = "hyperlane"
+TEST_HOSTNAMES: tuple[str, ...] = (
+    "bridge.test",
+    "grafana.test",
+    "prometheus.test",
+    "validator-gorchain.test",
+    "validator-solana.test",
+    "relayer.test",
+    "minio-console.test",
+)
 
 
 def create_kind_cluster(config_path: Path | None = None) -> None:
