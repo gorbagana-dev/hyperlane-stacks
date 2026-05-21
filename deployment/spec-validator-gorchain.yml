@@ -4,8 +4,7 @@ stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane-bridge
-# Replace with operator email for Let's Encrypt registration:
-acme-email: ops@example.com
+acme-email: admin@gorbagana.wtf
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain
@@ -37,7 +36,7 @@ image-pull-secret:
   token-env: GHCR_PAT
 network:
   http-proxy:
-    - host-name: validator-gorchain.example.com
+    - host-name: validator-gorchain.bridge.gorbagana.wtf
       routes:
         - path: /
           proxy-to: validator:9090
