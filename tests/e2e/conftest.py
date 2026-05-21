@@ -25,6 +25,7 @@ from lib.cluster import (
     create_namespace,
     destroy_kind_cluster,
     ensure_hosts_entry,
+    ensure_kind_network,
     ensure_mkcert_cert,
     ensure_mkcert_installed,
     get_host_ip,
@@ -306,6 +307,7 @@ def host_prep(
     else:
         log.info("Skipping host prep (--skip-cluster-setup)")
 
+    ensure_kind_network()
     host_ip = get_host_ip()
     SPEC_REPLACEMENTS["REPLACE_HOST_IP"] = host_ip
 

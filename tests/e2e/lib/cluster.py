@@ -163,6 +163,25 @@ def create_namespace(namespace: str) -> None:
         fail_exit(f"Failed to create namespace {namespace}: {result.stderr}")
 
 
+def ensure_kind_network() -> None:
+    """Ensure the `kind` Docker network exists. SO's later `kind create cluster`
+    reuses a pre-existing network with this name, so we can pre-create it here
+    to populate REPLACE_HOST_IP before any deployer runs.
+
+    Idempotent — silent skip if already present.
+    """
+    probe = run_cmd(
+        ["docker", "network", "inspect", "kind"],
+        check=False, quiet=True,
+    )
+    if probe.returncode == 0:
+        log_info("Docker network 'kind' already exists")
+        return
+
+    log_info("Creating Docker network 'kind' (kind will reuse it)")
+    run_cmd(["docker", "network", "create", "kind"])
+
+
 def get_host_ip() -> str:
     """Detect the Kind network gateway IP (host IP from inside the cluster)."""
     log_info("Detecting host IP for kind network...")
