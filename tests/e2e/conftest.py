@@ -386,7 +386,7 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
 @pytest.fixture(scope="session")
 def deployer_image(request: pytest.FixtureRequest, host_prep: None) -> None:
-    """Build or pre-fetch the deployer image and load it into the kind cluster."""
+    """Build or pre-fetch the deployer image to host Docker (SO preloads it via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-core-deploy") and request.config.getoption("--skip-warp-deploy"):
         log.info("Skipping deployer image build (--skip-core-deploy + --skip-warp-deploy)")
         return
@@ -395,13 +395,13 @@ def deployer_image(request: pytest.FixtureRequest, host_prep: None) -> None:
         log.info("Building deployer container image from source...")
         build_deployer_image()
     else:
-        log.info("Pre-fetching published deployer image into kind cluster...")
+        log.info("Pre-fetching published deployer image to host Docker...")
         prefetch_deployer_image()
 
 
 @pytest.fixture(scope="session")
 def validator_images(request: pytest.FixtureRequest, host_prep: None) -> None:
-    """Build or pre-fetch agent + kms-proxy images, pull kubectl image, load all into kind."""
+    """Build or pre-fetch agent + kms-proxy images to host Docker (SO preloads via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-validator-deploy", default=False):
         log.info("Skipping validator image builds (--skip-validator-deploy)")
         return
@@ -409,27 +409,27 @@ def validator_images(request: pytest.FixtureRequest, host_prep: None) -> None:
         log.info("Building patched agent and kms-proxy images via laconic-so...")
         build_agent_image()
     else:
-        log.info("Pre-fetching published agent images into kind cluster...")
+        log.info("Pre-fetching published agent images to host Docker...")
         prefetch_agent_images()
 
 
 @pytest.fixture(scope="session")
 def gas_oracle_image(request: pytest.FixtureRequest, host_prep: None) -> None:
-    """Pre-fetch the gas oracle image and load it into the kind cluster."""
+    """Pre-fetch the gas oracle image to host Docker (SO preloads it via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-gas-oracle-deploy", default=False):
         log.info("Skipping gas oracle image prefetch (--skip-gas-oracle-deploy)")
         return
-    log.info("Pre-fetching published gas oracle image into kind cluster...")
+    log.info("Pre-fetching published gas oracle image to host Docker...")
     prefetch_gas_oracle_image()
 
 
 @pytest.fixture(scope="session")
 def monitoring_images(request: pytest.FixtureRequest, host_prep: None) -> None:
-    """Pre-fetch monitoring stack images and load them into the kind cluster."""
+    """Pre-fetch monitoring stack images to host Docker (SO preloads them via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-monitoring-deploy", default=False):
         log.info("Skipping monitoring image prefetch (--skip-monitoring-deploy)")
         return
-    log.info("Pre-fetching monitoring images into kind cluster...")
+    log.info("Pre-fetching monitoring images to host Docker...")
     prefetch_monitoring_images()
 
 
@@ -504,7 +504,7 @@ def minio_deployment(
     minio_user = f"minio-{secrets.token_hex(4)}"
     minio_password = secrets.token_hex(16)
 
-    log.info("Pre-fetching MinIO images into kind cluster...")
+    log.info("Pre-fetching MinIO images to host Docker...")
     prefetch_minio_images()
 
     log.info("Preparing minio stack...")
@@ -1703,7 +1703,7 @@ WARP_UI_URL = f"https://{WARP_UI_HOSTNAME}"
 
 @pytest.fixture(scope="session")
 def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
-    """Build or pre-fetch the warp-ui image and load it into the kind cluster."""
+    """Build or pre-fetch the warp-ui image to host Docker (SO preloads it via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-warp-ui-deploy", default=False):
         log.info("Skipping warp-ui image build (--skip-warp-ui-deploy)")
         return
@@ -1711,7 +1711,7 @@ def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
         log.info("Building warp-ui container image from source...")
         build_warp_ui_image()
     else:
-        log.info("Pre-fetching published warp-ui image into kind cluster...")
+        log.info("Pre-fetching published warp-ui image to host Docker...")
         prefetch_warp_ui_image()
 
 
