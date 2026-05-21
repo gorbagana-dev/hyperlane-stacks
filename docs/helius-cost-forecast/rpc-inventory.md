@@ -237,22 +237,28 @@ the 10 M ceiling. Stress moves to Business at both 30s and 15s polling —
 the polling cadence isn't the differentiator at extreme load; warp-UI
 traffic is.
 
-### 3.3 Without the polling change: 5s default, low traffic
+### 3.3 Without the polling change: 5s default
 
-| Component | Credits/day |
-|---|---|
-| Relayer | 345,600 |
-| Validator | 86,400 |
-| Gas oracle | 290 |
-| Warp-UI (low) | 210 |
-| Explorer | 5,000 |
-| Total / day | **~437,500** |
-| Total / month | **~13.1 M** → **Business / $499** |
+Shown for contrast — 5s polling is below Solana's ~12s finality, so it
+re-reads settled state without latency benefit. Not a deployment target.
 
-The 30s canonical row at low traffic is **~5.7× cheaper** than the
-no-polling-change row; the 15s alternative is **~2.9× cheaper**. The gap
-closes only at very high user traffic; at sub-1000 tx/day the polling
-floor dominates.
+| Component | Low (10 tx/d) | Moderate (100) | Heavy (1k) | Stress (10k) |
+|---|---|---|---|---|
+| Relayer | 345,735 | 346,950 | 359,100 | 480,600 |
+| Validator | 86,400 | 86,500 | 86,500 | 87,000 |
+| Gas oracle | 290 | 290 | 290 | 290 |
+| Warp-UI | 210 | 2,100 | 21,000 | 210,000 |
+| Explorer (2 wallets) | 10,000 | 10,000 | 10,000 | 10,000 |
+| Deployer (amortized) | 100 | 100 | 100 | 100 |
+| **Total / day** | **~442,700** | **~445,900** | **~477,000** | **~788,000** |
+| **Total / month** (×30) | **~13.3 M** | **~13.4 M** | **~14.3 M** | **~23.6 M** |
+| **Tier** | Business | Business | Business | Business |
+| **Cost** | $499 | $499 | $499 | $499 |
+
+At low traffic, 30s polling is **~5.3× cheaper** than 5s; 15s is
+**~2.9× cheaper**. The gap closes only at extreme user traffic where
+warp-UI dominates; at sub-1000 tx/day the polling floor is the line item
+that matters.
 
 ---
 

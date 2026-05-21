@@ -22,16 +22,17 @@ intervals (validator + relayer indexer) to a sane value (30s, or 15s if
 we want tighter latency). The default 5s would push us into the
 **Business tier ($499/month)** before any user traffic.
 
-| Scenario | Bridge tx/day | **30s polling** (canonical) | **15s polling** (tighter, see §4) |
-|---|---|---|---|
-| **Canonical** | low (~10) | **~2.5 M → Developer** | ~4.6 M → Developer |
-| Moderate | 100 | ~2.6 M → Developer | ~4.7 M → Developer |
-| Heavy | 1,000 | ~3.5 M → Developer | ~5.7 M → Developer |
-| Stress | 10,000 | ~12.8 M → Business | ~15.0 M → Business |
+| Scenario | Bridge tx/day | **30s polling** (canonical) | **15s polling** (tighter, see §4) | 5s default (no change) |
+|---|---|---|---|---|
+| **Canonical** | low (~10) | **~2.5 M → Developer** | ~4.6 M → Developer | ~13.3 M → Business |
+| Moderate | 100 | ~2.6 M → Developer | ~4.7 M → Developer | ~13.4 M → Business |
+| Heavy | 1,000 | ~3.5 M → Developer | ~5.7 M → Developer | ~14.3 M → Business |
+| Stress | 10,000 | ~12.8 M → Business | ~15.0 M → Business | ~23.6 M → Business |
 
 Developer rows = **$49/month**; Business rows = **$499/month**. The 5s
-default (no polling change) lands the Canonical scenario at ~13.1 M
-credits / Business / $499 — shown for contrast, not a deployment target.
+column is shown for contrast — it's wasteful (Solana finality is ~12s,
+so faster polling re-reads settled state with no latency benefit) and is
+not a deployment target.
 
 Pick **30s** for the most cost margin, or **15s** for ~10-20s less
 worst-case bridge latency at ~2× the credit cost (still Developer in all
