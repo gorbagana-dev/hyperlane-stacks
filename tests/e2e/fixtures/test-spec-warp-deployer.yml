@@ -43,8 +43,9 @@ resources:
         memory: 1G
 secrets:
   hyperlane-warp-deployer-secrets:
-    - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
+    keys:
+      DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
+      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

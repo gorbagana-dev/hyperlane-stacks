@@ -19,8 +19,9 @@ volumes:
   minio-data:
 secrets:
   hyperlane-minio-secrets:
-    - MINIO_ROOT_USER
-    - MINIO_ROOT_PASSWORD
+    keys:
+      MINIO_ROOT_USER: { env: MINIO_ROOT_USER }
+      MINIO_ROOT_PASSWORD: { env: MINIO_ROOT_PASSWORD }
 network:
   http-proxy:
     - host-name: minio-console.test

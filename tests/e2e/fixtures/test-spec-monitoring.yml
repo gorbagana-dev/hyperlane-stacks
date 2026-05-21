@@ -28,7 +28,8 @@ configmaps:
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
 secrets:
   hyperlane-monitoring-secrets:
-    - GF_SECURITY_ADMIN_PASSWORD
+    keys:
+      GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
 external-services:
   gorchain-rpc:
     ip: REPLACE_HOST_IP

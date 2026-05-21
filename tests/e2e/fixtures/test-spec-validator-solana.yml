@@ -37,11 +37,12 @@ configmaps:
   agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-validator-solana-secrets:
-    - PRIVY_APP_ID
-    - PRIVY_APP_SECRET
-    - AWS_ACCESS_KEY_ID
-    - AWS_SECRET_ACCESS_KEY
-    - HYP_DEFAULTSIGNER_KEY
+    keys:
+      PRIVY_APP_ID: { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET: { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID: { env: AWS_ACCESS_KEY_ID }
+      AWS_SECRET_ACCESS_KEY: { env: AWS_SECRET_ACCESS_KEY }
+      HYP_DEFAULTSIGNER_KEY: { env: HYP_DEFAULTSIGNER_KEY }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

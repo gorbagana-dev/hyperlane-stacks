@@ -34,11 +34,12 @@ resources:
         memory: 1G
 secrets:
   hyperlane-deployer-secrets:
-    - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
-    - IGP_ORACLE_PUBKEY
-    - GORCHAIN_VALIDATOR_ADDRESS
-    - SOLANA_VALIDATOR_ADDRESS
+    keys:
+      DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
+      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      IGP_ORACLE_PUBKEY: { env: IGP_ORACLE_PUBKEY }
+      GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
+      SOLANA_VALIDATOR_ADDRESS: { env: SOLANA_VALIDATOR_ADDRESS }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
