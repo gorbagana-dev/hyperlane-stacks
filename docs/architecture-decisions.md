@@ -600,6 +600,20 @@ No cert-manager. No nginx-ingress. No hand-rolled Ingress in test code.
 
 ---
 
+## Secret Provisioning
+
+**Decision (2026-05-21):** SO creates k8s Secrets from spec-declared sources at `deploy_start`. Operators no longer run `kubectl create secret` out-of-band.
+
+Each stack's spec declares its required Secrets under `secrets:` with a `keys:` map whose entries source values from env vars (`{ env: VAR }`) or files (`{ file: PATH }`). At `deploy_start`, laconic-so resolves the values, base64-encodes them, and creates one k8s Secret per entry in the stack's own namespace (409 → replace for idempotency). The Secret is then mounted by the existing `env_from` references in the pod spec.
+
+This makes every stack fully self-bootstrapping from its spec on its own host — directly enabling the Multi-Machine Prod Principle. In tests, conftest exports the required values into `os.environ` before `deploy_start`; in prod, Ansible places credential files on each host and specs reference them via `{ file: PATH }`.
+
+The legacy list form (plain list of secret names) is unchanged — SO still mounts those by name with `optional=True`, and the operator creates them out-of-band. New stacks use the dict form.
+
+See [`docs/superpowers/specs/2026-05-21-laconic-so-user-secrets-design.md`](superpowers/specs/2026-05-21-laconic-so-user-secrets-design.md) for the full schema and implementation details.
+
+---
+
 ## Multi-Machine Prod Principle
 
 **Decision:** Every long-running stack spec is self-sufficient enough to
