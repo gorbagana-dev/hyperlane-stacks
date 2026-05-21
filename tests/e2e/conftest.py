@@ -57,6 +57,7 @@ from lib.deploy import (
     build_warp_ui_image,
     deploy_prepare,
     deploy_start,
+    deployment_exists,
     ensure_ghcr_pat,
     get_deployment_id,
     prefetch_agent_images,
@@ -483,16 +484,18 @@ def minio_deployment(
 
     if skip_minio:
         deploy_dir = DEPLOY_DIR / "hyperlane-minio"
-        deployment_id = get_deployment_id(deploy_dir)
-        namespace = "laconic-hyperlane-minio"
-        log.info("Reusing existing minio deployment (namespace: %s)", namespace)
-        user, password = _recover_minio_credentials(namespace)
-        yield MinioInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-            user=user,
-            password=password,
-        )
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            namespace = "laconic-hyperlane-minio"
+            log.info("Reusing existing minio deployment (namespace: %s)", namespace)
+            user, password = _recover_minio_credentials(namespace)
+            yield MinioInfo(
+                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                user=user,
+                password=password,
+            )
+            return
+        log.info("--skip-minio-deploy set but %s missing — deploying fresh", deploy_dir)
 
     minio_user = f"minio-{secrets.token_hex(4)}"
     minio_password = secrets.token_hex(16)
@@ -563,11 +566,13 @@ def deployer_deployment(
         # The Solana test validator runs detached (start_new_session) so it
         # survives Ctrl+C — deployed programs and funded wallets persist.
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
-        deployment_id = get_deployment_id(deploy_dir)
-        namespace = "laconic-hyperlane-svm-deployer"
-        log.info("Reusing existing core deployment (deployment-id: %s, namespace: %s)", deployment_id, namespace)
-        yield DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace)
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            namespace = "laconic-hyperlane-svm-deployer"
+            log.info("Reusing existing core deployment (deployment-id: %s, namespace: %s)", deployment_id, namespace)
+            yield DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace)
+            return
+        log.info("--skip-core-deploy set but %s missing — deploying fresh", deploy_dir)
 
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare(
@@ -687,25 +692,26 @@ def warp_deployment(
     if skip_warp_deploy:
         # Reuse existing warp deployment — recover token_mint from the
         # token-config.json state file written by the warp deployer job.
-        namespace = "laconic-hyperlane-svm-warp-deployer"
-        log.info("Reusing existing warp deployment (namespace: %s)", namespace)
-        token_config = bridge_state_loader.read_json("token-config.json")
-        token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
-        assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
-        log.info("Recovered token mint from state file: %s", token_mint)
-
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
-        deployment_id = get_deployment_id(deploy_dir)
-        yield {
-            "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir,
-                deployment_id=deployment_id,
-                namespace=namespace,
-            ),
-            "token_mint": token_mint,
-            "namespace": namespace,
-        }
-        return
+        if deployment_exists(deploy_dir):
+            namespace = "laconic-hyperlane-svm-warp-deployer"
+            log.info("Reusing existing warp deployment (namespace: %s)", namespace)
+            token_config = bridge_state_loader.read_json("token-config.json")
+            token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
+            assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
+            log.info("Recovered token mint from state file: %s", token_mint)
+            deployment_id = get_deployment_id(deploy_dir)
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir,
+                    deployment_id=deployment_id,
+                    namespace=namespace,
+                ),
+                "token_mint": token_mint,
+                "namespace": namespace,
+            }
+            return
+        log.info("--skip-warp-deploy set but %s missing — deploying fresh", deploy_dir)
 
     log.info("Creating and funding test SPL token on Solana...")
     deployer_keypair = str(KEYS_DIR / "deployer.json")
@@ -862,14 +868,16 @@ def _deploy_validator(
 
     if skip_validator:
         deploy_dir = DEPLOY_DIR / stack_name
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
-        yield ValidatorInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-            chain=chain,
-            wallet_id=wallet_id,
-        )
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
+            yield ValidatorInfo(
+                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                chain=chain,
+                wallet_id=wallet_id,
+            )
+            return
+        log.info("--skip-validator-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Generate and fund a chain signer key for the announce transaction.
     # This is a hot ed25519 key separate from the KMS-backed validator key.
@@ -990,12 +998,14 @@ def relayer_deployment(
 
     if skip_relayer:
         deploy_dir = DEPLOY_DIR / "hyperlane-relayer"
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
-        yield RelayerInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-        )
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
+            yield RelayerInfo(
+                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+            )
+            return
+        log.info("--skip-relayer-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Generate and fund chain signer keys for gorchain and solana
     gorchain_signer_key, gorchain_signer_addr = generate_chain_signer(
@@ -1161,21 +1171,23 @@ def gas_oracle_deployment(
 
     if skip_oracle:
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
-        # Read current oracle values from the running pod
-        oracle_values = {}
-        try:
-            oracle_values = _wait_for_oracle_update(namespace, deployment_id, timeout=30)
-        except TimeoutError:
-            log.warning("Could not read oracle values from running pod")
-        yield {
-            "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
-            ),
-            "oracle_values": oracle_values,
-        }
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
+            # Read current oracle values from the running pod
+            oracle_values = {}
+            try:
+                oracle_values = _wait_for_oracle_update(namespace, deployment_id, timeout=30)
+            except TimeoutError:
+                log.warning("Could not read oracle values from running pod")
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
+                ),
+                "oracle_values": oracle_values,
+            }
+            return
+        log.info("--skip-gas-oracle-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Read IGP program IDs from the deployer state files
     gorchain_program_ids = bridge_state_loader.read_program_ids("gorchain")
@@ -1329,47 +1341,49 @@ def monitoring_deployment(
 
     if skip_monitoring:
         deploy_dir = DEPLOY_DIR / "hyperlane-monitoring"
-        deployment_id = get_deployment_id(deploy_dir)
-        pod_name = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "get", "pods",
-                "-l", f"app={deployment_id}",
-                "-o", "jsonpath={.items[0].metadata.name}",
-            ],
-            capture_output=True, text=True, check=False,
-        ).stdout.strip()
-        assert pod_name, "Monitoring pod not found — cannot reuse deployment"
-        # Recover wallet labels from Prometheus metrics
-        wallet_labels = []
-        probe = subprocess.run(
-            ["curl", "-s",
-             f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
-            capture_output=True, text=True, check=False,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
-            import json as _json
-            try:
-                data = _json.loads(probe.stdout)
-                labels = {
-                    r["metric"].get("wallet")
-                    for r in data.get("data", {}).get("result", [])
-                    if r["metric"].get("wallet")
-                }
-                wallet_labels = sorted(labels)
-            except (ValueError, KeyError):
-                pass
-        log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
-        yield {
-            "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
-            ),
-            "namespace": namespace,
-            "pod_name": pod_name,
-            "expected_wallet_labels": wallet_labels,
-            "grafana_url": GRAFANA_URL,
-            "prometheus_url": PROMETHEUS_URL,
-        }
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            pod_name = subprocess.run(
+                [
+                    "kubectl", "-n", namespace, "get", "pods",
+                    "-l", f"app={deployment_id}",
+                    "-o", "jsonpath={.items[0].metadata.name}",
+                ],
+                capture_output=True, text=True, check=False,
+            ).stdout.strip()
+            assert pod_name, "Monitoring pod not found — cannot reuse deployment"
+            # Recover wallet labels from Prometheus metrics
+            wallet_labels = []
+            probe = subprocess.run(
+                ["curl", "-s",
+                 f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
+                capture_output=True, text=True, check=False,
+            )
+            if probe.returncode == 0 and probe.stdout.strip():
+                import json as _json
+                try:
+                    data = _json.loads(probe.stdout)
+                    labels = {
+                        r["metric"].get("wallet")
+                        for r in data.get("data", {}).get("result", [])
+                        if r["metric"].get("wallet")
+                    }
+                    wallet_labels = sorted(labels)
+                except (ValueError, KeyError):
+                    pass
+            log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
+                ),
+                "namespace": namespace,
+                "pod_name": pod_name,
+                "expected_wallet_labels": wallet_labels,
+                "grafana_url": GRAFANA_URL,
+                "prometheus_url": PROMETHEUS_URL,
+            }
+            return
+        log.info("--skip-monitoring-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Build wallet strings from keypairs
     wallet_string, wallet_labels = _build_wallet_string(keypairs)
@@ -1716,20 +1730,22 @@ def warp_ui_deployment(
 
     if skip_warp_ui:
         deploy_dir = DEPLOY_DIR / "hyperlane-warp-ui"
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
 
-        yield {
-            "deployment": DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-            "url": WARP_UI_URL,
-            "gorchain_mailbox": gorchain_mailbox,
-            "solana_mailbox": solana_mailbox,
-            "warp_collateral": warp_collateral,
-            "warp_synthetic": warp_synthetic,
-            "token_mint": token_mint,
-            "synthetic_mint": synthetic_mint,
-        }
-        return
+            yield {
+                "deployment": DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                "url": WARP_UI_URL,
+                "gorchain_mailbox": gorchain_mailbox,
+                "solana_mailbox": solana_mailbox,
+                "warp_collateral": warp_collateral,
+                "warp_synthetic": warp_synthetic,
+                "token_mint": token_mint,
+                "synthetic_mint": synthetic_mint,
+            }
+            return
+        log.info("--skip-warp-ui-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Patch the spec with runtime values
     content = WARP_UI_SPEC.read_text()

@@ -398,6 +398,11 @@ def stop_stack(stack_name: str, deploy_dir: Path | None = None) -> None:
 # ---------------------------------------------------------------------------
 # Deployment-id helpers
 # ---------------------------------------------------------------------------
+def deployment_exists(deploy_dir: Path) -> bool:
+    """True if deploy_dir holds a previously-created laconic-so deployment."""
+    return (deploy_dir / "deployment.yml").is_file()
+
+
 def get_deployment_id(deploy_dir: Path) -> str:
     deployment_yml = deploy_dir / "deployment.yml"
     if not deployment_yml.is_file():
