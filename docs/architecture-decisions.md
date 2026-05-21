@@ -557,42 +557,74 @@ Distribution: `BridgeStateLoader.populate(stack, deploy_dir)` (in `tests/e2e/lib
 
 Full design: `docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distribution-design.md`.
 
+The `kind-mount-root` umbrella mount also hosts Caddy's cert backup
+(`<kind_mount_root>/caddy-cert-backup/`), making it the single per-host
+directory for everything stateful — bridge state, warp deploy outputs, and
+TLS material.
+
 ---
 
 ## Kind Cluster Management
 
-**Decision (2026-05-20):** We bypass SO's built-in Kind cluster management today (`--skip-cluster-management`, now the SO default) and pre-create the cluster ourselves — in tests via a pytest fixture, in prod via ansible. We plan to revisit this in a focused follow-up PR.
+**Decision (2026-05-21, supersedes the 2026-05-20 bypass):** SO owns kind
+cluster lifecycle. Every `deploy_start` for a k8s-kind deployment passes
+`--perform-cluster-management`. SO's `create_cluster()` is single-cluster-per-host
+with reuse semantics, so whichever stack starts first on a host creates the
+cluster + installs the Caddy ingress controller; subsequent stacks no-op at
+the cluster level and proceed straight to their own k8s resources.
 
-**Original reason for bypassing:** Early SO versions tied cluster lifecycle to a single deployment — every `deployment start` tried to create the cluster, every `deployment stop` tried to destroy it. With 8 stacks sharing one cluster that pattern was unworkable, so we lifted cluster lifecycle out of SO.
+Three consequences flow from this:
 
-**Why this can be revisited:** SO's `create_cluster()` (`stack_orchestrator/deploy/k8s/helpers.py:385-409`) is now explicitly designed for the shared-cluster case: *"There is only one kind cluster per host by design. Multiple deployments share this cluster. If a cluster already exists, it is reused."* It also runs `check_mounts_compatible()` against the running cluster to catch deployments declaring incompatible `extraMounts`. The original failure mode is gone.
+1. **Every long-running stack spec declares `kind-mount-root` and `acme-email`.**
+   Any stack can be first on its host — particularly true in multi-machine
+   prod where ansible fans stacks out across machines. See the "Multi-Machine
+   Prod Principle" section below.
 
-**Cost of carrying the workaround:**
+2. **TLS termination is Caddy's job.** SO's `cluster_info.get_ingress()`
+   correctly skips emitting a `tls:` block on Kind (`deploy_k8s.py:916`) —
+   Caddy handles cert provisioning autonomously from the host names in
+   Ingress objects with class `caddy`. In prod, Caddy uses ACME via
+   `acme-email`. In dev tests, mkcert-generated certs are pre-loaded into
+   Caddy's `secret_store` at the fake-ACME path
+   (`<kind_mount_root>/caddy-cert-backup/caddy-secrets.yaml`); SO's
+   `_restore_caddy_certs()` loads them before Caddy starts, so Caddy serves
+   them without calling Let's Encrypt.
 
-- **No Caddy ingress controller in tests.** SO's `install_ingress_for_kind()` runs only on the `not skip_cluster_management` branch of `_setup_cluster()` (`deploy_k8s.py:887-894`). So Ingress objects emitted by any stack's `http-proxy:` config exist in our test cluster but are inert (no controller picks them up).
-- **Duplicated kind-config.** `tests/e2e/fixtures/kind-config.yaml` re-implements what SO's `generate_kind_config()` already produces (`helpers.py:1295-1341`): `ingress-ready=true` node label, hostPort 80/443 mappings for Caddy, and per-stack `extraMounts` derived from `kind-mount-root`.
-- **Manual cluster lifecycle code.** `tests/e2e/lib/cluster.py` mirrors logic SO would handle automatically.
+3. **Cert backups are per-host.** SO's auto-installed `caddy-cert-backup`
+   CronJob writes the current Caddy secret_store to
+   `<kind_mount_root>/caddy-cert-backup/` periodically, so restarting the
+   cluster restores certs (no re-ACME). In multi-machine prod, each host
+   maintains its own backup.
 
-**Switch plan (follow-up PR):**
+No cert-manager. No nginx-ingress. No hand-rolled Ingress in test code.
 
-1. Delete `tests/e2e/fixtures/kind-config.yaml`.
-2. Slim `tests/e2e/lib/cluster.py` — drop `create_kind_cluster`; keep `destroy_kind_cluster` for session teardown only.
-3. `deploy_start` passes `--perform-cluster-management`; the first stack creates the cluster, the rest reuse it.
-4. `deploy_stop` keeps the default `--skip-cluster-management`; the test fixture handles final `kind delete cluster` at session teardown (so an early stop doesn't kill the cluster mid-test).
-5. Prod ansible: same model — first `deployment start` (the SVM deployer) creates the cluster + Caddy; subsequent stacks reuse.
+---
 
-The first stack to start must declare the umbrella mount (`kind-mount-root: /srv/kind/hyperlane-bridge`) so the `/mnt` bind is active for everything else. The SVM deployer already does. All specs set `kind-cluster-name: hyperlane`, so all stacks resolve to the same kube context (`kind-hyperlane`).
+## Multi-Machine Prod Principle
 
-**Why this is its own PR:** The cluster-management switch is independent of state distribution. Bundling it would broaden this PR's scope and make any test regressions harder to isolate. The current PR retains the existing cluster-management posture verbatim.
+**Decision:** Every long-running stack spec is self-sufficient enough to
+bootstrap on its own host. No spec assumes "some other stack ran here first".
 
-**Coupled follow-up: route `.test` hostnames through SO's `http-proxy` instead of hand-rolled Ingress.** The test fixture (`tests/e2e/lib/cluster.py`) installs cert-manager, a self-signed `ClusterIssuer`, the nginx ingress controller, and `/etc/hosts` entries for `bridge.test`, `grafana.test`, `prometheus.test`. The conftest (`conftest.py:1485-1508`, `1897-1906`) currently uses that infrastructure by hand-constructing `Ingress` manifests with `ingressClassName: nginx`, pointing the backends at the auto-NodePort Services (`{deployment-id}-nodeport-{port}-tcp`) that SO emits from compose `ports:`. It works, but it's parallel plumbing: the test code reimplements what SO's `http-proxy:` spec key would emit declaratively.
+**Why:** Production fans stacks out across machines via ansible (see PR3 plan
+in the bridge-state design doc). On each host, whichever stack runs first
+triggers cluster creation + Caddy install via SO's `--perform-cluster-management`
+path. If a stack's spec is incomplete on the assumption that another stack
+would already be present, the deployment fails on hosts where it lands alone.
 
-Two pieces would let `http-proxy:` take over:
+**Concrete applications:**
 
-1. SO emits Ingress with `kubernetes.io/ingress.class: caddy` hardcoded (`cluster_info.py:278`). After switching to SO cluster management, Caddy is installed automatically; the nginx install in the fixture (and the manual Ingress manifests in conftest) can be removed.
-2. The test fixtures need `http-proxy:` entries for the `.test` hostnames plus a `cluster-issuer:` reference so SO requests certs from the self-signed issuer instead of Let's Encrypt. The ClusterIP Service that `http-proxy` auto-creates (`{deployment-id}-service`) then becomes the Ingress backend, and the related compose `ports:` declarations can be dropped to eliminate the unused NodePort Services.
+- Every long-running spec declares `kind-mount-root` and `acme-email`.
+- Every spec with externally-reachable HTTP endpoints declares
+  `network.http-proxy:`.
+- Cross-stack artifacts (deployer-produced state files, mkcert certs, cert
+  backups) live on disk under `kind-mount-root` and are populated by the
+  fixture (dev) or ansible (prod) — never assumed to come from a peer pod in
+  the same cluster.
 
-Bundling this with the cluster-management switch is natural — Caddy comes for free once SO owns the cluster, and the wiring is mechanical from there.
+This principle is what makes the bridge-state distribution model
+(`docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distribution-design.md`)
+sensible: each host's stacks read their inputs from local disk, not from peer
+namespaces.
 
 ---
 
