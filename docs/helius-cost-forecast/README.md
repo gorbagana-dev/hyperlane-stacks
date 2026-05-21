@@ -77,6 +77,10 @@ further cost-engineering should start there. See
 
 ## 4. Optimization levers (in priority order)
 
+Helius feature / credit-cost claims below sourced from
+<https://www.helius.dev/docs/billing/credits> and
+<https://www.helius.dev/pricing>.
+
 1. **Set agent polling intervals to 30s.** Already baked into the canonical
    scenario above. The single largest lever; ~6× cost reduction vs the 5s
    default. Latency cost: ~12-30s additional bridge-message latency under
@@ -97,8 +101,8 @@ further cost-engineering should start there. See
    0.1 MB. For PDAs that change rarely, dramatically cheaper than 5s/30s
    GPA polling. Requires a Sealevel indexer refactor in our fork; deferred
    until 2 + 3 are exhausted. Note: **LaserStream gRPC on mainnet is
-   Business-tier and up** — adopting this lever moves us off Developer
-   regardless of credit usage.
+   Business-tier and up** ([source](https://www.helius.dev/pricing)) —
+   adopting this lever moves us off Developer regardless of credit usage.
 
 5. **Helius account split per component.** Five API keys, one each for
    relayer / validator / gas-oracle / warp-UI / explorer. Enables per-
@@ -109,6 +113,8 @@ further cost-engineering should start there. See
 ---
 
 ## 5. Rate-limit headroom
+
+Source: <https://www.helius.dev/pricing>.
 
 Credit budget is one half of tier sizing; RPS limits are the other. Helius
 publishes a stricter per-method RPS for `getProgramAccounts` and
