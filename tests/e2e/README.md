@@ -61,6 +61,28 @@ echo $GHCR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 Without this, image pulls will fail with `unauthorized`. To build images locally instead, use the `--build-from-source` flag.
 
+## First-time machine setup
+
+These tests need `mkcert` to generate browser-trusted TLS certificates for the
+`*.test` hostnames Caddy serves. `mkcert -install` installs a root CA into your
+system + browser trust stores so `curl` / Playwright / Python `requests` don't
+need to disable cert verification.
+
+    # Linux (Ubuntu/Debian):
+    sudo apt-get install -y libnss3-tools
+    curl -L -o /tmp/mkcert \
+      https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+    sudo install /tmp/mkcert /usr/local/bin/mkcert
+
+    # macOS:
+    brew install mkcert nss
+
+    # One-time CA install (both platforms):
+    mkcert -install
+
+Remove with `mkcert -uninstall` later if needed; the generated cert files persist
+under the test state directory and are wiped on full teardown.
+
 ## Setup
 
 ```bash
@@ -138,7 +160,7 @@ tests/e2e/
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture
-│   ├── cluster.py                       # Kind cluster lifecycle, cert-manager, RBAC
+│   ├── cluster.py                       # Host prep: hosts entries, mkcert, kind network
 │   ├── chain.py                         # Solana/Gorchain node lifecycle
 │   ├── deploy.py                        # laconic-so deployment helpers
 │   ├── keygen.py                        # Keypair generation, funding, k8s secrets
@@ -146,7 +168,6 @@ tests/e2e/
 │   └── backpack.py                      # Backpack wallet extension helpers for Playwright
 └── fixtures/
     ├── kind-config.yaml                 # Kind cluster with ingress ports
-    ├── cert-manager-issuer.yaml         # Self-signed TLS issuer
     ├── test-spec-deployer.yml           # laconic-so spec for core deployer
     ├── test-spec-warp-deployer.yml      # laconic-so spec for warp deployer
     ├── test-spec-minio.yml              # laconic-so spec for MinIO
@@ -157,51 +178,33 @@ tests/e2e/
     └── test-spec-warp-ui.yml            # laconic-so spec for warp UI
 ```
 
-## Why custom cluster setup (not SO's cluster management)
+## TLS in tests
 
-The tests manage the Kind cluster lifecycle directly instead of letting
-`laconic-so` handle it via its built-in cluster management. SO now defaults
-to `--skip-cluster-management` (no cluster create/destroy on start/stop),
-which aligns with how the tests work. Here's why this design was chosen:
+Tests serve TLS via Caddy (same as prod). At session start the `host_prep`
+fixture:
 
-**Multiple stacks share one cluster.** The tests deploy 8+ stacks into a
-single Kind cluster with a shared namespace. With cluster management enabled,
-`deploy stop` on any single stack would call `destroy_cluster()` and tear down
-the entire cluster — destroying all other running stacks.
+1. Generates one multi-SAN cert with mkcert covering all `*.test` hostnames at
+   `<BRIDGE_STATE_ROOT>/local-certs/hyperlane.test.{crt,key}`.
+2. Writes a `caddy-secrets.yaml` to
+   `<BRIDGE_STATE_ROOT>/caddy-cert-backup/caddy-secrets.yaml` — one k8s Secret
+   per hostname at the fake-ACME path Caddy uses for its `secret_store`.
 
-**Ordering constraints.** The tests need the namespace, secrets, and RBAC
-to exist *before* `deploy start`. SO only creates the namespace during
-`deploy start`, which is too late for our setup sequence. Host-chain
-services (gorchain-rpc, solana-rpc, privy-mock) are now handled
-automatically by SO via the `external-services` spec key.
+When the first `deploy_start --perform-cluster-management` fires, SO creates
+the kind cluster and runs `install_ingress_for_kind`. Phase 2 of that install
+(`_restore_caddy_certs`) reads our `caddy-secrets.yaml` and creates the
+Secrets before Caddy starts. Caddy then serves them at request time without
+ever attempting ACME.
 
-**Ingress with TLS on Kind.** SO suppresses TLS on Kind clusters
-(`use_tls = not self.is_kind()`), so the Ingress it creates has no TLS config.
-SO also installs Caddy without `hostNetwork`, so it can't bind to Kind's
-mapped ports 80/443. The tests install nginx ingress controller (using the
-Kind-specific manifest which includes hostNetwork) and create TLS-enabled
-Ingress resources manually using cert-manager with a self-signed
-`letsencrypt-prod` ClusterIssuer (named to match SO's hardcoded default,
-so the same pattern works in production).
-
-**Wrong cluster selection.** SO's `get_kind_cluster()` returns the first
-cluster from `kind get clusters`, not by name. On machines with multiple Kind
-clusters, this could select the wrong one.
-
-**Image loading.** SO loads images listed in `stack.yml`'s `containers:` key
-during `deploy start`. The tests pre-load images at specific points in the
-fixture chain and the timing/naming may not match SO's expectations.
-
-**Production note:** On a real k8s cluster (`deploy-to: k8s`), SO's cluster
-management is a no-op. Pre-install an ingress controller and cert-manager with
-a `letsencrypt-prod` ClusterIssuer, and SO handles TLS ingress automatically.
+No cert-manager. No nginx-ingress. No `ClusterIssuer`. The TLS path matches
+prod (Caddy + ACME-shaped flow); only the cert source differs (mkcert in dev,
+Let's Encrypt in prod).
 
 ## How it works
 
 1. **Setup** creates a venv and installs Python dependencies (`requirements.txt`)
 2. **Image setup** uses published container images by default; pass `--build-from-source` to build locally (`deployer_image` fixture)
 3. **Keypair generation** creates test Ed25519 + secp256k1 keypairs (`keypairs` fixture)
-4. **Kind cluster** creates the cluster and installs cert-manager for TLS (`kind_cluster` fixture)
+4. **Host prep** adds /etc/hosts entries, ensures mkcert + Docker `kind` network exist, generates a multi-SAN cert, and writes Caddy's cert-backup file (`host_prep` fixture). The kind cluster + Caddy ingress controller are created later by SO at the first `deploy_start`.
 5. **Chain nodes** start a Solana test validator on the host (`chain_nodes` fixture)
 6. **MinIO deployment** deploys the checkpoint storage stack (`minio_deployment` fixture)
 7. **Mock Privy server** starts a local HTTP server that implements the Privy wallet signing API, used by the KMS proxy sidecar in validator pods (`privy_mock` fixture)
