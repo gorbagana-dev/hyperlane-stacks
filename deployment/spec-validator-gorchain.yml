@@ -21,13 +21,18 @@ resources:
         storage: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
+# Before deploying, place the keyfile on the host:
+#   ~/secrets/hyperlane/validator-gorchain.key (hex-encoded validator signing key)
+# and export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 secrets:
   hyperlane-validator-secrets:
-    - PRIVY_APP_ID
-    - PRIVY_APP_SECRET
-    - AWS_ACCESS_KEY_ID
-    - AWS_SECRET_ACCESS_KEY
-    - HYP_DEFAULTSIGNER_KEY
+    keys:
+      HYP_DEFAULTSIGNER_KEY:  { file: ~/secrets/hyperlane/validator-gorchain.key }
+      PRIVY_APP_ID:           { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID:      { env: AWS_ACCESS_KEY_ID }
+      AWS_SECRET_ACCESS_KEY:  { env: AWS_SECRET_ACCESS_KEY }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

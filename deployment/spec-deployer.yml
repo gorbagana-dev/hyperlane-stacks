@@ -24,19 +24,19 @@ config:
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
   FORCE_REDEPLOY: "false"
+# Before deploying, place the keyfile on the host:
+#   ~/secrets/hyperlane/deployer-keypair.json (Solana keypair JSON array)
+# and export these env vars in the shell that runs `laconic-so`:
+#   HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY,
+#   GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
 secrets:
-  # Create before deploying: kubectl create secret generic hyperlane-deployer-secrets \
-  #   --from-literal=DEPLOYER_KEYPAIR='[<byte array>]' \
-  #   --from-literal=HARDWARE_WALLET_PUBKEY='<pubkey>' \
-  #   --from-literal=IGP_ORACLE_PUBKEY='<pubkey>' \
-  #   --from-literal=GORCHAIN_VALIDATOR_ADDRESS='<H160 address>' \
-  #   --from-literal=SOLANA_VALIDATOR_ADDRESS='<H160 address>'
   hyperlane-deployer-secrets:
-    - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
-    - IGP_ORACLE_PUBKEY
-    - GORCHAIN_VALIDATOR_ADDRESS
-    - SOLANA_VALIDATOR_ADDRESS
+    keys:
+      DEPLOYER_KEYPAIR:           { file: ~/secrets/hyperlane/deployer-keypair.json }
+      HARDWARE_WALLET_PUBKEY:     { env: HARDWARE_WALLET_PUBKEY }
+      IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
+      GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
+      SOLANA_VALIDATOR_ADDRESS:   { env: SOLANA_VALIDATOR_ADDRESS }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

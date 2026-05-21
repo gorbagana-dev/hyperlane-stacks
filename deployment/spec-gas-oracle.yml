@@ -54,11 +54,14 @@ config:
   # CoinGecko token IDs for price lookups.
   # GORCHAIN_TOKEN_ID: "gorbagana"   # sGOR token (default)
   # SOLANA_TOKEN_ID: "solana"         # SOL token (default)
+# Before deploying, export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_ORACLE_WALLET_ID
 secrets:
   hyperlane-gas-oracle-secrets:
-    - PRIVY_APP_ID              # Privy application ID
-    - PRIVY_APP_SECRET          # Privy application secret
-    - PRIVY_ORACLE_WALLET_ID    # Privy server wallet ID (Ed25519, IGP account owner)
+    keys:
+      PRIVY_APP_ID:            { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:        { env: PRIVY_APP_SECRET }
+      PRIVY_ORACLE_WALLET_ID:  { env: PRIVY_ORACLE_WALLET_ID }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

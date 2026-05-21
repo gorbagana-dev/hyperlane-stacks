@@ -18,7 +18,10 @@ network:
       routes:
         - path: /
           proxy-to: minio:9001
+# Before deploying, export these env vars in the shell that runs `laconic-so`:
+#   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
 secrets:
   hyperlane-minio-secrets:
-    - MINIO_ROOT_USER
-    - MINIO_ROOT_PASSWORD
+    keys:
+      MINIO_ROOT_USER:     { env: MINIO_ROOT_USER }
+      MINIO_ROOT_PASSWORD: { env: MINIO_ROOT_PASSWORD }
