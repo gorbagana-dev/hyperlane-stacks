@@ -12,12 +12,18 @@ Source: <https://www.helius.dev/pricing>, <https://www.helius.dev/docs/billing/c
 
 ### 1.1 Tiers
 
-| Tier | $/month | Credits/month | RPC RPS | DAS RPS |
-|---|---|---|---|---|
-| Free | 0 | 1 M | 10 | 2 |
-| Developer | 49 | 10 M | 50 | 10 |
-| Business | 499 | 100 M | 200 | 50 |
-| Professional | 999 | 200 M | 500 | 100 |
+| Tier | $/month | Credits/month | RPC RPS | GPA RPS | sendTx RPS | DAS RPS | LaserStream gRPC mainnet |
+|---|---|---|---|---|---|---|---|
+| Free | 0 | 1 M | 10 | 5 | 1 | 2 | devnet only |
+| Developer | 49 | 10 M | 50 | **25** | 5 | 10 | devnet only |
+| Business | 499 | 100 M | 200 | 50 | 50 | 50 | included |
+| Professional | 999 | 200 M | 500 | 75 | 100 | 100 | included |
+
+`getProgramAccounts` and `sendTransaction` have their own RPS ceilings,
+separate from (and stricter than) the general RPC RPS. Business also
+includes Sender at 50 TPS and `sendBundle` at 5/sec. See
+[README §5](./README.md#5-rate-limit-headroom) for how these limits
+interact with our workload.
 
 ### 1.2 Credit cost per method (the ones relevant to us)
 

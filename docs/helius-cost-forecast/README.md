@@ -96,17 +96,60 @@ further cost-engineering should start there. See
 4. **LaserStream or programSubscribe for mailbox state.** 2 credits per
    0.1 MB. For PDAs that change rarely, dramatically cheaper than 5s/30s
    GPA polling. Requires a Sealevel indexer refactor in our fork; deferred
-   until 2 + 3 are exhausted.
+   until 2 + 3 are exhausted. Note: **LaserStream gRPC on mainnet is
+   Business-tier and up** — adopting this lever moves us off Developer
+   regardless of credit usage.
 
 5. **Helius account split per component.** Five API keys, one each for
    relayer / validator / gas-oracle / warp-UI / explorer. Enables per-
    component dashboards in Helius (no per-key surcharge on Developer+).
-   Worth setting up before launch even before we calibrate, so the §5
-   calibration step works.
+   Worth setting up before launch even before we calibrate, so the
+   [calibration procedure](./calibration-and-comparison.md) works.
 
 ---
 
-## 5. Tier recommendation
+## 5. Rate-limit headroom
+
+Credit budget is one half of tier sizing; RPS limits are the other. Helius
+publishes a stricter per-method RPS for `getProgramAccounts` and
+`sendTransaction` than for general RPC, so the recommended tier needs to
+be checked against the actual peak RPS we expect, not just steady-state.
+
+**Per-tier limits relevant to this workload:**
+
+| Limit | Developer | Business |
+|---|---|---|
+| General RPC RPS | 50 | 200 |
+| `getProgramAccounts` RPS | **25** | **50** |
+| `sendTransaction` RPS | 5 | 50 |
+| Sender TPS | — | 50 |
+| LaserStream gRPC (mainnet) | not available (devnet only) | included |
+
+**Our peak RPS by source:**
+
+- **Relayer GPA polling (steady-state):** 2 calls per 30s = 0.07 RPS.
+  ~350× under Developer's 25-RPS ceiling. The only realistic burst is
+  catchup after a multi-hour outage, where the indexer walks queued
+  nonces at 1 GPA per message. With 200 backlogged messages on Developer,
+  catchup saturates the 25-RPS limit for ~8 seconds; Helius returns 429s
+  and the indexer backs off. Acceptable.
+- **Warp-UI concurrent user clicks:** ~6 calls/click over ~2 seconds
+  ≈ 3 RPS per simultaneous user. Developer's 50-RPS general limit gives
+  ~16 simultaneous bridge clicks before rate-limiting. Sufficient for
+  low-to-moderate traffic; insufficient for a viral surge.
+- **`sendTransaction`:** under 0.05 RPS average even at the Heavy
+  (1k tx/day) scenario; relayer submits serially with confirmations,
+  so bursts stay below Developer's 5-RPS ceiling.
+
+**Verdict:** **Developer satisfies our RPS needs** in the canonical, moderate,
+and heavy scenarios. Business is needed if any of: we adopt LaserStream;
+sustained concurrent warp-UI users exceed ~15; or we want headroom for an
+unannounced traffic spike. Professional adds nothing for our workload —
+its differentiator over Business is throughput we won't use.
+
+---
+
+## 6. Tier recommendation
 
 **Provision Helius Developer ($49/month).** Apply the 30s polling
 configuration in the agent generation script before launch.
@@ -116,6 +159,9 @@ configuration in the agent generation script before launch.
 - Sustained measured usage > 8 M credits/month (80 % of Developer ceiling)
   over two consecutive weeks.
 - Sustained bridge volume > 5,000 tx/day, or
+- Sustained concurrent warp-UI users > ~15 (RPS pressure), or
+- Adoption of LaserStream / programSubscribe-based indexing (mainnet
+  requires Business), or
 - Adding a second high-volume Helius consumer (expanded explorer features,
   new product line).
 
@@ -125,7 +171,7 @@ under the Stress scenario.
 
 ---
 
-## 6. Key assumptions
+## 7. Key assumptions
 
 These were investigated and resolved while building this estimate
 (citations in [`rpc-inventory.md`](./rpc-inventory.md)):
@@ -154,7 +200,7 @@ Items that still need a product/business input rather than code:
 
 ---
 
-## 7. Next steps
+## 8. Next steps
 
 - **Before launch:** set agent polling intervals to 30s; provision a
   Helius Developer account with per-component API keys.
