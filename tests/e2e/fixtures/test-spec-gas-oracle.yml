@@ -1,5 +1,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
+image-overrides:
+  gas-oracle: REPLACE_GAS_ORACLE_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 acme-email: e2e@example.test

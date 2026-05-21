@@ -1,5 +1,8 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+image-overrides:
+  validator: REPLACE_AGENT_IMAGE
+  kms-proxy: REPLACE_KMS_PROXY_IMAGE
 namespace: laconic-hyperlane-validator-gorchain
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e

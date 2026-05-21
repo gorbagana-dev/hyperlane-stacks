@@ -43,7 +43,15 @@ from lib.common import (
     wait_for_pod_phase,
 )
 from lib.deploy import (
+    AGENT_IMAGE,
+    AGENT_IMAGE_LOCAL,
     DEPLOY_DIR,
+    DEPLOYER_IMAGE,
+    GAS_ORACLE_IMAGE,
+    KMS_PROXY_IMAGE,
+    KMS_PROXY_IMAGE_LOCAL,
+    WARP_UI_IMAGE,
+    WARP_UI_IMAGE_LOCAL,
     DeploymentInfo,
     build_agent_image,
     build_warp_ui_image,
@@ -108,6 +116,30 @@ SPEC_REPLACEMENTS = {}
 # `kind-mount-root: /tmp/hyperlane-bridge-e2e`; SO generates the kind-config
 # from that value and validates live-cluster binds via check_mounts_compatible().
 BRIDGE_STATE_ROOT = Path("/tmp/hyperlane-bridge-e2e")
+
+
+def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
+    """Return REPLACE_*_IMAGE placeholder values for the image-overrides: spec key.
+
+    SO preloads these images into the kind cluster at every
+    deploy_start --perform-cluster-management (filtered to host-Docker-available).
+    build_from_source switches to :local tags for stacks that have a local build path.
+    """
+    if build_from_source:
+        return {
+            "REPLACE_DEPLOYER_IMAGE": DEPLOYER_IMAGE,
+            "REPLACE_AGENT_IMAGE": AGENT_IMAGE_LOCAL,
+            "REPLACE_KMS_PROXY_IMAGE": KMS_PROXY_IMAGE_LOCAL,
+            "REPLACE_WARP_UI_IMAGE": WARP_UI_IMAGE_LOCAL,
+            "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
+        }
+    return {
+        "REPLACE_DEPLOYER_IMAGE": DEPLOYER_IMAGE,
+        "REPLACE_AGENT_IMAGE": AGENT_IMAGE,
+        "REPLACE_KMS_PROXY_IMAGE": KMS_PROXY_IMAGE,
+        "REPLACE_WARP_UI_IMAGE": WARP_UI_IMAGE,
+        "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
+    }
 
 
 @pytest.fixture(scope="session")
@@ -306,6 +338,7 @@ def host_prep(
     ensure_kind_network()
     host_ip = get_host_ip()
     SPEC_REPLACEMENTS["REPLACE_HOST_IP"] = host_ip
+    SPEC_REPLACEMENTS.update(_resolve_image_refs(request.config.getoption("--build-from-source")))
 
     yield
 

@@ -1,5 +1,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
+image-overrides:
+  warp-ui: REPLACE_WARP_UI_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 acme-email: e2e@example.test

@@ -1,5 +1,8 @@
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
+image-overrides:
+  relayer: REPLACE_AGENT_IMAGE
+  igp-fee-claim: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 acme-email: e2e@example.test

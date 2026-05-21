@@ -2,6 +2,11 @@
 # Prometheus, Grafana, Pushgateway, and balance monitoring.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
+image-overrides:
+  prometheus: prom/prometheus:latest
+  pushgateway: prom/pushgateway:latest
+  grafana: grafana/grafana:latest
+  balance-monitor: python:3.12-alpine
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 acme-email: e2e@example.test
