@@ -31,3 +31,13 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+network:
+  http-proxy:
+    - host-name: grafana.test
+      routes:
+        - path: /
+          proxy-to: grafana:3000
+    - host-name: prometheus.test
+      routes:
+        - path: /
+          proxy-to: prometheus:9090

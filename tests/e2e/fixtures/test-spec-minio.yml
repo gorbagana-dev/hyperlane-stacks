@@ -18,3 +18,9 @@ secrets:
   hyperlane-minio-secrets:
     - MINIO_ROOT_USER
     - MINIO_ROOT_PASSWORD
+network:
+  http-proxy:
+    - host-name: minio-console.test
+      routes:
+        - path: /
+          proxy-to: minio:9001

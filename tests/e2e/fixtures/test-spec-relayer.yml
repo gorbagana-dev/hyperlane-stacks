@@ -53,3 +53,9 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+network:
+  http-proxy:
+    - host-name: relayer.test
+      routes:
+        - path: /
+          proxy-to: relayer:9091

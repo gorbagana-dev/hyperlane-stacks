@@ -53,3 +53,9 @@ external-services:
   privy-mock:
     ip: REPLACE_HOST_IP
     port: 19876
+network:
+  http-proxy:
+    - host-name: validator-gorchain.test
+      routes:
+        - path: /
+          proxy-to: validator:9090

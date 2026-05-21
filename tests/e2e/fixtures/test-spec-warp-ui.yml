@@ -34,3 +34,9 @@ resources:
       limits:
         cpus: "0.5"
         memory: 512M
+network:
+  http-proxy:
+    - host-name: bridge.test
+      routes:
+        - path: /
+          proxy-to: warp-ui:3000
