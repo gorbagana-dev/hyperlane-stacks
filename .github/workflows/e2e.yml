@@ -71,6 +71,15 @@ jobs:
       - name: Install Foundry (cast)
         uses: foundry-rs/foundry-toolchain@v1
 
+      - name: Install mkcert
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3-tools
+          curl -L -o /tmp/mkcert \
+            https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+          sudo install /tmp/mkcert /usr/local/bin/mkcert
+          mkcert -install
+
       - name: Run E2E tests
         env:
           GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
