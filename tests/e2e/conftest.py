@@ -20,7 +20,6 @@ from lib.chain import (
     stop_solana_test_validator,
 )
 from lib.cluster import (
-    KIND_CLUSTER_NAME,
     TEST_HOSTNAMES,
     create_namespace,
     destroy_kind_cluster,
@@ -103,14 +102,11 @@ PRIVY_MOCK_PORT = 19876
 # Spec placeholder replacements shared across e2e test specs. Each stack uses
 # its own namespace (derived by SO as laconic-{stack_name}) but all share the
 # same kind cluster.
-SPEC_REPLACEMENTS = {
-    "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
-}
+SPEC_REPLACEMENTS = {}
 
-# Fixed host path bound to /mnt inside the kind node. Must match the
-# extraMounts.hostPath value in tests/e2e/fixtures/kind-config.yaml — SO
-# validates the live cluster's binds against each deployer's generated
-# kind-config at `deploy start`.
+# Fixed host path bound to /mnt inside the kind node. Every spec declares
+# `kind-mount-root: /tmp/hyperlane-bridge-e2e`; SO generates the kind-config
+# from that value and validates live-cluster binds via check_mounts_compatible().
 BRIDGE_STATE_ROOT = Path("/tmp/hyperlane-bridge-e2e")
 
 

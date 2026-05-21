@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.e2e.lib.cluster import write_caddy_cert_backup
+from lib.cluster import write_caddy_cert_backup
 
 
 def test_write_caddy_cert_backup_writes_one_secret_per_hostname(tmp_path: Path):

@@ -4,8 +4,8 @@ Verifies Prometheus scraping, Grafana provisioning, Pushgateway metrics flow,
 and balance monitor operation with real wallet addresses.
 
 Grafana and Prometheus are accessed via TLS ingress (grafana.test,
-prometheus.test) using self-signed certificates, matching the production
-ingress pattern.
+prometheus.test) using mkcert-trusted certificates (matches the prod Caddy
++ ACME flow with the cert source swapped).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def _prometheus_query(prometheus_url: str, query: str) -> list[dict]:
     """Run a PromQL instant query via ingress and return the result vector."""
     result = subprocess.run(
         [
-            "curl", "-s", "-k",
+            "curl", "-s",
             f"{prometheus_url}/api/v1/query?query={quote(query)}",
         ],
         capture_output=True, text=True, timeout=30,
@@ -48,7 +48,7 @@ def _grafana_api(
     """Call a Grafana API endpoint via ingress with Basic auth."""
     result = subprocess.run(
         [
-            "curl", "-s", "-k",
+            "curl", "-s",
             "-u", f"admin:{GRAFANA_ADMIN_PASSWORD}",
             f"{grafana_url}{path}",
         ],
@@ -90,7 +90,7 @@ class TestMonitoring:
         prom_url = monitoring_deployment["prometheus_url"]
 
         result = subprocess.run(
-            ["curl", "-s", "-k", f"{prom_url}/-/healthy"],
+            ["curl", "-s", f"{prom_url}/-/healthy"],
             capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 0, (
@@ -147,7 +147,7 @@ class TestMonitoring:
         grafana_url = monitoring_deployment["grafana_url"]
 
         result = subprocess.run(
-            ["curl", "-s", "-k", f"{grafana_url}/api/health"],
+            ["curl", "-s", f"{grafana_url}/api/health"],
             capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 0, (

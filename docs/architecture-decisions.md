@@ -408,7 +408,7 @@ User is responsible for the security of their RPC endpoints (TLS, authentication
 **Decision:** Expose via k8s Ingress with TLS termination.
 
 - Validator metrics (port 9090) and relayer metrics (port 9091) exposed via Ingress
-- TLS termination via cert-manager or similar (part of the Kind cluster config)
+- TLS termination via Caddy (SO's ingress controller; see "Kind Cluster Management" section below)
 - Access control via Ingress annotations or network policies
 
 ---
