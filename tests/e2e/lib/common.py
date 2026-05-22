@@ -290,6 +290,41 @@ def wait_for_rpc_health(url: str, timeout: int = 120) -> None:
     log_info(f"RPC at {url} is healthy")
 
 
+def wait_for_rpc_accounts_ready(url: str, timeout: int = 120) -> None:
+    """Wait until the RPC node can serve account queries (ledger replay done).
+
+    agave-validator returns /health OK while still replaying its ledger.
+    Polling getAccountInfo for the system program confirms that accounts are
+    actually queryable before tests try to look up deployed programs.
+    """
+    import json as _json
+
+    system_program = "11111111111111111111111111111111"
+    payload = _json.dumps({
+        "jsonrpc": "2.0", "id": 1,
+        "method": "getAccountInfo",
+        "params": [system_program, {"encoding": "base64"}],
+    })
+
+    def _check() -> bool:
+        result = run_cmd(
+            ["curl", "-sf", "-X", "POST",
+             "-H", "Content-Type: application/json",
+             "-d", payload, url],
+            check=False, quiet=True,
+        )
+        if result.returncode != 0:
+            return False
+        try:
+            resp = _json.loads(result.stdout)
+            return resp.get("result", {}).get("value") is not None
+        except Exception:
+            return False
+
+    wait_for(_check, timeout=timeout, interval=5, description=f"RPC accounts ready at {url}")
+    log_info(f"RPC at {url} is serving accounts")
+
+
 def wait_for_configmap(namespace: str, name: str, timeout: int = 120) -> None:
     log_info(f"Waiting for ConfigMap {name} in {namespace} (timeout {timeout}s)...")
 

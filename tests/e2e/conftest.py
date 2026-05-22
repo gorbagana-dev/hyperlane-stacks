@@ -41,6 +41,8 @@ from lib.common import (
     save_pod_logs,
     wait_for_job_complete,
     wait_for_pod_phase,
+    wait_for_rpc_accounts_ready,
+    wait_for_rpc_health,
 )
 from lib.deploy import (
     AGENT_IMAGE,
@@ -364,6 +366,19 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
                 "Solana test validator not running on :18899. "
                 "Cannot use --skip-chain-setup without a running validator "
                 "(it preserves state across pytest runs via start_new_session).",
+                returncode=1,
+            )
+        # Gorchain may have restarted (crash, docker daemon restart, etc.).
+        # /health returns OK during ledger replay; wait for accounts too.
+        log.info("Waiting for gorchain RPC and accounts to be ready...")
+        try:
+            wait_for_rpc_health("http://localhost:8899", timeout=120)
+            wait_for_rpc_accounts_ready("http://localhost:8899", timeout=120)
+            log.info("Gorchain is ready")
+        except TimeoutError as e:
+            pytest.exit(
+                f"Gorchain not ready on :8899 after 120s: {e}. "
+                "Start gorchain before using --skip-chain-setup.",
                 returncode=1,
             )
 
