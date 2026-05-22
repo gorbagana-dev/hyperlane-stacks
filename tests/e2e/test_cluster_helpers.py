@@ -19,17 +19,29 @@ def test_write_caddy_cert_backup_writes_one_secret_per_hostname(tmp_path: Path):
     doc = yaml.safe_load(out.read_text())
     assert doc["kind"] == "List"
     items = doc["items"]
-    assert len(items) == 2
-    names = {d["metadata"]["name"] for d in items}
-    assert names == {
-        "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory--a.test",
-        "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory--b.test",
-    }
-    for d in items:
-        assert d["metadata"]["namespace"] == "caddy-system"
-        assert d["type"] == "Opaque"
-        assert base64.b64decode(d["data"]["tls.crt"]) == b"CERT-CONTENT"
-        assert base64.b64decode(d["data"]["tls.key"]) == b"KEY-CONTENT"
+    # 3 secrets per hostname (crt, key, json) × 2 hostnames = 6
+    assert len(items) == 6
+
+    prefix = "caddy.ingress--certificates.acme-v02.api.letsencrypt.org-directory"
+    issuer = "certificates/acme-v02.api.letsencrypt.org-directory"
+    by_name = {d["metadata"]["name"]: d for d in items}
+
+    for host in ("a.test", "b.test"):
+        for ext in ("crt", "key", "json"):
+            name = f"{prefix}.{host}.{host}.{ext}"
+            assert name in by_name, f"missing secret {name}"
+            d = by_name[name]
+            assert d["metadata"]["namespace"] == "caddy-system"
+            assert d["metadata"]["labels"] == {"manager": "caddy"}
+            assert d["metadata"]["annotations"]["certmagic.io/storage-key"] == (
+                f"{issuer}/{host}/{host}.{ext}"
+            )
+            assert d["type"] == "Opaque"
+            assert set(d["data"].keys()) == {"value"}
+
+    assert base64.b64decode(by_name[f"{prefix}.a.test.a.test.crt"]["data"]["value"]) == b"CERT-CONTENT"
+    assert base64.b64decode(by_name[f"{prefix}.a.test.a.test.key"]["data"]["value"]) == b"KEY-CONTENT"
+    assert base64.b64decode(by_name[f"{prefix}.a.test.a.test.json"]["data"]["value"]) == b"{}"
 
 
 def test_write_caddy_cert_backup_creates_parent_dirs(tmp_path: Path):

@@ -104,34 +104,45 @@ CADDY_SECRET_PREFIX = (
 )
 CADDY_NAMESPACE = "caddy-system"
 
+# Certmagic storage path prefix for ACME LE certs (before cleanKey encoding).
+_CERTMAGIC_ISSUER_PATH = "certificates/acme-v02.api.letsencrypt.org-directory"
+
 
 def write_caddy_cert_backup(
     backup_path: Path, cert_path: Path, key_path: Path, hostnames: list[str]
 ) -> None:
-    """Render caddy-secrets.yaml with one k8s Secret per hostname referencing
-    the same cert+key, formatted for SO's _restore_caddy_certs to load before
-    Caddy starts.
+    """Render caddy-secrets.yaml with 3 k8s Secrets per hostname (.crt, .key, .json)
+    matching caddy-ingress SecretStorage format, for SO's _restore_caddy_certs to
+    pre-seed before Caddy starts.
 
-    SO's _restore_caddy_certs reads this with yaml.safe_load and pulls items
-    from a kind: List wrapper (matches the cert-backup CronJob's
-    `kubectl get -o yaml` output). Multi-document YAML is silently ignored.
+    Secret name:  caddy.ingress--{cleanKey(certmagic_path)} — special chars → '.'
+    Data key:     value                (SecretStorage.Store uses this key)
+    Label:        manager=caddy        (backup CronJob selector)
+    Annotation:   certmagic.io/storage-key=<original path>  (List/Stat correctness)
+
+    The same multi-SAN mkcert cert (covering all hostnames) is stored under
+    each hostname's .crt and .key secrets.
     """
     cert_b64 = base64.b64encode(cert_path.read_bytes()).decode("ascii")
     key_b64 = base64.b64encode(key_path.read_bytes()).decode("ascii")
+    json_b64 = base64.b64encode(b"{}").decode("ascii")
 
-    items = [
-        {
-            "apiVersion": "v1",
-            "kind": "Secret",
-            "metadata": {
-                "name": f"{CADDY_SECRET_PREFIX}--{host}",
-                "namespace": CADDY_NAMESPACE,
-            },
-            "type": "Opaque",
-            "data": {"tls.crt": cert_b64, "tls.key": key_b64},
-        }
-        for host in hostnames
-    ]
+    items = []
+    for host in hostnames:
+        for ext, data_b64 in (("crt", cert_b64), ("key", key_b64), ("json", json_b64)):
+            original_key = f"{_CERTMAGIC_ISSUER_PATH}/{host}/{host}.{ext}"
+            items.append({
+                "apiVersion": "v1",
+                "kind": "Secret",
+                "metadata": {
+                    "name": f"{CADDY_SECRET_PREFIX}.{host}.{host}.{ext}",
+                    "namespace": CADDY_NAMESPACE,
+                    "labels": {"manager": "caddy"},
+                    "annotations": {"certmagic.io/storage-key": original_key},
+                },
+                "type": "Opaque",
+                "data": {"value": data_b64},
+            })
 
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml as _yaml
