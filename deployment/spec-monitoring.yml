@@ -3,6 +3,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane-bridge
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
@@ -13,12 +14,13 @@ config:
   BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
   BALANCE_CHECK_INTERVAL: "300"
 network:
+  acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: grafana.example.com
+    - host-name: grafana.bridge.gorbagana.wtf
       routes:
         - path: /
           proxy-to: grafana:3000
-    - host-name: prometheus.example.com
+    - host-name: prometheus.bridge.gorbagana.wtf
       routes:
         - path: /
           proxy-to: prometheus:9090
@@ -39,9 +41,12 @@ configmaps:
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
   grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
+# Before deploying, export this env var in the shell that runs `laconic-so`:
+#   GF_SECURITY_ADMIN_PASSWORD
 secrets:
   hyperlane-monitoring-secrets:
-    - GF_SECURITY_ADMIN_PASSWORD
+    keys:
+      GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   prometheus: prom/prometheus:v2.53.0

@@ -2,7 +2,13 @@
 # Prometheus, Grafana, Pushgateway, and balance monitoring.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
+image-overrides:
+  prometheus: prom/prometheus:latest
+  pushgateway: prom/pushgateway:latest
+  grafana: grafana/grafana:latest
+  balance-monitor: python:3.12-alpine
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
@@ -21,7 +27,8 @@ configmaps:
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
 secrets:
   hyperlane-monitoring-secrets:
-    - GF_SECURITY_ADMIN_PASSWORD
+    keys:
+      GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
 external-services:
   gorchain-rpc:
     ip: REPLACE_HOST_IP
@@ -29,3 +36,14 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: grafana.test
+      routes:
+        - path: /
+          proxy-to: grafana:3000
+    - host-name: prometheus.test
+      routes:
+        - path: /
+          proxy-to: prometheus:9090

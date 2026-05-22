@@ -1,7 +1,7 @@
 """Phase 4 — Tier 1: Warp UI HTTP smoke tests.
 
 Validates the warp-ui pod is healthy and serves correctly configured content
-via TLS ingress (nginx + cert-manager self-signed certificate).
+via Caddy TLS ingress (mkcert-trusted certificate).
 """
 
 import logging
@@ -14,7 +14,6 @@ log = logging.getLogger(__name__)
 
 # DNS resolution is handled by /etc/hosts (bridge.test -> 127.0.0.1),
 # added by ensure_hosts_entry() during cluster setup.
-# -k: accept self-signed certificate from cert-manager.
 
 SENTINELS = [
     "__GORCHAIN_RPC_URL__",
@@ -34,11 +33,11 @@ SENTINELS = [
 def _curl_warp_ui(url: str, path: str = "/") -> subprocess.CompletedProcess[str]:
     """Fetch a path from the warp-ui via TLS ingress.
 
-    Uses -s (silent) and -k (insecure for self-signed certs) but NOT -f,
-    so we always get the response body for debugging.
+    Uses -s (silent) but NOT -f, so we always get the response body for
+    debugging. No -k needed: mkcert CA is trusted by the host.
     """
     return subprocess.run(
-        ["curl", "-s", "-k", "-w", "\n%{http_code}", f"{url}{path}"],
+        ["curl", "-s", "-w", "\n%{http_code}", f"{url}{path}"],
         capture_output=True, text=True, check=False,
     )
 
@@ -74,21 +73,21 @@ class TestWarpUI:
         assert result.stdout.strip() == "Running"
 
     def test_warp_ui_tls_ingress(self, warp_ui_deployment: dict) -> None:
-        """Verify TLS ingress serves the warp-ui with a valid cert-manager certificate."""
+        """Verify TLS ingress serves the warp-ui with a valid mkcert-trusted certificate."""
         url = warp_ui_deployment["url"]
 
-        # Verify HTTPS works (with self-signed cert)
+        # Verify HTTPS works
         result = _curl_warp_ui(url)
         _assert_curl_ok(result)
 
-        # Verify the certificate was issued by cert-manager
+        # Verify TLS certificate info is present
         cert_result = subprocess.run(
-            ["curl", "-vk", url + "/", "-o", "/dev/null"],
+            ["curl", "-v", url + "/", "-o", "/dev/null"],
             capture_output=True, text=True, check=False,
         )
         # curl -v prints cert info to stderr
         cert_info = cert_result.stderr
-        assert "SSL certificate" in cert_info or "subject:" in cert_info, (
+        assert "SSL certificate" in cert_info or "subject:" in cert_info or "issuer:" in cert_info, (
             "No TLS certificate info in curl output"
         )
         log.info("TLS ingress verified at %s", url)

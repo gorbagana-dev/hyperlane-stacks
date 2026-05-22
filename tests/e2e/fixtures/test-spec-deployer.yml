@@ -1,7 +1,11 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
-kind-mount-root: REPLACE_KIND_MOUNT_ROOT
+image-overrides:
+  deployer: REPLACE_DEPLOYER_IMAGE
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
+network:
+  acme-email: e2e@example.test
 volumes:
   bridge-state: REPLACE_KIND_MOUNT_ROOT/generated
   bridge-logs: REPLACE_KIND_MOUNT_ROOT/logs
@@ -31,11 +35,12 @@ resources:
         memory: 1G
 secrets:
   hyperlane-deployer-secrets:
-    - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
-    - IGP_ORACLE_PUBKEY
-    - GORCHAIN_VALIDATOR_ADDRESS
-    - SOLANA_VALIDATOR_ADDRESS
+    keys:
+      DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
+      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      IGP_ORACLE_PUBKEY: { env: IGP_ORACLE_PUBKEY }
+      GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
+      SOLANA_VALIDATOR_ADDRESS: { env: SOLANA_VALIDATOR_ADDRESS }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

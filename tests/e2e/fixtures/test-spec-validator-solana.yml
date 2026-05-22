@@ -1,7 +1,11 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+image-overrides:
+  validator: REPLACE_AGENT_IMAGE
+  kms-proxy: REPLACE_KMS_PROXY_IMAGE
 namespace: laconic-hyperlane-validator-solana
-kind-cluster-name: REPLACE_KIND_CLUSTER
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana
@@ -32,11 +36,12 @@ configmaps:
   agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-validator-solana-secrets:
-    - PRIVY_APP_ID
-    - PRIVY_APP_SECRET
-    - AWS_ACCESS_KEY_ID
-    - AWS_SECRET_ACCESS_KEY
-    - HYP_DEFAULTSIGNER_KEY
+    keys:
+      PRIVY_APP_ID: { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET: { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID: { env: AWS_ACCESS_KEY_ID }
+      AWS_SECRET_ACCESS_KEY: { env: AWS_SECRET_ACCESS_KEY }
+      HYP_DEFAULTSIGNER_KEY: { env: HYP_DEFAULTSIGNER_KEY }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
@@ -51,3 +56,10 @@ external-services:
   privy-mock:
     ip: REPLACE_HOST_IP
     port: 19876
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: validator-solana.test
+      routes:
+        - path: /
+          proxy-to: validator:9090

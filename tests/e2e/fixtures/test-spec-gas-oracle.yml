@@ -1,6 +1,11 @@
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
+image-overrides:
+  gas-oracle: REPLACE_GAS_ORACLE_IMAGE
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
+network:
+  acme-email: e2e@example.test
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
@@ -19,9 +24,10 @@ config:
   PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
 secrets:
   hyperlane-gas-oracle-secrets:
-    - PRIVY_APP_ID
-    - PRIVY_APP_SECRET
-    - PRIVY_ORACLE_WALLET_ID
+    keys:
+      PRIVY_APP_ID: { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET: { env: PRIVY_APP_SECRET }
+      PRIVY_ORACLE_WALLET_ID: { env: PRIVY_ORACLE_WALLET_ID }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

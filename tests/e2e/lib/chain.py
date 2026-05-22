@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_health
+from .common import force_rmtree, log_info, run_cmd, wait_for_rpc_accounts_ready, wait_for_rpc_health
 
 LEDGER_BASE = Path(__file__).resolve().parent.parent / ".data"
 
@@ -197,6 +197,8 @@ def start_gorchain_stack(deploy_dir: Path) -> None:
 
     log_info("Waiting for gorchain RPC to be healthy...")
     wait_for_rpc_health("http://localhost:8899", timeout=600)
+    log_info("Waiting for gorchain accounts to be queryable...")
+    wait_for_rpc_accounts_ready("http://localhost:8899", timeout=120)
     log_info("Gorchain stack is running")
 
 

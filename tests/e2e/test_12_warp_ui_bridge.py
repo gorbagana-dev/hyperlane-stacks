@@ -226,8 +226,8 @@ def _submit_transfer(page, context, dest_chain: str, amount: str) -> None:
         if attempt < TX_MAX_RETRIES:
             log.info("Retrying transfer (attempt %d/%d)...", attempt + 1, TX_MAX_RETRIES)
             page.reload()
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(UI_SHORT)
+            page.wait_for_load_state("load")
+            page.wait_for_function("() => document.title !== ''", timeout=30_000)
             _fill_amount(page, amount)
 
     raise AssertionError(
@@ -246,8 +246,8 @@ class TestWarpUIBridge:
         try:
             url = warp_ui_browser["url"]
             page.goto(f"{url}{SOLANA_TO_GORCHAIN_PARAMS}")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(UI_SHORT)
+            page.wait_for_load_state("load")
+            page.wait_for_function("() => document.title !== ''", timeout=30_000)
 
             title = page.title()
             assert title, "Page has no title"
@@ -273,8 +273,8 @@ class TestWarpUIBridge:
         try:
             url = warp_ui_browser["url"]
             page.goto(f"{url}{SOLANA_TO_GORCHAIN_PARAMS}")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(UI_SHORT)
+            page.wait_for_load_state("load")
+            page.wait_for_function("() => document.title !== ''", timeout=30_000)
 
             _connect_wallet(page, warp_ui_browser["context"])
 
@@ -316,8 +316,8 @@ class TestWarpUIBridge:
         try:
             url = warp_ui_browser["url"]
             page.goto(f"{url}{SOLANA_TO_GORCHAIN_PARAMS}")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(UI_SHORT)
+            page.wait_for_load_state("load")
+            page.wait_for_function("() => document.title !== ''", timeout=30_000)
 
             _connect_wallet(page, context)
             _fill_amount(page, FORWARD_AMOUNT)
@@ -363,8 +363,8 @@ class TestWarpUIBridge:
         try:
             url = warp_ui_browser["url"]
             page.goto(f"{url}{GORCHAIN_TO_SOLANA_PARAMS}")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(UI_SHORT)
+            page.wait_for_load_state("load")
+            page.wait_for_function("() => document.title !== ''", timeout=30_000)
 
             _connect_wallet(page, context)
 

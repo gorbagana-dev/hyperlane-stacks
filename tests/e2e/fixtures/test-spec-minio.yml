@@ -1,6 +1,10 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
+image-overrides:
+  minio: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  minio-init: minio/mc:RELEASE.2025-08-13T08-35-41Z
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
 resources:
   containers:
     minio:
@@ -14,5 +18,13 @@ volumes:
   minio-data:
 secrets:
   hyperlane-minio-secrets:
-    - MINIO_ROOT_USER
-    - MINIO_ROOT_PASSWORD
+    keys:
+      MINIO_ROOT_USER: { env: MINIO_ROOT_USER }
+      MINIO_ROOT_PASSWORD: { env: MINIO_ROOT_PASSWORD }
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: minio-console.test
+      routes:
+        - path: /
+          proxy-to: minio:9001

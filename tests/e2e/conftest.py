@@ -1,6 +1,7 @@
 import base64
 import dataclasses
 import logging
+import os
 import re
 import secrets
 import subprocess
@@ -20,15 +21,14 @@ from lib.chain import (
     stop_solana_test_validator,
 )
 from lib.cluster import (
-    KIND_CLUSTER_NAME,
-    create_kind_cluster,
-    create_namespace,
-    create_selfsigned_issuer,
+    TEST_HOSTNAMES,
     destroy_kind_cluster,
     ensure_hosts_entry,
+    ensure_kind_network,
+    ensure_mkcert_cert,
+    ensure_mkcert_installed,
     get_host_ip,
-    install_cert_manager,
-    install_ingress_nginx,
+    write_caddy_cert_backup,
 )
 from lib.common import (
     CHAINS,
@@ -41,14 +41,25 @@ from lib.common import (
     save_pod_logs,
     wait_for_job_complete,
     wait_for_pod_phase,
+    wait_for_rpc_accounts_ready,
+    wait_for_rpc_health,
 )
 from lib.deploy import (
+    AGENT_IMAGE,
+    AGENT_IMAGE_LOCAL,
     DEPLOY_DIR,
+    DEPLOYER_IMAGE,
+    GAS_ORACLE_IMAGE,
+    KMS_PROXY_IMAGE,
+    KMS_PROXY_IMAGE_LOCAL,
+    WARP_UI_IMAGE,
+    WARP_UI_IMAGE_LOCAL,
     DeploymentInfo,
     build_agent_image,
     build_warp_ui_image,
     deploy_prepare,
     deploy_start,
+    deployment_exists,
     ensure_ghcr_pat,
     get_deployment_id,
     prefetch_agent_images,
@@ -63,13 +74,6 @@ from lib.keygen import (
     KEYS_DIR,
     KeypairSet,
     _airdrop,
-    create_deployer_secrets,
-    create_gas_oracle_secrets,
-    create_minio_secrets,
-    create_monitoring_secrets,
-    create_relayer_secrets,
-    create_validator_secrets,
-    create_warp_deployer_secrets,
     fund_wallets,
     generate_chain_signer,
     generate_test_keypairs,
@@ -102,15 +106,36 @@ PRIVY_MOCK_PORT = 19876
 # Spec placeholder replacements shared across e2e test specs. Each stack uses
 # its own namespace (derived by SO as laconic-{stack_name}) but all share the
 # same kind cluster.
-SPEC_REPLACEMENTS = {
-    "REPLACE_KIND_CLUSTER": KIND_CLUSTER_NAME,
-}
+SPEC_REPLACEMENTS = {}
 
-# Fixed host path bound to /mnt inside the kind node. Must match the
-# extraMounts.hostPath value in tests/e2e/fixtures/kind-config.yaml — SO
-# validates the live cluster's binds against each deployer's generated
-# kind-config at `deploy start`.
+# Fixed host path bound to /mnt inside the kind node. Every spec declares
+# `kind-mount-root: /tmp/hyperlane-bridge-e2e`; SO generates the kind-config
+# from that value and validates live-cluster binds via check_mounts_compatible().
 BRIDGE_STATE_ROOT = Path("/tmp/hyperlane-bridge-e2e")
+
+
+def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
+    """Return REPLACE_*_IMAGE placeholder values for the image-overrides: spec key.
+
+    SO preloads these images into the kind cluster at every
+    deploy_start --perform-cluster-management (filtered to host-Docker-available).
+    build_from_source switches to :local tags for stacks that have a local build path.
+    """
+    if build_from_source:
+        return {
+            "REPLACE_DEPLOYER_IMAGE": DEPLOYER_IMAGE,
+            "REPLACE_AGENT_IMAGE": AGENT_IMAGE_LOCAL,
+            "REPLACE_KMS_PROXY_IMAGE": KMS_PROXY_IMAGE_LOCAL,
+            "REPLACE_WARP_UI_IMAGE": WARP_UI_IMAGE_LOCAL,
+            "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
+        }
+    return {
+        "REPLACE_DEPLOYER_IMAGE": DEPLOYER_IMAGE,
+        "REPLACE_AGENT_IMAGE": AGENT_IMAGE,
+        "REPLACE_KMS_PROXY_IMAGE": KMS_PROXY_IMAGE,
+        "REPLACE_WARP_UI_IMAGE": WARP_UI_IMAGE,
+        "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
+    }
 
 
 @pytest.fixture(scope="session")
@@ -273,34 +298,43 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 @pytest.fixture(scope="session")
-def kind_cluster(
+def host_prep(
     request: pytest.FixtureRequest,
     bridge_state_root: Path,
 ) -> Generator[None, None, None]:
+    """Host-side prep: /etc/hosts entries + mkcert cert + Caddy cert-backup.
+    Cluster creation happens via SO at the first `deploy_start
+    --perform-cluster-management`.
+    """
     SPEC_REPLACEMENTS["REPLACE_KIND_MOUNT_ROOT"] = str(bridge_state_root)
     skip_setup = request.config.getoption("--skip-cluster-setup")
     skip_cleanup = request.config.getoption("--skip-cleanup")
 
     if not skip_setup:
-        log.info("Creating kind cluster...")
-        create_kind_cluster()
-        log.info("Installing cert-manager...")
-        install_cert_manager()
-        log.info("Creating self-signed issuer...")
-        create_selfsigned_issuer()
-        log.info("Installing nginx ingress controller...")
-        install_ingress_nginx()
         log.info("Adding test hostnames to /etc/hosts...")
-        ensure_hosts_entry("bridge.test")
-        ensure_hosts_entry("grafana.test")
-        ensure_hosts_entry("prometheus.test")
-    else:
-        log.info("Skipping cluster setup (--skip-cluster-setup)")
+        for hostname in TEST_HOSTNAMES:
+            ensure_hosts_entry(hostname)
 
-    # Detect host IP for external-services (Kind gateway → host machine).
-    # Populates SPEC_REPLACEMENTS so test specs can use REPLACE_HOST_IP.
+        log.info("Ensuring mkcert is installed...")
+        ensure_mkcert_installed()
+
+        log.info("Generating mkcert cert covering test hostnames...")
+        cert, key = ensure_mkcert_cert(
+            bridge_state_root / "local-certs", list(TEST_HOSTNAMES)
+        )
+
+        log.info("Writing Caddy cert-backup for SO to pre-load...")
+        write_caddy_cert_backup(
+            bridge_state_root / "caddy-cert-backup" / "caddy-secrets.yaml",
+            cert, key, list(TEST_HOSTNAMES),
+        )
+    else:
+        log.info("Skipping host prep (--skip-cluster-setup)")
+
+    ensure_kind_network()
     host_ip = get_host_ip()
     SPEC_REPLACEMENTS["REPLACE_HOST_IP"] = host_ip
+    SPEC_REPLACEMENTS.update(_resolve_image_refs(request.config.getoption("--build-from-source")))
 
     yield
 
@@ -334,6 +368,19 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
                 "(it preserves state across pytest runs via start_new_session).",
                 returncode=1,
             )
+        # Gorchain may have restarted (crash, docker daemon restart, etc.).
+        # /health returns OK during ledger replay; wait for accounts too.
+        log.info("Waiting for gorchain RPC and accounts to be ready...")
+        try:
+            wait_for_rpc_health("http://localhost:8899", timeout=120)
+            wait_for_rpc_accounts_ready("http://localhost:8899", timeout=120)
+            log.info("Gorchain is ready")
+        except TimeoutError as e:
+            pytest.exit(
+                f"Gorchain not ready on :8899 after 120s: {e}. "
+                "Start gorchain before using --skip-chain-setup.",
+                returncode=1,
+            )
 
     yield
 
@@ -347,8 +394,8 @@ def chain_nodes(request: pytest.FixtureRequest) -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session")
-def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Build or pre-fetch the deployer image and load it into the kind cluster."""
+def deployer_image(request: pytest.FixtureRequest, host_prep: None) -> None:
+    """Build or pre-fetch the deployer image to host Docker (SO preloads it via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-core-deploy") and request.config.getoption("--skip-warp-deploy"):
         log.info("Skipping deployer image build (--skip-core-deploy + --skip-warp-deploy)")
         return
@@ -357,13 +404,13 @@ def deployer_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
         log.info("Building deployer container image from source...")
         build_deployer_image()
     else:
-        log.info("Pre-fetching published deployer image into kind cluster...")
+        log.info("Pre-fetching published deployer image to host Docker...")
         prefetch_deployer_image()
 
 
 @pytest.fixture(scope="session")
-def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Build or pre-fetch agent + kms-proxy images, pull kubectl image, load all into kind."""
+def validator_images(request: pytest.FixtureRequest, host_prep: None) -> None:
+    """Build or pre-fetch agent + kms-proxy images to host Docker (SO preloads via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-validator-deploy", default=False):
         log.info("Skipping validator image builds (--skip-validator-deploy)")
         return
@@ -371,27 +418,27 @@ def validator_images(request: pytest.FixtureRequest, kind_cluster: None) -> None
         log.info("Building patched agent and kms-proxy images via laconic-so...")
         build_agent_image()
     else:
-        log.info("Pre-fetching published agent images into kind cluster...")
+        log.info("Pre-fetching published agent images to host Docker...")
         prefetch_agent_images()
 
 
 @pytest.fixture(scope="session")
-def gas_oracle_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Pre-fetch the gas oracle image and load it into the kind cluster."""
+def gas_oracle_image(request: pytest.FixtureRequest, host_prep: None) -> None:
+    """Pre-fetch the gas oracle image to host Docker (SO preloads it via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-gas-oracle-deploy", default=False):
         log.info("Skipping gas oracle image prefetch (--skip-gas-oracle-deploy)")
         return
-    log.info("Pre-fetching published gas oracle image into kind cluster...")
+    log.info("Pre-fetching published gas oracle image to host Docker...")
     prefetch_gas_oracle_image()
 
 
 @pytest.fixture(scope="session")
-def monitoring_images(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Pre-fetch monitoring stack images and load them into the kind cluster."""
+def monitoring_images(request: pytest.FixtureRequest, host_prep: None) -> None:
+    """Pre-fetch monitoring stack images to host Docker (SO preloads them via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-monitoring-deploy", default=False):
         log.info("Skipping monitoring image prefetch (--skip-monitoring-deploy)")
         return
-    log.info("Pre-fetching monitoring images into kind cluster...")
+    log.info("Pre-fetching monitoring images to host Docker...")
     prefetch_monitoring_images()
 
 
@@ -438,7 +485,7 @@ def _recover_minio_credentials(namespace: str) -> tuple[str, str]:
 @pytest.fixture(scope="session")
 def minio_deployment(
     request: pytest.FixtureRequest,
-    kind_cluster: None,
+    host_prep: None,
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[MinioInfo, None, None]:
     """Deploy the hyperlane-minio stack.
@@ -452,21 +499,23 @@ def minio_deployment(
 
     if skip_minio:
         deploy_dir = DEPLOY_DIR / "hyperlane-minio"
-        deployment_id = get_deployment_id(deploy_dir)
-        namespace = "laconic-hyperlane-minio"
-        log.info("Reusing existing minio deployment (namespace: %s)", namespace)
-        user, password = _recover_minio_credentials(namespace)
-        yield MinioInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-            user=user,
-            password=password,
-        )
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            namespace = "laconic-hyperlane-minio"
+            log.info("Reusing existing minio deployment (namespace: %s)", namespace)
+            user, password = _recover_minio_credentials(namespace)
+            yield MinioInfo(
+                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                user=user,
+                password=password,
+            )
+            return
+        log.info("--skip-minio-deploy set but %s missing — deploying fresh", deploy_dir)
 
     minio_user = f"minio-{secrets.token_hex(4)}"
     minio_password = secrets.token_hex(16)
 
-    log.info("Pre-fetching MinIO images into kind cluster...")
+    log.info("Pre-fetching MinIO images to host Docker...")
     prefetch_minio_images()
 
     log.info("Preparing minio stack...")
@@ -478,15 +527,10 @@ def minio_deployment(
     namespace = deploy_info.namespace
     deployment_id = deploy_info.deployment_id
 
-    # Create namespace before deploy start — secrets must exist before pods start.
-    # Idempotent: no-ops if deployer_deployment already created it.
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    log.info("Creating minio secrets in namespace %s...", namespace)
-    create_minio_secrets(namespace, minio_user, minio_password)
-
     bridge_state_loader.populate("hyperlane-minio", deploy_info.deploy_dir)
+
+    os.environ["MINIO_ROOT_USER"] = minio_user
+    os.environ["MINIO_ROOT_PASSWORD"] = minio_password
 
     log.info("Starting minio stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -525,7 +569,7 @@ def deployer_deployment(
     request: pytest.FixtureRequest,
     all_images: None,
     keypairs: KeypairSet,
-    kind_cluster: None,
+    host_prep: None,
     chain_nodes: None,
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[DeploymentInfo, None, None]:
@@ -537,11 +581,13 @@ def deployer_deployment(
         # The Solana test validator runs detached (start_new_session) so it
         # survives Ctrl+C — deployed programs and funded wallets persist.
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-deployer"
-        deployment_id = get_deployment_id(deploy_dir)
-        namespace = "laconic-hyperlane-svm-deployer"
-        log.info("Reusing existing core deployment (deployment-id: %s, namespace: %s)", deployment_id, namespace)
-        yield DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace)
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            namespace = "laconic-hyperlane-svm-deployer"
+            log.info("Reusing existing core deployment (deployment-id: %s, namespace: %s)", deployment_id, namespace)
+            yield DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace)
+            return
+        log.info("--skip-core-deploy set but %s missing — deploying fresh", deploy_dir)
 
     log.info("Preparing deployer stack...")
     deploy_info = deploy_prepare(
@@ -551,19 +597,18 @@ def deployer_deployment(
     )
     namespace = deploy_info.namespace
 
-    # Namespace must exist before deploy start for RBAC and secrets.
-    # Host-chain services (gorchain-rpc, solana-rpc, privy-mock) are now
-    # created automatically by laconic-so via the external-services spec key.
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    log.info("Creating deployer secrets...")
-    create_deployer_secrets(namespace, keypairs)
-
     log.info("Funding wallets...")
     fund_wallets(keypair_set=keypairs, gorchain_rpc="http://localhost:8899", solana_rpc="http://localhost:18899")
 
     bridge_state_loader.populate("hyperlane-svm-deployer", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "DEPLOYER_KEYPAIR":           keypairs.deployer_keypair,
+        "HARDWARE_WALLET_PUBKEY":     keypairs.hardware_wallet_pubkey,
+        "IGP_ORACLE_PUBKEY":          keypairs.igp_oracle_pubkey,
+        "GORCHAIN_VALIDATOR_ADDRESS": keypairs.gorchain_validator_address,
+        "SOLANA_VALIDATOR_ADDRESS":   keypairs.solana_validator_address,
+    })
 
     log.info("Starting deployer stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -662,25 +707,26 @@ def warp_deployment(
     if skip_warp_deploy:
         # Reuse existing warp deployment — recover token_mint from the
         # token-config.json state file written by the warp deployer job.
-        namespace = "laconic-hyperlane-svm-warp-deployer"
-        log.info("Reusing existing warp deployment (namespace: %s)", namespace)
-        token_config = bridge_state_loader.read_json("token-config.json")
-        token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
-        assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
-        log.info("Recovered token mint from state file: %s", token_mint)
-
         deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
-        deployment_id = get_deployment_id(deploy_dir)
-        yield {
-            "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir,
-                deployment_id=deployment_id,
-                namespace=namespace,
-            ),
-            "token_mint": token_mint,
-            "namespace": namespace,
-        }
-        return
+        if deployment_exists(deploy_dir):
+            namespace = "laconic-hyperlane-svm-warp-deployer"
+            log.info("Reusing existing warp deployment (namespace: %s)", namespace)
+            token_config = bridge_state_loader.read_json("token-config.json")
+            token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
+            assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
+            log.info("Recovered token mint from state file: %s", token_mint)
+            deployment_id = get_deployment_id(deploy_dir)
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir,
+                    deployment_id=deployment_id,
+                    namespace=namespace,
+                ),
+                "token_mint": token_mint,
+                "namespace": namespace,
+            }
+            return
+        log.info("--skip-warp-deploy set but %s missing — deploying fresh", deploy_dir)
 
     log.info("Creating and funding test SPL token on Solana...")
     deployer_keypair = str(KEYS_DIR / "deployer.json")
@@ -698,17 +744,12 @@ def warp_deployment(
         deployment_id="warp-deployer",
     )
 
-    # Per-stack namespaces mean the warp-deployer Secret has to live in the
-    # warp-deployer's own namespace, not the core deployer's. Create the
-    # namespace explicitly so the Secret can land before `deploy start` —
-    # SO will find it already there during _ensure_namespace().
-    log.info("Creating namespace %s...", warp_info.namespace)
-    create_namespace(warp_info.namespace)
-
-    log.info("Creating warp deployer secrets...")
-    create_warp_deployer_secrets(warp_info.namespace, keypairs)
-
     bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
+
+    os.environ.update({
+        "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
+        "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
+    })
 
     log.info("Starting warp deployer stack...")
     deploy_start(warp_info.deploy_dir)
@@ -842,14 +883,16 @@ def _deploy_validator(
 
     if skip_validator:
         deploy_dir = DEPLOY_DIR / stack_name
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
-        yield ValidatorInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-            chain=chain,
-            wallet_id=wallet_id,
-        )
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing %s deployment (namespace: %s)", stack_name, namespace)
+            yield ValidatorInfo(
+                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                chain=chain,
+                wallet_id=wallet_id,
+            )
+            return
+        log.info("--skip-validator-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Generate and fund a chain signer key for the announce transaction.
     # This is a hot ed25519 key separate from the KMS-backed validator key.
@@ -859,17 +902,6 @@ def _deploy_validator(
     rpc = "http://localhost:8899" if chain == "gorchain" else "http://localhost:18899"
     log.info("Funding chain signer %s on %s...", chain_signer_addr, chain)
     _airdrop(1, chain_signer_addr, rpc, f"{chain} chain signer")
-
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    log.info("Creating validator secrets for %s...", chain)
-    create_validator_secrets(
-        namespace, chain,
-        minio_user=minio.user,
-        minio_password=minio.password,
-        chain_signer_key=chain_signer_key,
-    )
 
     validator_replacements = {
         **SPEC_REPLACEMENTS,
@@ -887,6 +919,14 @@ def _deploy_validator(
     )
 
     bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "PRIVY_APP_ID":           "test-app-id",
+        "PRIVY_APP_SECRET":       "test-app-secret",
+        "AWS_ACCESS_KEY_ID":      minio.user,
+        "AWS_SECRET_ACCESS_KEY":  minio.password,
+        "HYP_DEFAULTSIGNER_KEY":  chain_signer_key,
+    })
 
     log.info("Starting %s stack...", stack_name)
     deploy_start(deploy_info.deploy_dir)
@@ -962,7 +1002,7 @@ def relayer_deployment(
     deployer_deployment: DeploymentInfo,
     minio_deployment: MinioInfo,
     validator_images: None,
-    kind_cluster: None,
+    host_prep: None,
     bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[RelayerInfo, None, None]:
@@ -973,12 +1013,14 @@ def relayer_deployment(
 
     if skip_relayer:
         deploy_dir = DEPLOY_DIR / "hyperlane-relayer"
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
-        yield RelayerInfo(
-            deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-        )
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing relayer deployment (namespace: %s)", namespace)
+            yield RelayerInfo(
+                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+            )
+            return
+        log.info("--skip-relayer-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Generate and fund chain signer keys for gorchain and solana
     gorchain_signer_key, gorchain_signer_addr = generate_chain_signer(
@@ -1012,20 +1054,6 @@ def relayer_deployment(
             solana_igp_program_id = program_ids["igp_program_id"]
             solana_igp_account = program_ids["igp_account"]
 
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    # Create relayer secrets
-    log.info("Creating relayer secrets...")
-    create_relayer_secrets(
-        namespace,
-        gorchain_signer_key=gorchain_signer_key,
-        solana_signer_key=solana_signer_key,
-        minio_user=minio_deployment.user,
-        minio_password=minio_deployment.password,
-        relayer_keypair_json=relayer_keypair_json,
-    )
-
     # Patch the spec with actual IGP values
     content = RELAYER_SPEC.read_text()
     content = content.replace(
@@ -1055,6 +1083,14 @@ def relayer_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "HYP_CHAINS_GORCHAIN_SIGNER_KEY": gorchain_signer_key,
+        "HYP_CHAINS_SOLANA_SIGNER_KEY":   solana_signer_key,
+        "AWS_ACCESS_KEY_ID":              minio_deployment.user,
+        "AWS_SECRET_ACCESS_KEY":          minio_deployment.password,
+        "RELAYER_KEYPAIR_JSON":           relayer_keypair_json,
+    })
 
     log.info("Starting relayer stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1138,7 +1174,7 @@ def _wait_for_oracle_update(
 def gas_oracle_deployment(
     deployer_deployment: DeploymentInfo,
     privy_mock: dict[str, str],
-    kind_cluster: None,
+    host_prep: None,
     gas_oracle_image: None,
     bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
@@ -1150,34 +1186,29 @@ def gas_oracle_deployment(
 
     if skip_oracle:
         deploy_dir = DEPLOY_DIR / "hyperlane-gas-oracle"
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
-        # Read current oracle values from the running pod
-        oracle_values = {}
-        try:
-            oracle_values = _wait_for_oracle_update(namespace, deployment_id, timeout=30)
-        except TimeoutError:
-            log.warning("Could not read oracle values from running pod")
-        yield {
-            "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
-            ),
-            "oracle_values": oracle_values,
-        }
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing gas oracle deployment (namespace: %s)", namespace)
+            # Read current oracle values from the running pod
+            oracle_values = {}
+            try:
+                oracle_values = _wait_for_oracle_update(namespace, deployment_id, timeout=30)
+            except TimeoutError:
+                log.warning("Could not read oracle values from running pod")
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
+                ),
+                "oracle_values": oracle_values,
+            }
+            return
+        log.info("--skip-gas-oracle-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Read IGP program IDs from the deployer state files
     gorchain_program_ids = bridge_state_loader.read_program_ids("gorchain")
     solana_program_ids = bridge_state_loader.read_program_ids("solana")
     gorchain_igp_program_id = gorchain_program_ids["igp_program_id"]
     solana_igp_program_id = solana_program_ids["igp_program_id"]
-
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    # Create gas oracle secrets (Privy creds — dummy values for mock)
-    log.info("Creating gas oracle secrets...")
-    create_gas_oracle_secrets(namespace, ORACLE_WALLET_ID)
 
     # Patch the spec with actual IGP program IDs
     content = GAS_ORACLE_SPEC.read_text()
@@ -1200,6 +1231,12 @@ def gas_oracle_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-gas-oracle", deploy_info.deploy_dir)
+
+    os.environ.update({
+        "PRIVY_APP_ID":           "test-app-id",
+        "PRIVY_APP_SECRET":       "test-app-secret",
+        "PRIVY_ORACLE_WALLET_ID": ORACLE_WALLET_ID,
+    })
 
     log.info("Starting gas oracle stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1245,61 +1282,6 @@ GRAFANA_HOSTNAME = "grafana.test"
 GRAFANA_URL = f"https://{GRAFANA_HOSTNAME}"
 PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
-
-GRAFANA_INGRESS_TEMPLATE = """\
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: grafana-ingress
-  namespace: {namespace}
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - {hostname}
-      secretName: grafana-tls
-  rules:
-    - host: {hostname}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {service_name}
-                port:
-                  number: 3000
-"""
-
-PROMETHEUS_INGRESS_TEMPLATE = """\
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: prometheus-ingress
-  namespace: {namespace}
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - {hostname}
-      secretName: prometheus-tls
-  rules:
-    - host: {hostname}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {service_name}
-                port:
-                  number: 9090
-"""
-
 
 def _wait_for_balance_monitor(
     namespace: str, pod_name: str, timeout: int = 60,
@@ -1362,7 +1344,7 @@ def _build_wallet_string(keypairs: KeypairSet) -> tuple[str, list[str]]:
 def monitoring_deployment(
     deployer_deployment: DeploymentInfo,
     keypairs: KeypairSet,
-    kind_cluster: None,
+    host_prep: None,
     monitoring_images: None,
     bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
@@ -1374,58 +1356,53 @@ def monitoring_deployment(
 
     if skip_monitoring:
         deploy_dir = DEPLOY_DIR / "hyperlane-monitoring"
-        deployment_id = get_deployment_id(deploy_dir)
-        pod_name = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "get", "pods",
-                "-l", f"app={deployment_id}",
-                "-o", "jsonpath={.items[0].metadata.name}",
-            ],
-            capture_output=True, text=True, check=False,
-        ).stdout.strip()
-        assert pod_name, "Monitoring pod not found — cannot reuse deployment"
-        # Recover wallet labels from Prometheus metrics
-        wallet_labels = []
-        probe = subprocess.run(
-            ["curl", "-s", "-k",
-             f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
-            capture_output=True, text=True, check=False,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
-            import json as _json
-            try:
-                data = _json.loads(probe.stdout)
-                labels = {
-                    r["metric"].get("wallet")
-                    for r in data.get("data", {}).get("result", [])
-                    if r["metric"].get("wallet")
-                }
-                wallet_labels = sorted(labels)
-            except (ValueError, KeyError):
-                pass
-        log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
-        yield {
-            "deployment": DeploymentInfo(
-                deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
-            ),
-            "namespace": namespace,
-            "pod_name": pod_name,
-            "expected_wallet_labels": wallet_labels,
-            "grafana_url": GRAFANA_URL,
-            "prometheus_url": PROMETHEUS_URL,
-        }
-        return
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            pod_name = subprocess.run(
+                [
+                    "kubectl", "-n", namespace, "get", "pods",
+                    "-l", f"app={deployment_id}",
+                    "-o", "jsonpath={.items[0].metadata.name}",
+                ],
+                capture_output=True, text=True, check=False,
+            ).stdout.strip()
+            assert pod_name, "Monitoring pod not found — cannot reuse deployment"
+            # Recover wallet labels from Prometheus metrics
+            wallet_labels = []
+            probe = subprocess.run(
+                ["curl", "-s",
+                 f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
+                capture_output=True, text=True, check=False,
+            )
+            if probe.returncode == 0 and probe.stdout.strip():
+                import json as _json
+                try:
+                    data = _json.loads(probe.stdout)
+                    labels = {
+                        r["metric"].get("wallet")
+                        for r in data.get("data", {}).get("result", [])
+                        if r["metric"].get("wallet")
+                    }
+                    wallet_labels = sorted(labels)
+                except (ValueError, KeyError):
+                    pass
+            log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
+                ),
+                "namespace": namespace,
+                "pod_name": pod_name,
+                "expected_wallet_labels": wallet_labels,
+                "grafana_url": GRAFANA_URL,
+                "prometheus_url": PROMETHEUS_URL,
+            }
+            return
+        log.info("--skip-monitoring-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Build wallet strings from keypairs
     wallet_string, wallet_labels = _build_wallet_string(keypairs)
     log.info("Monitoring wallet string: %s", wallet_string)
-
-    log.info("Creating namespace %s...", namespace)
-    create_namespace(namespace)
-
-    # Create monitoring secrets
-    log.info("Creating monitoring secrets...")
-    create_monitoring_secrets(namespace, GRAFANA_ADMIN_PASSWORD)
 
     # Patch spec with wallet strings
     content = MONITORING_SPEC.read_text()
@@ -1448,6 +1425,8 @@ def monitoring_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
+
+    os.environ["GF_SECURITY_ADMIN_PASSWORD"] = GRAFANA_ADMIN_PASSWORD
 
     log.info("Starting monitoring stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -1486,53 +1465,14 @@ def monitoring_deployment(
     log.info("Waiting for Prometheus to scrape balance metrics...")
     time.sleep(20)
 
-    # Create ingress for Grafana and Prometheus
-    grafana_service = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
-    prometheus_service = f"{deploy_info.deployment_id}-nodeport-9090-tcp"
-
-    for name, template, hostname, service in [
-        ("Grafana", GRAFANA_INGRESS_TEMPLATE, GRAFANA_HOSTNAME,
-         grafana_service),
-        ("Prometheus", PROMETHEUS_INGRESS_TEMPLATE, PROMETHEUS_HOSTNAME,
-         prometheus_service),
-    ]:
-        ingress_yaml = template.format(
-            namespace=namespace,
-            hostname=hostname,
-            service_name=service,
-        )
-        log.info("Creating %s Ingress with TLS (host: %s)...", name, hostname)
-        subprocess.run(
-            ["kubectl", "apply", "-f", "-"],
-            input=ingress_yaml, text=True, check=True,
-        )
-
-    # Wait for TLS certificates
-    for tls_secret in ("grafana-tls", "prometheus-tls"):
-        log.info("Waiting for TLS certificate %s...", tls_secret)
+    # Caddy serves grafana.test and prometheus.test via SO's http-proxy emission;
+    # the cert was pre-loaded into caddy-system at install time.
+    for url, health_path in [(GRAFANA_URL, "/api/health"),
+                             (PROMETHEUS_URL, "/-/healthy")]:
+        log.info("Waiting for %s to respond via Caddy ingress...", url)
         for _ in range(30):
-            result = subprocess.run(
-                [
-                    "kubectl", "-n", namespace, "get", "certificate", tls_secret,
-                    "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
-                ],
-                capture_output=True, text=True, check=False,
-            )
-            if result.stdout.strip() == "True":
-                break
-            time.sleep(2)
-        else:
-            log.warning("TLS certificate %s not ready after 60s", tls_secret)
-
-    # HTTP probe both endpoints (use health endpoints, not / which redirects)
-    for name, url, health_path in [
-        ("Grafana", GRAFANA_URL, "/api/health"),
-        ("Prometheus", PROMETHEUS_URL, "/-/healthy"),
-    ]:
-        log.info("Waiting for %s to respond via TLS ingress...", name)
-        for _ in range(5):
             probe = subprocess.run(
-                ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                  f"{url}{health_path}"],
                 capture_output=True, text=True, check=False,
             )
@@ -1540,8 +1480,8 @@ def monitoring_deployment(
                 break
             time.sleep(2)
         else:
-            log.warning("%s not returning 200 after 10s", name)
-        log.info("%s ingress ready at %s", name, url)
+            log.warning("%s not returning 200 after 60s", url)
+        log.info("Ingress ready at %s", url)
 
     yield {
         "deployment": deploy_info,
@@ -1757,38 +1697,9 @@ def bridge_setup(
 WARP_UI_HOSTNAME = "bridge.test"
 WARP_UI_URL = f"https://{WARP_UI_HOSTNAME}"
 
-# Ingress manifest template for warp-ui with TLS via cert-manager
-WARP_UI_INGRESS_TEMPLATE = """\
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: warp-ui-ingress
-  namespace: {namespace}
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - {hostname}
-      secretName: warp-ui-tls
-  rules:
-    - host: {hostname}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {service_name}
-                port:
-                  number: 3000
-"""
-
-
 @pytest.fixture(scope="session")
-def warp_ui_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
-    """Build or pre-fetch the warp-ui image and load it into the kind cluster."""
+def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
+    """Build or pre-fetch the warp-ui image to host Docker (SO preloads it via image-overrides at deploy_start)."""
     if request.config.getoption("--skip-warp-ui-deploy", default=False):
         log.info("Skipping warp-ui image build (--skip-warp-ui-deploy)")
         return
@@ -1796,7 +1707,7 @@ def warp_ui_image(request: pytest.FixtureRequest, kind_cluster: None) -> None:
         log.info("Building warp-ui container image from source...")
         build_warp_ui_image()
     else:
-        log.info("Pre-fetching published warp-ui image into kind cluster...")
+        log.info("Pre-fetching published warp-ui image to host Docker...")
         prefetch_warp_ui_image()
 
 
@@ -1805,7 +1716,7 @@ def warp_ui_deployment(
     request: pytest.FixtureRequest,
     warp_deployment: dict,
     deployer_deployment: DeploymentInfo,
-    kind_cluster: None,
+    host_prep: None,
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[dict, None, None]:
     """Deploy the warp-ui stack with resolved addresses from state files."""
@@ -1834,20 +1745,22 @@ def warp_ui_deployment(
 
     if skip_warp_ui:
         deploy_dir = DEPLOY_DIR / "hyperlane-warp-ui"
-        deployment_id = get_deployment_id(deploy_dir)
-        log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing warp-ui deployment (namespace: %s)", namespace)
 
-        yield {
-            "deployment": DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
-            "url": WARP_UI_URL,
-            "gorchain_mailbox": gorchain_mailbox,
-            "solana_mailbox": solana_mailbox,
-            "warp_collateral": warp_collateral,
-            "warp_synthetic": warp_synthetic,
-            "token_mint": token_mint,
-            "synthetic_mint": synthetic_mint,
-        }
-        return
+            yield {
+                "deployment": DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                "url": WARP_UI_URL,
+                "gorchain_mailbox": gorchain_mailbox,
+                "solana_mailbox": solana_mailbox,
+                "warp_collateral": warp_collateral,
+                "warp_synthetic": warp_synthetic,
+                "token_mint": token_mint,
+                "synthetic_mint": synthetic_mint,
+            }
+            return
+        log.info("--skip-warp-ui-deploy set but %s missing — deploying fresh", deploy_dir)
 
     # Patch the spec with runtime values
     content = WARP_UI_SPEC.read_text()
@@ -1894,42 +1807,11 @@ def warp_ui_deployment(
     wait_for_pod_phase(namespace, f"app={deploy_info.deployment_id}", "Running", timeout=120)
     log.info("Warp UI is running")
 
-    # Create Ingress with TLS via cert-manager self-signed issuer.
-    # SO skips TLS on Kind clusters, so we create the Ingress ourselves.
-    # SO names services as {deployment_id}-nodeport-{port}-tcp.
-    service_name = f"{deploy_info.deployment_id}-nodeport-3000-tcp"
-    ingress_yaml = WARP_UI_INGRESS_TEMPLATE.format(
-        namespace=namespace,
-        hostname=WARP_UI_HOSTNAME,
-        service_name=service_name,
-    )
-    log.info("Creating warp-ui Ingress with TLS (host: %s)...", WARP_UI_HOSTNAME)
-    subprocess.run(
-        ["kubectl", "apply", "-f", "-"],
-        input=ingress_yaml, text=True, check=True,
-    )
-
-    # Wait for the TLS certificate to be issued
-    log.info("Waiting for TLS certificate to be ready...")
+    # Caddy serves bridge.test via SO's http-proxy emission.
+    log.info("Waiting for warp-ui to respond via Caddy ingress...")
     for _ in range(30):
-        result = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "get", "certificate", "warp-ui-tls",
-                "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        if result.stdout.strip() == "True":
-            break
-        time.sleep(2)
-    else:
-        log.warning("TLS certificate not ready after 60s — tests may fail")
-
-    # Wait for the full TLS ingress to return HTTP 200
-    log.info("Waiting for warp-ui to respond via TLS ingress...")
-    for _attempt in range(30):
         probe = subprocess.run(
-            ["curl", "-s", "-k", "-o", "/dev/null", "-w", "%{http_code}",
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
              f"{WARP_UI_URL}/"],
             capture_output=True, text=True, check=False,
         )
@@ -1937,7 +1819,7 @@ def warp_ui_deployment(
             break
         time.sleep(2)
     else:
-        log.warning("Warp UI not returning 200 after 60s — tests may fail")
+        log.warning("Warp UI not returning 200 after 60s")
     log.info("Warp UI ingress ready at %s", WARP_UI_URL)
 
     yield {

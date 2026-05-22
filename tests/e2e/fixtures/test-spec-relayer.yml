@@ -1,6 +1,10 @@
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
+image-overrides:
+  relayer: REPLACE_AGENT_IMAGE
+  igp-fee-claim: REPLACE_DEPLOYER_IMAGE
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
@@ -35,11 +39,12 @@ configmaps:
   agent-config: ./configmaps/agent-config
 secrets:
   hyperlane-relayer-secrets:
-    - HYP_CHAINS_GORCHAIN_SIGNER_KEY
-    - HYP_CHAINS_SOLANA_SIGNER_KEY
-    - AWS_ACCESS_KEY_ID
-    - AWS_SECRET_ACCESS_KEY
-    - RELAYER_KEYPAIR_JSON
+    keys:
+      HYP_CHAINS_GORCHAIN_SIGNER_KEY: { env: HYP_CHAINS_GORCHAIN_SIGNER_KEY }
+      HYP_CHAINS_SOLANA_SIGNER_KEY: { env: HYP_CHAINS_SOLANA_SIGNER_KEY }
+      AWS_ACCESS_KEY_ID: { env: AWS_ACCESS_KEY_ID }
+      AWS_SECRET_ACCESS_KEY: { env: AWS_SECRET_ACCESS_KEY }
+      RELAYER_KEYPAIR_JSON: { env: RELAYER_KEYPAIR_JSON }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
@@ -51,3 +56,10 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: relayer.test
+      routes:
+        - path: /
+          proxy-to: relayer:9091

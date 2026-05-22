@@ -12,6 +12,7 @@ Tests verify:
 from __future__ import annotations
 
 import logging
+import time
 
 import pytest
 from conftest import RelayerInfo
@@ -41,20 +42,32 @@ class TestRelayer:
         )
 
     def test_all_containers_ready(self, relayer_deployment: RelayerInfo) -> None:
-        """All containers in the relayer pod are ready."""
+        """All containers in the relayer pod are ready.
+
+        SO auto-derives a TCP readiness probe from the http-proxy block
+        (initialDelaySeconds=5, periodSeconds=10), so Ready=true lags Phase=Running.
+        """
         ns = relayer_deployment.namespace
         deployment_id = relayer_deployment.deployment_id
 
-        result = run_cmd([
-            "kubectl", "get", "pods",
-            "-n", ns,
-            "-l", f"app={deployment_id}",
-            "-o", "jsonpath={.items[0].status.containerStatuses[*].ready}",
-        ])
-        statuses = result.stdout.strip().split()
-        assert len(statuses) >= 2, f"Expected at least 2 containers, got {len(statuses)}"
-        for status in statuses:
-            assert status == "true", f"Container not ready: {result.stdout}"
+        deadline = time.time() + 90
+        last_stdout = ""
+        while True:
+            result = run_cmd([
+                "kubectl", "get", "pods",
+                "-n", ns,
+                "-l", f"app={deployment_id}",
+                "-o", "jsonpath={.items[0].status.containerStatuses[*].ready}",
+            ])
+            last_stdout = result.stdout
+            statuses = result.stdout.strip().split()
+            if len(statuses) >= 2 and all(s == "true" for s in statuses):
+                return
+            if time.time() > deadline:
+                raise AssertionError(
+                    f"containers not ready after 90s: {last_stdout!r}"
+                )
+            time.sleep(5)
 
     def test_relayer_agent_config_loaded(self, relayer_deployment: RelayerInfo) -> None:
         """Relayer loaded the agent config (no config file errors in logs)."""

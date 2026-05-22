@@ -1,6 +1,9 @@
 stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
-kind-cluster-name: REPLACE_KIND_CLUSTER
+image-overrides:
+  warp-ui: REPLACE_WARP_UI_IMAGE
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
 config:
   # Browser-accessible URLs — the warp-ui JS bundles run in the browser
   # on the host, not inside the cluster, so they need localhost URLs.
@@ -32,3 +35,10 @@ resources:
       limits:
         cpus: "0.5"
         memory: 512M
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: bridge.test
+      routes:
+        - path: /
+          proxy-to: warp-ui:3000
