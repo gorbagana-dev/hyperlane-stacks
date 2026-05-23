@@ -331,6 +331,78 @@ class TestBridge:
 
         _log_igp_balances("after-reverse", bridge_state_loader)
 
+    def test_transfer_to_different_recipient(self, bridge_setup: dict) -> None:
+        """Forward transfer where sender and recipient are different accounts.
+
+        Confirms the recipient field is honored end-to-end: the recipient's
+        synthetic balance grows while the sender's synthetic balance does not.
+        """
+        users = bridge_setup["users"]
+        token_mint = bridge_setup["token_mint"]
+        synthetic_mint = bridge_setup["synthetic_mint"]
+        solana_warp = bridge_setup["warp_programs"]["solana"]
+
+        solana_rpc = CHAINS["solana"]["rpc"]
+        gorchain_rpc = CHAINS["gorchain"]["rpc"]
+        gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
+
+        sender = users[0]
+        recipient = users[1]
+        amount = FORWARD_BASE
+        expected_usdc = amount / 1_000_000
+
+        sender_initial_solana = get_spl_token_balance(token_mint, sender["keypair_path"], solana_rpc)
+        sender_initial_gorchain = get_spl_token_balance(synthetic_mint, sender["keypair_path"], gorchain_rpc)
+        recipient_initial_gorchain = get_spl_token_balance(synthetic_mint, recipient["keypair_path"], gorchain_rpc)
+        log.info(
+            "Sender %s initial — Solana USDC: %s, Gorchain gUSDC: %s",
+            sender["pubkey"], sender_initial_solana, sender_initial_gorchain,
+        )
+        log.info(
+            "Recipient %s initial — Gorchain gUSDC: %s",
+            recipient["pubkey"], recipient_initial_gorchain,
+        )
+        assert sender_initial_solana >= expected_usdc, (
+            f"Sender has insufficient USDC: {sender_initial_solana} < {expected_usdc}"
+        )
+
+        log.info("Submitting transfer from %s to %s...", sender["pubkey"], recipient["pubkey"])
+        result = _run_transfer_remote(
+            "/tmp/key.json",
+            str(amount), gorchain_domain, recipient["pubkey"],
+            "collateral",
+            "--program-id", solana_warp,
+            rpc=solana_rpc,
+            keypair_path=sender["keypair_path"],
+        )
+        output = result.stdout + result.stderr
+        log.info("transfer-remote output:\n%s", output[:1000])
+        assert result.returncode == 0, f"Transfer failed: {output}"
+
+        sender_post_solana = get_spl_token_balance(token_mint, sender["keypair_path"], solana_rpc)
+        assert sender_initial_solana - sender_post_solana >= expected_usdc - 0.001, (
+            f"Sender Solana USDC didn't decrease enough: "
+            f"{sender_initial_solana} -> {sender_post_solana}"
+        )
+        log.info("Sender Solana USDC after transfer: %s", sender_post_solana)
+
+        expected_recipient = round(recipient_initial_gorchain + expected_usdc, 6)
+        recipient_balance = wait_for_token_balance(
+            synthetic_mint, recipient["keypair_path"], gorchain_rpc,
+            expected_min=expected_recipient,
+            timeout=RELAY_TIMEOUT,
+            poll_interval=POLL_INTERVAL,
+            label=f"Recipient ({recipient['pubkey']}) Gorchain gUSDC",
+        )
+        log.info("Recipient Gorchain gUSDC after delivery: %s", recipient_balance)
+
+        sender_post_gorchain = get_spl_token_balance(synthetic_mint, sender["keypair_path"], gorchain_rpc)
+        assert abs(sender_post_gorchain - sender_initial_gorchain) < 0.001, (
+            f"Sender Gorchain gUSDC unexpectedly changed: "
+            f"{sender_initial_gorchain} -> {sender_post_gorchain}"
+        )
+        log.info("Sender Gorchain gUSDC unchanged: %s", sender_post_gorchain)
+
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""
         ns = bridge_setup["relayer_namespace"]
