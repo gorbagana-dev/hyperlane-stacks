@@ -55,20 +55,42 @@ rolled into a catch-all):
 - `getSlot`, `getBlock`, `getLatestBlockhash`
 - `sendTransaction`
 - `simulateTransaction`
+- WebSocket connection opens
+- WebSocket data volume (MB)
 - Catch-all (all others)
+
+### 1.3.1 WebSocket-specific metrics
+
+When WebSocket indexing is active, also track:
+
+- **Connection count / day** — how many WebSocket connections were
+  opened (initial + reconnects). Target: <10/day with healthy
+  keep-alive. >50/day indicates reconnection churn.
+- **Data volume / day** — metered WebSocket data in MB. At low bridge
+  traffic (<100 tx/day), expect <1 MB/day. Significantly higher
+  indicates noisy `programSubscribe` notifications (other activity on
+  the mailbox program).
+- **Fallback poll hit rate** — percentage of cursor cycles that fire
+  via the timer (not the WebSocket signal). Target: <5% when WebSocket
+  is healthy. >50% indicates persistent WebSocket connectivity issues.
+- **Wake-up-to-fetch latency** — time between WebSocket notification
+  and the corresponding `fetch_logs_in_range()` call completing. Proxy
+  for real-world detection latency.
 
 ### 1.4 Reconciliation
 
 For each component:
 
 1. Pull predicted credits/day from
-   [`rpc-inventory.md`](./rpc-inventory.md) §2 at the cadence we
-   actually ran.
+   [`rpc-inventory.md`](./rpc-inventory.md) §2 at the cadence and
+   indexing mode (WebSocket or polling-only) actually running. If
+   polling-only, use
+   [`polling-baseline-reference.md`](./polling-baseline-reference.md).
 2. Pull measured credits/day from the Helius dashboard.
 3. Compute delta and percentage.
 4. If delta > ±25 %, dig into the per-method breakdown and identify the
    cause (restart bursts, undisclosed RPC calls in the indexer, scrape
-   overhead, etc.).
+   overhead, WebSocket reconnection churn, etc.).
 5. Update the model's per-cycle credit numbers and re-run §3 of
    `rpc-inventory.md`.
 
@@ -79,8 +101,8 @@ For each component:
 - After any of:
   - Sustained traffic regime change (e.g. promotional event)
   - Hyperlane fork upgrade that touches the SVM indexer or validator
-  - Switching to `getProgramAccountsV2`, Sender, LaserStream, or
-    webhooks
+  - Switching indexing mode (WebSocket ↔ polling), adopting
+    `getProgramAccountsV2`, Sender, or LaserStream gRPC
   - Adding or removing a tracked bridge wallet in the explorer
   - Adding any new Helius consumer
 
@@ -101,20 +123,22 @@ as alternatives, this is the data to bring to the comparison.
 
 ### 2.1 Per-method daily call rates
 
-Under the canonical (30s polling, low traffic) scenario, quote these
-volumes at any provider that prices per-call:
+Under the canonical (WebSocket + 120s fallback, low traffic) scenario,
+quote these volumes at any provider that prices per-call:
 
 | Method | Calls/day | Source |
 |---|---|---|
-| `getProgramAccounts` | 11,520 | 2 indexer loops × 2,880 polls × 2 (relayer floor) |
-| `getAccountInfo` (+ `getMultipleAccounts`) | ~5,000 | Validator + state lookups |
-| `getSlot` | 2,880 | Validator polling |
+| `getProgramAccounts` | ~10-20 | Per-message only (no idle GPA); relayer + validator |
+| `getAccountInfo` (+ `getMultipleAccounts`) | ~3,000 | Tip-checks (720 cycles × 4 credits) + state lookups |
+| `getSlot` | ~1,440 | Relayer + validator cursor tip-checks |
 | `getSignaturesForAddress` | ~720 | Explorer + warp-UI |
 | `getParsedTransaction` / `getTransaction` | ~3,600 | Explorer cron N=5 |
 | `getTokenAccountsByOwner` / `getParsedTokenAccountsByOwner` | ~500 | Explorer + warp-UI |
-| `sendTransaction` | ~10 – 100 | Relayer + validator submissions |
-| `simulateTransaction` | ~10 – 100 | Per delivered message |
-| Others (combined) | ~2,000 | Catch-all |
+| `sendTransaction` | ~10-100 | Relayer + validator submissions |
+| `simulateTransaction` | ~10-100 | Per delivered message |
+| WebSocket connections | ~10 | Initial + reconnects |
+| WebSocket data | <1 MB | Negligible at low traffic |
+| Others (combined) | ~500 | Catch-all |
 
 Recompute and bring the **measured** numbers from §1 once we have them —
 those are more credible than these projections.
@@ -128,7 +152,9 @@ For each provider, gather:
   parsed-transaction calls, archival queries
 - Rate limits — RPS, concurrent connections, parallel batch size
 - Geographic regions and latency to our deployment region
-- WebSocket / gRPC streaming pricing (their LaserStream equivalent)
+- WebSocket subscription support (`programSubscribe`,
+  `accountSubscribe`) — availability, connection limits, data metering
+- gRPC streaming pricing (their LaserStream equivalent)
 - Bundle / private-mempool tx submission pricing (their Sender or Jito
   equivalent)
 - Support SLA at the $50, $500, $1,000 price points

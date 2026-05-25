@@ -6,7 +6,7 @@ subscriptions and (b) configurable Solana commitment level for near
 real-time bridging.
 
 **Date:** 2026-05-25
-**Status:** Design — implementation spec for upcoming fork work.
+**Status:** Tentative design — implementation spec for fork work. See cost implications in docs/helius-cost-forecast/
 
 ---
 
@@ -18,16 +18,18 @@ properties are hardcoded:
 
 1. **Commitment level is `finalized`** — every RPC read in the Sealevel
    crate uses `CommitmentConfig::finalized()`. There is no configuration
-   knob. Finalized commitment takes ~12-13 seconds on Solana.
+   knob. Finalized commitment takes ~12-15s typically on Solana (Solana's
+   theoretical minimum is ~12.8s — 32 slots at 400ms each; Helius cites
+   a 15-30s range for their infrastructure).
 
 2. **Detection is poll-based** — the `ContractSync` loop sleeps for a
    fixed duration (default 5 seconds), then calls
    `Indexer::fetch_logs_in_range()`. There is no push/subscription path.
 
 Together, these mean the floor on Solana-origin bridge latency is
-~12-13s (finality) + 0-Ns (polling interval, where N = sleep duration),
-averaged ~12-13s + N/2. With the canonical 30s polling, average
-end-to-end bridge time is ~28s; worst case ~45-75s.
+~12-15s (finality) + 0-Ns (polling interval, where N = sleep duration),
+averaged ~12-15s + N/2. With the canonical 30s polling, average
+end-to-end bridge time is ~28-30s; worst case ~45-75s.
 
 ---
 
@@ -35,8 +37,8 @@ end-to-end bridge time is ~28s; worst case ~45-75s.
 
 ### 2.1 What changes and why
 
-Switching the indexer from `finalized` (~12-13s) to `confirmed` (~1-2s)
-eliminates ~11s from every Solana-origin bridge transfer. The Hyperlane
+Switching the indexer from `finalized` (~12-15s) to `confirmed` (~2-3s)
+eliminates ~10-12s from every Solana-origin bridge transfer. The Hyperlane
 protocol's correctness does not depend on the commitment level — the
 validator signs whatever state it observes, and the destination ISM
 verifies signatures, not source-chain finality. The risk is that a
@@ -164,10 +166,10 @@ default) to:
 
 | Commitment | Solana wait | Avg detection (30s poll) | Avg end-to-end |
 |---|---|---|---|
-| `finalized` (current) | ~12-13s | ~15s | ~28s |
-| `confirmed` | ~1-2s | ~15s | ~17s |
+| `finalized` (current) | ~12-15s | ~15s | ~28-30s |
+| `confirmed` | ~2-3s | ~15s | ~18s |
 
-The commitment change saves ~11s on average but does not eliminate
+The commitment change saves ~10-12s on average but does not eliminate
 polling delay. For maximum benefit, combine with Optimization B.
 
 ### 2.6 Risk
@@ -199,21 +201,36 @@ component.
 ### 3.2 Helius LaserStream WebSocket
 
 Helius's LaserStream WebSocket supports standard Solana subscription
-methods (`programSubscribe`, `accountSubscribe`) on **all tiers
-including Free and Developer**. Enhanced WebSocket methods (e.g.
-`transactionSubscribe`) require Developer+. LaserStream gRPC on
-mainnet requires Business ($499/mo).
+methods (`programSubscribe`, `accountSubscribe`) on all Helius tiers
+including Free ($0/mo). Enhanced WebSocket methods (e.g.
+`transactionSubscribe`) require Developer ($49/mo) or above. LaserStream
+gRPC on mainnet requires Business ($499/mo).
 
 For our use case, standard `programSubscribe` via LaserStream WebSocket
-is sufficient. It is available on Developer ($49/mo) — no tier upgrade
-needed.
+is sufficient. It is available on all Helius tiers including Free — no
+tier upgrade needed.
 
-Credit cost: 2 credits per 0.1 MB of streamed data (data-volume-based,
-not per-notification). For our low-volume bridge, daily WebSocket data
-transfer would be negligible compared to polling.
+**Credit cost:** 20 credits per 1 MB of streamed data (data-volume-based,
+not per-notification). WebSocket data metering began May 1, 2026.
+Each WebSocket connection opening costs 1 credit. For our low-volume
+bridge, daily WebSocket data transfer would be negligible compared to
+polling.
 
-Source: <https://www.helius.dev/pricing>,
-<https://www.helius.dev/docs/billing/credits>.
+**Connection limits** by tier:
+- Free: 5 concurrent connections
+- Developer: 150
+- Business: 250
+- Professional: 1,000
+
+**Inactivity timeout:** Helius disconnects WebSocket connections after
+10 minutes of inactivity. The implementation must send ping frames
+every ~60 seconds to keep connections alive.
+
+Sources:
+- programSubscribe: <https://www.helius.dev/docs/api-reference/rpc/websocket/programsubscribe>
+- WebSocket FAQs: <https://www.helius.dev/docs/faqs/websockets>
+- Billing/credits: <https://www.helius.dev/docs/billing/credits>
+- Pricing: <https://www.helius.dev/pricing>
 
 ### 3.3 Approach: wake-up signal (not full rearchitecture)
 
@@ -238,14 +255,14 @@ chains that are also poll-based.
   `SequenceAwareIndexer<T>`: `latest_sequence_count_and_tip()`. No
   push-based method.
 
-**The sync loop is sleep → poll → store → repeat:**
+**The sync loop is sleep -> poll -> store -> repeat:**
 - `hyperlane-base/src/contract_sync/mod.rs:36` —
   `const SLEEP_DURATION: Duration = Duration::from_secs(5);`
 - `mod.rs:251-318` — `cursor_indexer_task` loop:
-  - Line 255: `cursor.next_action()` → returns `Sleep(duration)` or
+  - Line 255: `cursor.next_action()` -> returns `Sleep(duration)` or
     `Query(range)`
-  - Lines 265-273: `CursorAction::Sleep(duration)` → `sleep(duration)`
-  - Line 278: `CursorAction::Query(range)` →
+  - Lines 265-273: `CursorAction::Sleep(duration)` -> `sleep(duration)`
+  - Line 278: `CursorAction::Query(range)` ->
     `indexer.fetch_logs_in_range(range)`
   - Line 315: update cursor, loop back
 
@@ -279,13 +296,15 @@ pub struct ConnectionConf {
 ```
 
 **File 2: New module `hyperlane-sealevel/src/pubsub.rs`** — WebSocket
-subscription manager. Responsibilities:
+subscription manager using `solana_pubsub_client::nonblocking::PubsubClient`
+(already in Cargo.toml, line 30). Responsibilities:
 
-- Connect to the WebSocket endpoint using `solana_pubsub_client::PubsubClient`
-  (already in Cargo.toml, line 30)
+- Connect to the WebSocket endpoint
 - Call `program_subscribe(mailbox_program_id, commitment)` to watch the
   mailbox program for account changes
 - On each notification, signal a `tokio::sync::Notify`
+- Send WebSocket ping frames every ~60 seconds to prevent Helius's
+  10-minute inactivity disconnection
 - On disconnect, log a warning and reconnect with exponential backoff
 - On permanent failure, stop signaling (loop falls back to timer)
 
@@ -396,9 +415,9 @@ jobs, MinIO, or explorer — none of these run the Hyperlane indexer loop.
 
 | Configuration | Avg bridge time | Worst case |
 |---|---|---|
-| Current (finalized + 30s polling) | ~28s | ~75s |
-| Finalized + WebSocket | ~16-17s | ~18s |
-| Confirmed + WebSocket | ~5-6s | ~7s |
+| Current (finalized + 30s polling) | ~28-30s | ~75s |
+| Finalized + WebSocket | ~15-18s | ~20s |
+| Confirmed + WebSocket | ~5-7s | ~10s |
 
 **Credit cost (idle/low traffic):**
 
@@ -408,9 +427,11 @@ jobs, MinIO, or explorer — none of these run the Hyperlane indexer loop.
 | 15s polling | 115,360 | 28,800 | ~4.3M |
 | WebSocket | ~100-500 | ~50-200 | ~5k-21k |
 
-WebSocket reduces the polling component by ~100-300x. The remaining
-credits come from the actual `fetch_logs_in_range` calls triggered by
-notifications and from other components (gas oracle, warp-UI, explorer).
+WebSocket relayer estimate (~100-500 credits/day) includes ~10 credits/day
+in connection overhead (initial connection + reconnects). WebSocket
+reduces the polling component by ~100-300x. The remaining credits come
+from the actual `fetch_logs_in_range` calls triggered by notifications
+and from other components (gas oracle, warp-UI, explorer).
 
 ### 3.8 Failure mode
 
@@ -427,8 +448,8 @@ level until the WebSocket reconnects.
 | Order | Change | Effort | Latency gain | Cost gain |
 |---|---|---|---|---|
 | 1 | 30s polling interval (config only, no fork) | Env var | Baseline | 5.3x vs default 5s |
-| 2 | WebSocket wake-up signal (§3) | ~150-200 lines in fork + compose/spec changes | ~15-60s → <2s detection | ~100-300x on polling credits |
-| 3 | Configurable commitment (§2) | ~30-50 lines in fork + compose/spec changes | ~11s off finality wait | None (same credits) |
+| 2 | WebSocket wake-up signal (S3) | ~150-200 lines in fork + compose/spec changes | ~15-60s -> <2s detection | ~100-300x on polling credits |
+| 3 | Configurable commitment (S2) | ~30-50 lines in fork + compose/spec changes | ~10-12s off finality wait | None (same credits) |
 | 4 | `getProgramAccountsV2` adoption | Separate fork change | None | 10x on GPA credits |
 
 WebSocket (step 2) delivers both latency and cost improvements with no
@@ -521,7 +542,7 @@ to sleep — but it's a noise source. Options:
 
 ## 6. Total scope summary
 
-Scope estimates below account for the pitfalls in §5.
+Scope estimates below account for the pitfalls in S5.
 
 ### `hyperlane-monorepo` fork
 
