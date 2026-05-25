@@ -235,14 +235,11 @@ without waiting for finality.
 (`__SOLANA_RPC_URL__`).
 
 **Dual-commitment tracking:** After a bridge transaction is submitted,
-the UI tracks its confirmation progression via either:
-- `signatureSubscribe` (WebSocket, ~0 marginal credits), or
-- Polling `getSignatureStatuses` (~3-5 calls per tx, 1 credit each)
-
-This adds ~5 credits per bridge tx for confirmation tracking. The
-implementation should make dual-commitment tracking configurable
-(operators can disable it). Estimates assume the WebSocket path
-(`signatureSubscribe`).
+the UI tracks its confirmation progression via `signatureSubscribe`
+(WebSocket). Marginal credit cost is near zero (data volume per
+subscription is bytes). Estimates include ~5 credits/tx as conservative
+headroom. The implementation should make dual-commitment tracking
+configurable (operators can disable it).
 
 **Cost per page visit:** ~3 standard calls = 3 credits (unchanged).
 

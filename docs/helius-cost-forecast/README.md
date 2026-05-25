@@ -154,12 +154,12 @@ for the tentative implementation spec.
 
 3. **Dual-commitment UX in the warp-UI.** The bridge UI should surface
    both `confirmed` (fast feedback, ~2-3s) and `finalized` (secure,
-   ~12-15s) status for Solana-side transactions. This requires tracking
-   confirmation progression via `signatureSubscribe` (WebSocket) or
-   polling `getSignatureStatuses`. The implementation should make this
-   **configurable** — operators should be able to disable
-   dual-commitment tracking or choose polling vs WebSocket for it.
-   Estimates include the cost (~5 credits/tx).
+   ~12-15s) status for Solana-side transactions. This uses
+   `signatureSubscribe` (WebSocket) to track confirmation progression.
+   The implementation should make this **configurable** — operators
+   should be able to disable dual-commitment tracking. Estimates
+   include ~5 credits/tx as conservative headroom; actual WebSocket
+   cost is negligible.
 
 ---
 
