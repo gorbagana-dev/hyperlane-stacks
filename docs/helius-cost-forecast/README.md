@@ -4,11 +4,13 @@ Projection of monthly Helius spend for the Gorbagana ↔ Solana bridge and
 related Solana-mainnet consumers in the gorbagana ecosystem.
 
 This is the executive summary. Detailed RPC inventory and per-component
-credit math is in [`rpc-inventory.md`](./rpc-inventory.md). Empirical
-calibration setup and provider-comparison data is in
+credit math is in [`rpc-inventory.md`](./rpc-inventory.md). Polling-only
+reference numbers are in
+[`polling-baseline-reference.md`](./polling-baseline-reference.md).
+Empirical calibration setup and provider-comparison data is in
 [`calibration-and-comparison.md`](./calibration-and-comparison.md).
 
-**Date:** 2026-05-21
+**Date:** 2026-05-25 (revised from 2026-05-21 original)
 **Status:** Pre-launch estimate. Calibrate against the Helius dashboard
 once the bridge is live.
 
@@ -17,26 +19,54 @@ once the bridge is live.
 ## 1. TL;DR
 
 The bridge fits comfortably on Helius's **Developer tier ($49/month)** at
-launch under realistic load, provided we set the Hyperlane agent polling
-intervals (validator + relayer indexer) to a sane value (30s, or 15s if
-we want tighter latency). The default 5s would push us into the
-**Business tier ($499/month)** before any user traffic.
+launch under all realistic load scenarios, with either WebSocket-based
+indexing (canonical) or polling-only (fallback).
 
-| Scenario | Bridge tx/day | **30s polling** (canonical) | **15s polling** (tighter, see §4) | 5s default (no change) |
+### WebSocket indexing (canonical)
+
+WebSocket `programSubscribe` replaces sleep-based polling as the primary
+detection mechanism in the relayer and validator. Fallback polling at
+120s provides resilience when the WebSocket is down. Detection latency
+drops from seconds-to-minutes (polling) to sub-second (WebSocket
+notification). Standard Solana WebSocket methods are available on all
+Helius tiers including Free.
+
+| Scenario | Bridge tx/day | Credits/month | Tier | Cost |
 |---|---|---|---|---|
-| **Canonical** | low (~10) | **~2.5 M → Developer** | ~4.6 M → Developer | ~13.3 M → Business |
-| Moderate | 100 | ~2.6 M → Developer | ~4.7 M → Developer | ~13.4 M → Business |
-| Heavy | 1,000 | ~3.5 M → Developer | ~5.7 M → Developer | ~14.3 M → Business |
-| Stress | 10,000 | ~12.8 M → Business | ~15.0 M → Business | ~23.6 M → Business |
+| **Low (canonical)** | ~10 | **~477k** | Developer | **$49** |
+| Moderate | 100 | ~600k | Developer | $49 |
+| Heavy | 1,000 | ~1.8M | Developer | $49 |
+| Stress | 10,000 | ~14.0M | Business | $499 |
 
-Developer rows = **$49/month**; Business rows = **$499/month**. The 5s
-column is shown for contrast — it's wasteful (Solana finality is ~12s,
-so faster polling re-reads settled state with no latency benefit) and is
-not a deployment target.
+### Polling only at 30s (for comparison)
 
-Pick **30s** for the most cost margin, or **15s** for ~10-20s less
-worst-case bridge latency at ~2× the credit cost (still Developer in all
-realistic load scenarios).
+If WebSocket adoption is deferred, polling at 30s is the fallback.
+Higher idle cost due to continuous tip-checking, but still Developer
+tier through Heavy traffic.
+
+| Scenario | Bridge tx/day | Credits/month | Tier | Cost |
+|---|---|---|---|---|
+| **Low** | ~10 | **~930k** | Developer | **$49** |
+| Moderate | 100 | ~1.05M | Developer | $49 |
+| Heavy | 1,000 | ~2.3M | Developer | $49 |
+| Stress | 10,000 | ~14.4M | Business | $499 |
+
+WebSocket saves ~49% of credits at low traffic (eliminating the polling
+floor) and ~22% at heavy traffic. At stress, warp-UI traffic dominates
+both models.
+
+### Bridge latency
+
+| Configuration | Avg bridge time | Worst case |
+|---|---|---|
+| Polling 30s + finalized | ~28-30s | ~75s |
+| WebSocket + finalized | ~15-18s | ~20s |
+| WebSocket + confirmed | ~5-7s | ~10s |
+
+`confirmed` commitment (~2-3s on Solana) enables fast user feedback
+in the bridge UI. `finalized` (~12-15s) provides maximum safety. The
+warp-UI should surface both: "confirmed" for immediate user feedback,
+"finalized" for security assurance.
 
 ---
 
@@ -62,98 +92,112 @@ Out of scope:
 
 ## 3. Hotspot ranking
 
-Sorted by credits/day under the canonical (30s polling, low traffic)
-scenario:
+Sorted by credits/day under the canonical WebSocket scenario at low
+traffic:
 
 | # | Component | Credits/day | Share | Driver |
 |---|---|---|---|---|
-| 1 | Relayer indexer | 57,600 | 70 % | 2 × `getProgramAccounts` (10c) every 30s |
-| 2 | Validator polling | 14,400 | 17 % | 5 standard calls every 30s |
-| 3 | Explorer bridge-tracker | 10,000 | 12 % | 120s cron, ~2 tracked wallets |
-| 4 | Warp-UI | 210 – 21,000 | 0.3 – 20 % | Scales with user traffic |
-| 5 | Gas oracle | 290 | 0.4 % | 15-minute cadence |
-| 6 | Deployer | <100 | <0.1 % | One-time |
+| 1 | Explorer bridge-tracker | 10,000 | 63% | 120s cron, ~2 tracked wallets |
+| 2 | Relayer (WS + 120s FB) | 3,025 | 19% | Fallback tip-checks + per-message GPA |
+| 3 | Validator (WS + 120s FB) | 2,220 | 14% | Fallback tip-checks + per-dispatch GPA |
+| 4 | Gas oracle | 290 | 2% | 15-minute cadence |
+| 5 | Warp-UI | 260 | 2% | Scales with user traffic |
+| 6 | Deployer | <100 | <1% | One-time |
 
-The two Hyperlane agents account for ~87 % of the pre-traffic load. Any
-further cost-engineering should start there. See
-[`rpc-inventory.md`](./rpc-inventory.md) for the per-method math.
+With WebSocket indexing, the **explorer cron** is the largest single
+consumer at low traffic — not the relayer. The agent polling floor
+drops from ~87% of load (polling model) to ~33%.
+
+At heavy-to-stress traffic, the warp-UI takes over as the dominant
+consumer (56-78% of total), independent of the indexing model.
 
 ---
 
-## 4. Optimization levers (in priority order)
+## 4. Implementation gaps
 
-Helius feature / credit-cost claims below sourced from
+The canonical estimates assume three capabilities that **do not exist in
+upstream Hyperlane or in our fork today**. Until these are implemented,
+the bridge falls back to the polling-only model (§1 comparison table).
+
+See
+[`docs/superpowers/specs/2026-05-25-websocket-and-commitment-fork-changes.md`](../superpowers/specs/2026-05-25-websocket-and-commitment-fork-changes.md)
+for the tentative implementation spec.
+
+1. **WebSocket wake-up signal in the Sealevel indexer.** The
+   `ContractSync` cursor loop (`hyperlane-base/src/contract_sync/mod.rs`)
+   is purely timer-based: sleep → poll → store → repeat. There is no
+   push-notification path. The fork must add a `tokio::select!` branch
+   that wakes the loop on a `programSubscribe` / `accountSubscribe`
+   notification via `solana_pubsub_client::nonblocking::PubsubClient`
+   (dependency already in `hyperlane-sealevel/Cargo.toml:30`, unused).
+   The `ConnectionConf` struct (`trait_builder.rs:15-30`) has no
+   WebSocket URL field.
+
+   Standard Solana WebSocket methods are available on **all Helius tiers
+   including Free**. Credit cost: 20 credits/MB of streamed data +
+   1 credit per connection open — negligible at bridge volumes. Each
+   connection supports 1,000 subscriptions (we need 1-2); Developer
+   tier allows 150 concurrent connections.
+
+2. **Configurable commitment level.** Every RPC read in the Sealevel
+   crate is hardcoded to `CommitmentConfig::finalized()` (8 call sites
+   across `account.rs`, `mailbox_indexer.rs`, `merkle_tree_hook.rs`,
+   `rpc/client.rs`). The fork must thread a configurable commitment
+   through `ConnectionConf` and all call sites, defaulting to
+   `finalized`. The underlying RPC client already supports arbitrary
+   commitment via `_with_commitment()` methods — only the call sites
+   are hardcoded.
+
+   Switching to `confirmed` (~2-3s vs ~12-15s) saves ~10-12s per
+   Solana-origin transfer. No credit impact. Small rollback risk (66%+
+   vote weight, not yet finalized).
+
+3. **Dual-commitment UX in the warp-UI.** The bridge UI should surface
+   both `confirmed` (fast feedback, ~2-3s) and `finalized` (secure,
+   ~12-15s) status for Solana-side transactions. This uses
+   `signatureSubscribe` (WebSocket) to track confirmation progression.
+   The implementation should make this **configurable** — operators
+   should be able to disable dual-commitment tracking. Estimates
+   include ~5 credits/tx as conservative headroom; actual WebSocket
+   cost is negligible.
+
+---
+
+## 5. Further optimization levers
+
+Additional cost-reduction levers beyond the canonical model, in
+priority order. Helius claims sourced from
 <https://www.helius.dev/docs/billing/credits> and
 <https://www.helius.dev/pricing>.
 
-1. **Set agent polling intervals.** The single largest cost lever — and
-   the one the canonical scenario already assumes.
+1. **`getProgramAccountsV2` adoption** in the Sealevel indexer (1 credit
+   vs 10). Requires modifying the fork to call `getProgramAccountsV2`
+   and confirming Helius supports the memcmp filter shapes we use.
+   Potential ~10× drop on per-message indexing cost for both relayer and
+   validator. Would push even the stress scenario comfortably into
+   Developer.
 
-   *What it controls.* The relayer and validator are pull-based: they
-   poll Solana on a timer for new mailbox state (dispatched messages,
-   processed messages, merkle root insertions). The interval governs how
-   often that polling happens. The indexer uses `finalized` commitment
-   (`hyperlane-sealevel/src/account.rs:47`), so it only ever sees state
-   Solana has already settled.
+2. **Helius Sender for tx submission** (0 credits vs 1). Configuration
+   change at the agent level. Small absolute savings but free to adopt.
+   Sender is also faster than plain `sendTransaction`.
 
-   *Why 5s is wasteful.* Solana's `finalized` commitment takes ~32 slots
-   ≈ 12-13 seconds. Polling more often than that re-reads the same
-   finalized state — strictly wasted RPC budget, no latency benefit.
+3. **Explorer cron optimization.** The explorer is now the largest idle
+   consumer. Reducing its cadence from 120s to 300s, or switching it to
+   WebSocket-based tracking (`signatureSubscribe`), would cut its
+   credits by 60-90%.
 
-   *Trade-off.* Raising the interval adds bridge-transfer latency on
-   Solana-origin messages, because the validator and relayer both gate
-   the critical path and each adds up to one interval of detection
-   delay. It does **not** weaken security, change correctness, drop
-   messages, or expand reorg surface — the trust model is unaffected.
-
-   *Sane settings:*
-   - **30s (canonical):** ~6× cost reduction vs default. Worst-case
-     adds ~25-50s detection latency on Solana-origin transfers. The
-     comfortable default.
-   - **15-20s (tighter alternative):** ~3-4× cost reduction vs default.
-     Worst-case adds ~10-30s. Just above Solana finality, so still no
-     wasted polls. Still fits Developer tier; pick this if user-perceived
-     bridge time matters more than the extra cost margin.
-   - **Below ~15s:** over-polling, no latency benefit, higher bill.
-
-   Configured via `HYP_VALIDATOR_INTERVAL` and the relayer's
-   `SLEEP_DURATION` override in the agent config we generate.
-
-2. **Adopt `getProgramAccountsV2` in the Sealevel indexer** (1 credit vs 10).
-   Our patch to make. Requires modifying the Hyperlane SVM indexer in our
-   fork (`hyperlane-monorepo`) to call `getProgramAccountsV2` and confirming
-   Helius supports the memcmp filter shapes we use. Potential ~10× drop on
-   the relayer line — would push even the stress scenario into Developer.
-
-3. **Use Helius Sender for relayer/validator tx submission** (0 credits vs 1).
-   Configuration change at the agent level. Effect is small compared to GPA
-   polling but free. Sender is also faster than plain `sendTransaction`.
-
-4. **LaserStream or programSubscribe for mailbox state.** 2 credits per
-   0.1 MB. For PDAs that change rarely, dramatically cheaper than 5s/30s
-   GPA polling. Requires a Sealevel indexer refactor in our fork; deferred
-   until 2 + 3 are exhausted. Note: **LaserStream gRPC on mainnet is
-   Business-tier and up** ([source](https://www.helius.dev/pricing)) —
-   adopting this lever moves us off Developer regardless of credit usage.
-
-5. **Helius account split per component.** Five API keys, one each for
-   relayer / validator / gas-oracle / warp-UI / explorer. Enables per-
-   component dashboards in Helius (no per-key surcharge on Developer+).
-   Worth setting up before launch even before we calibrate, so the
-   [calibration procedure](./calibration-and-comparison.md) works.
+4. **Helius account split per component.** Separate API keys for
+   relayer / validator / gas-oracle / warp-UI / explorer. Enables
+   per-component dashboards in Helius. Worth setting up before launch
+   for the [calibration procedure](./calibration-and-comparison.md).
 
 ---
 
-## 5. Rate-limit headroom
+## 6. Rate-limit headroom
 
 Source: <https://www.helius.dev/pricing>.
 
-Credit budget is one half of tier sizing; RPS limits are the other. Helius
-publishes a stricter per-method RPS for `getProgramAccounts` and
-`sendTransaction` than for general RPC, so the recommended tier needs to
-be checked against the actual peak RPS we expect, not just steady-state.
-
-**Per-tier limits relevant to this workload:**
+### 6.1 RPC rate limits
 
 | Limit | Developer | Business |
 |---|---|---|
@@ -161,92 +205,105 @@ be checked against the actual peak RPS we expect, not just steady-state.
 | `getProgramAccounts` RPS | **25** | **50** |
 | `sendTransaction` RPS | 5 | 50 |
 | Sender TPS | — | 50 |
-| LaserStream gRPC (mainnet) | not available (devnet only) | included |
 
 **Our peak RPS by source:**
 
-- **Relayer GPA polling (steady-state):** 2 calls per 30s = 0.07 RPS.
-  ~350× under Developer's 25-RPS ceiling. The only realistic burst is
-  catchup after a multi-hour outage, where the indexer walks queued
-  nonces at 1 GPA per message. With 200 backlogged messages on Developer,
-  catchup saturates the 25-RPS limit for ~8 seconds; Helius returns 429s
-  and the indexer backs off. Acceptable.
-- **Warp-UI concurrent user clicks:** ~6 calls/click over ~2 seconds
-  ≈ 3 RPS per simultaneous user. Developer's 50-RPS general limit gives
-  ~16 simultaneous bridge clicks before rate-limiting. Sufficient for
-  low-to-moderate traffic; insufficient for a viral surge.
-- **`sendTransaction`:** under 0.05 RPS average even at the Heavy
-  (1k tx/day) scenario; relayer submits serially with confirmations,
-  so bursts stay below Developer's 5-RPS ceiling.
+- **Relayer GPA (WebSocket model):** GPA only fires on actual messages,
+  not on a timer. At 1,000 tx/day: ~1,000 GPAs spread over 86,400
+  seconds ≈ 0.012 RPS. Burst after catchup: similar to polling model —
+  walks queued nonces at ~1 GPA/message, limited by Helius 25-RPS
+  ceiling.
+- **Relayer GPA (30s polling fallback):** 2 tip-check calls per 120s =
+  0.017 RPS. Well under all limits.
+- **Warp-UI concurrent users:** ~6 calls/click over ~2s ≈ 3 RPS per
+  simultaneous user. Developer's 50-RPS limit gives ~16 simultaneous
+  bridge clicks.
+- **`sendTransaction`:** under 0.05 RPS average at Heavy (1k tx/day).
 
-**Verdict:** **Developer satisfies our RPS needs** in the canonical, moderate,
-and heavy scenarios. Business is needed if any of: we adopt LaserStream;
-sustained concurrent warp-UI users exceed ~15; or we want headroom for an
-unannounced traffic spike. Professional adds nothing for our workload —
-its differentiator over Business is throughput we won't use.
+### 6.2 WebSocket connection limits
+
+| Tier | Max connections | Our usage |
+|---|---|---|
+| Developer | 150 | 2-4 (relayer + validator) |
+| Business | 250 | 2-4 |
+
+We need 2-4 persistent WebSocket connections (relayer: 1-2 for
+`programSubscribe`; validator: 1 for `accountSubscribe`; optionally
+warp-UI: 1 for `signatureSubscribe`). Developer's 150-connection limit
+is ~37× our needs.
+
+**Verdict:** **Developer satisfies all RPS and connection limits** in
+canonical through heavy scenarios.
 
 ---
 
-## 6. Tier recommendation
+## 7. Tier recommendation
 
-**Provision Helius Developer ($49/month).** Apply a 30s polling interval
-to validator + relayer in the agent generation script before launch — or
-15-20s if we want tighter latency at a modest cost margin (see §4
-lever 1). Both fit Developer comfortably.
+**Provision Helius Developer ($49/month).** Adopt WebSocket-based
+indexing in the `hyperlane-monorepo` fork with 120s fallback polling.
+Both the WebSocket and polling-only models fit Developer comfortably
+through Heavy traffic.
 
 **Triggers to upgrade to Business ($499):**
 
-- Sustained measured usage > 8 M credits/month (80 % of Developer ceiling)
-  over two consecutive weeks.
+- Sustained measured usage > 8 M credits/month (80% of Developer
+  ceiling) over two consecutive weeks.
 - Sustained bridge volume > 5,000 tx/day, or
 - Sustained concurrent warp-UI users > ~15 (RPS pressure), or
-- Adoption of LaserStream / programSubscribe-based indexing (mainnet
-  requires Business), or
-- Adding a second high-volume Helius consumer (expanded explorer features,
-  new product line).
+- Adoption of LaserStream gRPC (mainnet requires Business), or
+- Adding a second high-volume Helius consumer.
 
 **Do not provision Professional ($999)** unless Business stops covering
-sustained load. Our projected RPS is well inside Business limits even
-under the Stress scenario.
+sustained load.
 
 ---
 
-## 7. Key assumptions
+## 8. Key assumptions
 
-These were investigated and resolved while building this estimate
-(citations in [`rpc-inventory.md`](./rpc-inventory.md)):
+Resolved via code analysis (citations in
+[`rpc-inventory.md`](./rpc-inventory.md)):
 
-- The Solana validator's `Mailbox::count` resolves to `getAccountInfo`
-  on a known PDA, not `getProgramAccounts`. Confirmed at
-  `hyperlane-monorepo/rust/main/chains/hyperlane-sealevel/src/merkle_tree_hook.rs:68`.
-- The relayer runs exactly **two** `getProgramAccounts`-polling loops per
-  Solana origin (dispatched messages + processed messages), not four —
-  warp routes are not indexed by the relayer. Confirmed at
-  `hyperlane-monorepo/rust/main/agents/relayer/src/relayer/origin.rs:220-323`.
-- Default agent polling cadence is 5s in both the validator
-  (`validator/src/settings.rs:145`) and relayer indexer
-  (`hyperlane-base/src/contract_sync/mod.rs:36` — `SLEEP_DURATION`).
-- Helius's `getProgramAccountsV2` charges 1 credit vs the 10 of v1.
-  Source: <https://www.helius.dev/docs/billing/credits>.
+- **Idle polling does NOT run `getProgramAccounts`.** The cursor calls
+  `latest_sequence_count_and_tip()` (getSlot + getAccountInfo = 2
+  credits per loop), finds no new nonces, and returns `Sleep`. GPA only
+  fires on `Query(range)` when new messages are found.
+  Code path: `ForwardSequenceAwareSyncCursor::get_next_range()`
+  (`cursors/sequence_aware/forward.rs:113-172`).
+- The relayer runs exactly **two** indexer loops per Solana origin
+  (dispatched + processed), not four — warp routes are not indexed.
+  Confirmed at `relayer/src/relayer/origin.rs:220-323`.
+- The validator **independently indexes dispatched messages** via the
+  same GPA path as the relayer's dispatch loop. Its merkle tree hook
+  sync delegates to `SealevelMailboxIndexer::fetch_logs_in_range()` at
+  `merkle_tree_hook.rs:120`.
+- Standard Solana WebSocket methods (`programSubscribe`,
+  `accountSubscribe`) are available on all Helius tiers including Free.
+  Source: <https://www.helius.dev/docs/faqs/websockets>.
+- `programSubscribe` supports `confirmed`, `finalized`, and `processed`
+  commitment levels. Source:
+  <https://www.helius.dev/docs/api-reference/rpc/websocket/programsubscribe>.
+- Helius WebSocket connections have a 10-minute inactivity timer;
+  implementations must send ping frames every ~60 seconds. Source:
+  <https://www.helius.dev/docs/faqs/websockets>.
 
-Items that still need a product/business input rather than code:
+Items needing product/business input:
 
-- Expected bridge-tx volume curve at launch and steady state. Estimate
-  uses placeholders of 10 / 100 / 1000 / 10,000 tx/day across scenarios.
-- Number of bridge wallets the explorer cron tracks. Estimate assumes 1-3.
-- Helius's per-credit overage rate (not in public docs). Confirm with
-  Helius sales before signing; our scenarios stay under tier ceilings so
-  overage is irrelevant unless we mis-size.
+- Expected bridge-tx volume curve at launch and steady state.
+- Number of bridge wallets the explorer cron tracks (estimate: 1-3).
 
 ---
 
-## 8. Next steps
+## 9. Next steps
 
-- **Before launch:** set agent polling intervals to 30s; provision a
-  Helius Developer account with per-component API keys.
+- **Before launch:** implement the three gaps in §4 (WebSocket
+  wake-up signal, configurable commitment, dual-commitment UX) in the
+  `hyperlane-monorepo` fork — see
+  [spec](../superpowers/specs/2026-05-25-websocket-and-commitment-fork-changes.md);
+  provision a Helius Developer account with per-component API keys;
+  configure 120s fallback polling interval.
 - **During first 72h of mainnet operation:** run the
   [empirical calibration](./calibration-and-comparison.md) procedure to
   reconcile measured vs predicted credits/day.
 - **One month in:** revisit the model and the tier choice.
-- **Deferred:** evaluate `getProgramAccountsV2` and Sender adoption in
-  our `hyperlane-monorepo` fork.
+- **Deferred:** evaluate `getProgramAccountsV2` (10× GPA cost
+  reduction) and Sender adoption (0-credit tx submission).
