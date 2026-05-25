@@ -438,7 +438,90 @@ operational confidence in the bridge is established.
 
 ---
 
-## 5. Total scope summary
+## 5. Implementation pitfalls
+
+Issues discovered during code review that the implementation must
+address. Numbered for tracking.
+
+### 5.1 `cursor_indexer_task` is a static method — no `&self`
+
+The spec shows `match &self.wake_signal` inside `cursor_indexer_task`,
+but that method is static — it takes explicit parameters, not `&self`
+(`mod.rs:241`). The `wake_signal` must be passed as an additional
+parameter to `cursor_indexer_task`, and threaded through from the
+`sync()` method (`mod.rs:158-170`) which spawns it.
+
+### 5.2 Sleep is emitted by cursors too, not just the loop
+
+The spec only addresses the sleep at `mod.rs:265-273`. But
+`CursorAction::Sleep(Duration::from_secs(5))` is **also hardcoded in
+the cursors themselves**:
+- `cursors/sequence_aware/mod.rs:154` — "TODO: Define the sleep time
+  from interval flag"
+- `cursors/sequence_aware/forward.rs:479` — same TODO
+- `cursors/sequence_aware/backward.rs:511`
+- `cursors/rate_limited.rs:223, 230`
+
+The `tokio::select!` fix in the main loop catches these because the
+`CursorAction::Sleep` variant is handled in one place. But the 5-second
+durations in those cursors become the **maximum wake-up latency when no
+WebSocket event fires** — they should also be configurable (or at least
+raised to match the deployment's polling interval) to avoid pointless
+5-second wakeups when the operator chose 30s polling.
+
+### 5.3 Commitment mismatch between WebSocket subscription and RPC reads
+
+If the WebSocket subscribes with `confirmed` commitment but the indexer
+reads with `finalized` (or vice versa), the WebSocket fires before the
+RPC call can see the data. The loop wakes, polls, finds nothing, goes
+back to sleep — wasting a poll cycle with no latency benefit.
+
+The subscription commitment **must match** the indexer's
+`indexing_commitment` from `ConnectionConf`. The `pubsub.rs` module
+must receive and use the same commitment config.
+
+### 5.4 `ContractSync::new()` signature change affects all chains
+
+`ContractSync::new()` is called from `base.rs:177` and `base.rs:205`
+for **every chain**, not just Sealevel. Adding `wake_signal:
+Option<Arc<Notify>>` to the constructor means every chain's wiring
+code must pass `None`. This is a small change but touches the generic
+infrastructure — all EVM, Cosmos, and Sealevel paths go through
+`base.rs`.
+
+### 5.5 `search_accounts_by_discriminator` has three callers
+
+The spec mentions updating `account.rs:39` but only lists
+`mailbox_indexer.rs` as a caller. There are actually **three** call
+sites that need to pass the commitment parameter:
+- `mailbox_indexer.rs:82` (dispatched messages)
+- `mailbox_indexer.rs:179` (delivered messages)
+- `interchain_gas.rs:139` (gas payments)
+
+Plus `interchain_gas.rs:159` has its own
+`get_account_with_finalized_commitment` call that also needs updating.
+
+### 5.6 `programSubscribe` fires for ALL program account changes
+
+`programSubscribe` on the mailbox program ID will notify on **every**
+account change under that program — not just the dispatch/delivery
+PDAs we care about. If the mailbox program has other activity (admin
+operations, other integrations), we get spurious wake-ups.
+
+This is not a correctness issue — the poll finds nothing and goes back
+to sleep — but it's a noise source. Options:
+- Accept the noise (simplest, fine for low-volume bridge)
+- Use `accountSubscribe` on specific PDAs instead of
+  `programSubscribe` (more targeted, but requires knowing the PDA
+  addresses at subscription time)
+- Filter notifications in `pubsub.rs` before signaling (adds
+  complexity for marginal benefit)
+
+---
+
+## 6. Total scope summary
+
+Scope estimates below account for the pitfalls in §5.
 
 ### `hyperlane-monorepo` fork
 
