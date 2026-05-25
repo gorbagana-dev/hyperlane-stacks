@@ -30,12 +30,18 @@ Source: <https://www.helius.dev/pricing>,
 Source: <https://www.helius.dev/docs/faqs/websockets>,
 <https://www.helius.dev/blog/laserstream-websockets>.
 
-| Feature | Free | Developer | Business | Professional |
-|---|---|---|---|---|
-| Standard WSS (`programSubscribe`, `accountSubscribe`, etc.) | all | all | all | all |
-| Enhanced WSS (`transactionSubscribe`, enhanced `accountSubscribe`) | — | yes | yes | yes |
-| LaserStream gRPC (mainnet) | — | — | yes | yes |
-| WebSocket connection limit | 5 | 150 | 250 | 1,000 |
+| Feature | Free | Developer | Business | Professional | We need it? |
+|---|---|---|---|---|---|
+| Standard WSS (`programSubscribe`, `accountSubscribe`, etc.) | all | all | all | all | **yes** |
+| Enhanced WSS (`transactionSubscribe`, enhanced `accountSubscribe`) | — | yes | yes | yes | no |
+| LaserStream gRPC (mainnet) | — | — | yes | yes | no |
+| WebSocket connection limit | 5 | 150 | 250 | 1,000 | 2-4 connections |
+
+We only need **standard Solana WSS methods** — `programSubscribe` for
+the relayer, `accountSubscribe` for the validator, `signatureSubscribe`
+for the warp-UI. These are available on all tiers. LaserStream gRPC is
+a high-throughput firehose for bulk account/transaction streaming; our
+per-message subscription pattern does not require it.
 
 All WebSocket connections go through LaserStream infrastructure at
 `wss://mainnet.helius-rpc.com/?api-key=<KEY>`. Helius disconnects idle
