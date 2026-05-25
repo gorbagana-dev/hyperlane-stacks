@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.11.3
     restart: unless-stopped
     hostname: prometheus
     command:
@@ -20,7 +20,7 @@ services:
       start_period: 10s
 
   pushgateway:
-    image: prom/pushgateway:latest
+    image: prom/pushgateway:v1.11.2
     restart: unless-stopped
     hostname: pushgateway
     healthcheck:
@@ -30,7 +30,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.0.1
     restart: unless-stopped
     hostname: grafana
     environment:
@@ -56,7 +56,7 @@ services:
       start_period: 15s
 
   balance-monitor:
-    image: python:3.12-alpine
+    image: python:3.12.13-alpine
     restart: unless-stopped
     hostname: balance-monitor
     command: ["python3", "/opt/scripts/check-balance.py"]

@@ -89,7 +89,7 @@ RUN sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_CLI_VERSION}/install)
     rm -rf /root/.local/share/solana
 
 # Install kubectl for ConfigMap/Secret creation
-RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+RUN curl -LO "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl" \
     && chmod +x kubectl && mv kubectl /usr/local/bin/
 
 # Copy sealevel-client binary

@@ -21,19 +21,34 @@ Covers build-time supply chain risks and mitigations for all bridge components.
 
 ### Image Pinning
 
-**Decision:** Pin all images by digest, not just tag.
+**Decision:** Pin third-party images by version tag. Self-built images use `:latest`.
+
+Third-party images pulled from external registries are pinned to specific
+version tags in compose files to prevent silent breakage:
 
 ```yaml
-# Good — pinned by digest
-image: gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>
+# Third-party — pinned to version tag
+image: prom/prometheus:v3.11.3
+image: grafana/grafana:13.0.1
 
-# Bad — tag can be overwritten
-image: gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0
+# Self-built — :latest is fine (we control the build + push)
+image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
 ```
 
-- Upstream agent image: pin by digest in docker-compose / k8s manifests
-- Ubuntu base image: pin by digest in Dockerfiles
-- Record the digest-to-tag mapping in a version manifest file
+Pinned third-party images (`docker-compose-hyperlane-monitoring.yml`):
+- `prom/prometheus:v3.11.3`
+- `prom/pushgateway:v1.11.2`
+- `grafana/grafana:13.0.1`
+- `python:3.12.13-alpine` (balance-monitor sidecar)
+- `minio/minio:RELEASE.2025-09-07T16-13-09Z`
+- `minio/mc:RELEASE.2025-08-13T08-35-41Z`
+
+Self-built images (`:latest`, pinned at deploy time via `image-overrides:`):
+- `ghcr.io/gorbagana-dev/hyperlane-agent`
+- `ghcr.io/gorbagana-dev/hyperlane-svm-deployer`
+- `ghcr.io/gorbagana-dev/hyperlane-kms-proxy`
+- `ghcr.io/gorbagana-dev/hyperlane-warp-ui`
+- `ghcr.io/gorbagana-dev/hyperlane-gas-oracle`
 
 ### Cargo.lock + `--locked` Builds
 
@@ -106,21 +121,16 @@ This is included as a verification step in the deployer job. If any hash mismatc
 
 ---
 
-## Version Manifest
+## CI Tool Pinning
 
-Maintain a `versions.json` file in the repo that records all pinned versions and digests:
+Tools installed during CI runs are pinned to specific versions to prevent
+drift between runs:
 
-```json
-{
-  "hyperlane_deployer_source": "@hyperlane-xyz/core@10.2.0 (commit 16c056a09af862b3ce9e14bd3b5b8034750af9d0)",
-  "hyperlane_agent_tag": "agents-v2.0.0",
-  "agent_image": "gcr.io/abacus-labs-dev/hyperlane-agent@sha256:<digest>",
-  "ubuntu_base": "ubuntu:22.04@sha256:<digest>",
-  "solana_cli": "3.0.14",
-  "rust_version": "<from monorepo rust-toolchain.toml>",
-  "warp_ui_repo": "hyperlane-xyz/hyperlane-warp-ui-template",
-  "warp_ui_commit": "6227c04350c27c208c5512ef40776f8181ab022a"
-}
-```
-
-This file serves as the audit trail for what was built and deployed.
+| Tool | Version | Where |
+|------|---------|-------|
+| kubectl | v1.35.0 | Dockerfile (deployer), `.github/workflows/e2e.yml` |
+| Solana CLI | 3.0.14 | Dockerfile ARG, `.github/workflows/e2e.yml` |
+| kind | v0.31.0 | `.github/workflows/e2e.yml` |
+| mkcert | v1.4.4 | `.github/workflows/e2e.yml` |
+| laconic-so | `v1.1.0-b3e9366-202605111309` | Both CI workflows (env `LACONIC_SO_VERSION`) |
+| Rust | Pinned via `rust-toolchain.toml` in monorepo | Dockerfile (rustup installs toolchain from file) |
