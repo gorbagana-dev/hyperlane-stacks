@@ -12,8 +12,7 @@ config:
   PRIVY_API_URL: "http://privy-mock:19876"
   PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
   # MinIO via Caddy — external-services creates the in-NS Service below.
-  AWS_ENDPOINT_URL_S3: "https://hyperlane-minio:443"
-  AWS_CA_BUNDLE: "/etc/ssl/certs/minio-ca/rootCA.pem"
+  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:80"
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9090"
@@ -37,8 +36,6 @@ volumes:
   validator-data:
 configmaps:
   agent-config: ./configmaps/agent-config
-  # Seeded with mkcert root CA by conftest (write_mkcert_root_to_configmap).
-  minio-ca-config: ./configmaps/minio-ca-config
 secrets:
   hyperlane-validator-solana-secrets:
     keys:
@@ -63,11 +60,11 @@ external-services:
     port: 19876
   # Dev only — prod uses public DNS to resolve s3.bridge.gorbagana.wtf.
   # Routes the in-cluster name `hyperlane-minio` to the Kind gateway
-  # so traffic exits the cluster, re-enters via Caddy on 443, and gets
+  # so traffic exits the cluster, re-enters via Caddy on 80, and gets
   # reverse_proxied to minio:9000.
   hyperlane-minio:
     ip: REPLACE_HOST_IP
-    port: 443
+    port: 80
 network:
   acme-email: e2e@example.test
   http-proxy:

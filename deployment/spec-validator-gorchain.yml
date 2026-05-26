@@ -22,8 +22,6 @@ resources:
         storage: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
-  # Empty in prod — only populated in dev with the mkcert root CA.
-  minio-ca-config: ./configmaps/minio-ca-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/validator-gorchain.key (hex-encoded validator signing key)
 # and export these env vars in the shell that runs `laconic-so`:

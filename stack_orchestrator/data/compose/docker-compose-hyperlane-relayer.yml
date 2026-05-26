@@ -23,16 +23,12 @@ services:
       # HYP_CHAINS_GORCHAIN_SIGNER_KEY, HYP_CHAINS_SOLANA_SIGNER_KEY
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
       # MinIO endpoint — set in each spec's config: block.
-      # Dev: https://hyperlane-minio:443 (Caddy via external-services Service).
+      # Dev: http://hyperlane-minio:80 (Caddy via external-services Service).
       # Prod: https://s3.bridge.gorbagana.wtf:443 (Caddy via public DNS).
       AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}
-      # mkcert root CA bundle path (dev only). Empty in prod → SDK uses
-      # the container's built-in public CA bundle for LE verification.
-      AWS_CA_BUNDLE: ${AWS_CA_BUNDLE:-}
       AWS_REGION: us-east-1
     volumes:
       - agent-config:/config:ro
-      - minio-ca-config:/etc/ssl/certs/minio-ca:ro
       - relayer-data:/data
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9091 || exit 1"]
@@ -62,7 +58,5 @@ services:
 volumes:
   # agent-config: ConfigMap volume sourced from BridgeStateLoader at deploy-create
   agent-config:
-  # minio-ca-config: ConfigMap volume for mkcert root CA (dev only; empty in prod)
-  minio-ca-config:
   relayer-data:
   igp-fee-claim-scripts-config:

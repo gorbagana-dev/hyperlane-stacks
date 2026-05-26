@@ -27,8 +27,6 @@ resources:
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
   agent-config: ./configmaps/agent-config
-  # Empty in prod — only populated in dev with the mkcert root CA.
-  minio-ca-config: ./configmaps/minio-ca-config
 # Before deploying, place these keyfiles on the host:
 #   ~/.credentials/hyperlane/relayer-gorchain.key  (hex-encoded relayer signing key for Gorchain)
 #   ~/.credentials/hyperlane/relayer-solana.key    (hex-encoded relayer signing key for Solana)

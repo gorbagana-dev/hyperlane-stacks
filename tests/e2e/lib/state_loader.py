@@ -14,9 +14,7 @@ a clear error before the consumer Job/Pod is started.
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import subprocess
 from pathlib import Path
 
 # Only stacks whose compose actually mounts a CM appear here. Stacks that
@@ -104,26 +102,3 @@ class BridgeStateLoader:
                 f"program-ids.json missing chain {chain!r}; keys={list(ids)}"
             )
         return ids[chain]
-
-
-def _resolve_caroot() -> Path:
-    """Return the mkcert CA root dir, honoring CAROOT env or falling back to `mkcert -CAROOT`."""
-    env_caroot = os.environ.get("CAROOT")
-    if env_caroot:
-        return Path(env_caroot)
-    result = subprocess.run(
-        ["mkcert", "-CAROOT"], capture_output=True, text=True, check=True,
-    )
-    return Path(result.stdout.strip())
-
-
-def write_mkcert_root_to_configmap(deploy_dir: Path) -> None:
-    """Copy mkcert rootCA.pem into {deploy_dir}/configmaps/minio-ca-config/."""
-    src = _resolve_caroot() / "rootCA.pem"
-    if not src.is_file():
-        raise FileNotFoundError(
-            f"mkcert rootCA.pem not found at {src} — did you run `mkcert -install`?"
-        )
-    dst_dir = deploy_dir / "configmaps" / "minio-ca-config"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst_dir / "rootCA.pem")
