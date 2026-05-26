@@ -8,6 +8,8 @@ config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
+  # MinIO via Caddy — public DNS resolves to the Caddy ingress.
+  AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf:443"
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9090"
@@ -20,6 +22,8 @@ resources:
         storage: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
+  # Empty in prod — only populated in dev with the mkcert root CA.
+  minio-ca-config: ./configmaps/minio-ca-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/validator-solana.key (hex-encoded validator signing key)
 # and export these env vars in the shell that runs `laconic-so`:

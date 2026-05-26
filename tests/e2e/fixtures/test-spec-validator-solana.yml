@@ -11,6 +11,8 @@ config:
   CHECKPOINT_BUCKET: hyperlane-validator-solana
   PRIVY_API_URL: "http://privy-mock:19876"
   PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
+  AWS_ENDPOINT_URL_S3: "https://hyperlane-minio:443"
+  AWS_CA_BUNDLE: "/etc/ssl/certs/minio-ca/rootCA.pem"
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9090"
@@ -34,6 +36,7 @@ volumes:
   validator-data:
 configmaps:
   agent-config: ./configmaps/agent-config
+  minio-ca-config: ./configmaps/minio-ca-config
 secrets:
   hyperlane-validator-solana-secrets:
     keys:
@@ -56,6 +59,10 @@ external-services:
   privy-mock:
     ip: REPLACE_HOST_IP
     port: 19876
+  # Dev only — prod uses public DNS to resolve s3.bridge.gorbagana.wtf.
+  hyperlane-minio:
+    ip: REPLACE_HOST_IP
+    port: 443
 network:
   acme-email: e2e@example.test
   http-proxy:

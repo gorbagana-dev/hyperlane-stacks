@@ -30,8 +30,13 @@ services:
       CONFIG_FILES: /config/agent-config.json
       # KMS proxy sidecar for Privy signing (same pod = localhost)
       AWS_ENDPOINT_URL_KMS: "http://localhost:9999"
-      # MinIO for checkpoint storage (cross-namespace FQDN; PR2 replaces with external-services)
-      AWS_ENDPOINT_URL_S3: "http://hyperlane-minio.laconic-hyperlane-minio.svc.cluster.local:9000"
+      # MinIO endpoint — set in each spec's config: block.
+      # Dev: https://hyperlane-minio:443 (Caddy via external-services Service).
+      # Prod: https://s3.bridge.gorbagana.wtf:443 (Caddy via public DNS).
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}
+      # mkcert root CA bundle path (dev only). Empty in prod → SDK uses
+      # the container's built-in public CA bundle for LE verification.
+      AWS_CA_BUNDLE: ${AWS_CA_BUNDLE:-}
       AWS_REGION: us-east-1
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — MinIO credentials
@@ -39,6 +44,7 @@ services:
       #   separate from KMS validator key; only HexKey type supported for SVM)
     volumes:
       - agent-config:/config:ro
+      - minio-ca-config:/etc/ssl/certs/minio-ca:ro
       - validator-data:/data
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9090 || exit 1"]
@@ -66,4 +72,6 @@ services:
 volumes:
   # agent-config: ConfigMap volume sourced from BridgeStateLoader at deploy-create
   agent-config:
+  # minio-ca-config: ConfigMap volume for mkcert root CA (dev only; empty in prod)
+  minio-ca-config:
   validator-data:

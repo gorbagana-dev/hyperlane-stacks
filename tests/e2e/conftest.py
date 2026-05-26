@@ -87,7 +87,7 @@ from lib.privy_mock import (
     is_privy_mock_running,
     load_oracle_keypair,
 )
-from lib.state_loader import BridgeStateLoader
+from lib.state_loader import BridgeStateLoader, write_mkcert_root_to_configmap
 
 log = logging.getLogger(__name__)
 
@@ -919,6 +919,7 @@ def _deploy_validator(
     )
 
     bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
+    write_mkcert_root_to_configmap(deploy_info.deploy_dir)
 
     os.environ.update({
         "PRIVY_APP_ID":           "test-app-id",
