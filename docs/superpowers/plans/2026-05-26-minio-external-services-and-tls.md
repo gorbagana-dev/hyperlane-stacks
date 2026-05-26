@@ -2,22 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cut MinIO consumers (both validators, relayer) over from the cross-namespace FQDN to `external-services:` and route the data path through Caddy. Production uses HTTPS (LE certs verified by the SDK's built-in webpki-roots). Dev uses plain HTTP between consumers and Caddy because `aws-sdk-rust` does not honor `AWS_CA_BUNDLE` (awslabs/aws-sdk-rust#1362), so distributing the mkcert root would silently do nothing.
+**Goal:** Cut MinIO consumers (both validators, relayer) over from the cross-namespace FQDN to `external-services:`. Production reaches MinIO through Caddy over HTTPS via public DNS (LE cert trusted by the SDK's built-in webpki-roots). Dev reaches MinIO directly via cross-NS pod-IP discovery (selector-mode `external-services:`), bypassing Caddy entirely — Caddy v2 308-redirects HTTP to HTTPS, and aws-sdk-rust does not honor `AWS_CA_BUNDLE` (awslabs/aws-sdk-rust#1362), so neither a "plain HTTP through Caddy" nor an "HTTPS through Caddy with mkcert trusted" path works without a fork patch.
 
-**Architecture:** Validators and relayer reach MinIO only through Caddy. In dev, each consumer's `external-services:` entry creates a Service named `hyperlane-minio` in its own namespace, routing to the Kind gateway IP (port 80). In prod, the URL targets the public hostname `s3.bridge.gorbagana.wtf` and cluster DNS forwards to upstream resolvers. Dev and prod differ only in URL scheme.
+**Architecture:** In dev, each consumer's `external-services:` entry uses selector mode (`app.kubernetes.io/stack: hyperlane-minio`, `namespace: laconic-hyperlane-minio`, `port: 9000`) to create a headless Service in the consumer's namespace with Endpoints populated from cross-NS pod-IP discovery at deploy time. Validator dials `http://hyperlane-minio:9000` and lands directly on MinIO. In prod, no `external-services:` entry — the URL `https://s3.bridge.gorbagana.wtf` resolves via cluster DNS forwarding to upstream resolvers, traffic enters the prod cluster via Caddy, and Caddy reverse_proxies to MinIO.
 
-**Tech Stack:** docker-compose, laconic-so, kubernetes, Caddy ingress, AWS Signature v4 / S3 path-style addressing, pytest.
+**Tech Stack:** docker-compose, laconic-so, kubernetes, Caddy ingress (prod only on this leg), AWS Signature v4 / S3 path-style addressing, pytest.
 
 ---
 
 ## Current branch state (commits already landed)
 
-The first six tasks have been implemented on this branch. They assumed
-HTTPS would work in dev via `AWS_CA_BUNDLE`. Subsequent investigation
-found `aws-sdk-rust` does not implement that env var. **Task R below
-rolls back the dev-HTTPS plumbing and switches dev to HTTP.**
+The first six tasks (now plus Task R) have been implemented on this branch.
 
-Tasks 1–6 already committed (in commit order):
+Iteration 1 — Tasks 1, 2, 4, 5 introduced `AWS_CA_BUNDLE` + `minio-ca-config`
+plumbing to test HTTPS in dev. Verification found `aws-sdk-rust` does not
+honor `AWS_CA_BUNDLE`. Task R rolled that back.
+
+Iteration 2 — Task R's commit shape used `external-services: { ip:
+REPLACE_HOST_IP, port: 80 }` plus dev URL `http://hyperlane-minio:80`.
+A subsequent empirical test confirmed Caddy v2 308-redirects HTTP to
+HTTPS — AWS SDK won't follow that on signed S3 requests. **Task R2 below
+switches dev to selector-mode `external-services:` that bypasses Caddy
+entirely, using port 9000 directly on the MinIO pod.**
+
+Tasks 1–6 + R already committed (in commit order):
 
 - `67e8d0b` Task 1 — stub `minio-ca-config` source dir + `hyperlane-minio` in TEST_HOSTNAMES.
 - `17e61fc` + `c667000` Task 2 — `write_mkcert_root_to_configmap` helper + unit tests + code-review fixes.
@@ -25,34 +33,44 @@ Tasks 1–6 already committed (in commit order):
 - `17325a6` + `0203ff4` Task 4 — validator compose passthrough + 2 prod specs + 2 dev fixtures + conftest populator call.
 - `69d2e2f` Task 5 — relayer compose passthrough + prod spec + dev fixture + conftest populator call.
 - `567596f` Task 6 — minio stack's `commands.py` `start()` made a no-op.
-- `c034caa` design spec update — HTTP in dev, HTTPS in prod.
+- `c034caa` design spec update (iteration 1 → 2): HTTPS replaced with HTTP-in-dev.
+- `eada206` plan update + Task R definition.
+- `2857cb6` Task R — removed AWS_CA_BUNDLE / minio-ca-config / write_mkcert_root_to_configmap; switched dev to `http://hyperlane-minio:80`.
+- `c553fc2` design spec update (iteration 2 → 3): HTTP-through-Caddy replaced with cross-NS-direct.
 
-Tasks 3 and 6 land unchanged. Tasks 1, 2, 4, 5 each have pieces to roll
-back (see Task R).
+Task R2 (below) implements the iteration-3 design. Task 6 and the prod-side
+of Tasks 3, 4, 5 land unchanged after R2.
 
 ---
 
-## File map (final target state)
+## File map (final target state after Task R2)
 
 **Compose & stack (SO data dir):**
-- `stack_orchestrator/data/compose/docker-compose-hyperlane-validator.yml` — passthrough `AWS_ENDPOINT_URL_S3` only (no `AWS_CA_BUNDLE`, no `minio-ca-config` mount).
+- `stack_orchestrator/data/compose/docker-compose-hyperlane-validator.yml` — passthrough `AWS_ENDPOINT_URL_S3` only.
 - `stack_orchestrator/data/compose/docker-compose-hyperlane-relayer.yml` — same.
 - `stack_orchestrator/data/stacks/hyperlane-minio/deploy/commands.py` — `start()` is a no-op.
-- `stack_orchestrator/data/config/minio-ca-config/` — does not exist.
 
 **Production specs:**
 - `deployment/spec-minio.yml` — `http-proxy:` includes both `s3.bridge.gorbagana.wtf` → minio:9000 and `minio-console.bridge.gorbagana.wtf` → minio:9001.
-- `deployment/spec-validator-gorchain.yml`, `spec-validator-solana.yml`, `spec-relayer.yml` — `config:` includes `AWS_ENDPOINT_URL_S3: https://s3.bridge.gorbagana.wtf:443`. No `configmaps:` entry for `minio-ca-config`. No `external-services:` block.
+- `deployment/spec-validator-gorchain.yml`, `spec-validator-solana.yml`, `spec-relayer.yml` — `config:` includes `AWS_ENDPOINT_URL_S3: https://s3.bridge.gorbagana.wtf`. No `external-services:` block.
 
 **Test fixtures:**
-- `tests/e2e/fixtures/test-spec-minio.yml` — `http-proxy:` includes both `hyperlane-minio` → minio:9000 and `minio-console.test` → minio:9001.
-- `tests/e2e/fixtures/test-spec-validator-gorchain.yml`, `test-spec-validator-solana.yml`, `test-spec-relayer.yml` — `config:` includes `AWS_ENDPOINT_URL_S3: http://hyperlane-minio:80` (no `AWS_CA_BUNDLE`). `external-services:` includes `hyperlane-minio: { ip: REPLACE_HOST_IP, port: 80 }` with comment explaining dev/prod asymmetry. No `configmaps:` entry for `minio-ca-config`.
+- `tests/e2e/fixtures/test-spec-minio.yml` — `http-proxy:` includes only `minio-console.test` → minio:9001. No `hyperlane-minio` host (consumers reach MinIO directly in dev, not via Caddy).
+- `tests/e2e/fixtures/test-spec-validator-gorchain.yml`, `test-spec-validator-solana.yml`, `test-spec-relayer.yml` — `config:` includes `AWS_ENDPOINT_URL_S3: http://hyperlane-minio:9000`. `external-services:` includes:
+  ```yaml
+  hyperlane-minio:
+    selector:
+      app.kubernetes.io/stack: hyperlane-minio
+    namespace: laconic-hyperlane-minio
+    port: 9000
+  ```
+  with comment explaining dev/prod asymmetry.
 
 **Test code:**
-- `tests/e2e/lib/cluster.py` — `TEST_HOSTNAMES` still includes `hyperlane-minio` (mkcert SAN; harmless, kept for any future HTTPS-in-dev work).
+- `tests/e2e/lib/cluster.py` — `TEST_HOSTNAMES` does NOT include `hyperlane-minio` (no longer reached via Caddy in dev, so mkcert SAN coverage is moot).
 - `tests/e2e/lib/state_loader.py` — no `_resolve_caroot` or `write_mkcert_root_to_configmap`.
 - `tests/e2e/test_00_cluster_helpers.py` — no tests for the removed helper.
-- `tests/e2e/conftest.py` — `write_mkcert_root_to_configmap` import removed; no calls to it.
+- `tests/e2e/conftest.py` — no references to `write_mkcert_root_to_configmap`.
 
 ---
 
@@ -294,11 +312,188 @@ EOF
 
 ---
 
+## Task R2: Switch dev MinIO to selector-mode external-services (bypass Caddy)
+
+Caddy v2 308-redirects HTTP to HTTPS for any hostname-based site, so dialing `http://hyperlane-minio:80` from a validator pod fails (AWS SDK doesn't follow redirects on signed S3 requests). Switch dev to direct cross-NS routing using `external-services:` selector mode targeting MinIO pods on port 9000. Caddy is no longer in the dev validator→MinIO data path; the minio test fixture's `hyperlane-minio` http-proxy entry is removed; the `hyperlane-minio` mkcert SAN entry is removed.
+
+Also drop the explicit `:443` port from prod URLs (`https://` already implies 443; the port is redundant).
+
+**Files:**
+- Modify: `tests/e2e/fixtures/test-spec-minio.yml`
+- Modify: `tests/e2e/fixtures/test-spec-validator-gorchain.yml`
+- Modify: `tests/e2e/fixtures/test-spec-validator-solana.yml`
+- Modify: `tests/e2e/fixtures/test-spec-relayer.yml`
+- Modify: `tests/e2e/lib/cluster.py`
+- Modify: `stack_orchestrator/data/compose/docker-compose-hyperlane-validator.yml`
+- Modify: `stack_orchestrator/data/compose/docker-compose-hyperlane-relayer.yml`
+- Modify: `deployment/spec-validator-gorchain.yml`
+- Modify: `deployment/spec-validator-solana.yml`
+- Modify: `deployment/spec-relayer.yml`
+
+- [ ] **Step R2.1: Remove `hyperlane-minio` host from the minio test fixture**
+
+Edit `tests/e2e/fixtures/test-spec-minio.yml`. The current `http-proxy:` block contains two entries — `hyperlane-minio` → `minio:9000` and `minio-console.test` → `minio:9001`. Delete the first entry. The block should become:
+
+```yaml
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: minio-console.test
+      routes:
+        - path: /
+          proxy-to: minio:9001
+```
+
+Leave the prod minio spec (`deployment/spec-minio.yml`) UNCHANGED — `s3.bridge.gorbagana.wtf` stays in its `http-proxy:` (prod still uses Caddy).
+
+- [ ] **Step R2.2: Switch dev validator fixtures to selector-mode + port 9000**
+
+Edit each of:
+- `tests/e2e/fixtures/test-spec-validator-gorchain.yml`
+- `tests/e2e/fixtures/test-spec-validator-solana.yml`
+
+In the `config:` block, replace `AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:80"` with `AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"`. Update any nearby comment that references "Caddy on 80" or "external-services Service" to say "direct to MinIO":
+
+```yaml
+  # Dev only — direct cross-NS to the MinIO pod via external-services
+  # selector mode below. No Caddy in this path.
+  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
+```
+
+In the `external-services:` block, replace the current `hyperlane-minio:` entry (which has `ip: REPLACE_HOST_IP, port: 80` and a multi-line "Caddy on 80" comment) with:
+
+```yaml
+  # Dev only — prod uses public DNS to resolve s3.bridge.gorbagana.wtf.
+  # Selector mode: SO creates a headless Service named `hyperlane-minio`
+  # in this NS with Endpoints discovered from MinIO pods in the
+  # laconic-hyperlane-minio namespace at deploy time. Pod restart
+  # invalidates the Endpoints; tests do full re-deploys, so this is fine
+  # in dev. Prod uses the Caddy-fronted public hostname instead.
+  hyperlane-minio:
+    selector:
+      app.kubernetes.io/stack: hyperlane-minio
+    namespace: laconic-hyperlane-minio
+    port: 9000
+```
+
+- [ ] **Step R2.3: Switch dev relayer fixture to selector-mode + port 9000**
+
+Edit `tests/e2e/fixtures/test-spec-relayer.yml`. Same two changes as Step R2.2 (config: URL block and external-services: hyperlane-minio entry).
+
+- [ ] **Step R2.4: Remove `hyperlane-minio` from TEST_HOSTNAMES**
+
+Edit `tests/e2e/lib/cluster.py`. Delete the `"hyperlane-minio",` entry from the `TEST_HOSTNAMES` tuple. After the edit the tuple is back to its pre-Task-1 form:
+
+```python
+TEST_HOSTNAMES: tuple[str, ...] = (
+    "bridge.test",
+    "grafana.test",
+    "prometheus.test",
+    "validator-gorchain.test",
+    "validator-solana.test",
+    "relayer.test",
+    "minio-console.test",
+)
+```
+
+- [ ] **Step R2.5: Update compose comments to reflect the new dev URL**
+
+Edit each of:
+- `stack_orchestrator/data/compose/docker-compose-hyperlane-validator.yml`
+- `stack_orchestrator/data/compose/docker-compose-hyperlane-relayer.yml`
+
+The current comment above `AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}` mentions "Dev: http://hyperlane-minio:80 (Caddy via external-services Service)." Update to:
+
+```yaml
+      # MinIO endpoint — set in each spec's config: block.
+      # Dev: http://hyperlane-minio:9000 (direct cross-NS via external-services selector).
+      # Prod: https://s3.bridge.gorbagana.wtf (Caddy via public DNS, LE cert trusted by webpki-roots).
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}
+```
+
+No other changes to compose. `AWS_CA_BUNDLE` was already removed in Task R; `minio-ca-config` volume mount was already removed in Task R.
+
+- [ ] **Step R2.6: Drop `:443` from prod URLs**
+
+Edit each of:
+- `deployment/spec-validator-gorchain.yml`
+- `deployment/spec-validator-solana.yml`
+- `deployment/spec-relayer.yml`
+
+In each `config:` block, change:
+
+```yaml
+  AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf:443"
+```
+
+to:
+
+```yaml
+  AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf"
+```
+
+This is purely cosmetic — `https://` already implies port 443 — but removes confusing redundant port specification.
+
+- [ ] **Step R2.7: Run the cluster-helper unit tests as a sanity check**
+
+```bash
+cd tests/e2e && pytest test_00_cluster_helpers.py -v --noconftest 2>&1 | tail -10
+```
+
+(The `--noconftest` flag is needed only if the host has the pre-existing pydantic env issue mentioned in Task R's report. If conftest loads cleanly, drop the flag.)
+
+Expected: 2 passed. This task doesn't add or remove tests; just confirming the unit-test surface still works.
+
+- [ ] **Step R2.8: Sanity grep**
+
+```bash
+cd /home/dev/git_puller/repos/hyperlane-stacks
+
+echo "=== old FQDN literal (expect: no matches) ==="
+grep -rn "hyperlane-minio.laconic-hyperlane-minio" \
+  stack_orchestrator/ deployment/ tests/e2e/
+
+echo "=== dev URL is :9000 in fixtures (expect: 3 matches) ==="
+grep -rn "AWS_ENDPOINT_URL_S3" tests/e2e/fixtures/
+
+echo "=== prod URL has no port (expect: 3 matches, no :443) ==="
+grep -rn "AWS_ENDPOINT_URL_S3" deployment/
+
+echo "=== port 80 references in fixtures (expect: no matches) ==="
+grep -rn ":80\b\|port: 80\b" tests/e2e/fixtures/
+
+echo "=== TEST_HOSTNAMES no longer has hyperlane-minio (expect: no match) ==="
+grep -n "hyperlane-minio" tests/e2e/lib/cluster.py
+```
+
+Expectations: see the echo labels.
+
+- [ ] **Step R2.9: Commit**
+
+```bash
+git add -A
+git commit -m "$(cat <<'EOF'
+tests + specs: dev MinIO uses selector-mode external-services (bypass Caddy)
+
+Caddy v2 308-redirects HTTP to HTTPS for any hostname-based site, so
+the previous dev plan (validator → http://hyperlane-minio:80 → Caddy
+→ minio:9000) fails — AWS SDK doesn't follow redirects on signed S3
+requests. Switch the dev external-services entry to selector mode
+pointing at the MinIO pod in laconic-hyperlane-minio NS on port 9000;
+validators dial http://hyperlane-minio:9000 directly. Caddy stays in
+the prod path (HTTPS via public DNS, LE trusted by webpki-roots).
+Also drop the redundant :443 from prod URLs.
+EOF
+)"
+```
+
+---
+
 ## Task 7: Full e2e verification
 
 Same as the original plan — controller runs against real infrastructure after Task R lands. Read the previous plan revision for the verification commands. The only differences vs. the originally-written §7 are:
 
-- Step 4 (env-var verification) should expect `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:80` in validator/relayer pods, not the previous HTTPS URL. There is no longer an `AWS_CA_BUNDLE` env var to check.
+- Step 4 (env-var verification) should expect `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000` in validator/relayer pods, not the previous HTTPS URL. There is no longer an `AWS_CA_BUNDLE` env var to check.
 - Step 5 (mkcert root CA presence in pods) is dropped — no `minio-ca-config` mount exists anymore.
 
 Verification commands:
@@ -347,7 +542,7 @@ done
 
 Expected for each NS:
 ```
-AWS_ENDPOINT_URL_S3=http://hyperlane-minio:80
+AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000
 ```
 
 - [ ] **Step 7.5: No commit needed — verification only**
