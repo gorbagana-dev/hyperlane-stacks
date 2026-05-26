@@ -58,20 +58,20 @@ which sets `force_path_style(true)` and resolves the endpoint from the
 ```
        validator-gorchain / validator-solana / relayer pod
                           │
-                          │  AWS_ENDPOINT_URL_S3=https://hyperlane-minio:443       (dev)
+                          │  AWS_ENDPOINT_URL_S3=http://hyperlane-minio:80         (dev)
                           │  AWS_ENDPOINT_URL_S3=https://s3.bridge.gorbagana.wtf:443  (prod)
                           ▼
        ┌─────────────────────────────────────────────────┐
        │ Hostname resolution:                            │
        │  - dev:  Service "hyperlane-minio" in consumer  │
        │          NS, created by external-services entry │
-       │          (ip: REPLACE_HOST_IP, port: 443)       │
+       │          (ip: REPLACE_HOST_IP, port: 80)        │
        │  - prod: cluster DNS forwards to upstream and   │
        │          resolves public hostname natively      │
        └─────────────────────────────────────────────────┘
                           │
                           ▼
-              Caddy ingress (TLS termination)
+              Caddy ingress (terminates TLS in prod; passes HTTP in dev)
                           │  host-name matches an http-proxy entry
                           ▼  on the minio stack
               reverse_proxy minio:9000   (preserves Host)
@@ -85,7 +85,7 @@ configured on the minio stack:
 
 | Env  | Endpoint URL                              | Caddy host-name on minio stack    |
 |------|-------------------------------------------|-----------------------------------|
-| dev  | `https://hyperlane-minio:443`             | `hyperlane-minio`                 |
+| dev  | `http://hyperlane-minio:80`               | `hyperlane-minio`                 |
 | prod | `https://s3.bridge.gorbagana.wtf:443`     | `s3.bridge.gorbagana.wtf`         |
 
 ## 4. Key decisions
@@ -101,7 +101,7 @@ The validator/relayer pods need to resolve the hostname in the endpoint
 URL. In dev, the hostname is the in-cluster Service name `hyperlane-minio`
 and must be created via an `external-services:` entry in each consumer's
 namespace, pointing at the Kind gateway IP (mode `ip: REPLACE_HOST_IP,
-port: 443` — the same pattern the chain RPCs already use). In prod the
+port: 80` — the same pattern the chain RPCs already use). In prod the
 hostname is a real DNS name (`s3.bridge.gorbagana.wtf`); cluster DNS
 forwards unknown names to upstream resolvers by default and resolves it
 without any explicit Service object.
@@ -110,29 +110,34 @@ The dev fixture's `external-services:` block carries an inline comment
 explaining the asymmetry, so anyone reading the prod spec doesn't wonder
 where the matching entry went.
 
-### 4.3 mkcert root CA distributed via a per-consumer ConfigMap
+### 4.3 HTTP in dev, HTTPS in prod — TLS only on the prod leg
 
-A container's default trust store contains only the public CA bundle
-that shipped with `ca-certificates`. mkcert's root is a per-developer
-machine CA and is not in that bundle. Without making the mkcert root
-trusted inside the consumer pods, the dev TLS handshake to Caddy fails
-before any S3 request goes out.
+We considered terminating TLS at Caddy in dev as well (matching prod's
+HTTPS path byte-for-byte), so the dev fixture would distribute the
+mkcert root CA into each consumer pod via a `minio-ca-config` ConfigMap
+and set `AWS_CA_BUNDLE` on the validator/relayer. Investigation against
+the pinned SDK versions (aws-config 1.1.7, aws-sdk-s3 1.65.0,
+aws-smithy-runtime 1.8.1) found that **`AWS_CA_BUNDLE` is not honored
+by aws-sdk-rust** — open feature request awslabs/aws-sdk-rust#1362,
+no implementation in the SDK source. Setting the env var in dev would
+silently do nothing; the mkcert handshake would fail; validators would
+never reach MinIO.
 
-We distribute it the same way `agent-config` is distributed today:
+To make HTTPS work in dev we would need either (a) a third fork patch
+that wires `AWS_CA_BUNDLE` into a custom HTTP connector, or (b) an init
+container that installs the mkcert root into the system trust store
+*plus* a fork patch to switch aws-sdk-rust from `webpki-roots` to
+`rustls-native-certs`. Both add ongoing fork-maintenance burden in
+exchange for parity on a TLS leg that's already exercised by other
+stacks' Caddy-fronted tests (warp-ui, monitoring, validator HTTP).
 
-- A new `minio-ca-config` ConfigMap is declared by each MinIO consumer
-  (both validators, relayer).
-- The source dir `stack_orchestrator/data/config/minio-ca-config/` is
-  empty in the repo (contains only `.gitkeep`).
-- In dev, the test fixture's state-loading step writes
-  `$(mkcert -CAROOT)/rootCA.pem` into
-  `{deploy_dir}/configmaps/minio-ca-config/rootCA.pem` for each consumer
-  before `deploy_create`. SO then creates the ConfigMap in each consumer's
-  namespace and mounts it at `/etc/ssl/certs/minio-ca/`.
-- Dev spec sets `AWS_CA_BUNDLE=/etc/ssl/certs/minio-ca/rootCA.pem`.
-- In prod the source dir stays empty, the ConfigMap is created empty,
-  the mount is harmlessly empty, and `AWS_CA_BUNDLE` is unset — the
-  agent uses its built-in public CA bundle to verify the LE cert.
+Instead this PR uses **HTTP between consumers and Caddy in dev**.
+Caddy is configured to listen on port 80 for the in-cluster S3 hostname;
+the validator/relayer hit `http://hyperlane-minio:80`. Production still
+uses `https://s3.bridge.gorbagana.wtf:443` — Let's Encrypt certs are in
+the SDK's built-in `webpki-roots` so prod needs no CA configuration at
+all. The dev/prod difference is exactly the URL scheme; both still
+exercise the Caddy reverse-proxy code path.
 
 ### 4.4 The cross-stack ClusterIP Service is removed
 
@@ -157,14 +162,10 @@ the same compose file.
 
 - `stack_orchestrator/data/compose/docker-compose-hyperlane-validator.yml`
   - Replace literal `AWS_ENDPOINT_URL_S3` with spec-driven passthrough.
-  - Add `AWS_CA_BUNDLE: ${AWS_CA_BUNDLE:-}` passthrough.
-  - Add `minio-ca-config:/etc/ssl/certs/minio-ca:ro` RO volume mount.
 - `stack_orchestrator/data/compose/docker-compose-hyperlane-relayer.yml`
-  - Same three changes as validator.
+  - Same change as validator.
 - `stack_orchestrator/data/stacks/hyperlane-minio/deploy/commands.py`
   - Remove the cross-stack ClusterIP Service creation.
-- `stack_orchestrator/data/config/minio-ca-config/`
-  - New directory; contains only `.gitkeep`.
 
 ### Production specs
 
@@ -175,8 +176,6 @@ the same compose file.
   `spec-relayer.yml`
   - Add `config:` entry `AWS_ENDPOINT_URL_S3:
     https://s3.bridge.gorbagana.wtf:443`.
-  - Add `configmaps:` entry `minio-ca-config:
-    ./configmaps/minio-ca-config` (mount exists but stays empty in prod).
   - Do not add an `external-services:` block (public DNS handles it).
 
 ### Test fixtures
@@ -187,25 +186,15 @@ the same compose file.
 - `tests/e2e/fixtures/test-spec-validator-gorchain.yml`,
   `test-spec-validator-solana.yml`, `test-spec-relayer.yml`
   - Add `external-services:` entry `hyperlane-minio: { ip:
-    REPLACE_HOST_IP, port: 443 }` with comment: "dev only — prod uses
+    REPLACE_HOST_IP, port: 80 }` with comment: "dev only — prod uses
     public DNS to resolve `s3.bridge.gorbagana.wtf`".
-  - Add `config:` entries `AWS_ENDPOINT_URL_S3: https://hyperlane-minio:443`
-    and `AWS_CA_BUNDLE: /etc/ssl/certs/minio-ca/rootCA.pem`.
-  - Add `configmaps:` entry `minio-ca-config:
-    ./configmaps/minio-ca-config`.
+  - Add `config:` entry `AWS_ENDPOINT_URL_S3: http://hyperlane-minio:80`.
 
 ### Test code
 
 - `tests/e2e/lib/cluster.py`
-  - Add `hyperlane-minio` to `TEST_HOSTNAMES` (mkcert SAN coverage).
-- `tests/e2e/lib/state_loader.py`
-  - Add a populator step that, for each MinIO consumer
-    (validator-gorchain, validator-solana, relayer), copies
-    `$(mkcert -CAROOT)/rootCA.pem` into
-    `{deploy_dir}/configmaps/minio-ca-config/rootCA.pem`.
-- `tests/e2e/conftest.py`
-  - Call the new populator in the deploy-init step for the three
-    consumer fixtures, before `deploy_create`.
+  - `hyperlane-minio` may stay in `TEST_HOSTNAMES` (mkcert SAN — unused
+    in dev now but cheap to keep for future HTTPS-in-dev work).
 
 ## 6. Verification
 
@@ -215,8 +204,10 @@ PR1 is green when:
   `test_08_bridge.py` all pass.
 - `test_relayer_checkpoint_syncer_connected` (which already asserts no
   `ConnectError` / `NoSuchBucket` / `InvalidAccessKeyId` /
-  `SignatureDoesNotMatch` in relayer logs) confirms TLS-through-Caddy
-  works end-to-end.
+  `SignatureDoesNotMatch` in relayer logs) confirms the Caddy-fronted
+  S3 path works end-to-end in dev (HTTP) — and by extension the prod
+  HTTPS path, which differs only in URL scheme and the (default,
+  webpki-roots-backed) cert verification.
 - The cross-stack ClusterIP Service is no longer present in the
   `laconic-hyperlane-minio` namespace.
 - The current FQDN `AWS_ENDPOINT_URL_S3` literal does not appear in any
@@ -232,12 +223,32 @@ PR1 is green when:
 
 ## 8. Alternatives considered
 
-### Plain HTTP between validator and Caddy in dev
+### HTTPS between validator and Caddy in dev via `AWS_CA_BUNDLE`
 
-Would have removed the mkcert-CA distribution work entirely. Rejected
-because we want the same TLS code path exercised in dev and prod;
-distributing the mkcert root via an existing ConfigMap pattern is a
-small addition for meaningful prod parity.
+The original draft of this spec proposed distributing the mkcert root
+CA via a `minio-ca-config` ConfigMap and setting `AWS_CA_BUNDLE` on the
+consumer pods so the SDK would trust the mkcert-signed Caddy cert.
+Investigation against our pinned SDK versions (aws-config 1.1.7,
+aws-sdk-rust 1.65.0) found `AWS_CA_BUNDLE` is **not honored at all** —
+awslabs/aws-sdk-rust#1362 is the open, unimplemented request for it.
+Setting the env var would silently do nothing. The plumbing was
+implemented and then rolled back; the current §4.3 documents the HTTP
+fallback we landed on instead.
+
+### Fork-patch aws-sdk-rust to honor `AWS_CA_BUNDLE`
+
+Would give dev byte-for-byte HTTPS parity with prod. Rejected because it
+adds a third long-lived patch (alongside `s3-path-style.patch` and
+`kms-endpoint.patch`) that we'd carry until either upstream merges
+#1362 or we drop the fork. The dev/prod URL-scheme split is a much
+smaller maintenance cost.
+
+### `rustls-native-certs` + init container that installs mkcert root
+
+Would also work — switch the SDK from `webpki-roots` to system-cert
+mode and bake the mkcert root into the container's trust store at
+deploy time. Two moving parts (fork patch + init container) instead of
+one URL scheme. Rejected for the same maintenance reason.
 
 ### `external-services:` in prod too (ExternalName → public DNS)
 
