@@ -1084,6 +1084,7 @@ def relayer_deployment(
     )
 
     bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
+    write_mkcert_root_to_configmap(deploy_info.deploy_dir)
 
     os.environ.update({
         "HYP_CHAINS_GORCHAIN_SIGNER_KEY": gorchain_signer_key,

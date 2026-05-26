@@ -13,6 +13,9 @@ config:
   GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   CLAIM_INTERVAL_SECONDS: "600"
+  # MinIO via Caddy — external-services creates the in-NS Service below.
+  AWS_ENDPOINT_URL_S3: "https://hyperlane-minio:443"
+  AWS_CA_BUNDLE: "/etc/ssl/certs/minio-ca/rootCA.pem"
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9091"
@@ -37,6 +40,8 @@ volumes:
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
   agent-config: ./configmaps/agent-config
+  # Seeded with mkcert root CA by conftest (write_mkcert_root_to_configmap).
+  minio-ca-config: ./configmaps/minio-ca-config
 secrets:
   hyperlane-relayer-secrets:
     keys:
@@ -56,6 +61,13 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+  # Dev only — prod uses public DNS to resolve s3.bridge.gorbagana.wtf.
+  # Routes the in-cluster name `hyperlane-minio` to the Kind gateway
+  # so traffic exits the cluster, re-enters via Caddy on 443, and gets
+  # reverse_proxied to minio:9000.
+  hyperlane-minio:
+    ip: REPLACE_HOST_IP
+    port: 443
 network:
   acme-email: e2e@example.test
   http-proxy:
