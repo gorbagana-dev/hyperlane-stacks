@@ -23,8 +23,8 @@ services:
       # HYP_CHAINS_GORCHAIN_SIGNER_KEY, HYP_CHAINS_SOLANA_SIGNER_KEY
       # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
       # MinIO endpoint — set in each spec's config: block.
-      # Dev: http://hyperlane-minio:80 (Caddy via external-services Service).
-      # Prod: https://s3.bridge.gorbagana.wtf:443 (Caddy via public DNS).
+      # Dev: http://hyperlane-minio:9000 (direct cross-NS via external-services selector).
+      # Prod: https://s3.bridge.gorbagana.wtf (Caddy via public DNS, LE cert trusted by webpki-roots).
       AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}
       AWS_REGION: us-east-1
     volumes:

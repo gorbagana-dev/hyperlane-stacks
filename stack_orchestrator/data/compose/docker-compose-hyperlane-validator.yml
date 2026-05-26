@@ -31,8 +31,8 @@ services:
       # KMS proxy sidecar for Privy signing (same pod = localhost)
       AWS_ENDPOINT_URL_KMS: "http://localhost:9999"
       # MinIO endpoint — set in each spec's config: block.
-      # Dev: http://hyperlane-minio:80 (Caddy via external-services Service).
-      # Prod: https://s3.bridge.gorbagana.wtf:443 (Caddy via public DNS).
+      # Dev: http://hyperlane-minio:9000 (direct cross-NS via external-services selector).
+      # Prod: https://s3.bridge.gorbagana.wtf (Caddy via public DNS, LE cert trusted by webpki-roots).
       AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}
       AWS_REGION: us-east-1
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
