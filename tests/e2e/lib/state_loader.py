@@ -104,3 +104,39 @@ class BridgeStateLoader:
                 f"program-ids.json missing chain {chain!r}; keys={list(ids)}"
             )
         return ids[chain]
+
+
+def _resolve_caroot() -> Path:
+    """Return the mkcert CA root directory.
+
+    Honors the CAROOT env var (set by the test harness or by the user
+    running `export CAROOT=$(mkcert -CAROOT)`). Falls back to invoking
+    `mkcert -CAROOT` on PATH if the env var is unset.
+    """
+    import os
+    import subprocess
+
+    env_caroot = os.environ.get("CAROOT")
+    if env_caroot:
+        return Path(env_caroot)
+    result = subprocess.run(
+        ["mkcert", "-CAROOT"], capture_output=True, text=True, check=True,
+    )
+    return Path(result.stdout.strip())
+
+
+def write_mkcert_root_to_configmap(deploy_dir: Path) -> None:
+    """Copy mkcert's root CA into a consumer's minio-ca-config configmap dir.
+
+    Used in dev fixtures so validator/relayer pods trust Caddy's
+    mkcert-signed TLS cert when reaching MinIO over HTTPS. In prod the
+    source dir stays empty and this helper isn't called.
+    """
+    src = _resolve_caroot() / "rootCA.pem"
+    if not src.is_file():
+        raise FileNotFoundError(
+            f"mkcert rootCA.pem not found at {src} — did you run `mkcert -install`?"
+        )
+    dst_dir = deploy_dir / "configmaps" / "minio-ca-config"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst_dir / "rootCA.pem")

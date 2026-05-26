@@ -54,3 +54,49 @@ def test_write_caddy_cert_backup_creates_parent_dirs(tmp_path: Path):
     write_caddy_cert_backup(out, cert, key, ["only.test"])
 
     assert out.is_file()
+
+
+from lib.state_loader import write_mkcert_root_to_configmap
+
+
+def test_write_mkcert_root_to_configmap_copies_cert(tmp_path: Path, monkeypatch):
+    """Helper copies CAROOT/rootCA.pem into {deploy_dir}/configmaps/minio-ca-config/."""
+    fake_caroot = tmp_path / "fake-caroot"
+    fake_caroot.mkdir()
+    (fake_caroot / "rootCA.pem").write_bytes(b"--MKCERT-CA--")
+    monkeypatch.setenv("CAROOT", str(fake_caroot))
+
+    deploy_dir = tmp_path / "deploy"
+    deploy_dir.mkdir()
+
+    write_mkcert_root_to_configmap(deploy_dir)
+
+    dest = deploy_dir / "configmaps" / "minio-ca-config" / "rootCA.pem"
+    assert dest.is_file()
+    assert dest.read_bytes() == b"--MKCERT-CA--"
+
+
+def test_write_mkcert_root_to_configmap_creates_parent_dir(tmp_path: Path, monkeypatch):
+    """Helper creates configmaps/minio-ca-config/ if it doesn't exist yet."""
+    fake_caroot = tmp_path / "fake-caroot"
+    fake_caroot.mkdir()
+    (fake_caroot / "rootCA.pem").write_bytes(b"X")
+    monkeypatch.setenv("CAROOT", str(fake_caroot))
+
+    deploy_dir = tmp_path / "fresh-deploy"
+    deploy_dir.mkdir()
+
+    write_mkcert_root_to_configmap(deploy_dir)
+
+    assert (deploy_dir / "configmaps" / "minio-ca-config").is_dir()
+
+
+def test_write_mkcert_root_to_configmap_raises_when_caroot_missing(tmp_path: Path, monkeypatch):
+    """Helper raises FileNotFoundError if mkcert root is absent."""
+    monkeypatch.setenv("CAROOT", str(tmp_path / "nope"))
+    deploy_dir = tmp_path / "deploy"
+    deploy_dir.mkdir()
+
+    import pytest as _pytest
+    with _pytest.raises(FileNotFoundError):
+        write_mkcert_root_to_configmap(deploy_dir)
