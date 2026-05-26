@@ -14,10 +14,10 @@ a clear error before the consumer Job/Pod is started.
 from __future__ import annotations
 
 import json
+import os
 import shutil
-from collections.abc import Iterable
+import subprocess
 from pathlib import Path
-
 
 # Only stacks whose compose actually mounts a CM appear here. Stacks that
 # consume deployer state via env-var injection (gas-oracle, warp-ui,
@@ -107,15 +107,7 @@ class BridgeStateLoader:
 
 
 def _resolve_caroot() -> Path:
-    """Return the mkcert CA root directory.
-
-    Honors the CAROOT env var (set by the test harness or by the user
-    running `export CAROOT=$(mkcert -CAROOT)`). Falls back to invoking
-    `mkcert -CAROOT` on PATH if the env var is unset.
-    """
-    import os
-    import subprocess
-
+    """Return the mkcert CA root dir, honoring CAROOT env or falling back to `mkcert -CAROOT`."""
     env_caroot = os.environ.get("CAROOT")
     if env_caroot:
         return Path(env_caroot)
@@ -126,12 +118,7 @@ def _resolve_caroot() -> Path:
 
 
 def write_mkcert_root_to_configmap(deploy_dir: Path) -> None:
-    """Copy mkcert's root CA into a consumer's minio-ca-config configmap dir.
-
-    Used in dev fixtures so validator/relayer pods trust Caddy's
-    mkcert-signed TLS cert when reaching MinIO over HTTPS. In prod the
-    source dir stays empty and this helper isn't called.
-    """
+    """Copy mkcert rootCA.pem into {deploy_dir}/configmaps/minio-ca-config/."""
     src = _resolve_caroot() / "rootCA.pem"
     if not src.is_file():
         raise FileNotFoundError(

@@ -1,9 +1,11 @@
 import base64
 from pathlib import Path
 
+import pytest
 import yaml
 
 from lib.cluster import write_caddy_cert_backup
+from lib.state_loader import write_mkcert_root_to_configmap
 
 
 def test_write_caddy_cert_backup_writes_one_secret_per_hostname(tmp_path: Path):
@@ -56,9 +58,6 @@ def test_write_caddy_cert_backup_creates_parent_dirs(tmp_path: Path):
     assert out.is_file()
 
 
-from lib.state_loader import write_mkcert_root_to_configmap
-
-
 def test_write_mkcert_root_to_configmap_copies_cert(tmp_path: Path, monkeypatch):
     """Helper copies CAROOT/rootCA.pem into {deploy_dir}/configmaps/minio-ca-config/."""
     fake_caroot = tmp_path / "fake-caroot"
@@ -97,6 +96,5 @@ def test_write_mkcert_root_to_configmap_raises_when_caroot_missing(tmp_path: Pat
     deploy_dir = tmp_path / "deploy"
     deploy_dir.mkdir()
 
-    import pytest as _pytest
-    with _pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError):
         write_mkcert_root_to_configmap(deploy_dir)
