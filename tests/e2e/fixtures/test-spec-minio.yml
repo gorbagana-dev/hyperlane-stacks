@@ -24,6 +24,10 @@ secrets:
 network:
   acme-email: e2e@example.test
   http-proxy:
+    - host-name: hyperlane-minio
+      routes:
+        - path: /
+          proxy-to: minio:9000
     - host-name: minio-console.test
       routes:
         - path: /
