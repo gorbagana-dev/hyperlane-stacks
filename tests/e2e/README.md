@@ -114,30 +114,96 @@ pytest -v -x --build-from-source
 # Keep everything running after tests (for debugging)
 pytest -v -x --skip-cleanup
 
-# Iterative development: reuse cluster + chains + existing deployments
-pytest -v -x --skip-cluster-setup --skip-chain-setup --skip-cleanup
-pytest -v -x --skip-cluster-setup --skip-chain-setup --skip-core-deploy --skip-warp-deploy --skip-minio-deploy --skip-validator-deploy --skip-relayer-deploy --skip-gas-oracle-deploy --skip-warp-ui-deploy
-
-# Run only core deployer tests
+# Run only a specific test file
 pytest -v -x test_01_deployer.py
-
-# Run only warp deployer tests
 pytest -v -x test_02_warp_deployer.py
-
-# Run only validator tests
 pytest -v -x test_04_validator.py
-
-# Run only warp UI smoke tests
 pytest -v -x test_10_warp_ui.py
 
 # Run only warp UI browser tests (headless via xvfb-run)
-xvfb-run pytest -v -x test_11_warp_ui_bridge.py
+xvfb-run pytest -v -x test_12_warp_ui_bridge.py
 
 # Run with visible browser window (on a desktop with $DISPLAY)
-pytest -v -x test_11_warp_ui_bridge.py
+pytest -v -x test_12_warp_ui_bridge.py
 
 # Exclude slow tests (validator checkpoint tests, bridge transfers, UI tests)
 pytest -v -x -m "not slow"
+```
+
+## Iterating on a specific stack
+
+The most common workflow during development: tear down one stack, fix something, rerun from that point without recreating the cluster or redeploying earlier stacks.
+
+### Skip flags
+
+Each `--skip-*` flag tells the test session to treat a deployment fixture as already done. Use them to skip everything *before* the stack you want to work on:
+
+| Flag | Skips |
+|---|---|
+| `--skip-cluster-setup` | Kind cluster + Caddy ingress creation |
+| `--skip-chain-setup` | Gorchain + Solana node startup |
+| `--skip-core-deploy` | `hyperlane-svm-deployer` Job |
+| `--skip-warp-deploy` | `hyperlane-svm-warp-deployer` Job |
+| `--skip-minio-deploy` | `hyperlane-minio` stack |
+| `--skip-validator-deploy` | Both validator stacks |
+| `--skip-relayer-deploy` | `hyperlane-relayer` stack |
+| `--skip-gas-oracle-deploy` | `hyperlane-gas-oracle` stack |
+| `--skip-warp-ui-deploy` | `hyperlane-warp-ui` stack |
+
+### Teardown a single stack
+
+```bash
+# Stop the stack, delete its volumes and namespace, then wipe the deployment dir.
+# Replace <stack> with the directory name under .deployments/:
+#   hyperlane-minio | hyperlane-validator-gorchain | hyperlane-validator-solana |
+#   hyperlane-relayer | hyperlane-gas-oracle | hyperlane-warp-ui
+
+laconic-so deployment --dir ./.deployments/<stack> stop --delete-volumes --delete-namespace
+sudo rm -rf .deployments/<stack> .deployments/<stack>-spec.yml
+```
+
+### Rerun from a given stack
+
+Stack the `--skip-*` flags for everything *before* what you want to rerun. Always add `--skip-cluster-setup --skip-chain-setup` unless you also need to recreate those.
+
+```bash
+# Rerun MinIO (cluster, chains, deployers already up):
+xvfb-run pytest -vx --skip-cleanup \
+  --skip-cluster-setup --skip-chain-setup \
+  --skip-core-deploy --skip-warp-deploy
+
+# Rerun validators (cluster, chains, deployers, MinIO already up):
+xvfb-run pytest -vx --skip-cleanup \
+  --skip-cluster-setup --skip-chain-setup \
+  --skip-core-deploy --skip-warp-deploy --skip-minio-deploy
+
+# Rerun relayer (everything before it already up):
+xvfb-run pytest -vx --skip-cleanup \
+  --skip-cluster-setup --skip-chain-setup \
+  --skip-core-deploy --skip-warp-deploy --skip-minio-deploy \
+  --skip-validator-deploy
+
+# Rerun warp UI only (everything else already up):
+xvfb-run pytest -vx --skip-cleanup \
+  --skip-cluster-setup --skip-chain-setup \
+  --skip-core-deploy --skip-warp-deploy --skip-minio-deploy \
+  --skip-validator-deploy --skip-relayer-deploy --skip-gas-oracle-deploy
+```
+
+`--skip-cleanup` keeps all stacks running after the test session ends — useful for inspecting logs or the cluster state after a failure. Drop it if you want teardown to happen normally.
+
+### Rerun everything from scratch (keep cluster + chains)
+
+```bash
+# Wipe all stack deployments but keep the Kind cluster and running chain nodes:
+for stack in hyperlane-svm-deployer hyperlane-svm-warp-deployer hyperlane-minio \
+             hyperlane-validator-gorchain hyperlane-validator-solana hyperlane-relayer \
+             hyperlane-gas-oracle hyperlane-warp-ui; do
+  laconic-so deployment --dir ./.deployments/$stack stop --delete-volumes --delete-namespace 2>/dev/null || true
+  sudo rm -rf .deployments/$stack .deployments/$stack-spec.yml
+done
+
+xvfb-run pytest -vx --skip-cleanup --skip-cluster-setup --skip-chain-setup
 ```
 
 ## Structure
@@ -147,6 +213,7 @@ tests/e2e/
 ├── conftest.py                          # Session-scoped fixtures (setup/teardown)
 ├── pytest.ini                           # pytest configuration
 ├── requirements.txt                     # Python dependencies (use with venv)
+├── test_00_cluster_helpers.py           # Unit tests for cluster utility functions
 ├── test_01_deployer.py                  # Core deployer verification tests
 ├── test_02_warp_deployer.py             # Warp deployer verification tests
 ├── test_03_minio.py                     # MinIO stack tests
@@ -157,7 +224,8 @@ tests/e2e/
 ├── test_08_bridge.py                    # Cross-chain bridge transfer tests
 ├── test_09_fee_claim.py                 # IGP fee claim tests
 ├── test_10_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
-├── test_11_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
+├── test_11_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
+├── test_12_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture

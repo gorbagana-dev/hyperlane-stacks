@@ -13,6 +13,9 @@ config:
   GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   CLAIM_INTERVAL_SECONDS: "600"
+  # Dev only — direct cross-NS to the MinIO pod via external-services
+  # selector mode below. No Caddy in this path.
+  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9091"
@@ -56,6 +59,17 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+  # Dev only — prod uses public DNS to resolve s3.bridge.gorbagana.wtf.
+  # Selector mode: SO creates a headless Service named `hyperlane-minio`
+  # in this NS with Endpoints discovered from MinIO pods in the
+  # laconic-hyperlane-minio namespace at deploy time. Pod restart
+  # invalidates the Endpoints; tests do full re-deploys, so this is fine
+  # in dev. Prod uses the Caddy-fronted public hostname instead.
+  hyperlane-minio:
+    selector:
+      app.kubernetes.io/stack: hyperlane-minio
+    namespace: laconic-hyperlane-minio
+    port: 9000
 network:
   acme-email: e2e@example.test
   http-proxy:

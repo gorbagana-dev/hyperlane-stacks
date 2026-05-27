@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Iterable
 from pathlib import Path
-
 
 # Only stacks whose compose actually mounts a CM appear here. Stacks that
 # consume deployer state via env-var injection (gas-oracle, warp-ui,

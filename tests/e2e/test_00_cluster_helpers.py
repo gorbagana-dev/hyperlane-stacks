@@ -1,6 +1,7 @@
 import base64
 from pathlib import Path
 
+import pytest
 import yaml
 
 from lib.cluster import write_caddy_cert_backup
