@@ -14,7 +14,7 @@ import subprocess
 import pytest
 from conftest import MinioInfo
 
-from lib.common import PortForward
+from lib.common import PortForward, wait_for_job_complete
 
 MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 
@@ -322,7 +322,6 @@ class TestMinio:
         )
 
         try:
-            from lib.common import wait_for_job_complete
             wait_for_job_complete(ns, additional_job, timeout=300)
 
             # Verify new bucket and user exist
