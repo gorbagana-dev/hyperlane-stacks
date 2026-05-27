@@ -14,7 +14,7 @@ resources:
         cpus: "0.5"
         memory: 256M
 volumes:
-  minio-data:
+  minio-data: /tmp/hyperlane-bridge-e2e/minio/data
 secrets:
   hyperlane-minio-secrets:
     keys:

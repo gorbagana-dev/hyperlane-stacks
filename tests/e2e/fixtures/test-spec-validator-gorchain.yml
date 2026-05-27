@@ -34,7 +34,7 @@ resources:
         cpus: "0.25"
         memory: 128M
 volumes:
-  validator-data:
+  validator-data: /tmp/hyperlane-bridge-e2e/validator-gorchain/data
 configmaps:
   agent-config: ./configmaps/agent-config
 secrets:
