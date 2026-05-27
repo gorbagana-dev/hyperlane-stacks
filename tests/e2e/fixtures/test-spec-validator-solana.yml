@@ -8,7 +8,7 @@ kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 config:
   ORIGIN_CHAIN_NAME: solana
-  CHECKPOINT_BUCKET: hyperlane-validator-solana
+  CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
   PRIVY_API_URL: "http://privy-mock:19876"
   PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
   # Dev only — direct cross-NS to the MinIO pod via external-services
@@ -40,10 +40,10 @@ configmaps:
 secrets:
   hyperlane-validator-solana-secrets:
     keys:
-      PRIVY_APP_ID: { env: PRIVY_APP_ID }
-      PRIVY_APP_SECRET: { env: PRIVY_APP_SECRET }
-      AWS_ACCESS_KEY_ID: { env: AWS_ACCESS_KEY_ID }
-      AWS_SECRET_ACCESS_KEY: { env: AWS_SECRET_ACCESS_KEY }
+      PRIVY_APP_ID:          { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:      { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID:     { env: SOLANA_PRIMARY_KEY_ID }
+      AWS_SECRET_ACCESS_KEY: { env: SOLANA_PRIMARY_SECRET }
       HYP_DEFAULTSIGNER_KEY: { env: HYP_DEFAULTSIGNER_KEY }
 image-pull-secret:
   server: ghcr.io
