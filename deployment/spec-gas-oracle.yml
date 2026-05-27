@@ -5,7 +5,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-kind-mount-root: /srv/kind/hyperlane-bridge
+kind-mount-root: /srv/kind/hyperlane
 network:
   acme-email: admin@gorbagana.wtf
 config:

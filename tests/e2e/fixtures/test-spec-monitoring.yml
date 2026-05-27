@@ -17,8 +17,8 @@ config:
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "30"
 volumes:
-  prometheus-data:
-  grafana-data:
+  prometheus-data: /tmp/hyperlane-bridge-e2e/monitoring/prometheus
+  grafana-data: /tmp/hyperlane-bridge-e2e/monitoring/grafana
 configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config

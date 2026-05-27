@@ -3,7 +3,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-kind-mount-root: /srv/kind/hyperlane-bridge
+kind-mount-root: /srv/kind/hyperlane
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
@@ -14,7 +14,7 @@ annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9090"
 volumes:
-  validator-data:
+  validator-data: /srv/kind/hyperlane/validator-solana/data
 resources:
   volumes:
     validator-data:

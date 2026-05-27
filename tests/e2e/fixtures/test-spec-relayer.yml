@@ -36,7 +36,7 @@ resources:
         cpus: "0.25"
         memory: 128M
 volumes:
-  relayer-data:
+  relayer-data: /tmp/hyperlane-bridge-e2e/relayer/data
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
   agent-config: ./configmaps/agent-config

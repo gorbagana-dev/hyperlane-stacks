@@ -3,9 +3,9 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-kind-mount-root: /srv/kind/hyperlane-bridge
+kind-mount-root: /srv/kind/hyperlane
 volumes:
-  minio-data:
+  minio-data: /srv/kind/hyperlane/minio/data
 resources:
   volumes:
     minio-data:

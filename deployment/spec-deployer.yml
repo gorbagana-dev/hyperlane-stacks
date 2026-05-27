@@ -4,12 +4,12 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-kind-mount-root: /srv/kind/hyperlane-bridge
+kind-mount-root: /srv/kind/hyperlane
 network:
   acme-email: admin@gorbagana.wtf
 volumes:
-  bridge-state: /srv/kind/hyperlane-bridge/generated
-  bridge-logs: /srv/kind/hyperlane-bridge/logs
+  bridge-state: /srv/kind/hyperlane/bridge/generated
+  bridge-logs: /srv/kind/hyperlane/bridge/logs
 configmaps:
   deployer-scripts-config: ./configmaps/deployer-scripts-config
   deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config

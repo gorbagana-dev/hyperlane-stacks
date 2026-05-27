@@ -141,16 +141,38 @@ def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
 @pytest.fixture(scope="session")
 def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, None]:
     """Kind umbrella root. SO emits a single extraMount (hostPath=this →
-    containerPath=/mnt). Deployer Jobs write to subdirs (generated/, logs/)
-    which become writable hostPath PVs inside the cluster.
+    containerPath=/mnt). All stack data volumes are subdirs of this root:
+      bridge/generated/  — deployer output (program-ids.json, etc.)
+      bridge/logs/       — deployer job logs
+      minio/data/        — MinIO object store
+      validator-gorchain/data/
+      validator-solana/data/
+      relayer/data/
+      monitoring/prometheus/
+      monitoring/grafana/
 
     Lifecycle is paired with the kind cluster: removed at session teardown
     unless --skip-cleanup or --skip-cluster-setup is set, so a kept cluster
     keeps its state and a fresh cluster always starts with fresh state."""
     p = BRIDGE_STATE_ROOT
     p.mkdir(parents=True, exist_ok=True)
-    (p / "generated").mkdir(exist_ok=True)
-    (p / "logs").mkdir(exist_ok=True)
+    for subdir in [
+        "bridge/generated",
+        "bridge/logs",
+        "minio/data",
+        "validator-gorchain/data",
+        "validator-solana/data",
+        "relayer/data",
+        "monitoring/prometheus",
+        "monitoring/grafana",
+    ]:
+        d = p / subdir
+        d.mkdir(parents=True, exist_ok=True)
+        # Tests: chmod 777 so any container UID can write (Prometheus runs as
+        # nobody/65534, Grafana as UID 472).  World-writable is fine under /tmp/.
+        # Prod: Ansible chowns each dir to the container's UID instead — see
+        # docs/superpowers/specs/2026-05-27-host-path-volumes-design.md.
+        d.chmod(0o777)
     log.info("Bridge state root for this session: %s", p)
     yield p
     skip_setup = request.config.getoption("--skip-cluster-setup")
@@ -164,12 +186,12 @@ def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, N
 
 @pytest.fixture(scope="session")
 def bridge_state_dir(bridge_state_root: Path) -> Path:
-    return bridge_state_root / "generated"
+    return bridge_state_root / "bridge" / "generated"
 
 
 @pytest.fixture(scope="session")
 def bridge_state_logs_dir(bridge_state_root: Path) -> Path:
-    return bridge_state_root / "logs"
+    return bridge_state_root / "bridge" / "logs"
 
 
 @pytest.fixture(scope="session")

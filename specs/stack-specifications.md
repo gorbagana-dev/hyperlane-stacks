@@ -16,7 +16,7 @@ Stack-orchestrator (`laconic-so`) deploys containerized applications via three b
 - `stack:` — Reference to the stack (path or name)
 - `deploy-to:` — `k8s-kind`, `k8s`, or `compose`
 - `config:` — Environment variables injected into all containers
-- `volumes:` — Named volumes → PVCs; path volumes → HostPath mounts
+- `volumes:` — Named volumes with explicit host paths → HostPath PVs under `/srv/kind/hyperlane/`; empty value → dynamic PVC (avoid for data that must survive cluster recreation)
 - `configmaps:` — Directory → k8s ConfigMap, mounted as volume
 - `network.http-proxy:` — Ingress routing rules
 - `network.ports:` — NodePort mappings
@@ -419,7 +419,7 @@ Steps 4's two validator deployments use the same `hyperlane-validator` stack wit
 - **`deploy-to:`** — `k8s-kind` for all stacks
 - **`config:`** — Non-secret environment variables only. Secrets (keys, passwords) are NOT included in spec files — they are injected separately (e.g., via k8s Secrets or at deploy time).
 - **`configmaps:`** — Relative to deployment dir: `./configmaps/{name}`. Operator populates these directories after `deploy create`.
-- **`volumes:`** — Named volumes with explicit sizes. Data volumes → PVCs.
+- **`volumes:`** — Data volumes map to explicit host paths under `/srv/kind/hyperlane/<stack>/` (see layout below). This makes data survive cluster recreation. Do not leave data volume values empty — that produces a dynamic PVC which is lost on cluster delete.
 - **`network.ports:`** — Exposed service ports (NodePort mappings)
 - **`network.http-proxy:`** — Ingress routing (warp-ui only)
 
@@ -432,6 +432,30 @@ Steps 4's two validator deployments use the same `hyperlane-validator` stack wit
 | minio data | 10Gi | Stack 5 |
 | prometheus data | 10Gi | Stack 7 |
 | grafana data | 2Gi | Stack 7 |
+
+### Host-Path Layout
+
+All stacks share `kind-mount-root: /srv/kind/hyperlane`. Kind mounts this directory from the host into the cluster node; every data volume is a named subdir:
+
+```
+/srv/kind/hyperlane/
+  bridge/
+    generated/          ← svm-deployer output (program-ids.json, etc.)
+    logs/               ← deployer job logs
+  minio/
+    data/               ← MinIO object store
+  validator-gorchain/
+    data/               ← gorchain validator state
+  validator-solana/
+    data/               ← solana validator state
+  relayer/
+    data/               ← relayer state
+  monitoring/
+    prometheus/         ← Prometheus TSDB
+    grafana/            ← Grafana database
+```
+
+Tests use the same layout under `/tmp/hyperlane-bridge-e2e/`.
 
 ### Spec Files
 
@@ -455,7 +479,7 @@ Both validator spec files reference the same stack (`stack_orchestrator/data/sta
 - **Image tags**: Use `gorbagana-dev/name:local` (what `build-containers` produces). Add comment noting future published version: `# TODO: use ghcr.io/gorbagana-dev/name:tag once CI publish workflows are set up`
 - **Inline scripts**: No multi-line inline scripts in compose files. Extract to shell scripts in `stack_orchestrator/data/config/{name}-scripts-config/` dirs. Mount as ConfigMap volumes at `/opt/scripts/`. Reference via `command: ["/bin/bash", "/opt/scripts/script.sh"]`.
 - **Environment variables**: All deployment-specific values come from env vars (set via spec.yml config). Compose files use `${VAR}` syntax.
-- **Volumes**: Named volumes with `config` in the name → ConfigMaps in k8s. Other named volumes → PVCs.
+- **Volumes**: Named volumes with `config` in the name → ConfigMaps in k8s. Other named volumes → host-path PVs (path set in the spec file under `volumes:`).
 
 ## Cross-Stack Communication
 

@@ -7,8 +7,8 @@ kind-mount-root: /tmp/hyperlane-bridge-e2e
 network:
   acme-email: e2e@example.test
 volumes:
-  bridge-state: REPLACE_KIND_MOUNT_ROOT/generated
-  bridge-logs: REPLACE_KIND_MOUNT_ROOT/logs
+  bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
+  bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
 config:
   WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
   WARP_ROUTE_NAME: "USDC-solana-gorchain"

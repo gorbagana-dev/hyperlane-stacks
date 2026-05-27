@@ -3,7 +3,7 @@
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-kind-mount-root: /srv/kind/hyperlane-bridge
+kind-mount-root: /srv/kind/hyperlane
 config:
   GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
   SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
@@ -18,7 +18,7 @@ annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9091"
 volumes:
-  relayer-data:
+  relayer-data: /srv/kind/hyperlane/relayer/data
 resources:
   volumes:
     relayer-data:
