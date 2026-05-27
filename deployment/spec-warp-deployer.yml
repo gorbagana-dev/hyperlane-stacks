@@ -7,12 +7,12 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
-kind-mount-root: /srv/kind/hyperlane-bridge
+kind-mount-root: /srv/kind/hyperlane
 network:
   acme-email: admin@gorbagana.wtf
 volumes:
-  bridge-state: /srv/kind/hyperlane-bridge/generated
-  bridge-logs: /srv/kind/hyperlane-bridge/logs
+  bridge-state: /srv/kind/hyperlane/bridge/generated
+  bridge-logs: /srv/kind/hyperlane/bridge/logs
 config:
   WARP_TOKEN_MINT: "REPLACE_WITH_TOKEN_MINT_ADDRESS"
   WARP_ROUTE_NAME: "USDC-solana-gorchain"
