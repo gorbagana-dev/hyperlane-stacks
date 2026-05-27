@@ -21,7 +21,7 @@ services:
       HYP_GASPAYMENTENFORCEMENT: '[{"type": "none"}]'
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # HYP_CHAINS_GORCHAIN_SIGNER_KEY, HYP_CHAINS_SOLANA_SIGNER_KEY
-      # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+      # No MinIO credentials needed — relayer uses anonymous S3 client (.no_credentials()).
       # MinIO endpoint — set in each spec's config: block.
       # Dev: http://hyperlane-minio:9000 (direct cross-NS via external-services selector).
       # Prod: https://s3.bridge.gorbagana.wtf (Caddy via public DNS, LE cert trusted by webpki-roots).

@@ -179,10 +179,19 @@ def bridge_state_loader(bridge_state_dir: Path) -> BridgeStateLoader:
 
 @dataclasses.dataclass
 class MinioInfo:
-    """Minio deployment info with credentials."""
+    """Minio deployment info with credentials.
+
+    user/password: MinIO root credentials (used for admin operations in tests).
+    gorchain_key_id/gorchain_secret: IAM creds for the gorchain-primary validator.
+    solana_key_id/solana_secret: IAM creds for the solana-primary validator.
+    """
     deployment: DeploymentInfo
     user: str
     password: str
+    gorchain_key_id: str
+    gorchain_secret: str
+    solana_key_id: str
+    solana_secret: str
 
     # Delegate common fields for convenience
     @property
@@ -464,22 +473,44 @@ def keypairs() -> KeypairSet:
 # ---------------------------------------------------------------------------
 
 
-def _recover_minio_credentials(namespace: str) -> tuple[str, str]:
-    """Read minio credentials from k8s secret (for --skip-minio-deploy reuse)."""
-    user = password = ""
-    for field in ("MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD"):
+def _recover_minio_credentials(
+    namespace: str,
+) -> tuple[str, str, str, str, str, str]:
+    """Read minio credentials from k8s secrets (for --skip-minio-deploy reuse).
+
+    Returns: (root_user, root_password, gorchain_key_id, gorchain_secret,
+               solana_key_id, solana_secret)
+
+    Also re-exports all values to os.environ so subsequent SO deploy calls
+    can find them as env vars.
+    """
+    def _read_secret(secret_name: str, field: str) -> str:
         result = subprocess.run(
-            ["kubectl", "get", "secret", "hyperlane-minio-secrets", "-n", namespace,
+            ["kubectl", "get", "secret", secret_name, "-n", namespace,
              "-o", f"jsonpath={{.data.{field}}}"],
             capture_output=True, text=True, check=True,
         )
-        value = base64.b64decode(result.stdout.strip()).decode()
-        if field == "MINIO_ROOT_USER":
-            user = value
-        else:
-            password = value
-    log.info("Recovered minio credentials from k8s secret")
-    return user, password
+        return base64.b64decode(result.stdout.strip()).decode()
+
+    user = _read_secret("hyperlane-minio-secrets", "MINIO_ROOT_USER")
+    password = _read_secret("hyperlane-minio-secrets", "MINIO_ROOT_PASSWORD")
+    gorchain_key_id = _read_secret("minio-validator-secrets", "GORCHAIN_PRIMARY_KEY_ID")
+    gorchain_secret = _read_secret("minio-validator-secrets", "GORCHAIN_PRIMARY_SECRET")
+    solana_key_id = _read_secret("minio-validator-secrets", "SOLANA_PRIMARY_KEY_ID")
+    solana_secret = _read_secret("minio-validator-secrets", "SOLANA_PRIMARY_SECRET")
+
+    os.environ.update({
+        "MINIO_ROOT_USER": user,
+        "MINIO_ROOT_PASSWORD": password,
+        "MINIO_USERS": "gorchain-primary,solana-primary",
+        "GORCHAIN_PRIMARY_KEY_ID": gorchain_key_id,
+        "GORCHAIN_PRIMARY_SECRET": gorchain_secret,
+        "SOLANA_PRIMARY_KEY_ID": solana_key_id,
+        "SOLANA_PRIMARY_SECRET": solana_secret,
+    })
+
+    log.info("Recovered minio credentials from k8s secrets")
+    return user, password, gorchain_key_id, gorchain_secret, solana_key_id, solana_secret
 
 
 @pytest.fixture(scope="session")
@@ -493,6 +524,10 @@ def minio_deployment(
     Self-contained: only requires a Kind cluster. Creates its own namespace
     and secrets. Uses an independent deployment-id for unique resource names,
     with spec-level namespace override to share the e2e namespace.
+
+    Generates per-validator IAM credentials for gorchain-primary and
+    solana-primary. These are provisioned by the commands.py CronJob
+    (minio-provision-initial) triggered during deploy start.
     """
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_minio = request.config.getoption("--skip-minio-deploy", default=False)
@@ -503,17 +538,29 @@ def minio_deployment(
             deployment_id = get_deployment_id(deploy_dir)
             namespace = "laconic-hyperlane-minio"
             log.info("Reusing existing minio deployment (namespace: %s)", namespace)
-            user, password = _recover_minio_credentials(namespace)
+            user, password, gorchain_key_id, gorchain_secret, solana_key_id, solana_secret = (
+                _recover_minio_credentials(namespace)
+            )
             yield MinioInfo(
-                deployment=DeploymentInfo(deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace),
+                deployment=DeploymentInfo(
+                    deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace
+                ),
                 user=user,
                 password=password,
+                gorchain_key_id=gorchain_key_id,
+                gorchain_secret=gorchain_secret,
+                solana_key_id=solana_key_id,
+                solana_secret=solana_secret,
             )
             return
         log.info("--skip-minio-deploy set but %s missing — deploying fresh", deploy_dir)
 
     minio_user = f"minio-{secrets.token_hex(4)}"
     minio_password = secrets.token_hex(16)
+    gorchain_key_id = f"gc-{secrets.token_hex(8)}"
+    gorchain_secret = secrets.token_hex(24)
+    solana_key_id = f"sol-{secrets.token_hex(8)}"
+    solana_secret = secrets.token_hex(24)
 
     log.info("Pre-fetching MinIO images to host Docker...")
     prefetch_minio_images()
@@ -529,8 +576,15 @@ def minio_deployment(
 
     bridge_state_loader.populate("hyperlane-minio", deploy_info.deploy_dir)
 
-    os.environ["MINIO_ROOT_USER"] = minio_user
-    os.environ["MINIO_ROOT_PASSWORD"] = minio_password
+    os.environ.update({
+        "MINIO_ROOT_USER":         minio_user,
+        "MINIO_ROOT_PASSWORD":     minio_password,
+        "MINIO_USERS":             "gorchain-primary,solana-primary",
+        "GORCHAIN_PRIMARY_KEY_ID": gorchain_key_id,
+        "GORCHAIN_PRIMARY_SECRET": gorchain_secret,
+        "SOLANA_PRIMARY_KEY_ID":   solana_key_id,
+        "SOLANA_PRIMARY_SECRET":   solana_secret,
+    })
 
     log.info("Starting minio stack...")
     deploy_start(deploy_info.deploy_dir)
@@ -539,19 +593,27 @@ def minio_deployment(
         log.info("Waiting for minio pod to be running...")
         wait_for_pod_phase(namespace, f"app={deployment_id}", "Running", timeout=120)
 
-        log.info("Waiting for minio-init job to complete...")
-        job_name = f"{deployment_id}-job-hyperlane-minio-init"
-        wait_for_job_complete(namespace, job_name, timeout=300)
-        save_job_logs(namespace, job_name)
+        log.info("Waiting for minio-provision-initial job to complete...")
+        provision_job = "minio-provision-initial"
+        wait_for_job_complete(namespace, provision_job, timeout=300)
+        save_job_logs(namespace, provision_job)
         log.info("MinIO stack deployed and initialized")
     except Exception:
-        save_job_logs(namespace, f"{deployment_id}-job-hyperlane-minio-init")
-        save_job_describe(namespace, f"{deployment_id}-job-hyperlane-minio-init")
+        save_job_logs(namespace, "minio-provision-initial")
+        save_job_describe(namespace, "minio-provision-initial")
         save_pod_logs(namespace, f"app={deployment_id}", "minio")
         save_pod_describe(namespace, f"app={deployment_id}", "minio")
         raise
 
-    yield MinioInfo(deployment=deploy_info, user=minio_user, password=minio_password)
+    yield MinioInfo(
+        deployment=deploy_info,
+        user=minio_user,
+        password=minio_password,
+        gorchain_key_id=gorchain_key_id,
+        gorchain_secret=gorchain_secret,
+        solana_key_id=solana_key_id,
+        solana_secret=solana_secret,
+    )
 
     save_pod_logs(namespace, f"app={deployment_id}", "minio")
     if not skip_cleanup:
@@ -920,12 +982,21 @@ def _deploy_validator(
 
     bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
 
+    # Chain-specific MinIO IAM credentials.
+    # Naming: "{chain}-primary" label → "GORCHAIN_PRIMARY_KEY_ID" / "GORCHAIN_PRIMARY_SECRET"
+    # These map to AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY inside the validator container
+    # via the spec's secrets: block (e.g. AWS_ACCESS_KEY_ID: { env: GORCHAIN_PRIMARY_KEY_ID }).
+    chain_upper = chain.upper()
+    label_upper = f"{chain_upper}_PRIMARY"
+    validator_key_id = minio.gorchain_key_id if chain == "gorchain" else minio.solana_key_id
+    validator_secret = minio.gorchain_secret if chain == "gorchain" else minio.solana_secret
+
     os.environ.update({
-        "PRIVY_APP_ID":           "test-app-id",
-        "PRIVY_APP_SECRET":       "test-app-secret",
-        "AWS_ACCESS_KEY_ID":      minio.user,
-        "AWS_SECRET_ACCESS_KEY":  minio.password,
-        "HYP_DEFAULTSIGNER_KEY":  chain_signer_key,
+        "PRIVY_APP_ID":            "test-app-id",
+        "PRIVY_APP_SECRET":        "test-app-secret",
+        f"{label_upper}_KEY_ID":   validator_key_id,
+        f"{label_upper}_SECRET":   validator_secret,
+        "HYP_DEFAULTSIGNER_KEY":   chain_signer_key,
     })
 
     log.info("Starting %s stack...", stack_name)
@@ -1084,11 +1155,11 @@ def relayer_deployment(
 
     bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
 
+    # No MinIO credentials for the relayer — it uses an anonymous S3 client (.no_credentials())
+    # to read validator checkpoints. Buckets are publicly readable (anonymous download policy).
     os.environ.update({
         "HYP_CHAINS_GORCHAIN_SIGNER_KEY": gorchain_signer_key,
         "HYP_CHAINS_SOLANA_SIGNER_KEY":   solana_signer_key,
-        "AWS_ACCESS_KEY_ID":              minio_deployment.user,
-        "AWS_SECRET_ACCESS_KEY":          minio_deployment.password,
         "RELAYER_KEYPAIR_JSON":           relayer_keypair_json,
     })
 

@@ -6,7 +6,7 @@ kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane-bridge
 config:
   ORIGIN_CHAIN_NAME: gorchain
-  CHECKPOINT_BUCKET: hyperlane-validator-gorchain
+  CHECKPOINT_BUCKET: hyperlane-validator-gorchain-primary
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
   # MinIO via Caddy — public DNS resolves to the Caddy ingress.
   AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf"
@@ -25,15 +25,16 @@ configmaps:
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/validator-gorchain.key (hex-encoded validator signing key)
 # and export these env vars in the shell that runs `laconic-so`:
-#   PRIVY_APP_ID, PRIVY_APP_SECRET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#   PRIVY_APP_ID, PRIVY_APP_SECRET
+#   GORCHAIN_PRIMARY_KEY_ID, GORCHAIN_PRIMARY_SECRET  — per-validator MinIO IAM creds
 secrets:
-  hyperlane-validator-secrets:
+  hyperlane-validator-gorchain-secrets:
     keys:
       HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-gorchain.key }
       PRIVY_APP_ID:           { env: PRIVY_APP_ID }
       PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
-      AWS_ACCESS_KEY_ID:      { env: AWS_ACCESS_KEY_ID }
-      AWS_SECRET_ACCESS_KEY:  { env: AWS_SECRET_ACCESS_KEY }
+      AWS_ACCESS_KEY_ID:      { env: GORCHAIN_PRIMARY_KEY_ID }
+      AWS_SECRET_ACCESS_KEY:  { env: GORCHAIN_PRIMARY_SECRET }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

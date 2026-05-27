@@ -23,9 +23,30 @@ network:
         - path: /
           proxy-to: minio:9001
 # Before deploying, export these env vars in the shell that runs `laconic-so`:
-#   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+#
+#   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD      — MinIO root credentials
+#
+#   MINIO_USERS                               — Comma-separated validator labels
+#                                               e.g. "gorchain-primary,solana-primary"
+#
+#   For each label in MINIO_USERS, export two creds:
+#   <LABEL_UPPER>_KEY_ID, <LABEL_UPPER>_SECRET
+#   e.g. GORCHAIN_PRIMARY_KEY_ID, GORCHAIN_PRIMARY_SECRET
+#        SOLANA_PRIMARY_KEY_ID, SOLANA_PRIMARY_SECRET
+#
+# To add a subsequent validator post-deployment, update the minio-validator-secrets
+# Secret and trigger the CronJob:
+#   kubectl create job -n laconic-hyperlane-minio minio-provision-<name> \
+#     --from=cronjob/minio-provision
 secrets:
   hyperlane-minio-secrets:
     keys:
       MINIO_ROOT_USER:     { env: MINIO_ROOT_USER }
       MINIO_ROOT_PASSWORD: { env: MINIO_ROOT_PASSWORD }
+  minio-validator-secrets:
+    keys:
+      MINIO_USERS:             { env: MINIO_USERS }
+      GORCHAIN_PRIMARY_KEY_ID: { env: GORCHAIN_PRIMARY_KEY_ID }
+      GORCHAIN_PRIMARY_SECRET: { env: GORCHAIN_PRIMARY_SECRET }
+      SOLANA_PRIMARY_KEY_ID:   { env: SOLANA_PRIMARY_KEY_ID }
+      SOLANA_PRIMARY_SECRET:   { env: SOLANA_PRIMARY_SECRET }

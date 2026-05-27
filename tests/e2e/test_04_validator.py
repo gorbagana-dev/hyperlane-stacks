@@ -37,13 +37,13 @@ MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 # Mapping from chain name to MinIO bucket and validator wallet ID
 CHAIN_CONFIG = {
     "gorchain": {
-        "bucket": "hyperlane-validator-gorchain",
+        "bucket": "hyperlane-validator-gorchain-primary",
         "wallet_id": GORCHAIN_WALLET_ID,
         "domain_id": CHAINS["gorchain"]["domain_id"],
         "rpc": CHAINS["gorchain"]["rpc"],
     },
     "solana": {
-        "bucket": "hyperlane-validator-solana",
+        "bucket": "hyperlane-validator-solana-primary",
         "wallet_id": SOLANA_WALLET_ID,
         "domain_id": CHAINS["solana"]["domain_id"],
         "rpc": CHAINS["solana"]["rpc"],
