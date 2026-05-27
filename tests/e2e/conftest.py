@@ -166,7 +166,12 @@ def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, N
         "monitoring/prometheus",
         "monitoring/grafana",
     ]:
-        (p / subdir).mkdir(parents=True, exist_ok=True)
+        d = p / subdir
+        d.mkdir(parents=True, exist_ok=True)
+        # chmod 777 so container processes running as non-root UIDs (e.g.
+        # Prometheus as nobody/65534, Grafana as UID 472) can write into
+        # these host-path directories.  Safe under /tmp/ in tests.
+        d.chmod(0o777)
     log.info("Bridge state root for this session: %s", p)
     yield p
     skip_setup = request.config.getoption("--skip-cluster-setup")
