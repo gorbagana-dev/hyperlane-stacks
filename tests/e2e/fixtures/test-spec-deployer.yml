@@ -7,8 +7,8 @@ kind-mount-root: /tmp/hyperlane-bridge-e2e
 network:
   acme-email: e2e@example.test
 volumes:
-  bridge-state: REPLACE_KIND_MOUNT_ROOT/generated
-  bridge-logs: REPLACE_KIND_MOUNT_ROOT/logs
+  bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
+  bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
 configmaps:
   deployer-scripts-config: ./configmaps/deployer-scripts-config
   deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
