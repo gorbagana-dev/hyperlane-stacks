@@ -982,12 +982,21 @@ def _deploy_validator(
 
     bridge_state_loader.populate("hyperlane-validator", deploy_info.deploy_dir)
 
+    # Chain-specific MinIO IAM credentials.
+    # Naming: "{chain}-primary" label → "GORCHAIN_PRIMARY_KEY_ID" / "GORCHAIN_PRIMARY_SECRET"
+    # These map to AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY inside the validator container
+    # via the spec's secrets: block (e.g. AWS_ACCESS_KEY_ID: { env: GORCHAIN_PRIMARY_KEY_ID }).
+    chain_upper = chain.upper()
+    label_upper = f"{chain_upper}_PRIMARY"
+    validator_key_id = minio.gorchain_key_id if chain == "gorchain" else minio.solana_key_id
+    validator_secret = minio.gorchain_secret if chain == "gorchain" else minio.solana_secret
+
     os.environ.update({
-        "PRIVY_APP_ID":           "test-app-id",
-        "PRIVY_APP_SECRET":       "test-app-secret",
-        "AWS_ACCESS_KEY_ID":      minio.user,
-        "AWS_SECRET_ACCESS_KEY":  minio.password,
-        "HYP_DEFAULTSIGNER_KEY":  chain_signer_key,
+        "PRIVY_APP_ID":            "test-app-id",
+        "PRIVY_APP_SECRET":        "test-app-secret",
+        f"{label_upper}_KEY_ID":   validator_key_id,
+        f"{label_upper}_SECRET":   validator_secret,
+        "HYP_DEFAULTSIGNER_KEY":   chain_signer_key,
     })
 
     log.info("Starting %s stack...", stack_name)
@@ -1146,11 +1155,11 @@ def relayer_deployment(
 
     bridge_state_loader.populate("hyperlane-relayer", deploy_info.deploy_dir)
 
+    # No MinIO credentials for the relayer — it uses an anonymous S3 client (.no_credentials())
+    # to read validator checkpoints. Buckets are publicly readable (anonymous download policy).
     os.environ.update({
         "HYP_CHAINS_GORCHAIN_SIGNER_KEY": gorchain_signer_key,
         "HYP_CHAINS_SOLANA_SIGNER_KEY":   solana_signer_key,
-        "AWS_ACCESS_KEY_ID":              minio_deployment.user,
-        "AWS_SECRET_ACCESS_KEY":          minio_deployment.password,
         "RELAYER_KEYPAIR_JSON":           relayer_keypair_json,
     })
 
