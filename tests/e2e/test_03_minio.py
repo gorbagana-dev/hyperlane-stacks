@@ -44,6 +44,31 @@ def run_mc_command(
     )
 
 
+def run_mc_as(
+    key_id: str,
+    secret: str,
+    *args: str,
+    host_port: int = 9000,
+) -> subprocess.CompletedProcess[str]:
+    """Run a minio/mc command with explicit IAM user credentials.
+
+    Used to verify per-user bucket access isolation.
+    """
+    mc_args = " ".join(str(a) for a in args)
+    return subprocess.run(
+        [
+            "docker", "run", "--rm", "--network", "host",
+            "--entrypoint", "sh",
+            MC_IMAGE,
+            "-c",
+            f"mc alias set user http://localhost:{host_port} "
+            f"{key_id} {secret} && {mc_args}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -66,18 +91,29 @@ class TestMinio:
         )
         assert result.stdout.strip() == "Running", f"Expected Running, got: {result.stdout}"
 
-    def test_minio_init_job_completed(self, minio_deployment: MinioInfo) -> None:
-        """minio-init job completed successfully (buckets created)."""
+    def test_minio_provision_job_completed(self, minio_deployment: MinioInfo) -> None:
+        """minio-provision-initial job completed successfully."""
         ns = minio_deployment.namespace
-        deployment_id = minio_deployment.deployment_id
-        job_name = f"{deployment_id}-job-hyperlane-minio-init"
 
-        result = subprocess.run(
-            ["kubectl", "get", "job", job_name, "-n", ns,
+        # Verify CronJob exists and is suspended
+        cj_result = subprocess.run(
+            ["kubectl", "get", "cronjob", "minio-provision", "-n", ns,
+             "-o", "jsonpath={.spec.suspend}"],
+            capture_output=True, text=True, check=True,
+        )
+        assert cj_result.stdout.strip() == "true", (
+            f"Expected CronJob to be suspended, got: {cj_result.stdout}"
+        )
+
+        # Verify the initial provisioning job succeeded
+        job_result = subprocess.run(
+            ["kubectl", "get", "job", "minio-provision-initial", "-n", ns,
              "-o", "jsonpath={.status.succeeded}"],
             capture_output=True, text=True, check=True,
         )
-        assert result.stdout.strip() == "1", f"Init job not succeeded: {result.stdout}"
+        assert job_result.stdout.strip() == "1", (
+            f"minio-provision-initial not succeeded: {job_result.stdout}"
+        )
 
     def test_minio_s3_api_responds(self, minio_deployment: MinioInfo) -> None:
         """MinIO S3 API responds to requests via port-forward."""
@@ -116,11 +152,11 @@ class TestMinio:
             assert result.returncode == 0, f"mc ls failed: {result.stderr}"
 
             buckets = result.stdout
-            assert "hyperlane-validator-gorchain" in buckets, (
-                f"gorchain bucket not found in: {buckets}"
+            assert "hyperlane-validator-gorchain-primary" in buckets, (
+                f"gorchain-primary bucket not found in: {buckets}"
             )
-            assert "hyperlane-validator-solana" in buckets, (
-                f"solana bucket not found in: {buckets}"
+            assert "hyperlane-validator-solana-primary" in buckets, (
+                f"solana-primary bucket not found in: {buckets}"
             )
 
     def test_minio_console_accessible(self, minio_deployment: MinioInfo) -> None:
@@ -145,4 +181,178 @@ class TestMinio:
             status = result.stdout.strip()
             assert status.startswith("2") or status.startswith("3"), (
                 f"Console returned HTTP {status} (curl rc={result.returncode})"
+            )
+
+    def test_minio_users_created(self, minio_deployment: MinioInfo) -> None:
+        """Per-validator IAM users were created by minio-provision-initial."""
+        ns = minio_deployment.namespace
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
+
+        pod_name = subprocess.run(
+            ["kubectl", "get", "pods", "-n", ns, "-l", pod_label,
+             "-o", "jsonpath={.items[0].metadata.name}"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        with PortForward(ns, f"pod/{pod_name}", 19000, 9000):
+            result = run_mc_command(
+                "mc", "admin", "user", "list", "test",
+                minio=minio_deployment, host_port=19000,
+            )
+            assert result.returncode == 0, f"mc admin user list failed: {result.stderr}"
+            users = result.stdout
+            assert minio_deployment.gorchain_key_id in users, (
+                f"gorchain-primary user '{minio_deployment.gorchain_key_id}' not found: {users}"
+            )
+            assert minio_deployment.solana_key_id in users, (
+                f"solana-primary user '{minio_deployment.solana_key_id}' not found: {users}"
+            )
+
+    def test_minio_policies_attached(self, minio_deployment: MinioInfo) -> None:
+        """Bucket-scoped IAM policies are attached to each validator user."""
+        ns = minio_deployment.namespace
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
+
+        pod_name = subprocess.run(
+            ["kubectl", "get", "pods", "-n", ns, "-l", pod_label,
+             "-o", "jsonpath={.items[0].metadata.name}"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        with PortForward(ns, f"pod/{pod_name}", 19000, 9000):
+            for key_id, label in [
+                (minio_deployment.gorchain_key_id, "gorchain-primary"),
+                (minio_deployment.solana_key_id, "solana-primary"),
+            ]:
+                result = run_mc_command(
+                    "mc", "admin", "user", "info", "test", key_id,
+                    minio=minio_deployment, host_port=19000,
+                )
+                assert result.returncode == 0, (
+                    f"mc admin user info failed for {key_id}: {result.stderr}"
+                )
+                policy_name = f"policy-{label}"
+                assert policy_name in result.stdout, (
+                    f"Policy '{policy_name}' not attached to user '{key_id}': {result.stdout}"
+                )
+
+    def test_bucket_isolation(self, minio_deployment: MinioInfo) -> None:
+        """Each validator's IAM user can access its own bucket but not the other's."""
+        ns = minio_deployment.namespace
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
+
+        pod_name = subprocess.run(
+            ["kubectl", "get", "pods", "-n", ns, "-l", pod_label,
+             "-o", "jsonpath={.items[0].metadata.name}"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        with PortForward(ns, f"pod/{pod_name}", 19000, 9000):
+            # gorchain-primary user can access its own bucket
+            result = run_mc_as(
+                minio_deployment.gorchain_key_id, minio_deployment.gorchain_secret,
+                "mc", "ls", "user/hyperlane-validator-gorchain-primary",
+                host_port=19000,
+            )
+            assert result.returncode == 0, (
+                f"gorchain user could not list own bucket: {result.stderr}"
+            )
+
+            # gorchain-primary user cannot access solana bucket
+            result = run_mc_as(
+                minio_deployment.gorchain_key_id, minio_deployment.gorchain_secret,
+                "mc", "ls", "user/hyperlane-validator-solana-primary",
+                host_port=19000,
+            )
+            assert result.returncode != 0, (
+                "gorchain user should NOT have access to solana-primary bucket"
+            )
+
+            # solana-primary user can access its own bucket
+            result = run_mc_as(
+                minio_deployment.solana_key_id, minio_deployment.solana_secret,
+                "mc", "ls", "user/hyperlane-validator-solana-primary",
+                host_port=19000,
+            )
+            assert result.returncode == 0, (
+                f"solana user could not list own bucket: {result.stderr}"
+            )
+
+    def test_subsequent_validator_provisioning(self, minio_deployment: MinioInfo) -> None:
+        """Triggering the CronJob provisions a new validator label without redeploying MinIO.
+
+        Simulates the operator workflow for adding a second validator per chain post-deployment.
+        """
+        import base64 as _base64
+        import secrets as _secrets
+
+        ns = minio_deployment.namespace
+        deployment_id = minio_deployment.deployment_id
+        pod_label = f"app={deployment_id}"
+
+        # Generate credentials for a new validator label
+        new_label = "gorchain-secondary"
+        new_key_id = f"gc2-{_secrets.token_hex(6)}"
+        new_secret = _secrets.token_hex(20)
+        new_bucket = f"hyperlane-validator-{new_label}"
+
+        # Patch the minio-validator-secrets Secret to add the new validator
+        new_users = b"gorchain-primary,solana-primary,gorchain-secondary"
+        subprocess.run(
+            ["kubectl", "patch", "secret", "minio-validator-secrets", "-n", ns,
+             "--type=json",
+             "-p", (
+                 f'[{{"op":"replace","path":"/data/MINIO_USERS",'
+                 f'"value":"{_base64.b64encode(new_users).decode()}"}},'
+                 f'{{"op":"add","path":"/data/GORCHAIN_SECONDARY_KEY_ID",'
+                 f'"value":"{_base64.b64encode(new_key_id.encode()).decode()}"}},'
+                 f'{{"op":"add","path":"/data/GORCHAIN_SECONDARY_SECRET",'
+                 f'"value":"{_base64.b64encode(new_secret.encode()).decode()}"}}]'
+             )],
+            capture_output=True, text=True, check=True,
+        )
+
+        # Trigger the CronJob
+        additional_job = "minio-provision-secondary-test"
+        subprocess.run(
+            ["kubectl", "create", "job", additional_job,
+             "--from=cronjob/minio-provision", "-n", ns],
+            capture_output=True, text=True, check=True,
+        )
+
+        try:
+            from lib.common import wait_for_job_complete
+            wait_for_job_complete(ns, additional_job, timeout=300)
+
+            # Verify new bucket and user exist
+            pod_name = subprocess.run(
+                ["kubectl", "get", "pods", "-n", ns, "-l", pod_label,
+                 "-o", "jsonpath={.items[0].metadata.name}"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+
+            with PortForward(ns, f"pod/{pod_name}", 19000, 9000):
+                result = run_mc_command(
+                    "mc", "ls", "test/",
+                    minio=minio_deployment, host_port=19000,
+                )
+                assert new_bucket in result.stdout, (
+                    f"New bucket '{new_bucket}' not found after re-provision: {result.stdout}"
+                )
+
+                result = run_mc_command(
+                    "mc", "admin", "user", "list", "test",
+                    minio=minio_deployment, host_port=19000,
+                )
+                assert new_key_id in result.stdout, (
+                    f"New user '{new_key_id}' not found after re-provision: {result.stdout}"
+                )
+        finally:
+            # Clean up the test job regardless of outcome
+            subprocess.run(
+                ["kubectl", "delete", "job", additional_job, "-n", ns, "--ignore-not-found"],
+                capture_output=True, text=True,
             )
