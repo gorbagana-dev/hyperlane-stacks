@@ -119,6 +119,27 @@ Update the storage description (line ~19 and ~422) from "Named volumes → PVCs"
 
 ---
 
+## Directory Permissions
+
+Containers writing to host-path volumes must be able to write to the pre-created directories. Two approaches depending on environment:
+
+**Tests (`/tmp/hyperlane-bridge-e2e/`)** — `conftest.py` creates each dir then `chmod 0o777`. World-writable is acceptable under `/tmp/`.
+
+**Production (`/srv/kind/hyperlane/`)** — Ansible must `chown` each dir to the container UID. Do **not** use 777 in prod.
+
+| Directory | Container image | Runs as UID | Ansible `owner:` |
+|---|---|---|---|
+| `bridge/generated` | deployer job | root (0) | root (default) |
+| `bridge/logs` | deployer job | root (0) | root (default) |
+| `minio/data` | minio/minio | root (0) | root (default) |
+| `validator-gorchain/data` | hyperlane validator | root (0) | root (default) |
+| `validator-solana/data` | hyperlane validator | root (0) | root (default) |
+| `relayer/data` | hyperlane relayer | root (0) | root (default) |
+| `monitoring/prometheus` | prom/prometheus | 65534 (nobody) | **65534** |
+| `monitoring/grafana` | grafana/grafana | 472 (grafana) | **472** |
+
+---
+
 ## Out of Scope
 
 - Production ops / Ansible playbooks for creating the `/srv/kind/hyperlane` tree on the server — handled separately.

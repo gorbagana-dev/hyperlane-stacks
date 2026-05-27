@@ -168,9 +168,10 @@ def bridge_state_root(request: pytest.FixtureRequest) -> Generator[Path, None, N
     ]:
         d = p / subdir
         d.mkdir(parents=True, exist_ok=True)
-        # chmod 777 so container processes running as non-root UIDs (e.g.
-        # Prometheus as nobody/65534, Grafana as UID 472) can write into
-        # these host-path directories.  Safe under /tmp/ in tests.
+        # Tests: chmod 777 so any container UID can write (Prometheus runs as
+        # nobody/65534, Grafana as UID 472).  World-writable is fine under /tmp/.
+        # Prod: Ansible chowns each dir to the container's UID instead — see
+        # docs/superpowers/specs/2026-05-27-host-path-volumes-design.md.
         d.chmod(0o777)
     log.info("Bridge state root for this session: %s", p)
     yield p
