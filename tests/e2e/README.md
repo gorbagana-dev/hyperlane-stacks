@@ -159,7 +159,8 @@ Each `--skip-*` flag tells the test session to treat a deployment fixture as alr
 #   hyperlane-relayer | hyperlane-gas-oracle | hyperlane-warp-ui
 
 laconic-so deployment --dir ./.deployments/<stack> stop --delete-volumes --delete-namespace
-sudo rm -rf .deployments/<stack> .deployments/<stack>-spec.yml
+sudo rm -rf .deployments/<stack>
+rm .deployments/<stack>-spec.yml
 ```
 
 ### Rerun from a given stack
@@ -200,7 +201,8 @@ for stack in hyperlane-svm-deployer hyperlane-svm-warp-deployer hyperlane-minio 
              hyperlane-validator-gorchain hyperlane-validator-solana hyperlane-relayer \
              hyperlane-gas-oracle hyperlane-warp-ui; do
   laconic-so deployment --dir ./.deployments/$stack stop --delete-volumes --delete-namespace 2>/dev/null || true
-  sudo rm -rf .deployments/$stack .deployments/$stack-spec.yml
+  sudo rm -rf .deployments/$stack
+  rm .deployments/$stack-spec.yml
 done
 
 xvfb-run pytest -vx --skip-cleanup --skip-cluster-setup --skip-chain-setup

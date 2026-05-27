@@ -18,7 +18,7 @@
 
 set -e
 
-MINIO_URL="http://minio:9000"
+MINIO_URL="http://minio-service:9000"
 
 echo "Waiting for MinIO at ${MINIO_URL}..."
 retries=0
