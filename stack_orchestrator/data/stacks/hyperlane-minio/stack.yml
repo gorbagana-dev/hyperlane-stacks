@@ -3,5 +3,3 @@ name: hyperlane-minio
 description: "S3-compatible checkpoint storage for Hyperlane validators (MinIO)"
 pods:
   - hyperlane-minio
-jobs:
-  - hyperlane-minio-init
