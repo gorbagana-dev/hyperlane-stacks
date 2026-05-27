@@ -147,14 +147,27 @@ where the matching entry went.
 
 Both URLs are spec-driven via each spec's `config:` block.
 
-### 4.4 The cross-stack ClusterIP Service is removed
+### 4.4 The cross-stack ClusterIP Service is removed; port 9000 exposed via http-proxy
 
 `stack_orchestrator/data/stacks/hyperlane-minio/deploy/commands.py`
-currently creates a `hyperlane-minio` Service in the minio namespace as
-a stable short-name target — a workaround for cross-namespace reachability
-that was needed before consumers had their own `external-services:`
-entries. With this PR, each consumer creates the name in its own namespace,
-so the cross-stack Service is no longer needed and is deleted.
+previously created a `hyperlane-minio` Service in the minio namespace
+as a stable short-name that cross-namespace consumers (validators,
+relayers) could reach via the full FQDN
+`hyperlane-minio.laconic-hyperlane-minio.svc.cluster.local:9000`. With
+this PR, each consumer creates the name in its own namespace via
+selector-mode `external-services:`, so the cross-namespace workaround
+is gone.
+
+The minio-init Job also connects to MinIO on port 9000 for its initial
+bucket setup and anonymous-policy commands. SO's `get_service()` creates
+a `minio-service` ClusterIP Service whose ports come from `http-proxy`
+routes. The S3 API (port 9000) is exposed via Caddy through the
+`http-proxy:` spec key — in prod on `s3.bridge.gorbagana.wtf` (TLS
+terminated by Caddy with a Let's Encrypt cert the SDK trusts natively),
+in dev on `minio-s3.test` (mkcert cert, useful for debugging). This
+causes SO to include port 9000 in `minio-service`, so the init job can
+connect to `http://minio-service:9000` directly without going through
+Caddy. `commands.py` is a no-op.
 
 ### 4.5 Endpoint URL is spec-driven, not compose-hardcoded
 
@@ -173,7 +186,9 @@ the same compose file.
 - `stack_orchestrator/data/compose/docker-compose-hyperlane-relayer.yml`
   - Same change as validator.
 - `stack_orchestrator/data/stacks/hyperlane-minio/deploy/commands.py`
-  - Remove the cross-stack ClusterIP Service creation.
+  - Remove the cross-stack ClusterIP Service creation (no-op). Port 9000
+    is now exposed via `http-proxy:` in the spec, so SO creates it in
+    `minio-service` automatically.
 
 ### Production specs
 
@@ -189,28 +204,17 @@ the same compose file.
 ### Test fixtures
 
 - `tests/e2e/fixtures/test-spec-minio.yml`
-  - `http-proxy:` block contains the existing `host-name:
-    minio-console.test` → `minio:9001` only. No `hyperlane-minio`
-    host-name (consumers reach MinIO directly in dev, not through Caddy).
-- `tests/e2e/fixtures/test-spec-validator-gorchain.yml`,
-  `test-spec-validator-solana.yml`, `test-spec-relayer.yml`
-  - Add `external-services:` entry:
-    ```yaml
-    hyperlane-minio:
-      selector:
-        app.kubernetes.io/stack: hyperlane-minio
-      namespace: laconic-hyperlane-minio
-      port: 9000
-    ```
-    with comment explaining "dev only — prod uses public DNS to resolve
-    `s3.bridge.gorbagana.wtf`".
-  - Add `config:` entry `AWS_ENDPOINT_URL_S3: http://hyperlane-minio:9000`.
+  - Extend `http-proxy:` with `host-name: minio-s3.test` → `minio:9000`
+    (mirrors `s3.bridge.gorbagana.wtf` in the prod spec). SO includes
+    port 9000 in `minio-service`; the init job connects to
+    `http://minio-service:9000` without going through Caddy.
 
 ### Test code
 
 - `tests/e2e/lib/cluster.py`
-  - Remove `hyperlane-minio` from `TEST_HOSTNAMES` — no longer reached
-    via Caddy in dev, so mkcert SAN coverage is moot.
+  - Add `minio-s3.test` to `TEST_HOSTNAMES` for mkcert SAN coverage.
+- `tests/e2e/test_11_ingress_endpoints.py`
+  - Add `test_minio_s3_ingress` — probes `https://minio-s3.test/minio/health/live`.
 
 ## 6. Verification
 

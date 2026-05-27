@@ -64,6 +64,13 @@ def test_relayer_metrics_ingress(relayer_deployment):
     assert status == 200, f"relayer metrics Ingress not serving 200 (got {status})"
 
 
+def test_minio_s3_ingress(minio_deployment):
+    # Unauthenticated GET / returns 403 from MinIO's S3 API — confirms Caddy
+    # is routing to minio:9000. Use /minio/health/live for a 200-based probe.
+    status = _wait_for_https("https://minio-s3.test/minio/health/live")
+    assert status == 200, f"minio S3 API Ingress not serving 200 (got {status})"
+
+
 def test_minio_console_ingress(minio_deployment):
     status = _wait_for_https("https://minio-console.test/minio/health/cluster")
     assert status == 200, f"minio console Ingress not serving 200 (got {status})"

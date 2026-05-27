@@ -1,8 +1,3 @@
-from pathlib import Path
-
-from kubernetes import client, config as k8s_config
-from kubernetes.client.rest import ApiException
-
 from stack_orchestrator.deploy.deployment_context import DeploymentContext
 
 
@@ -17,8 +12,10 @@ def create(context: DeploymentContext, extra_args):
 
 
 def start(context: DeploymentContext):
-    """No-op — consumers now reach MinIO through Caddy via external-services
-    (dev) or public DNS (prod). The previous cross-stack ClusterIP Service
-    is no longer required.
+    """No-op — the minio-service ClusterIP Service (port 9000) is created
+    automatically by SO from the http-proxy: minio:9000 route in the spec.
+    The minio-init Job uses http://minio-service:9000 to reach the S3 API.
+    Cross-namespace consumers (validators, relayers) use selector-mode
+    external-services: in their own namespaces (dev) or public DNS (prod).
     """
     pass

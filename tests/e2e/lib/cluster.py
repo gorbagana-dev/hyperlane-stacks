@@ -15,6 +15,7 @@ TEST_HOSTNAMES: tuple[str, ...] = (
     "validator-gorchain.test",
     "validator-solana.test",
     "relayer.test",
+    "minio-s3.test",
     "minio-console.test",
 )
 
