@@ -6,6 +6,9 @@ This stack is a prerequisite for validator and relayer stacks.
 
 from __future__ import annotations
 
+import base64
+import json
+import secrets
 import subprocess
 
 import pytest
@@ -136,7 +139,7 @@ class TestMinio:
             )
 
     def test_minio_buckets_exist(self, minio_deployment: MinioInfo) -> None:
-        """Both validator buckets were created by minio-init."""
+        """Both validator buckets were created by minio-provision-initial."""
         ns = minio_deployment.namespace
         deployment_id = minio_deployment.deployment_id
         pod_label = f"app={deployment_id}"
@@ -286,32 +289,27 @@ class TestMinio:
 
         Simulates the operator workflow for adding a second validator per chain post-deployment.
         """
-        import base64 as _base64
-        import secrets as _secrets
-
         ns = minio_deployment.namespace
         deployment_id = minio_deployment.deployment_id
         pod_label = f"app={deployment_id}"
 
         # Generate credentials for a new validator label
         new_label = "gorchain-secondary"
-        new_key_id = f"gc2-{_secrets.token_hex(6)}"
-        new_secret = _secrets.token_hex(20)
+        new_key_id = f"gc2-{secrets.token_hex(6)}"
+        new_secret = secrets.token_hex(20)
         new_bucket = f"hyperlane-validator-{new_label}"
 
         # Patch the minio-validator-secrets Secret to add the new validator
+        # (In prod this is done via `kubectl edit secret` or Ansible before triggering the CronJob)
         new_users = b"gorchain-primary,solana-primary,gorchain-secondary"
         subprocess.run(
             ["kubectl", "patch", "secret", "minio-validator-secrets", "-n", ns,
-             "--type=json",
-             "-p", (
-                 f'[{{"op":"replace","path":"/data/MINIO_USERS",'
-                 f'"value":"{_base64.b64encode(new_users).decode()}"}},'
-                 f'{{"op":"add","path":"/data/GORCHAIN_SECONDARY_KEY_ID",'
-                 f'"value":"{_base64.b64encode(new_key_id.encode()).decode()}"}},'
-                 f'{{"op":"add","path":"/data/GORCHAIN_SECONDARY_SECRET",'
-                 f'"value":"{_base64.b64encode(new_secret.encode()).decode()}"}}]'
-             )],
+             "--type=merge",
+             "-p", json.dumps({"data": {
+                 "MINIO_USERS":                base64.b64encode(new_users).decode(),
+                 "GORCHAIN_SECONDARY_KEY_ID":  base64.b64encode(new_key_id.encode()).decode(),
+                 "GORCHAIN_SECONDARY_SECRET":  base64.b64encode(new_secret.encode()).decode(),
+             }})],
             capture_output=True, text=True, check=True,
         )
 
@@ -351,8 +349,22 @@ class TestMinio:
                     f"New user '{new_key_id}' not found after re-provision: {result.stdout}"
                 )
         finally:
-            # Clean up the test job regardless of outcome
+            # Clean up: delete the test job and roll back the secret patch
             subprocess.run(
                 ["kubectl", "delete", "job", additional_job, "-n", ns, "--ignore-not-found"],
                 capture_output=True, text=True,
+            )
+            # Restore original MINIO_USERS and remove the temporary secondary keys.
+            # Using JSON Patch remove — tolerate errors (key may not exist if setup failed early).
+            original_users = base64.b64encode(b"gorchain-primary,solana-primary").decode()
+            subprocess.run(
+                ["kubectl", "patch", "secret", "minio-validator-secrets", "-n", ns,
+                 "--type=json",
+                 "-p", json.dumps([
+                     {"op": "remove", "path": "/data/GORCHAIN_SECONDARY_KEY_ID"},
+                     {"op": "remove", "path": "/data/GORCHAIN_SECONDARY_SECRET"},
+                     {"op": "replace", "path": "/data/MINIO_USERS", "value": original_users},
+                 ])],
+                capture_output=True, text=True,
+                # No check=True — key may not exist if setup patch failed
             )
