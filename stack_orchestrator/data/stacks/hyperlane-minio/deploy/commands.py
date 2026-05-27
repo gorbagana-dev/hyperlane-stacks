@@ -39,10 +39,8 @@ done
 echo "MinIO is ready"
 
 # MINIO_USERS: comma-separated validator labels, e.g. "gorchain-primary,solana-primary"
-IFS=',' read -r -a USERS <<< "${MINIO_USERS}"
-
-for label in "${USERS[@]}"; do
-  label="$(echo "${label}" | tr -d '[:space:]')"
+printf '%s\n' "${MINIO_USERS}" | tr ',' '\n' | while IFS= read -r label; do
+  label="$(printf '%s' "${label}" | tr -d '[:space:]')"
   # Derive env var prefix: gorchain-primary -> GORCHAIN_PRIMARY
   prefix="$(echo "${label}" | tr '[:lower:]-' '[:upper:]_')"
 
@@ -76,8 +74,8 @@ for label in "${USERS[@]}"; do
     sleep 3
   done
 
-  # Create IAM user
-  mc admin user add local "${key_id}" "${secret}"
+  # Create IAM user (idempotent: no-op if already exists)
+  mc admin user add local "${key_id}" "${secret}" || true
 
   # Create bucket-scoped IAM policy (read+write this bucket only)
   tmp_policy="$(mktemp)"
@@ -96,7 +94,7 @@ for label in "${USERS[@]}"; do
   ]
 }
 EOF
-  mc admin policy create local "${policy_name}" "${tmp_policy}"
+  mc admin policy create local "${policy_name}" "${tmp_policy}" || true
   rm -f "${tmp_policy}"
 
   # Attach policy to user
@@ -109,7 +107,7 @@ echo "All validators provisioned successfully"
 """
 
 
-def start(context: DeploymentContext, extra_args) -> None:
+def start(context: DeploymentContext, extra_args=None) -> None:
     """Create suspended minio-provision CronJob and trigger initial provisioning."""
     from kubernetes import client, config
 
@@ -170,10 +168,10 @@ def start(context: DeploymentContext, extra_args) -> None:
         print(f"Created CronJob {cronjob_name} in {namespace}")
     except client.exceptions.ApiException as e:
         if e.status == 409:
-            batch_api.replace_namespaced_cron_job(
+            batch_api.patch_namespaced_cron_job(
                 name=cronjob_name, namespace=namespace, body=cronjob
             )
-            print(f"Replaced existing CronJob {cronjob_name} in {namespace}")
+            print(f"Patched existing CronJob {cronjob_name} in {namespace}")
         else:
             raise
 
