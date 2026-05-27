@@ -28,7 +28,7 @@ configmaps:
 #   PRIVY_APP_ID, PRIVY_APP_SECRET
 #   SOLANA_PRIMARY_KEY_ID, SOLANA_PRIMARY_SECRET    — per-validator MinIO IAM creds
 secrets:
-  hyperlane-validator-secrets:
+  hyperlane-validator-solana-secrets:
     keys:
       HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-solana.key }
       PRIVY_APP_ID:           { env: PRIVY_APP_ID }

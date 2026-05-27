@@ -28,7 +28,7 @@ configmaps:
 #   PRIVY_APP_ID, PRIVY_APP_SECRET
 #   GORCHAIN_PRIMARY_KEY_ID, GORCHAIN_PRIMARY_SECRET  — per-validator MinIO IAM creds
 secrets:
-  hyperlane-validator-secrets:
+  hyperlane-validator-gorchain-secrets:
     keys:
       HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-gorchain.key }
       PRIVY_APP_ID:           { env: PRIVY_APP_ID }
