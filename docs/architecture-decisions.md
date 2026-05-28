@@ -250,12 +250,13 @@ The Hyperlane validator at `agents-v2.0.0` has no signer plugin interface. The `
 
 **Approach:** Exploit the existing AWS KMS signer path with a local KMS API proxy that redirects to Privy.
 
-```
-┌─────────────────┐  AWS KMS API   ┌──────────────┐  Privy API   ┌─────────┐
-│  Validator       │ ────────────→ │  KMS Proxy   │ ───────────→ │  Privy  │
-│  (unmodified)    │               │  (sidecar)   │              │  (TEE)  │
-│  type: "aws"     │               │  port 9999   │              │         │
-└─────────────────┘                └──────────────┘              └─────────┘
+```mermaid
+flowchart LR
+    V["<b>Validator</b><br/>(unmodified)<br/>type: aws"]
+    K["<b>KMS Proxy</b><br/>(sidecar)<br/>port 9999"]
+    P["<b>Privy</b><br/>(TEE)"]
+    V -- "AWS KMS API" --> K
+    K -- "Privy API" --> P
 ```
 
 **KMS proxy sidecar** — a lightweight service (~200 lines) that:
