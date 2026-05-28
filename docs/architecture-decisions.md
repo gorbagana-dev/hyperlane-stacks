@@ -508,11 +508,11 @@ Validators write checkpoint signatures to S3, and the relayer reads from the sam
 **Architecture:**
 
 ```
-┌────────────────────────┐  authenticated S3  ┌─────────┐  anonymous S3  ┌──────────┐
-│  Validator              │ ─────────────────→ │  MinIO  │ ←───────────── │  Relayer  │
-│  (writes; per-instance  │   per-validator    │  (pod)  │   public-read  │  (reads)  │
-│   IAM, bucket-scoped)   │   IAM credentials  │         │   on buckets   │           │
-└────────────────────────┘                    └─────────┘                └──────────┘
+┌──────────────────────────┐   authenticated S3   ┌─────────┐   anonymous S3   ┌───────────┐
+│  Validator               │ ───────────────────→ │  MinIO  │ ←─────────────── │  Relayer  │
+│  (per-instance IAM,      │   per-validator      │  (pod)  │   public-read    │  (reads)  │
+│   bucket-scoped policy)  │   IAM credentials    │         │   on buckets     │           │
+└──────────────────────────┘                      └─────────┘                  └───────────┘
 ```
 
 **MinIO deployment:**
@@ -566,22 +566,37 @@ The dev path bypasses Caddy specifically to avoid Caddy v2's auto HTTP→HTTPS 3
 **Distribution model:**
 
 ```
-                  Operator's machine (controller)
-                  ─────────────────────────────────
-                  agent-forwarded SSH
-                  │
-                  ▼
-   Deployer host                          Consumer host (validator, relayer, …)
-   ─────────────────                      ─────────────────────────────────────
-   /srv/kind/hyperlane/                   <repo clone>/deployment/bridges/<bridge>/generated/
-     bridge/generated/                        ↓ state_distribute role
-       agent-config.json                  {deploy_dir}/configmaps/agent-config/agent-config.json
-       program-ids.json                   {deploy_dir}/configmaps/agent-config/program-ids.json
-       …                                  …
-       ↑
-       commit-bridge-state playbook       SO at `deployment start`:
-       (operator-attended, manual         creates k8s ConfigMaps in
-        diff review before push)          consumer's own namespace
+ ┌────────────────────────────────────────────────────────────────────┐
+ │  (1) Deployer host                                                 │
+ │      laconic-so runs hyperlane-svm-deployer; the Job writes state  │
+ │      files to /srv/kind/hyperlane/bridge/generated/                │
+ │      (agent-config.json, program-ids.json, gas-oracle-config.json, │
+ │       multisig-config.json, registry/metadata.yaml, ...)           │
+ └────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  │  (2) Operator runs commit-bridge-state.yml
+                                  │      from the controller (agent-forwarded
+                                  │      SSH). Files copied from /srv/.../
+                                  │      generated/ into <repo>/deployment/
+                                  │      bridges/<bridge>/generated/. Operator
+                                  │      reviews diff, then git push to main.
+                                  ▼
+ ┌────────────────────────────────────────────────────────────────────┐
+ │  Repo @ main                                                       │
+ │      deployment/bridges/<bridge>/generated/*.json                  │
+ └────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  │  (3) On each consumer host: ansible
+                                  │      state_distribute role clones/pulls
+                                  │      the repo, then copies the relevant
+                                  │      state files into the stack's
+                                  │      {deploy_dir}/configmaps/<cm-name>/
+                                  ▼
+ ┌────────────────────────────────────────────────────────────────────┐
+ │  Consumer host (validator, relayer, gas-oracle, warp-ui)           │
+ │      laconic-so deployment start creates k8s ConfigMaps in the     │
+ │      consumer's own namespace; pods mount them as normal volumes.  │
+ └────────────────────────────────────────────────────────────────────┘
 ```
 
 **Three-step flow:**
