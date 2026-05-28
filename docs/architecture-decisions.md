@@ -507,12 +507,13 @@ Validators write checkpoint signatures to S3, and the relayer reads from the sam
 
 **Architecture:**
 
-```
-┌──────────────────────────┐   authenticated S3   ┌─────────┐   anonymous S3   ┌───────────┐
-│  Validator               │ ───────────────────→ │  MinIO  │ ←─────────────── │  Relayer  │
-│  (per-instance IAM,      │   per-validator      │  (pod)  │   public-read    │  (reads)  │
-│   bucket-scoped policy)  │   IAM credentials    │         │   on buckets     │           │
-└──────────────────────────┘                      └─────────┘                  └───────────┘
+```mermaid
+flowchart LR
+    V["<b>Validator</b><br/>per-instance IAM,<br/>bucket-scoped policy"]
+    M[("<b>MinIO</b><br/>(pod)")]
+    R["<b>Relayer</b><br/>(reads only)"]
+    V -- "authenticated S3<br/>per-validator credentials" --> M
+    M -- "anonymous S3<br/>public-read on buckets" --> R
 ```
 
 **MinIO deployment:**
@@ -565,38 +566,13 @@ The dev path bypasses Caddy specifically to avoid Caddy v2's auto HTTP→HTTPS 3
 
 **Distribution model:**
 
-```
- ┌────────────────────────────────────────────────────────────────────┐
- │  (1) Deployer host                                                 │
- │      laconic-so runs hyperlane-svm-deployer; the Job writes state  │
- │      files to /srv/kind/hyperlane/bridge/generated/                │
- │      (agent-config.json, program-ids.json, gas-oracle-config.json, │
- │       multisig-config.json, registry/metadata.yaml, ...)           │
- └────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  │  (2) Operator runs commit-bridge-state.yml
-                                  │      from the controller (agent-forwarded
-                                  │      SSH). Files copied from /srv/.../
-                                  │      generated/ into <repo>/deployment/
-                                  │      bridges/<bridge>/generated/. Operator
-                                  │      reviews diff, then git push to main.
-                                  ▼
- ┌────────────────────────────────────────────────────────────────────┐
- │  Repo @ main                                                       │
- │      deployment/bridges/<bridge>/generated/*.json                  │
- └────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  │  (3) On each consumer host: ansible
-                                  │      state_distribute role clones/pulls
-                                  │      the repo, then copies the relevant
-                                  │      state files into the stack's
-                                  │      {deploy_dir}/configmaps/<cm-name>/
-                                  ▼
- ┌────────────────────────────────────────────────────────────────────┐
- │  Consumer host (validator, relayer, gas-oracle, warp-ui)           │
- │      laconic-so deployment start creates k8s ConfigMaps in the     │
- │      consumer's own namespace; pods mount them as normal volumes.  │
- └────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    D["<b>(1) Deployer host</b><br/>laconic-so runs hyperlane-svm-deployer;<br/>Job writes state files to<br/>/srv/kind/hyperlane/bridge/generated/<br/>(agent-config.json, program-ids.json,<br/>gas-oracle-config.json, multisig-config.json,<br/>registry/metadata.yaml, ...)"]
+    R["<b>Repo @ main</b><br/>deployment/bridges/&lt;bridge&gt;/generated/*.json"]
+    C["<b>Consumer host</b><br/>(validator, relayer, gas-oracle, warp-ui)<br/>laconic-so deployment start creates<br/>k8s ConfigMaps in the consumer's own<br/>namespace; pods mount them as normal volumes."]
+    D -- "(2) Operator runs commit-bridge-state.yml from<br/>controller (agent-forwarded SSH). Reviews diff,<br/>git push to main." --> R
+    R -- "(3) On each consumer host: state_distribute<br/>role clones/pulls repo, copies state files into<br/>{deploy_dir}/configmaps/&lt;cm-name&gt;/" --> C
 ```
 
 **Three-step flow:**
@@ -874,13 +850,15 @@ Hyperlane agents (validators and relayer) natively export Prometheus metrics on 
 
 Monitoring is its own host (or shares with the relayer host in single-host setups). Prometheus scrapes validator and relayer metrics endpoints **across hosts** via their public Caddy hostnames:
 
-```
-Prometheus (monitoring-host)
-   │ scrape GET https://validator-gorchain-primary.bridge.<zone>/metrics
-   │ scrape GET https://validator-solana-primary.bridge.<zone>/metrics
-   │ scrape GET https://relayer.bridge.<zone>/metrics
-   ▼
-Caddy (each bridge host) → in-cluster validator/relayer pod :9090
+```mermaid
+flowchart TD
+    P["<b>Prometheus</b><br/>(monitoring-host)"]
+    C["<b>Caddy</b><br/>on each bridge host"]
+    Pod["in-cluster<br/>validator / relayer pod<br/>:9090 / :9091"]
+    P -- "GET https://validator-gorchain-primary.bridge.&lt;zone&gt;/metrics" --> C
+    P -- "GET https://validator-solana-primary.bridge.&lt;zone&gt;/metrics" --> C
+    P -- "GET https://relayer.bridge.&lt;zone&gt;/metrics" --> C
+    C -- forwards --> Pod
 ```
 
 ### Components
