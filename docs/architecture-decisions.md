@@ -6,30 +6,51 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 
 ## Stack Decomposition
 
-**8 stacks** (each stack = one k8s Pod or Job, see `specs/stack-specifications.md` for detailed per-stack specs):
+**9 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `specs/stack-specifications.md` for detailed per-stack specs):
 
 | Stack | Type | Purpose |
 |-------|------|---------|
-| `hyperlane-svm-deployer` | One-time job | Deploys Hyperlane core contracts, configures IGP + Multisig ISM. Outputs deployment artifacts as k8s ConfigMaps. |
+| `hyperlane-svm-deployer` | One-time job | Deploys Hyperlane core contracts, configures IGP + Multisig ISM. Writes state files to a host-path volume. |
 | `hyperlane-svm-warp-deployer` | One-time job | Deploys warp route contracts for a specific token pair. Separate from core deployer to allow multiple warp routes against the same core deployment. |
-| `hyperlane-validator` | Long-running | Runs a Hyperlane validator for one chain with KMS proxy sidecar for Privy signing. One deployment per chain. |
+| `hyperlane-validator` | Long-running | Runs a Hyperlane validator for one chain with KMS proxy sidecar for Privy signing. **One deployment per validator instance.** Multiple instances per chain supported via per-instance specs derived from `validators.yaml`. |
 | `hyperlane-relayer` | Long-running | Delivers cross-chain messages. Includes IGP fee claim sidecar. |
-| `hyperlane-minio` | Long-running | S3-compatible checkpoint storage (MinIO) for validators and relayer. |
+| `hyperlane-minio` | Long-running | S3-compatible checkpoint storage (MinIO) for validators and relayer. Per-validator IAM users with bucket-scoped policies. |
 | `hyperlane-gas-oracle` | Long-running | Automated IGP gas oracle updates via Privy. |
-| `hyperlane-monitoring` | Long-running | Prometheus + Grafana + Pushgateway + balance monitor. |
+| `hyperlane-monitoring` | Long-running | Prometheus + Grafana + balance monitor. |
 | `hyperlane-warp-ui` | Long-running (optional) | Browser-based bridge UI for token transfers. |
+| `hyperlane-ops` | Suspended jobs | Operator-attended on-chain operations (kill-switch, restore, teardown, ISM update, fee claims, program closures, signed-tx broadcast). Each action is a separate k8s Job in the stack's `jobs:` list, marked `suspend: true` so they only run when triggered via `laconic-so deployment run-job`. See `ops-decisions.md`. |
 
-Operational jobs (kill switch, restore, teardown) live in `ops/` as standalone k8s Job manifests — not an SO-managed stack. They require the hardware wallet for operator-attended signing.
-
-**Rationale:** Stack-orchestrator maps all services in a stack to a single k8s Pod, so services needing independent lifecycles or restart must be separate stacks. Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts.
+**Rationale:** Stack-orchestrator maps all services in a stack to a single k8s Pod, so services needing independent lifecycles or restart must be separate stacks. Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts. The `hyperlane-ops` stack is a special case: all its actions share an image, secrets, and state-file mounts, but each must trigger independently — handled by the SO `suspend: true` + `run-job` mechanism.
 
 ---
 
 ## Networking
 
-**Decision:** Public internet, standard k8s egress.
+**Decision:** Public internet for cross-host service-to-service traffic; in-cluster routing for everything on the same host.
 
-Both chains (Gorchain and Solana) are SVM (Solana Virtual Machine) chains accessed via external RPC endpoints over the public internet. No VPN, host networking, or special network configuration required. Pods use standard Kubernetes egress.
+### External RPCs
+
+Both chains (Gorchain and Solana) are accessed via external RPC endpoints over the public internet. No VPN or host networking required.
+
+### Cross-host bridge traffic
+
+In multi-host production, stacks on different hosts reach each other via Caddy + public DNS. Each long-running stack with public endpoints declares them in its spec's `network.http-proxy:` block and Caddy auto-provisions LE certificates against `acme-email`. Consumers reach the endpoint by hostname (e.g. `https://s3.bridge.gorbagana.wtf` for MinIO).
+
+This applies to:
+- **MinIO** — validators write checkpoints and relayer reads them via `https://s3.bridge.<zone>`. Per-validator IAM authenticates writes; checkpoints are anonymously readable.
+- **Monitoring** — Prometheus on the monitoring host scrapes `/metrics` over `https://validator-<label>.bridge.<zone>` and `https://relayer.bridge.<zone>`. v1 leaves these world-readable; v1.x adds basic auth.
+- **Warp UI** — single public hostname.
+- **Grafana / Prometheus UI** — public on the monitoring host.
+
+### In-host (dev) routing
+
+For dev / single-host setups, MinIO is reached via `external-services:` selector mode rather than going through Caddy. SO creates a headless Service in each consumer's namespace with Endpoints discovered from MinIO pods in `laconic-hyperlane-minio` at deploy time. Avoids the Caddy 308 HTTP→HTTPS redirect breaking the S3 SDK's signed requests on a self-signed cert path.
+
+In prod the same consumer specs use the public Caddy URL instead. Specs differ only in `AWS_ENDPOINT_URL_S3` and the presence of the `external-services:` block — see `docs/superpowers/specs/2026-05-26-minio-external-services-and-tls-design.md` for the design history.
+
+### Egress
+
+Pods use standard Kubernetes egress. No special network configuration. Each host must have public 80/443 reachable for Caddy LE provisioning — see §DNS Prerequisites.
 
 ---
 
@@ -229,12 +250,13 @@ The Hyperlane validator at `agents-v2.0.0` has no signer plugin interface. The `
 
 **Approach:** Exploit the existing AWS KMS signer path with a local KMS API proxy that redirects to Privy.
 
-```
-┌─────────────────┐  AWS KMS API   ┌──────────────┐  Privy API   ┌─────────┐
-│  Validator       │ ────────────→ │  KMS Proxy   │ ───────────→ │  Privy  │
-│  (unmodified)    │               │  (sidecar)   │              │  (TEE)  │
-│  type: "aws"     │               │  port 9999   │              │         │
-└─────────────────┘                └──────────────┘              └─────────┘
+```mermaid
+flowchart LR
+    V["<b>Validator</b><br/>(unmodified)<br/>type: aws"]
+    K["<b>KMS Proxy</b><br/>(sidecar)<br/>port 9999"]
+    P["<b>Privy</b><br/>(TEE)"]
+    V -- "AWS KMS API" --> K
+    K -- "Privy API" --> P
 ```
 
 **KMS proxy sidecar** — a lightweight service (~200 lines) that:
@@ -311,13 +333,15 @@ The gas oracle is a standalone TypeScript service in the `hyperlane-gas-oracle` 
 
 ## Multisig ISM Configuration
 
-**Decision:** Single validator (1-of-1) per chain for v1.
+**Decision:** N validators per chain supported in v1; threshold operator-chosen at the on-chain ISM-update step.
 
-- Each chain has one validator whose address is configured in the other chain's Multisig ISM
-- Threshold = 1
-- Configurable via env vars (validator addresses)
+- Each chain's Multisig ISM lists the addresses of all validators announcing for the *other* chain. Operator decides the threshold at deploy time (initial deployer run) and at each subsequent `ism-update` operation (when adding/removing validators or changing threshold).
+- Validator instances are identified by stable operator-assigned labels (e.g. `gorchain-primary`, `gorchain-backup`). The label drives the spec file path, namespace, bucket, MinIO IAM user, hostname, and on-host data directory — see `docs/superpowers/specs/2026-05-27-minio-per-validator-users-design.md`.
+- Adding a validator to the running deployment and adding it to the on-chain ISM are *separate operator actions*: the deployment side (validator pod + MinIO IAM + DNS + spec generation) is handled by the GitOps add-validator playbook; the on-chain side is the `ism-update` ops playbook with hardware-wallet signing. See `ops-decisions.md`.
 
-**Deferred:** m-of-n validator sets, geographic distribution, validator rotation procedures.
+**v1 default:** 1-of-1 per chain on initial bootstrap. Operators expand to m-of-n as their threat model requires.
+
+**Deferred:** Geographic distribution policy, validator rotation automation, on-chain validator allowlist/blocklist tooling.
 
 ---
 
@@ -385,13 +409,13 @@ Both jobs require the ISM owner key (hardware wallet). Jobs generate unsigned tr
 
 ## High Availability
 
-**Decision:** Single instance per agent, with RPC failover support.
+**Decision:** Multi-validator per chain supported; single relayer per bridge.
 
-- One validator per chain, one relayer
-- Support comma-separated RPC URLs for failover (if supported by Hyperlane agents)
-- No relayer redundancy, no validator replication in v1
+- Validators scale via per-instance specs. Operator chooses how many to run and on which hosts. Each instance is a separate SO deployment in its own namespace, with its own MinIO bucket + IAM credentials and its own Privy server wallet.
+- One relayer per bridge in v1. Relayer is responsible for delivering all messages and there is no leader-election / deduplication logic in the upstream Hyperlane agent. Running multiple relayers would result in duplicate message-delivery attempts (most of which would fail on-chain) but no correctness issue.
+- RPC failover: comma-separated RPC URLs if the Hyperlane agent supports it.
 
-**Deferred:** Active-passive relayer, multiple validators per chain, geographic distribution.
+**Deferred:** Active-passive relayer with deduplication, geographic distribution policy.
 
 ---
 
@@ -415,14 +439,14 @@ User is responsible for the security of their RPC endpoints (TLS, authentication
 
 ## Backup & Recovery
 
-**Decision:** PVC snapshots, user-managed.
+**Decision:** Host-path volumes under `/srv/kind/hyperlane/`; OS-level backup; deployer state files git-tracked.
 
-- Validator and relayer state (RocksDB) stored on per-pod RWO PersistentVolumeClaims
-- Checkpoint signatures stored in MinIO (S3-compatible) — already durable via MinIO's own PVC
-- Backup via Kubernetes VolumeSnapshot (user configures snapshot schedule via StorageClass)
-- No in-stack backup jobs or CronJobs
+- All persistent state lives on the host filesystem under `/srv/kind/hyperlane/<stack>/...` (see `docs/superpowers/specs/2026-05-27-host-path-volumes-design.md`). PVCs are not used.
+- **Deployer output state files are git-tracked** under `deployment/bridges/<bridge>/generated/` (see §Artifact Passing). The git repo is the canonical backup of all on-chain artifacts (program IDs, agent config, gas oracle config, multisig config). Restoring a deployment from scratch on a new host = clone repo + state-distribute role + `deployment start`.
+- **MinIO checkpoint data, validator/relayer RocksDB state** live on the consumer host's `/srv/kind/hyperlane/<stack>/data/` tree. Operator-managed: standard filesystem snapshots, rsync, or block-device snapshots. Checkpoints are tiny (~KB/checkpoint); RocksDB stores are larger but rebuild from chain history if lost.
+- **Caddy cert backup** is automated by SO (`<kind_mount_root>/caddy-cert-backup/`) — restarting the cluster restores certs without re-ACME.
 
-**Deferred:** External S3 backup replication, automated recovery procedures, RTO/RPO definitions.
+**Deferred:** Automated backup jobs (we previously discussed CronJobs; not landed in v1), recovery-time / recovery-point objectives, off-host replication.
 
 ---
 
@@ -478,68 +502,93 @@ The `agent-config.json` schema for Sealevel chains requires the following fields
 
 ## Checkpoint Storage
 
-**Decision:** S3-compatible object storage (MinIO) deployed as its own `hyperlane-minio` stack.
+**Decision:** S3-compatible object storage (MinIO) deployed as its own `hyperlane-minio` stack. Per-validator IAM users with bucket-scoped policies. Anonymous read for the relayer.
 
-Validators write checkpoint signatures to S3, and the relayer reads from the same bucket. This uses Hyperlane's native `s3` checkpoint syncer type, avoiding the need for shared PVCs (ReadWriteMany) which are not supported on Kind's default StorageClass.
+Validators write checkpoint signatures to S3, and the relayer reads from the same buckets. This uses Hyperlane's native `s3` checkpoint syncer type, avoiding shared PVCs (ReadWriteMany) which are not supported on Kind's default StorageClass.
 
 **Architecture:**
 
-```
-┌──────────────────┐    S3 API     ┌─────────┐    S3 API     ┌──────────────────┐
-│  Validator        │ ───────────→ │  MinIO  │ ←─────────── │  Relayer          │
-│  (writes)         │              │  (pod)  │              │  (reads)          │
-└──────────────────┘              └─────────┘              └──────────────────┘
+```mermaid
+flowchart LR
+    V["<b>Validator</b><br/>per-instance IAM,<br/>bucket-scoped policy"]
+    M[("<b>MinIO</b><br/>(pod)")]
+    R["<b>Relayer</b><br/>(reads only)"]
+    V -- "authenticated S3<br/>per-validator credentials" --> M
+    M -- "anonymous S3<br/>public-read on buckets" --> R
 ```
 
 **MinIO deployment:**
-- Single-node MinIO pod in the `hyperlane-minio` stack with a RWO PVC for data
-- Bucket per validator: `hyperlane-validator-gorchain`, `hyperlane-validator-solana`
-- Credentials injected via k8s Secret
-- Internal ClusterIP service (not exposed externally)
+- Single-node MinIO pod with a host-path data volume at `/srv/kind/hyperlane/minio/data` (PR #19).
+- One bucket per validator label: `hyperlane-validator-<label>` (e.g. `hyperlane-validator-gorchain-primary`).
+- Each label has its own IAM user + bucket-scoped policy (`s3:*` on that bucket only). Provisioned by an in-cluster `minio-provision` CronJob — see `docs/superpowers/specs/2026-05-27-minio-per-validator-users-design.md`.
+- Buckets are anonymously readable (`mc anonymous set download`), so the relayer needs no credentials. Checkpoint files are signed attestations and are public data by design.
+- Two k8s Secrets in the MinIO namespace: `hyperlane-minio-secrets` (root creds, mounted only by MinIO + provisioner) and `minio-validator-secrets` (per-label IAM creds + `MINIO_USERS` label list, mounted only by the provisioner).
 
-**Validator checkpoint syncer config:**
+**Validator checkpoint syncer config (label-derived):**
 ```json
 {
   "checkpointSyncer": {
     "type": "s3",
-    "bucket": "hyperlane-validator-gorchain",
+    "bucket": "hyperlane-validator-gorchain-primary",
     "region": "us-east-1"
   }
 }
 ```
 
-**Environment (validator and relayer pods):**
-```
-AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000
-AWS_ACCESS_KEY_ID=<minio-access-key>
-AWS_SECRET_ACCESS_KEY=<minio-secret-key>
-```
+**Endpoint routing per environment:**
 
-**Advantages:**
-- No RWX PVC required — MinIO uses a single RWO PVC, validators and relayer connect via S3 API
-- Works identically on Kind, cloud k8s, and bare metal
-- Native Hyperlane support — `s3` syncer type is first-class, no `--allowLocalCheckpointSyncers` flag needed
-- Decouples validator and relayer pod lifecycles completely
-- MinIO can be swapped for AWS S3, GCS, or any S3-compatible service in production by changing the endpoint URL
+| Environment | `AWS_ENDPOINT_URL_S3` | How it resolves |
+|---|---|---|
+| Prod (multi-host, cross-host MinIO) | `https://s3.bridge.<zone>` | Public DNS → Caddy on the MinIO host → MinIO pod. LE-issued cert, trusted by `webpki-roots`. |
+| Dev (single-host) | `http://hyperlane-minio:9000` | `external-services:` selector mode creates a headless Service in each consumer's namespace with Endpoints discovered from MinIO pods in `laconic-hyperlane-minio` at deploy time. Bypasses Caddy. |
+
+The dev path bypasses Caddy specifically to avoid Caddy v2's auto HTTP→HTTPS 308 redirect, which breaks the S3 SDK's signed requests. See `docs/superpowers/specs/2026-05-26-minio-external-services-and-tls-design.md` §8 for the design history (three iterations, two rollbacks).
+
+**Why the AWS SDK works with arbitrary endpoints:**
+
+`aws-config 1.1.7` (bundled in the Hyperlane agent fork) does not read `AWS_ENDPOINT_URL_S3` natively. Our fork carries a small `s3-path-style.patch` that forces path-style addressing and reads the env var. The patch is required for MinIO compatibility — see `feedback_verify_sdk_assumptions.md` in the project memory for why we verify SDK env-var support before designing around it.
+
+**Validator credentials:**
+- Validator pod mounts only its own namespace-local `hyperlane-validator-<label>-secrets` Secret containing `AWS_ACCESS_KEY_ID` = `<LABEL>_KEY_ID`, `AWS_SECRET_ACCESS_KEY` = `<LABEL>_SECRET`. Never sees the MinIO root credentials.
+- Relayer pod has no `AWS_ACCESS_KEY_ID` — uses the anonymous S3 client path (`.no_credentials()` in `hyperlane-base/src/types/s3_storage.rs`).
 
 **Storage requirements:**
-- Checkpoint data is small (~1 KB per checkpoint) — minimal disk footprint
-- MinIO PVC size: 10 Gi (see `deployment/spec-minio.yml`); checkpoint data is small so this is sufficient for extended operation
+- Checkpoint data is small (~1 KB per checkpoint).
+- MinIO host-path volume: 10 GiB minimum (see `deployment/spec-minio.yml`); sufficient for extended operation.
 
-**Endpoint routing:** The validator pod uses per-service AWS endpoint overrides (`AWS_ENDPOINT_URL_KMS=http://localhost:9999` for the Privy KMS proxy, `AWS_ENDPOINT_URL_S3=http://minio:9000` for MinIO). The AWS SDK for Rust (v0.56+) supports these per-service overrides natively. See the "Privy Integration Architecture" section for the full environment configuration.
+**Other endpoint overrides on the validator pod:**
+- `AWS_ENDPOINT_URL_KMS=http://localhost:9999` — points the AWS SDK's KMS client at the in-pod KMS proxy sidecar, which redirects to Privy. See §Privy Integration Architecture.
 
 ---
 
 ## Artifact Passing (Deployer → Agents)
 
-**Decision (2026-05-20, supersedes earlier "ConfigMaps and Secrets" decision):** Deployer Jobs write JSON state files to a host-path bind mount; an out-of-cluster loader (pytest fixture in dev, ansible in prod) copies the relevant files into each consumer stack's `{deploy_dir}/configmaps/<cm-name>/` before `deployment start`; SO creates plain ConfigMaps in each consumer's own namespace and pods mount them as normal volumes.
+**Decision (2026-05-20, refined 2026-05-28):** Deployer Jobs write JSON state files to a host-path volume on the deployer host. After a deployer run, the operator commits the produced state files back to this repo under `deployment/bridges/<bridge>/generated/` via agent-forwarded SSH. Consumer hosts pull the repo; ansible's `state_distribute` role copies the relevant state files from the cloned repo into each consumer's `{deploy_dir}/configmaps/<cm-name>/` before `deployment start`; SO creates plain ConfigMaps in each consumer's own namespace and pods mount them as normal volumes.
 
-**Earlier model (deprecated):** Deployer Jobs `kubectl create configmap` directly; consumer pods `kubectl get configmap` at startup via an init container. That coupled consumers to the deployer's k8s cluster at runtime and required all stacks to share one namespace. It also bypassed SO's spec-driven ConfigMap mechanism.
+**Distribution model:**
 
-**Why this changed:**
-- SO now enforces per-deployment namespace ownership; the shared-namespace pattern fails the check.
-- Multi-machine deployments (validators on separate hosts) need consumers to bootstrap without k8s API access to the deployer's cluster.
-- Git-tracked state files give an audited, reviewable artifact set that ansible can fan out across hosts.
+```mermaid
+flowchart TD
+    D["<b>(1) Deployer host</b><br/>laconic-so runs hyperlane-svm-deployer;<br/>Job writes state files to<br/>/srv/kind/hyperlane/bridge/generated/<br/>(agent-config.json, program-ids.json,<br/>gas-oracle-config.json, multisig-config.json,<br/>registry/metadata.yaml, ...)"]
+    R["<b>Repo @ main</b><br/>deployment/bridges/&lt;bridge&gt;/generated/*.json"]
+    C["<b>Consumer host</b><br/>(validator, relayer, gas-oracle, warp-ui)<br/>laconic-so deployment start creates<br/>k8s ConfigMaps in the consumer's own<br/>namespace; pods mount them as normal volumes."]
+    D -- "(2) Operator runs commit-bridge-state.yml from<br/>controller (agent-forwarded SSH). Reviews diff,<br/>git push to main." --> R
+    R -- "(3) On each consumer host: state_distribute<br/>role clones/pulls repo, copies state files into<br/>{deploy_dir}/configmaps/&lt;cm-name&gt;/" --> C
+```
+
+**Three-step flow:**
+
+1. **Produce.** On the deployer host: `deployment start` runs the `hyperlane-svm-deployer` Job. The Job writes outputs to its host-path volume at `/srv/kind/hyperlane/bridge/generated/` on the host disk. Same for `hyperlane-svm-warp-deployer`.
+
+2. **Commit back to git.** Operator runs the `commit-bridge-state` playbook on the controller. It uses agent-forwarded SSH to:
+   - Copy `/srv/kind/hyperlane/bridge/generated/*` from the deployer host into a clone of this repo at `deployment/bridges/<bridge>/generated/`.
+   - Display the diff (program-ids, etc.) and pause for operator approval.
+   - On approval, `git add && git commit && git push` via the operator's forwarded ssh-agent. Deployer host stays creds-free.
+
+3. **Distribute to consumers.** On each consumer host, the `state_distribute` role:
+   - Clones-or-pulls the repo locally.
+   - Copies the relevant state files for that consumer stack from `deployment/bridges/<bridge>/generated/` into `{deploy_dir}/configmaps/<cm-name>/` per the per-stack mapping in `tests/e2e/lib/state_loader.py`.
+   - The subsequent `laconic-so deployment start` turns those into k8s ConfigMaps in the consumer's own namespace.
 
 **State files (committed under `deployment/bridges/<bridge>/generated/`):**
 
@@ -553,9 +602,13 @@ AWS_SECRET_ACCESS_KEY=<minio-secret-key>
 | `token-config.json` | warp route token config with contract addresses | hyperlane-svm-warp-deployer | warp-ui (env-var injection) |
 | `warp-deploy-outputs/<file>` | per-warp-route program IDs (hex+base58) | hyperlane-svm-warp-deployer | bridge_setup, warp-ui |
 
-Distribution: `BridgeStateLoader.populate(stack, deploy_dir)` (in `tests/e2e/lib/state_loader.py`) for dev; ansible task (PR3) for prod. Both copy state files into each consumer's `{deploy_dir}/configmaps/`, where SO turns them into k8s ConfigMaps in the consumer's own namespace.
+**Why state in this repo (vs a separate state repo):** Single source of truth — operators clone one repo and have everything they need. The audit trail (which spec was deployed against which state) lives in one git history.
 
-Full design: `docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distribution-design.md`.
+**Why operator-attended commit (vs auto-push):** The deployer's output IS the bridge identity (program IDs, ISM membership, gas oracle baseline). A bad deploy that ships to main poisons future re-deploys. The diff review + manual approve is a one-shot bottleneck that costs nothing — bridge bootstrap happens rarely.
+
+**Dev (pytest) equivalent:** `BridgeStateLoader.populate(stack, deploy_dir)` in `tests/e2e/lib/state_loader.py` does the same copy step, sourcing files directly from `/tmp/hyperlane-bridge-e2e/bridge/generated/` (the deployer Job's host-path in dev). No git step. Same per-stack mapping as the ansible role uses in prod.
+
+Full design: `docs/superpowers/specs/2026-05-20-bridge-state-extract-and-distribution-design.md` for the underlying state-extraction model.
 
 The `kind-mount-root` umbrella mount also hosts Caddy's cert backup
 (`<kind_mount_root>/caddy-cert-backup/`), making it the single per-host
@@ -619,11 +672,11 @@ See [`docs/superpowers/specs/2026-05-21-laconic-so-user-secrets-design.md`](supe
 **Decision:** Every long-running stack spec is self-sufficient enough to
 bootstrap on its own host. No spec assumes "some other stack ran here first".
 
-**Why:** Production fans stacks out across machines via ansible (see PR3 plan
-in the bridge-state design doc). On each host, whichever stack runs first
-triggers cluster creation + Caddy install via SO's `--perform-cluster-management`
-path. If a stack's spec is incomplete on the assumption that another stack
-would already be present, the deployment fails on hosts where it lands alone.
+**Why:** Production fans stacks out across machines via ansible. On each
+host, whichever stack runs first triggers cluster creation + Caddy install
+via SO's `--perform-cluster-management` path. If a stack's spec is
+incomplete on the assumption that another stack would already be present,
+the deployment fails on hosts where it lands alone.
 
 **Concrete applications:**
 
@@ -640,6 +693,142 @@ This principle is what makes the bridge-state distribution model
 sensible: each host's stacks read their inputs from local disk, not from peer
 namespaces.
 
+### Production bootstrap workflow
+
+For a fresh multi-host deployment, the workflow is (each step is its own
+ansible playbook on the controller):
+
+1. **Host bootstrap** — for each host in the inventory, run `bootstrap-host.yml`. Two-play playbook: privileged play (installs Docker, kind, kubectl as `privileged_user`); deploy_user play (installs laconic-so release binary from cerc-io upstream, creates `~/.credentials/hyperlane/` mode 0700, creates `/srv/kind/hyperlane/` owned by `deploy_user`).
+2. **DNS** — run `configure-dns.yml`. Reconciles A records under `bridge.<zone>` per the hardcoded `dns_records:` list in `group_vars/all.yml`. Additive (existing records left alone). LE will fail without these in place.
+3. **Distribute initial credentials** — run `distribute-*-credentials.yml` per stack. Drops files under `~/.credentials/hyperlane/` on each consumer host; injects MinIO root + per-validator IAM into the MinIO host's spec environment.
+4. **Deploy MinIO** — `stack_deploy` role with `spec-minio.yml` on the MinIO host. Per-validator IAM is set up automatically by the `minio-provision` CronJob from `validators.yaml` (which the spec-rendering step embeds into the spec as `MINIO_USERS`).
+5. **Deploy hyperlane-svm-deployer** — `stack_deploy` with `spec-deployer.yml` on the deployer host. Job writes state files to `/srv/kind/hyperlane/bridge/generated/`.
+6. **Commit deployer state to git** — `commit-bridge-state.yml`. Agent-forwarded SSH; operator approves diff before push.
+7. **Deploy hyperlane-svm-warp-deployer** (optional, if running a warp route) — same as deployer: deploy, then commit warp-deploy outputs back to git.
+8. **Distribute state to consumers** — implicit in each subsequent stack_deploy: the `state_distribute` role pulls the repo on each consumer host and copies the relevant state files into `{deploy_dir}/configmaps/`.
+9. **Deploy long-running stacks** — for each, run `stack_deploy`:
+   - All validators (loop over `validators.yaml`)
+   - relayer
+   - gas-oracle
+   - monitoring
+   - warp-ui (optional)
+10. **On-chain ownership / ISM setup** — operator runs `ism-update.yml` ops playbook with the initial validator set + threshold. Hardware-wallet-attended signing. See `ops-decisions.md`.
+
+Steps 4–9 are idempotent and can run from a single top-level `deploy-all.yml`
+that iterates inventory groups + `validators.yaml`. Step 10 is operator-attended.
+
+---
+
+## Production Topology Model
+
+**Decision:** Hybrid stack→host mapping. Singleton stacks are placed via inventory groups; multi-instance validators are placed via `validators.yaml`. Hosts have public IPs declared in `host_vars/`; DNS records resolve indirectly via host group references.
+
+### Inventory groups (one per singleton stack)
+
+```yaml
+all:
+  children:
+    controller:                    # operator's machine, runs ansible
+    deployer_hosts:                # hyperlane-svm-deployer + hyperlane-svm-warp-deployer
+    minio_hosts:                   # hyperlane-minio
+    relayer_hosts:                 # hyperlane-relayer
+    gas_oracle_hosts:              # hyperlane-gas-oracle
+    monitoring_hosts:              # hyperlane-monitoring
+    warp_ui_hosts:                 # hyperlane-warp-ui (optional)
+    # validator_hosts is computed at runtime from validators.yaml
+```
+
+In a v1 single-host deployment, every group contains the same one host. Multi-host deployments split groups across different hosts; no spec changes required, only inventory edits.
+
+### Validators come from `validators.yaml`
+
+Per-validator instances are not enumerated in the inventory. They live in `deployment/bridges/<bridge>/operator/validators.yaml`:
+
+```yaml
+validators:
+  - label: gorchain-primary
+    chain: gorchain
+    host: bridge-host-1            # inventory host alias
+    privy_wallet_id: priv_xxxxx
+    hostname: validator-gorchain.bridge.gorbagana.wtf
+  - label: solana-primary
+    chain: solana
+    host: bridge-host-1
+    privy_wallet_id: priv_yyyyy
+    hostname: validator-solana.bridge.gorbagana.wtf
+```
+
+This file is the source of truth for:
+- which validators exist;
+- which host runs each instance;
+- which spec file to load (`deployment/spec-validator-<label>.yml`);
+- the MinIO `MINIO_USERS` env-var value (derived at spec-render time);
+- DNS records for `validator-*` hostnames.
+
+Adding a validator = appending an entry + adding the rendered spec (handled by the `generate-validator-spec.yml` interactive playbook).
+
+### Why hybrid (vs all-in-inventory or all-in-topology-file)
+
+- Most stacks are singletons; an inventory group with one host is the lightest declaration.
+- Validators are the only stack that scales horizontally on a per-instance basis. `validators.yaml` is the natural place for the per-instance attributes (label, Privy wallet ID, hostname) that singletons don't need.
+- Moving a singleton stack to a different host = edit inventory only. No spec changes. No `validators.yaml` changes.
+
+### Concrete example: moving MinIO to its own host
+
+1. Add `bridge-host-2.yml` to `host_vars/` with its `public_ip:`.
+2. In `inventory/hosts.yml`: move `minio_hosts.hosts` from `bridge-host-1` to `bridge-host-2`.
+3. In `group_vars/all.yml`: change `{ name: s3, host: bridge-host-1 }` to `{ name: s3, host: bridge-host-2 }`.
+
+No spec changes; no playbook changes. The `stack_deploy` role re-runs and SO sets up the cluster on `bridge-host-2` from scratch on first start (idempotent thereafter).
+
+---
+
+## DNS Prerequisites
+
+**Decision:** Cloudflare-backed DNS, hardcoded records list in `group_vars/all.yml`, indirect host mapping, additive reconciliation. Standalone playbook; preflight check in `stack_deploy`.
+
+### Why DNS is a prerequisite
+
+Each host running Caddy-fronted services depends on:
+- Public 80/443 reachable from the public internet (LE ACME HTTP-01 challenge).
+- A records for every hostname in any spec's `network.http-proxy[].host-name` pointing to the host's public IP.
+
+Without these, Caddy will fail to obtain LE certificates on first start. The first stack on a host can't come up.
+
+### Source of truth
+
+DNS records are a hardcoded list in `group_vars/all.yml`:
+
+```yaml
+dns_zone: bridge.gorbagana.wtf
+dns_records:
+  - { name: s3,                  host: bridge-host-1 }
+  - { name: minio-console,       host: bridge-host-1 }
+  - { name: grafana,             host: bridge-host-1 }
+  - { name: prometheus,          host: bridge-host-1 }
+  - { name: warp-ui,             host: bridge-host-1 }
+  - { name: relayer,             host: bridge-host-1 }
+  # validator records auto-appended from validators.yaml at playbook time
+```
+
+Indirect mapping: each record references a host alias from the inventory. The `configure-dns.yml` playbook resolves `host` → `public_ip` via `host_vars/<alias>.yml` and reconciles A records against Cloudflare.
+
+### Provider
+
+Cloudflare API, token sourced from `CLOUDFLARE_API_TOKEN` env var (same pattern as woodburn deployer). Module: `community.general.cloudflare_dns`.
+
+### Reconciliation policy
+
+Additive. The playbook ensures declared records exist with the correct IP. Records not in `dns_records:` are left alone. Orphan removal is a separate `remove-dns.yml` playbook the operator runs explicitly. Drift safety > automatic cleanup.
+
+### TTL
+
+300 seconds. Cheap and lets emergency record changes (e.g. moving a stack to a new host) propagate quickly.
+
+### Timing
+
+`configure-dns.yml` is a standalone playbook the operator runs once when bringing up a host (or after adding a validator/hostname). The `stack_deploy` role has a preflight `dig`-based check that fails with a clear message if the expected hostname doesn't resolve to the target host's public IP — catches "operator forgot to run DNS first" before the slower Caddy/LE failure.
+
 ---
 
 ## Warp Route Token
@@ -654,32 +843,58 @@ namespaces.
 
 ## Monitoring
 
-**Decision:** In-stack Prometheus + Grafana with Hyperlane's pre-built dashboards.
+**Decision:** Prometheus + Grafana + balance monitor in the `hyperlane-monitoring` stack on its own host. Cross-host scraping of validator/relayer pods via public DNS + Caddy.
 
-Hyperlane agents (validators and relayer) natively export Prometheus metrics. The Hyperlane team provides pre-built Grafana dashboards for validator and relayer monitoring.
+Hyperlane agents (validators and relayer) natively export Prometheus metrics on `/metrics`. The Hyperlane team provides pre-built Grafana dashboards.
 
-**Components (in the `hyperlane-monitoring` stack):**
+### Topology
 
-| Component | Purpose |
-|-----------|---------|
-| Prometheus | Scrapes metrics from validator and relayer pods |
-| Grafana | Visualization using Hyperlane's pre-built dashboards |
+Monitoring is its own host (or shares with the relayer host in single-host setups). Prometheus scrapes validator and relayer metrics endpoints **across hosts** via their public Caddy hostnames:
 
-**Metrics sources:**
-- Validator metrics endpoints (one per chain)
-- Relayer metrics endpoint
-- Wallet balance monitor (custom CronJob, emits Prometheus metrics)
+```mermaid
+flowchart TD
+    P["<b>Prometheus</b><br/>(monitoring-host)"]
+    C["<b>Caddy</b><br/>on each bridge host"]
+    Pod["in-cluster<br/>validator / relayer pod<br/>:9090 / :9091"]
+    P -- "GET https://validator-gorchain-primary.bridge.&lt;zone&gt;/metrics" --> C
+    P -- "GET https://validator-solana-primary.bridge.&lt;zone&gt;/metrics" --> C
+    P -- "GET https://relayer.bridge.&lt;zone&gt;/metrics" --> C
+    C -- forwards --> Pod
+```
 
-**Grafana dashboards:**
-- Import Hyperlane's pre-built validator dashboard
-- Import Hyperlane's pre-built relayer dashboard
-- Custom dashboard for wallet balances and gas oracle status
+### Components
 
-**Alerting** (via Prometheus Alertmanager or Grafana alerts):
+| Component | Location | Purpose |
+|---|---|---|
+| Prometheus | hyperlane-monitoring | Scrapes validator/relayer metrics across all bridge hosts via public DNS |
+| Grafana | hyperlane-monitoring | Pre-built Hyperlane dashboards + custom wallet-balance dashboard |
+| Balance monitor | hyperlane-monitoring | Reads chain RPCs directly, emits Prometheus metrics |
+
+### Scrape targets
+
+Static, hardcoded in `group_vars/all.yml` as a list of `{name, host, label}` entries. Ansible templates `prometheus.yml` from this list. Matches the DNS-records-as-vars pattern (no automatic discovery from specs). Adding a new validator means appending one entry; this is part of the GitOps add-validator flow.
+
+### Metrics authentication
+
+**v1:** None. Metrics endpoints are world-readable through Caddy. They leak operational signal (block lag, message rates) but no secret-bearing data. Acceptable as a starting point.
+
+**v1.x (see §Known follow-ups):** Optional basic-auth on `/metrics` routes via Caddy's `basic_auth` directive. Credential file-injected via the spec's `secrets: { … keys: { METRICS_AUTH_HASH: { file: … } } }` block. Single shared credential across all targets — operators rotate by re-applying the file. If both validator/relayer specs and the monitoring spec have the credential configured, Prometheus uses it; otherwise public.
+
+### Alerting
+
+**v1:** No alerts wired to external destinations. Operator views Grafana dashboards directly.
+
+**v1.x:** Slack-based alerting via either Grafana alerts (built-in Slack webhook) or Prometheus Alertmanager. Alert rules covering:
 - Validator not signing checkpoints for > N minutes
 - Relayer delivery failures
 - Wallet balance below threshold
 - Agent pod restarts
+- Bridge volume anomalies (potential exploit detection)
+
+### Known follow-ups (v1.x scope)
+
+1. **Metrics authentication.** Caddy `basic_auth` on validator/relayer `/metrics` routes; file-injected shared credential mirrored on monitoring host's Prometheus scrape config.
+2. **Slack alerting.** Either Grafana alerts → Slack webhook, or Prometheus Alertmanager → Slack. Alert rules cover validator signing lag, relayer delivery failures, wallet balance thresholds, agent pod restarts.
 
 ---
 
