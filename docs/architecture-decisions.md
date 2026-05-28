@@ -680,11 +680,11 @@ See [`docs/superpowers/specs/2026-05-21-laconic-so-user-secrets-design.md`](supe
 **Decision:** Every long-running stack spec is self-sufficient enough to
 bootstrap on its own host. No spec assumes "some other stack ran here first".
 
-**Why:** Production fans stacks out across machines via ansible (see PR3 plan
-in the bridge-state design doc). On each host, whichever stack runs first
-triggers cluster creation + Caddy install via SO's `--perform-cluster-management`
-path. If a stack's spec is incomplete on the assumption that another stack
-would already be present, the deployment fails on hosts where it lands alone.
+**Why:** Production fans stacks out across machines via ansible. On each
+host, whichever stack runs first triggers cluster creation + Caddy install
+via SO's `--perform-cluster-management` path. If a stack's spec is
+incomplete on the assumption that another stack would already be present,
+the deployment fails on hosts where it lands alone.
 
 **Concrete applications:**
 
@@ -701,6 +701,142 @@ This principle is what makes the bridge-state distribution model
 sensible: each host's stacks read their inputs from local disk, not from peer
 namespaces.
 
+### Production bootstrap workflow
+
+For a fresh multi-host deployment, the workflow is (each step is its own
+ansible playbook on the controller):
+
+1. **Host bootstrap** — for each host in the inventory, run `bootstrap-host.yml`. Two-play playbook: privileged play (installs Docker, kind, kubectl as `privileged_user`); deploy_user play (installs laconic-so release binary from cerc-io upstream, creates `~/.credentials/hyperlane/` mode 0700, creates `/srv/kind/hyperlane/` owned by `deploy_user`).
+2. **DNS** — run `configure-dns.yml`. Reconciles A records under `bridge.<zone>` per the hardcoded `dns_records:` list in `group_vars/all.yml`. Additive (existing records left alone). LE will fail without these in place.
+3. **Distribute initial credentials** — run `distribute-*-credentials.yml` per stack. Drops files under `~/.credentials/hyperlane/` on each consumer host; injects MinIO root + per-validator IAM into the MinIO host's spec environment.
+4. **Deploy MinIO** — `stack_deploy` role with `spec-minio.yml` on the MinIO host. Per-validator IAM is set up automatically by the `minio-provision` CronJob from `validators.yaml` (which the spec-rendering step embeds into the spec as `MINIO_USERS`).
+5. **Deploy hyperlane-svm-deployer** — `stack_deploy` with `spec-deployer.yml` on the deployer host. Job writes state files to `/srv/kind/hyperlane/bridge/generated/`.
+6. **Commit deployer state to git** — `commit-bridge-state.yml`. Agent-forwarded SSH; operator approves diff before push.
+7. **Deploy hyperlane-svm-warp-deployer** (optional, if running a warp route) — same as deployer: deploy, then commit warp-deploy outputs back to git.
+8. **Distribute state to consumers** — implicit in each subsequent stack_deploy: the `state_distribute` role pulls the repo on each consumer host and copies the relevant state files into `{deploy_dir}/configmaps/`.
+9. **Deploy long-running stacks** — for each, run `stack_deploy`:
+   - All validators (loop over `validators.yaml`)
+   - relayer
+   - gas-oracle
+   - monitoring
+   - warp-ui (optional)
+10. **On-chain ownership / ISM setup** — operator runs `ism-update.yml` ops playbook with the initial validator set + threshold. Hardware-wallet-attended signing. See `ops-decisions.md`.
+
+Steps 4–9 are idempotent and can run from a single top-level `deploy-all.yml`
+that iterates inventory groups + `validators.yaml`. Step 10 is operator-attended.
+
+---
+
+## Production Topology Model
+
+**Decision:** Hybrid stack→host mapping. Singleton stacks are placed via inventory groups; multi-instance validators are placed via `validators.yaml`. Hosts have public IPs declared in `host_vars/`; DNS records resolve indirectly via host group references.
+
+### Inventory groups (one per singleton stack)
+
+```yaml
+all:
+  children:
+    controller:                    # operator's machine, runs ansible
+    deployer_hosts:                # hyperlane-svm-deployer + hyperlane-svm-warp-deployer
+    minio_hosts:                   # hyperlane-minio
+    relayer_hosts:                 # hyperlane-relayer
+    gas_oracle_hosts:              # hyperlane-gas-oracle
+    monitoring_hosts:              # hyperlane-monitoring
+    warp_ui_hosts:                 # hyperlane-warp-ui (optional)
+    # validator_hosts is computed at runtime from validators.yaml
+```
+
+In a v1 single-host deployment, every group contains the same one host. Multi-host deployments split groups across different hosts; no spec changes required, only inventory edits.
+
+### Validators come from `validators.yaml`
+
+Per-validator instances are not enumerated in the inventory. They live in `deployment/bridges/<bridge>/operator/validators.yaml`:
+
+```yaml
+validators:
+  - label: gorchain-primary
+    chain: gorchain
+    host: bridge-host-1            # inventory host alias
+    privy_wallet_id: priv_xxxxx
+    hostname: validator-gorchain.bridge.gorbagana.wtf
+  - label: solana-primary
+    chain: solana
+    host: bridge-host-1
+    privy_wallet_id: priv_yyyyy
+    hostname: validator-solana.bridge.gorbagana.wtf
+```
+
+This file is the source of truth for:
+- which validators exist;
+- which host runs each instance;
+- which spec file to load (`deployment/spec-validator-<label>.yml`);
+- the MinIO `MINIO_USERS` env-var value (derived at spec-render time);
+- DNS records for `validator-*` hostnames.
+
+Adding a validator = appending an entry + adding the rendered spec (handled by the `generate-validator-spec.yml` interactive playbook).
+
+### Why hybrid (vs all-in-inventory or all-in-topology-file)
+
+- Most stacks are singletons; an inventory group with one host is the lightest declaration.
+- Validators are the only stack that scales horizontally on a per-instance basis. `validators.yaml` is the natural place for the per-instance attributes (label, Privy wallet ID, hostname) that singletons don't need.
+- Moving a singleton stack to a different host = edit inventory only. No spec changes. No `validators.yaml` changes.
+
+### Concrete example: moving MinIO to its own host
+
+1. Add `bridge-host-2.yml` to `host_vars/` with its `public_ip:`.
+2. In `inventory/hosts.yml`: move `minio_hosts.hosts` from `bridge-host-1` to `bridge-host-2`.
+3. In `group_vars/all.yml`: change `{ name: s3, host: bridge-host-1 }` to `{ name: s3, host: bridge-host-2 }`.
+
+No spec changes; no playbook changes. The `stack_deploy` role re-runs and SO sets up the cluster on `bridge-host-2` from scratch on first start (idempotent thereafter).
+
+---
+
+## DNS Prerequisites
+
+**Decision:** Cloudflare-backed DNS, hardcoded records list in `group_vars/all.yml`, indirect host mapping, additive reconciliation. Standalone playbook; preflight check in `stack_deploy`.
+
+### Why DNS is a prerequisite
+
+Each host running Caddy-fronted services depends on:
+- Public 80/443 reachable from the public internet (LE ACME HTTP-01 challenge).
+- A records for every hostname in any spec's `network.http-proxy[].host-name` pointing to the host's public IP.
+
+Without these, Caddy will fail to obtain LE certificates on first start. The first stack on a host can't come up.
+
+### Source of truth
+
+DNS records are a hardcoded list in `group_vars/all.yml`:
+
+```yaml
+dns_zone: bridge.gorbagana.wtf
+dns_records:
+  - { name: s3,                  host: bridge-host-1 }
+  - { name: minio-console,       host: bridge-host-1 }
+  - { name: grafana,             host: bridge-host-1 }
+  - { name: prometheus,          host: bridge-host-1 }
+  - { name: warp-ui,             host: bridge-host-1 }
+  - { name: relayer,             host: bridge-host-1 }
+  # validator records auto-appended from validators.yaml at playbook time
+```
+
+Indirect mapping: each record references a host alias from the inventory. The `configure-dns.yml` playbook resolves `host` → `public_ip` via `host_vars/<alias>.yml` and reconciles A records against Cloudflare.
+
+### Provider
+
+Cloudflare API, token sourced from `CLOUDFLARE_API_TOKEN` env var (same pattern as woodburn deployer). Module: `community.general.cloudflare_dns`.
+
+### Reconciliation policy
+
+Additive. The playbook ensures declared records exist with the correct IP. Records not in `dns_records:` are left alone. Orphan removal is a separate `remove-dns.yml` playbook the operator runs explicitly. Drift safety > automatic cleanup.
+
+### TTL
+
+300 seconds. Cheap and lets emergency record changes (e.g. moving a stack to a new host) propagate quickly.
+
+### Timing
+
+`configure-dns.yml` is a standalone playbook the operator runs once when bringing up a host (or after adding a validator/hostname). The `stack_deploy` role has a preflight `dig`-based check that fails with a clear message if the expected hostname doesn't resolve to the target host's public IP — catches "operator forgot to run DNS first" before the slower Caddy/LE failure.
+
 ---
 
 ## Warp Route Token
@@ -715,32 +851,56 @@ namespaces.
 
 ## Monitoring
 
-**Decision:** In-stack Prometheus + Grafana with Hyperlane's pre-built dashboards.
+**Decision:** Prometheus + Grafana + balance monitor in the `hyperlane-monitoring` stack on its own host. Cross-host scraping of validator/relayer pods via public DNS + Caddy.
 
-Hyperlane agents (validators and relayer) natively export Prometheus metrics. The Hyperlane team provides pre-built Grafana dashboards for validator and relayer monitoring.
+Hyperlane agents (validators and relayer) natively export Prometheus metrics on `/metrics`. The Hyperlane team provides pre-built Grafana dashboards.
 
-**Components (in the `hyperlane-monitoring` stack):**
+### Topology
 
-| Component | Purpose |
-|-----------|---------|
-| Prometheus | Scrapes metrics from validator and relayer pods |
-| Grafana | Visualization using Hyperlane's pre-built dashboards |
+Monitoring is its own host (or shares with the relayer host in single-host setups). Prometheus scrapes validator and relayer metrics endpoints **across hosts** via their public Caddy hostnames:
 
-**Metrics sources:**
-- Validator metrics endpoints (one per chain)
-- Relayer metrics endpoint
-- Wallet balance monitor (custom CronJob, emits Prometheus metrics)
+```
+Prometheus (monitoring-host)
+   │ scrape GET https://validator-gorchain-primary.bridge.<zone>/metrics
+   │ scrape GET https://validator-solana-primary.bridge.<zone>/metrics
+   │ scrape GET https://relayer.bridge.<zone>/metrics
+   ▼
+Caddy (each bridge host) → in-cluster validator/relayer pod :9090
+```
 
-**Grafana dashboards:**
-- Import Hyperlane's pre-built validator dashboard
-- Import Hyperlane's pre-built relayer dashboard
-- Custom dashboard for wallet balances and gas oracle status
+### Components
 
-**Alerting** (via Prometheus Alertmanager or Grafana alerts):
+| Component | Location | Purpose |
+|---|---|---|
+| Prometheus | hyperlane-monitoring | Scrapes validator/relayer metrics across all bridge hosts via public DNS |
+| Grafana | hyperlane-monitoring | Pre-built Hyperlane dashboards + custom wallet-balance dashboard |
+| Balance monitor | hyperlane-monitoring | Reads chain RPCs directly, emits Prometheus metrics |
+
+### Scrape targets
+
+Static, hardcoded in `group_vars/all.yml` as a list of `{name, host, label}` entries. Ansible templates `prometheus.yml` from this list. Matches the DNS-records-as-vars pattern (no automatic discovery from specs). Adding a new validator means appending one entry; this is part of the GitOps add-validator flow.
+
+### Metrics authentication
+
+**v1:** None. Metrics endpoints are world-readable through Caddy. They leak operational signal (block lag, message rates) but no secret-bearing data. Acceptable as a starting point.
+
+**v1.x (see §Known follow-ups):** Optional basic-auth on `/metrics` routes via Caddy's `basic_auth` directive. Credential file-injected via the spec's `secrets: { … keys: { METRICS_AUTH_HASH: { file: … } } }` block. Single shared credential across all targets — operators rotate by re-applying the file. If both validator/relayer specs and the monitoring spec have the credential configured, Prometheus uses it; otherwise public.
+
+### Alerting
+
+**v1:** No alerts wired to external destinations. Operator views Grafana dashboards directly.
+
+**v1.x:** Slack-based alerting via either Grafana alerts (built-in Slack webhook) or Prometheus Alertmanager. Alert rules covering:
 - Validator not signing checkpoints for > N minutes
 - Relayer delivery failures
 - Wallet balance below threshold
 - Agent pod restarts
+- Bridge volume anomalies (potential exploit detection)
+
+### Known follow-ups (v1.x scope)
+
+1. **Metrics authentication.** Caddy `basic_auth` on validator/relayer `/metrics` routes; file-injected shared credential mirrored on monitoring host's Prometheus scrape config.
+2. **Slack alerting.** Either Grafana alerts → Slack webhook, or Prometheus Alertmanager → Slack. Alert rules cover validator signing lag, relayer delivery failures, wallet balance thresholds, agent pod restarts.
 
 ---
 
