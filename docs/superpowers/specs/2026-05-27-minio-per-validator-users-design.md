@@ -208,3 +208,25 @@ PR2 is green when:
 - `laconic-so deployment update-envs` integration for adding validators (separate PR)
 - File-based credential sources for prod specs (`{ file: … }`)
 - Multiple validators per chain sharing a bucket (not required by current Hyperlane agent design)
+
+---
+
+## 9. Known follow-ups (post-merge, not yet scheduled)
+
+Surfaced during the 2026-05-28 prod-ops design review of the merged impl. To
+be triaged into their own PR before this is depended on for prod.
+
+1. **`MINIO_USERS` source-of-truth for GitOps.** Current shape forces operator
+   to edit a comma-separated env-var value directly in the spec. For the
+   GitOps "operator edits a structured file" model, the validator list should
+   live in `deployment/bridges/<bridge>/operator/validators.yaml` and ansible
+   should template the env-var value from it. CronJob runtime contract stays
+   the same.
+2. **Secret rotation has no path.** `mc admin user add … || true` and
+   `mc admin policy create … || true` mask all errors, so re-running with a
+   rotated `<LABEL>_SECRET` silently keeps the old MinIO secret. Replace with
+   `mc admin user info … || mc admin user add …` and add a `ROTATE=<label>`
+   mode that does `remove` + `add`.
+3. **No end-of-run verification.** Add `mc admin user info local "$key_id" |
+   grep -q "policy-${label}"` per label to catch silent failures from the
+   error-masking pattern.
