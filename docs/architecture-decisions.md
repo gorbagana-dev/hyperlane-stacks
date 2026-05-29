@@ -6,7 +6,7 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 
 ## Stack Decomposition
 
-**9 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `specs/stack-specifications.md` for detailed per-stack specs):
+**8 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `specs/stack-specifications.md` for detailed per-stack specs):
 
 | Stack | Type | Purpose |
 |-------|------|---------|
@@ -18,9 +18,10 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 | `hyperlane-gas-oracle` | Long-running | Automated IGP gas oracle updates via Privy. |
 | `hyperlane-monitoring` | Long-running | Prometheus + Grafana + balance monitor. |
 | `hyperlane-warp-ui` | Long-running (optional) | Browser-based bridge UI for token transfers. |
-| `hyperlane-ops` | Suspended jobs | Operator-attended on-chain operations (kill-switch, restore, teardown, ISM update, fee claims, program closures, signed-tx broadcast). Each action is a separate k8s Job in the stack's `jobs:` list, marked `suspend: true` so they only run when triggered via `laconic-so deployment run-job`. See `ops-decisions.md`. |
 
-**Rationale:** Stack-orchestrator maps all services in a stack to a single k8s Pod, so services needing independent lifecycles or restart must be separate stacks. Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts. The `hyperlane-ops` stack is a special case: all its actions share an image, secrets, and state-file mounts, but each must trigger independently — handled by the SO `suspend: true` + `run-job` mechanism.
+**Rationale:** Stack-orchestrator maps all services in a stack to a single k8s Pod, so services needing independent lifecycles or restart must be separate stacks. Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts.
+
+**Operator-attended on-chain operations** (kill-switch, restore, teardown, ISM update, fee claims, program closures) are **not** an SO stack. They run from the ansible/operator layer using the forked `hyperlane-sealevel-client` with built-in Ledger signing — see `docs/ops-decisions.md` and `docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`. (An earlier design used a `hyperlane-ops` stack of `laconic.suspend` jobs; that SO feature was built and merged but has no v1 consumer under the current design — it remains available as latent infrastructure.)
 
 ---
 
@@ -162,14 +163,14 @@ The **program owner key** is held on a hardware wallet and controls all post-dep
 - **Format:** Solana pubkey (the hardware wallet address)
 - **Provided as:** `HARDWARE_WALLET_PUBKEY` env var (public key only — private key never leaves the hardware wallet)
 - **Used for:** Kill switch (ISM reconfiguration), program upgrades, ownership transfers, teardown
-- **Signing:** Operator-attended. The `hyperlane-svm-ops` stack generates unsigned transactions; operator signs on the hardware wallet.
+- **Signing:** Operator-attended. The forked `hyperlane-sealevel-client` has built-in Ledger support — run on the operator's machine with `--keypair usb://ledger…`, it builds the tx, the operator confirms on the device, and it signs and broadcasts in one step. No unsigned-tx artifacts. See `docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`.
 
 **Ownership transfer flow:**
 1. Deployer job deploys all contracts using the hot deployer key (Tier 3)
 2. As its final step, deployer transfers ownership as follows:
    - **Mailbox, ISM, Validator Announce, Token Collateral, Token Native/Synthetic** on both chains → `HARDWARE_WALLET_PUBKEY`
    - **IGP account** on both chains → Privy oracle wallet (Tier 2) to enable automated gas oracle updates
-3. The `hyperlane-svm-ops` stack includes a verification job that confirms all program ownerships are set correctly
+3. The `verify-ownership.yml` ops playbook (read-only client run on the controller) confirms all program ownerships are set correctly
 4. Hot deployer key is discarded
 
 **Note:** The Solana program upgrade authority for ALL programs (including IGP) is transferred to the hardware wallet. The IGP account-level `owner` field (which controls `SetGasOracleConfigs`, `SetIgpBeneficiary`, `TransferIgpOwnership`) is separate from the program upgrade authority. If the oracle key is compromised, the hardware wallet can upgrade the IGP program to forcibly reset the account owner.
@@ -372,15 +373,13 @@ The Sealevel IGP's `set_gas_oracle_configs` instruction requires the IGP account
 
 ## Emergency Controls
 
-**Decision:** Full on-chain kill switch + restore (via `hyperlane-svm-ops` stack).
+**Decision:** Full on-chain kill switch + restore, via the `kill-switch.yml` / `restore.yml` ops playbooks.
 
-Two k8s Job templates in the ops stack:
+1. **Kill switch (`kill-switch.yml`):** Stops agent deployments, then reconfigures Multisig ISM on both destination chains to the null validator address (`0x0000000000000000000000000000000000000000`). Validator addresses in the Multisig ISM use H160 (20-byte Ethereum-style) format, even on Sealevel chains. This makes it impossible for any relayer (including third-party) to deliver messages.
 
-1. **Kill job:** Scales agent deployments to 0, then reconfigures Multisig ISM on both destination chains to the null validator address (`0x0000000000000000000000000000000000000000`). Validator addresses in the Multisig ISM use H160 (20-byte Ethereum-style) format, even on Sealevel chains. This makes it impossible for any relayer (including third-party) to deliver messages.
+2. **Restore (`restore.yml`):** Reconfigures ISM back to the real validator addresses and starts agents back up. Messages dispatched during the pause will be delivered.
 
-2. **Restore job:** Reconfigures ISM back to the real validator addresses and scales agents back up. Messages dispatched during the pause will be delivered.
-
-Both jobs require the ISM owner key (hardware wallet). Jobs generate unsigned transactions; the operator signs on the hardware wallet. See `docs/ops-decisions.md` for full details.
+Both require the ISM owner key (hardware wallet). The playbook runs the forked client on the controller with `--keypair usb://ledger…`; the operator confirms each tx on the device; the client signs and broadcasts. See `docs/ops-decisions.md` for full details.
 
 **Supersedes** the earlier "relayer kill switch" approach — stopping the relayer alone is insufficient because a third-party relayer could still deliver messages using cached validator signatures.
 
@@ -780,6 +779,31 @@ Adding a validator = appending an entry + adding the rendered spec (handled by t
 3. In `group_vars/all.yml`: change `{ name: s3, host: bridge-host-1 }` to `{ name: s3, host: bridge-host-2 }`.
 
 No spec changes; no playbook changes. The `stack_deploy` role re-runs and SO sets up the cluster on `bridge-host-2` from scratch on first start (idempotent thereafter).
+
+### Repository layout
+
+**Decision (2026-05-29):** Ansible lives at a **top-level `ops/`** (sibling of
+`deployment/`), with per-environment isolation:
+
+```
+deployment/
+  spec-*.yml                          # prod spec files (flat at env root)
+  bridges/<bridge>/operator/validators.yaml   # operator-managed inputs
+  bridges/<bridge>/generated/                 # bridge state, committed
+  staging/                            # same shape, staging values
+    spec-*.yml
+    bridges/<bridge>/{operator,generated}/
+ops/
+  playbooks/                          # env-agnostic
+  roles/                              # env-agnostic
+  envs/{prod,staging}/{inventory.yml,host_vars/,group_vars/}
+```
+
+Specs stay flat at each env root; only `operator/` + `generated/` sit under
+`bridges/<bridge>/`, which reserves room for multiple named bridges per env
+without relocating specs. v1 bridge name is `default`. Per-env `ops/envs/`
+directories keep staging and prod fully isolated (no shared mutable inventory or
+vars). Full layout rationale: `docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`.
 
 ---
 
