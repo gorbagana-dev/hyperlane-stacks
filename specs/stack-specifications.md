@@ -148,6 +148,27 @@ One-time Job that deploys warp route contracts (collateral on one chain, synthet
 ### Secrets (injected separately)
 `DEPLOYER_KEYPAIR`, `HARDWARE_WALLET_PUBKEY`
 
+### Known Limitations
+
+**Single warp route per bridge.** The stack is structurally single-route:
+`spec-warp-deployer.yml` exposes scalar `WARP_TOKEN_MINT`, `WARP_ROUTE_NAME`,
+`WARP_TOKEN_METADATA_URI`, and one `COLLATERAL_CHAIN`/`SYNTHETIC_CHAIN` pair;
+`token-config.json.tmpl` hardcodes `USDC` name/symbol and `decimals: 6`;
+state files (`/state/token-config.json`, `/state/program-ids.json`) live at
+the top level with no per-route subdirectory; and the deploy script's "skip
+if token-config populated" idempotency check assumes one config exists.
+Downstream consumers (relayer, gas-oracle, warp-UI) read those state files
+as if exactly one route exists.
+
+To support multiple token pairs on the same bridge in future, the changes
+required are: per-route specs (or a list-shaped `warp-routes:` block);
+per-route state subdirectories (`/state/warp-routes/<route-name>/`);
+parameterized token metadata per route; per-route ConfigMaps populated by
+BridgeStateLoader for relayer / gas-oracle / warp-UI; and independent
+redeploy / pause / kill-switch flows per route. Not a v1 concern — the
+current bridge is single-chain-pair single-route (USDC between gorchain
+and solana) by design.
+
 ---
 
 ## Stack 3: hyperlane-validator
