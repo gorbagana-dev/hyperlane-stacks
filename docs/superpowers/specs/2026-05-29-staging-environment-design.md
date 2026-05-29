@@ -32,22 +32,31 @@ deliverables are spec/config files and procedures that the ops playbook PR
 
 ## Layout
 
+> Reconciled 2026-05-29 with the ops-layer redesign
+> (`2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`): ansible moved
+> to a top-level `ops/` with per-env isolation; bridge state + operator inputs
+> sit under `bridges/<bridge>/`.
+
 ```
 deployment/
-  spec-*.yml             # prod (unchanged)
-  generated/             # prod bridge state, committed (program-ids.json,
-                         # token-config.json, agent-config snippets)
-  ops/                   # ansible playbooks + roles (shared)
-
+  spec-*.yml             # prod specs (flat at env root, unchanged)
+  bridges/<bridge>/operator/validators.yaml   # prod operator inputs
+  bridges/<bridge>/generated/                 # prod bridge state, committed
   staging/
     spec-*.yml           # staging — same shape as prod, different values
-    generated/           # staging bridge state, committed
+    bridges/<bridge>/operator/validators.yaml
+    bridges/<bridge>/generated/
+
+ops/                     # top-level, sibling of deployment/
+  playbooks/  roles/
+  envs/{prod,staging}/{inventory.yml,host_vars/,group_vars/}
 ```
 
-Prod files are not relocated. Staging is a subdirectory of `deployment/`
-mirroring the same file shape. Ops playbooks take the target spec directory
-(`deployment/` or `deployment/staging/`) as a variable; they are otherwise
-identical between environments.
+Prod specs are not relocated (flat at the env root). Staging mirrors the same
+shape under `deployment/staging/`. v1 bridge name is `default`. Ops playbooks
+take the target environment (`deployment/` or `deployment/staging/`) and the
+`ops/envs/<env>/` directory as inputs; they are otherwise identical between
+environments.
 
 ## Topology
 
@@ -158,12 +167,12 @@ is the only thing that resets it.
 
 ## State distribution and GitOps
 
-Staging and prod share the same repository. Each environment has its own
-`generated/` subdirectory:
+Staging and prod share the same repository. Each environment keeps its bridge
+state under `bridges/<bridge>/generated/`:
 
-- `deployment/generated/` — prod bridge state (program-ids.json,
-  token-config.json, agent-config snippets per chain)
-- `deployment/staging/generated/` — staging bridge state, same shape
+- `deployment/bridges/<bridge>/generated/` — prod bridge state
+  (program-ids.json, token-config.json, agent-config snippets per chain)
+- `deployment/staging/bridges/<bridge>/generated/` — staging bridge state, same shape
 
 State files are committed by the `state_distribute` role after deployer
 job runs. Day-to-day, these files are stable — commits only happen on
@@ -173,9 +182,9 @@ bootstrap, ISM update, validator add/remove, and warp redeploy. The
 **CODEOWNERS strategy:**
 
 ```
-# deployment/spec-*.yml and deployment/generated/ — prod, stricter review
+# prod specs + state — stricter review
 /deployment/spec-*.yml          @ops-lead @security-reviewer
-/deployment/generated/          @ops-lead @security-reviewer
+/deployment/bridges/            @ops-lead @security-reviewer
 
 # deployment/staging/ — staging, lighter review
 /deployment/staging/            @ops-lead
@@ -251,7 +260,7 @@ items that can be done before, in parallel with, or after that PR:
    Cloudflare hostnames, staging image tags). Done once, edited per
    release.
 2. **`CODEOWNERS` entry** — gate `deployment/spec-*.yml` and
-   `deployment/generated/` more strictly than `deployment/staging/`.
+   `deployment/bridges/` more strictly than `deployment/staging/`.
 3. **Software-signer fallback in the signing role** (part of the ops PR,
    not standalone). Listed here because this spec is what justifies it.
 4. **Prod spec validation that rejects `signer: hot-key-file`** (also part

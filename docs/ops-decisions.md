@@ -4,54 +4,73 @@ Decisions on how the stacks should accommodate the maintenance operations from t
 
 ---
 
-## Ops Architecture: Atomic Ops + Composite Playbooks
+## Ops Architecture: Operator-Layer Ops + Built-in Ledger Signing
 
-**Decision (2026-05-28, replaces the "k8s Job templates under `ops/`" plan):** All operator-attended operations are split into two layers — small **atomic ops** that produce one type of unsigned transaction each, and **composite ansible playbooks** that orchestrate sequences of atomic ops plus SO lifecycle ops plus operator-attended signing pauses.
+**Decision (2026-05-29, supersedes the 2026-05-28 "atomic ops as suspended SO
+jobs" plan):** All operator-attended on-chain operations run from the
+**ansible/operator layer**, not from an in-cluster SO stack. The forked
+`hyperlane-sealevel-client` gains **built-in Ledger support**, so each operation
+**signs on the Ledger and broadcasts in one step**, run natively on the
+operator's machine. There is **no `hyperlane-ops` SO stack**, no unsigned-tx
+artifact, no scp round-trip, and no `submit-tx`.
 
-### Atomic ops
+Full rationale, investigation findings (file:line), and the locked decisions live
+in **`docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`**.
+This section is the summary; that spec is authoritative.
 
-All atomic ops live in a single `hyperlane-ops` SO stack. Each action is declared as a separate Job in the stack's `jobs:` list with `suspend: true` so it does not auto-run at `deployment start`. The operator triggers individual actions with `laconic-so deployment run-job <name>`. Each `run-job` invocation creates a fresh k8s Job (timestamped name), allowing repeated runs.
+### Why the pivot
 
-| Atomic op | Purpose |
+The old model didn't actually work as drawn. For the ops commands that matter
+(`set-validators-and-threshold`, `transfer-ownership`, IGP, close-program), the
+client's `--write-instructions` flag is wired only for the warp-route-deploy path
+(`router.rs:311`); everything else falls into a `wait_for_user_confirmation()`
+that reads stdin (`context.rs:393`) and **hangs/panics in a headless k8s Job**.
+Meanwhile the entire Ledger signing stack (`solana-clap-utils` →
+`solana-remote-wallet` → `hidapi`, all @ 3.0.x) is **already in the client's
+dependency tree**, and the signer abstraction already returns `Box<dyn Signer>`.
+So built-in Ledger support is a small, contained change that deletes the whole
+unsigned-tx-artifact + custom-signer workstream.
+
+### Signing model
+
+- The operator runs the forked client natively with `--keypair usb://ledger…`.
+  It builds the tx, fetches a fresh blockhash, prompts the operator **on the
+  Ledger screen** (the review gate), signs, and broadcasts to the public RPC —
+  one step.
+- **No secrets on the operator machine.** The Ledger holds the only key; state
+  and config come from the repo; both RPCs are public.
+- Fee payer == authority in the client (single `owner_payer`), so no hot
+  fee-payer key is needed anywhere.
+- Distributed as **prebuilt binaries on GitHub Releases**. See sub-project 1 in
+  the design spec.
+
+### Composite playbooks (inventory + ordering unchanged; signing mechanism updated)
+
+Each playbook orchestrates lifecycle changes + on-chain operations. Where a step
+needs an on-chain transaction, the playbook invokes the Ledger client on
+`localhost` (which signs + broadcasts in one step) — replacing the old
+"`run-job` emits unsigned tx → scp → operator signs → `submit-tx`" sequence.
+
+| Composite playbook | Steps |
 |---|---|
-| `ism-update` | Generate unsigned `set_validators` tx for one chain (params: chain, validators list, threshold). Used by kill-switch, restore, add-validator-to-ISM, remove-validator-from-ISM, threshold change. |
-| `claim-igp-fees` | Claim IGP fees on one chain. |
-| `close-program` | Close one Solana program (recovers rent). Params: program ID, chain. |
-| `close-buffer` | Close one orphan deploy buffer account. |
-| `transfer-sol` | Transfer SOL out of one account to another. |
-| `verify-ownership` | Read-only: confirms all programs are owned by `HARDWARE_WALLET_PUBKEY`. No signing. |
-| `submit-tx` | Broadcast a signed transaction (params: signed-tx file path, chain). |
+| `kill-switch.yml` | `deployment stop` agents → set ISM validators to null per chain (Ledger client) → done. |
+| `restore.yml` | Set ISM validators to the real set per chain (Ledger client) → `deployment start` agents. |
+| `ism-update.yml` | Set ISM `(validators, threshold)` for one chain (Ledger client). Used for add-validator-to-ISM, remove-validator-from-ISM, threshold change. |
+| `teardown.yml` | `deployment stop` agents → loop {claim IGP fees per chain} → loop {close program} → close orphan buffers → loop {transfer SOL per wallet} → optional key disposal. Each on-chain step signs on the Ledger; operator-attended throughout. |
+| `add-validator.yml` | Interactive: generates `spec-validator-<label>.yml` + updates `validators.yaml`. Human gate (commit + PR + merge). Then: distribute-credentials → configure-dns → minio-resync → deploy-validator (`stack_deploy`). On-chain ISM add is a separate `ism-update.yml` run. |
+| `remove-validator.yml` | Pre-flight: `ism-update.yml` must have detached the validator from ISM. Then: `deployment stop` → interactive spec deletion + `validators.yaml` edit + commit gate → MinIO IAM cleanup (deletes user, keeps bucket) → remove-dns. |
+| `verify-ownership.yml` | Read-only: confirms all programs are owned by the hardware-wallet address. No signing. |
 
-All share the deployer image (has `hyperlane-sealevel-client` + Solana CLI), the same secrets block (deployer keypair, hardware wallet pubkey), and the same state-file mounts (via `state_distribute` role / `BridgeStateLoader`). Each writes outputs to `/srv/kind/hyperlane/ops/<action>-<timestamp>/` on the host. Composite playbooks scp those outputs back to the controller.
+### Why operator-layer (not in-cluster SO jobs)
 
-### Composite playbooks
-
-Composite playbooks orchestrate the operator-attended flows. Each is a thin ansible playbook that:
-1. Invokes one or more atomic ops via `laconic-so deployment run-job` on the appropriate host.
-2. Retrieves the unsigned-tx outputs via scp.
-3. Pauses for operator to sign with the Ledger hardware wallet.
-4. Invokes `submit-tx` to broadcast signed transactions.
-5. Performs any pod-lifecycle changes (`laconic-so deployment stop`, `start`, etc.).
-
-| Composite playbook | Atomic ops + lifecycle ops |
-|---|---|
-| `kill-switch.yml` | `deployment stop` agents → `ism-update` with null addresses (per chain) → operator signs → `submit-tx`. |
-| `restore.yml` | `ism-update` with real validator addresses (per chain) → operator signs → `submit-tx` → `deployment start` agents. |
-| `ism-update.yml` | `ism-update` atomic op with (validators, threshold) inputs → operator signs → `submit-tx`. Used for add-validator-to-ISM, remove-validator-from-ISM, threshold change. |
-| `teardown.yml` | `deployment stop` agents → loop {`claim-igp-fees` per chain} → loop {`close-program` per program} → `close-buffer` for orphans → loop {`transfer-sol` per wallet} → optional key disposal. Pauses for operator signing between each unsigned-tx-producing step. |
-| `add-validator.yml` | Interactive: generates `spec-validator-<label>.yml` + updates `validators.yaml`. Human gate (commit + PR + merge). Then: distribute-credentials → configure-dns → minio-resync → deploy-validator (`stack_deploy`). |
-| `remove-validator.yml` | Pre-flight: `ism-update` must have detached the validator from ISM. Then: `deployment stop` → interactive spec deletion + `validators.yaml` edit + commit gate → MinIO IAM cleanup (deletes user, keeps bucket) → remove-dns. |
-| `submit-signed-tx.yml` | Thin wrapper around `submit-tx` for one-off signed-tx broadcasts. |
-
-### SO enhancement
-
-The `suspend: true` + `run-job` mechanism is being added to stack-orchestrator as part of this work (see `architecture-decisions.md` §Stack Decomposition). Until that lands, the `hyperlane-ops` stack cannot exist as a single SO stack; the v1 architecture above is the target end-state. No intermediate model is shipped.
-
-### Why this split
-
-- **Atomic ops are testable.** Each is a single Job with one well-defined output. Easy to unit-test the on-chain logic.
-- **Composite playbooks are operator-facing.** Sequencing, pauses, and operator review live at the playbook level, not buried in a shell script inside a k8s Job.
-- **Teardown is fundamentally a multi-step playbook.** It's a sequence of conditional signing operations with ordering constraints — not a single Job that emits a giant batch of unsigned txs. Splitting it into atomic ops orchestrated by a playbook matches what the operation actually is.
+- **It's where the Ledger is.** Signing is USB-HID; the device is on the
+  operator's machine, never in a remote k8s node. In-cluster jobs can't reach it.
+- **One auditable command, on-device review.** No artifact passing, no parsing a
+  base58 blob — the operator confirms the actual tx on the Ledger.
+- **Teardown is a multi-step attended flow** — sequencing, pauses, and per-step
+  retry belong in a playbook, not a shell script inside a k8s Job.
+- The `laconic.suspend` + `run-job` SO feature (merged) is now **latent
+  infrastructure** with no v1 consumer; kept for future use.
 
 ---
 
@@ -99,31 +118,23 @@ The gas oracle service and balance monitor provide ongoing visibility into IGP s
 
 ### Kill Switch
 
-**Decision:** Composite `kill-switch.yml` playbook orchestrating agent scale-down + atomic `ism-update` per chain.
+**Decision:** Composite `kill-switch.yml` playbook orchestrating agent scale-down + ISM reconfiguration per chain via the Ledger client.
 
 The kill switch makes the bridge un-deliverable by reconfiguring the on-chain Multisig ISM to the null validator address (`0x0000000000000000000000000000000000000000`, H160 format) on both destination chains. Stopping the relayer alone is insufficient — a third-party relayer could still deliver messages using cached validator signatures. The on-chain ISM reconfiguration is what actually blocks delivery.
 
 **Flow:**
 
 1. `laconic-so deployment stop` on the relayer + all validator stacks (scale agents to 0).
-2. `laconic-so deployment run-job ism-update` on the deployer host, once per destination chain, with `VALIDATORS=null_address` and `THRESHOLD=1`. Each invocation writes an unsigned tx to `/srv/kind/hyperlane/ops/ism-update-<chain>-<timestamp>/`.
-3. Ansible scp's the unsigned txs back to the controller.
-4. Operator signs each tx with the Ledger hardware wallet:
-   ```
-   solana sign-offloaded-transaction <unsigned-tx>.json --signer usb://ledger
-   ```
-5. `laconic-so deployment run-job submit-tx` on the deployer host, once per signed tx, to broadcast.
+2. On the controller (`localhost`), once per destination chain, the playbook runs the Ledger client `set-validators-and-threshold` with `VALIDATORS=null_address` and `THRESHOLD=1`. The operator confirms each tx on the Ledger; the client signs and broadcasts.
 
-The kill-switch is in effect once step 5 completes. Validators and relayer stay stopped until `restore.yml` is run.
+The kill-switch is in effect once step 2 completes for both chains. Validators and relayer stay stopped until `restore.yml` is run.
 
 ### Restore
 
 **Decision:** Composite `restore.yml` playbook — symmetric to kill-switch.
 
-1. `laconic-so deployment run-job ism-update` per destination chain with the real `VALIDATORS` list (from `validators.yaml`) and operator-supplied `THRESHOLD`. Writes unsigned txs.
-2. Operator signs.
-3. `submit-tx` broadcasts.
-4. `laconic-so deployment start` on validator stacks + relayer.
+1. On the controller, per destination chain, the playbook runs the Ledger client `set-validators-and-threshold` with the real `VALIDATORS` list (from `validators.yaml`) and operator-supplied `THRESHOLD`. Operator confirms on the Ledger; client signs and broadcasts.
+2. `laconic-so deployment start` on validator stacks + relayer.
 
 Messages dispatched during the pause are processed once agents are back online (Hyperlane delivers from on-chain history, not from in-memory queues).
 
@@ -229,10 +240,8 @@ Optional extra-vars:
 
 1. Reads `validators.yaml` for the current set (or `validators_override` if supplied).
 2. Resolves each label's secp256k1 address by querying Privy via `privy_wallet_id`.
-3. Triggers `laconic-so deployment run-job ism-update` on the deployer host with the resolved `(validators, threshold)`.
-4. scp's the unsigned tx + summary back to the controller.
-5. Operator reviews the summary, signs with Ledger.
-6. Triggers `laconic-so deployment run-job submit-tx` to broadcast.
+3. On the controller (`localhost`), runs the Ledger client `set-validators-and-threshold` with the resolved `(validators, threshold)` and `--keypair usb://ledger…`.
+4. Operator reviews the tx on the Ledger screen and confirms; the client signs and broadcasts in one step.
 
 ---
 
@@ -259,7 +268,7 @@ As the final step of the deployer job, ownership is transferred as follows:
 
 The hot deployer keypair is then discarded.
 
-A verification job in the `hyperlane-svm-ops` stack confirms all programs are owned by the hardware wallet address before the deployer key is destroyed.
+The `verify-ownership.yml` playbook (read-only, runs the client on the controller) confirms all programs are owned by the hardware wallet address before the deployer key is destroyed.
 
 **Implication:** The hardware wallet is the long-lived authority for post-deployment operations:
 - Kill switch (ISM reconfiguration)
@@ -268,38 +277,38 @@ A verification job in the `hyperlane-svm-ops` stack confirms all programs are ow
 
 Gas oracle updates are handled by the Privy oracle wallet (see `architecture-decisions.md` Tier 2).
 
-All ops jobs generate unsigned transactions; the operator signs on the hardware wallet (operator-attended).
+Operator-attended on-chain operations are signed directly on the Ledger by the forked client (see below) — no unsigned-tx artifacts.
 
 ### Operator-Attended Signing UX
 
-**Decision:** Atomic ops jobs in the `hyperlane-ops` SO stack write serialized unsigned transactions to a host-path output directory. Composite ansible playbooks scp the outputs back to the controller; the operator signs locally with Ledger; the playbook broadcasts via the `submit-tx` atomic op.
+**Decision (2026-05-29):** The forked `hyperlane-sealevel-client` has **built-in
+Ledger support**. Composite playbooks run it on the controller (`localhost`) with
+`--keypair usb://ledger…`; it builds the tx, prompts the operator on the Ledger
+screen, signs, and broadcasts — one step, no artifact, no `submit-tx`. See
+`docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`
+for the full design and the investigation findings behind it.
 
 **Per-op flow:**
 
-1. Composite playbook on controller invokes `laconic-so deployment run-job <op>` on the deployer host with the relevant inputs (chain, validators list, threshold, etc.).
-2. SO creates a fresh k8s Job (timestamped name) from the suspended job template. The Job runs the atomic op, which writes outputs to `/srv/kind/hyperlane/ops/<op>-<timestamp>/` on the host.
-3. Playbook scp's the output directory back to the controller's `.ops/<bridge>/<op>-<timestamp>/`.
-4. Playbook prints a summary and pauses for operator review.
-5. Operator signs each `.json` with Ledger:
-   ```bash
-   solana sign-offloaded-transaction <unsigned-tx-file>.json --signer usb://ledger
-   ```
-6. Operator confirms; playbook scp's signed files back to the deployer host and invokes `laconic-so deployment run-job submit-tx` once per signed file.
+1. Composite playbook on the controller runs the client locally, e.g.
+   `hyperlane-sealevel-client … multisig-ism-message-id set-validators-and-threshold --keypair usb://ledger?key=0/0 …`.
+2. The client fetches a fresh blockhash and presents the transaction to the
+   Ledger.
+3. **Operator reviews the transaction details on the Ledger device screen** and
+   approves with the device button — this *is* the review gate.
+4. The client attaches the signature and broadcasts to the public RPC, reporting
+   the tx hash.
 
-**Output format per transaction (same as before):**
-- `<operation>-<chain>-<seq>.json` — serialized unsigned transaction (base64)
-- `<operation>-<chain>-<seq>.summary.txt` — human-readable description (program, instruction, accounts, expected effect)
+**Hardware wallet:** Ledger with the Solana app, attached to the operator's
+machine; udev rules on Linux. Same prerequisites as standard `solana` CLI Ledger
+use.
 
-**Example (kill switch, gorchain):**
-```
-.ops/hyperlane-main/ism-update-2026-06-01T12-34-56/
-  ism-update-gorchain-01.json          # Unsigned: set ISM validators to null
-  ism-update-gorchain-01.summary.txt
-```
-
-**Hardware wallet:** Ledger with Solana app. The `solana` CLI supports `usb://ledger` as a signer for offline transaction signing.
-
-**Why SO Jobs (not raw `kubectl apply`):** Atomic ops share the same image, secrets, state-file mounts, and namespace as every other stack. Putting them in the SO `hyperlane-ops` stack means they use the same `secrets:` mechanism (file/env credential injection), the same state-file distribution (via `state_distribute` role), and the same Caddy-fronted ingress rules as everything else. No duplicate plumbing.
+**Why operator-layer (not in-cluster SO jobs):** the Ledger is USB-HID on the
+operator's machine and never reachable from a remote k8s node; on-device review
+beats parsing a base58 blob; no artifact-passing or duplicate broadcast plumbing.
+The client runs as a **native prebuilt binary** (GitHub Releases) — `docker run`
+USB passthrough is Linux-only/flaky on macOS, and operators already run a native
+`solana` CLI for Ledger work.
 
 ### IGP Beneficiary
 
@@ -311,35 +320,31 @@ The deployer configures the IGP beneficiary address during initial deployment. T
 
 ## Bridge Teardown
 
-**Decision:** Composite `teardown.yml` playbook orchestrating atomic ops in a fixed sequence with operator-attended signing pauses between steps.
+**Decision:** Composite `teardown.yml` playbook orchestrating on-chain operations in a fixed sequence with operator-attended signing pauses between steps.
 
-Teardown is fundamentally a multi-step playbook — each step requires the hardware wallet for one or more transactions, ordering matters (you can't transfer SOL out of a wallet after disposing the key), and operators may want to pause mid-flow. Bundling it into one k8s Job that emits a giant batch of unsigned txs is the wrong shape: operators couldn't pause, couldn't selectively retry one step, and couldn't sanity-check intermediate state.
+Teardown is fundamentally a multi-step playbook — each step requires the hardware wallet for one or more transactions, ordering matters (you can't transfer SOL out of a wallet after disposing the key), and operators may want to pause mid-flow.
 
 **Sequence:**
 
-| # | Step | Atomic op | Signing |
-|---|---|---|---|
-| 1 | Stop all agents | `deployment stop` (relayer, validators, gas-oracle) | None |
-| 2 | Claim remaining IGP fees | `claim-igp-fees` per chain | Per-chain tx — operator signs |
-| 3 | Broadcast claims | `submit-tx` per signed file | None (signed already) |
-| 4 | Close all Solana programs | `close-program` per program per chain (~7 programs × 2 chains) | Per-tx — operator signs each |
-| 5 | Broadcast program closures | `submit-tx` per signed file | None |
-| 6 | Close orphan deploy buffer accounts | `close-buffer` per buffer | Per-tx — operator signs each |
-| 7 | Broadcast buffer closures | `submit-tx` per signed file | None |
-| 8 | Transfer remaining SOL from agent wallets | `transfer-sol` per wallet | Per-tx — operator signs each |
-| 9 | Broadcast SOL transfers | `submit-tx` per signed file | None |
-| 10 | Dispose of key material | Operator-local (optional) | n/a |
-| 11 | Stop remaining stacks | `deployment stop` (minio, monitoring, warp-ui) | None |
+| # | Step | Signing |
+|---|---|---|
+| 1 | Stop all agents (`deployment stop`: relayer, validators, gas-oracle) | None |
+| 2 | Claim remaining IGP fees per chain (Ledger client) | Per-chain tx — operator confirms on Ledger |
+| 3 | Close all Solana programs per chain (~7 programs × 2 chains, Ledger client) | Per-tx — operator confirms each |
+| 4 | Close orphan deploy buffer accounts (Ledger client) | Per-tx — operator confirms each |
+| 5 | Transfer remaining SOL from agent wallets (Ledger client) | Per-tx — operator confirms each |
+| 6 | Dispose of key material (operator-local, optional) | n/a |
+| 7 | Stop remaining stacks (`deployment stop`: minio, monitoring, warp-ui) | None |
 
 **Safety mechanisms:**
 
-- **Dry-run by default.** `teardown.yml` runs with `DRY_RUN=true` unless explicitly set to false. In dry-run mode, atomic ops emit unsigned txs and summaries but the playbook skips the `submit-tx` step.
-- **Per-step confirmation.** Between each signing step, the playbook prompts for operator confirmation before scp'ing the next unsigned tx batch back.
-- **Per-step retry.** If a signing or broadcast step fails, the playbook can be resumed from that step (idempotent: atomic ops re-emit the same unsigned tx if state already matches).
-- **`CONFIRM_TEARDOWN=yes` extra-var required** to actually execute (matches the previous design's gate).
+- **Dry-run by default.** `teardown.yml` runs with `DRY_RUN=true` unless explicitly set to false. In dry-run mode, the playbook prints each intended operation and its parameters but does not invoke the Ledger client to broadcast.
+- **Per-step confirmation.** Between each signing step, the playbook pauses for operator confirmation before proceeding to the next.
+- **Per-step retry.** If a step fails, the playbook can be resumed from that step (idempotent: on-chain ops are no-ops if state already matches).
+- **`CONFIRM_TEARDOWN=yes` extra-var required** to actually execute.
 
 **Inputs:**
-- Hardware wallet (owner/upgrade authority) — operator signs each unsigned tx via Ledger
+- Hardware wallet (owner/upgrade authority) — operator confirms each tx on the Ledger
 - Treasury address (where to send recovered funds)
 - Both chain RPC URLs (from spec / `validators.yaml`)
 - `program-ids.json` (from `deployment/bridges/<bridge>/generated/`)
@@ -356,24 +361,26 @@ Teardown is fundamentally a multi-step playbook — each step requires the hardw
 | Gas oracle updater | `hyperlane-gas-oracle` | Long-running pod (automated via Privy oracle wallet) |
 | Wallet balance monitor | `hyperlane-monitoring` | Sidecar + Prometheus metrics |
 
-### Operator-attended (composite ansible playbooks + atomic SO Jobs)
+### Operator-attended (ansible playbooks invoking the Ledger client on the controller)
 
-| Composite playbook | Atomic ops invoked | Hardware-wallet signing |
+| Composite playbook | On-chain operations | Hardware-wallet signing |
 |---|---|---|
-| `kill-switch.yml` | `ism-update` per chain → `submit-tx` | Yes |
-| `restore.yml` | `ism-update` per chain → `submit-tx` | Yes |
-| `ism-update.yml` (general) | `ism-update` → `submit-tx` | Yes |
-| `teardown.yml` | `claim-igp-fees`, `close-program`, `close-buffer`, `transfer-sol` (each → `submit-tx`) | Yes (per step) |
+| `kill-switch.yml` | Set ISM to null per chain | Yes (on Ledger) |
+| `restore.yml` | Set ISM to real set per chain | Yes (on Ledger) |
+| `ism-update.yml` (general) | Set ISM `(validators, threshold)` | Yes (on Ledger) |
+| `teardown.yml` | Claim IGP fees, close programs, close buffers, transfer SOL | Yes (per step, on Ledger) |
 | `add-validator.yml` | None (deployment-side only); on-chain ISM addition runs as separate `ism-update.yml` | No |
-| `remove-validator.yml` | `ism-update` (detach first) → `deployment stop` → MinIO IAM cleanup → DNS removal | Yes (for ISM detach) |
-| `submit-signed-tx.yml` | `submit-tx` | No (already signed) |
-| `verify-ownership.yml` | `verify-ownership` (read-only) | No |
+| `remove-validator.yml` | ISM detach (via `ism-update.yml`) first → `deployment stop` → MinIO IAM cleanup → DNS removal | Yes (for ISM detach) |
+| `verify-ownership.yml` | Read-only ownership check | No |
 
-### Atomic ops (all in the `hyperlane-ops` SO stack, suspended jobs, triggered via `laconic-so deployment run-job`)
+### Signing mechanism
 
-`ism-update`, `claim-igp-fees`, `close-program`, `close-buffer`, `transfer-sol`, `verify-ownership`, `submit-tx`.
-
-**Rationale for the SO-managed atomic ops + ansible-orchestrated composite pattern:**
-- Atomic ops share image, secrets, state-file mounts, and namespace with the rest of the deployment. Same `secrets:` mechanism, same `state_distribute` role.
-- Composite playbooks own the operator-attended flow logic (sequencing, signing pauses, retries). That logic doesn't belong in a shell script inside a k8s Job.
-- Each atomic op is small and testable. Each composite playbook is auditable as a sequence of atomic ops.
+All on-chain operations run the forked `hyperlane-sealevel-client` on the
+controller (`localhost`) with `--keypair usb://ledger…`. The client builds the
+tx, the operator confirms it on the Ledger screen, and the client signs and
+broadcasts in one step. There is no `hyperlane-ops` SO stack, no unsigned-tx
+artifact, and no `submit-tx`. Built-in Ledger support, the binary-release
+distribution, and the full rationale are specified in
+`docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`
+(sub-project 1). The `laconic.suspend` + `run-job` SO feature remains available
+as latent infrastructure with no v1 consumer.
