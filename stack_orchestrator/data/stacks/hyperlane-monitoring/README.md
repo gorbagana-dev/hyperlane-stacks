@@ -2,7 +2,7 @@
 
 Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four containers:
 
-- **Prometheus** — scrapes metrics from validator and relayer pods via `kubernetes_sd_configs`, and from Pushgateway for balance metrics
+- **Prometheus** — scrapes validator and relayer `/metrics` over their public Caddy hostnames (static targets), and Pushgateway for balance metrics
 - **Grafana** — dashboards for bridge operations, validator checkpoints, relayer throughput, and wallet balances
 - **Pushgateway** — receives balance metrics pushed by the balance monitor
 - **Balance monitor** — Python script that polls wallet balances via Solana JSON-RPC and pushes to Pushgateway
@@ -23,13 +23,12 @@ Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four
 
 **Metrics flow:**
 
-1. **Validator/relayer metrics**: Prometheus discovers pods with `prometheus.io/scrape: "true"` annotation via `kubernetes_sd_configs` and scrapes their `/metrics` endpoints directly
+1. **Validator/relayer metrics**: Prometheus scrapes each validator/relayer `/metrics` endpoint over its public Caddy hostname (static targets in `prometheus.yml`, `job_name: validators` / `relayer`). Each target carries a `hyperlane_instance` label so multiple validators (including two on the same chain) appear as distinct series. Add a validator by appending one target entry.
 2. **Wallet balances**: The balance monitor queries Solana JSON-RPC (`getBalance`) for each configured wallet, then pushes `hyperlane_wallet_balance_sol` gauge metrics to Pushgateway. Prometheus scrapes Pushgateway on `localhost:9091`
 3. **Grafana**: Queries Prometheus as its datasource. Three dashboards are provisioned automatically: overview, validator detail, and relayer detail
 
 **Prerequisites:**
-- Validator and relayer specs must include `prometheus.io/scrape` and `prometheus.io/port` annotations (see `deployment/spec-validator-*.yml` and `deployment/spec-relayer.yml`)
-- The `deploy/commands.py` create hook applies RBAC (ClusterRole + ClusterRoleBinding) granting the namespace's default ServiceAccount permission to list/watch pods for Prometheus service discovery
+- Validator and relayer specs must expose `/metrics` via a `network.http-proxy` route (see `deployment/spec-validator-*.yml` and `deployment/spec-relayer.yml`), and their hostnames must be listed as scrape targets in `prometheus.yml`
 
 ## Configuration
 
