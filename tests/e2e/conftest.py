@@ -1376,6 +1376,30 @@ GRAFANA_URL = f"https://{GRAFANA_HOSTNAME}"
 PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
+
+def _patch_prometheus_targets_for_test(deploy_dir: Path) -> None:
+    """Repoint the prometheus-config ConfigMap at the .test hostnames and mount
+    the mkcert root CA so Prometheus can verify their certs."""
+    cm_dir = deploy_dir / "configmaps" / "prometheus-config"
+
+    # Mount the mkcert root CA so Prometheus can verify the .test certs.
+    caroot = subprocess.run(
+        ["mkcert", "-CAROOT"], capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    (cm_dir / "rootCA.pem").write_bytes((Path(caroot) / "rootCA.pem").read_bytes())
+
+    prom_yml = cm_dir / "prometheus.yml"
+    text = prom_yml.read_text()
+    text = text.replace(".bridge.gorbagana.wtf", ".test")
+    text = text.replace(
+        "    metrics_path: /metrics\n",
+        "    metrics_path: /metrics\n"
+        "    tls_config:\n"
+        "      ca_file: /etc/prometheus/rootCA.pem\n",
+    )
+    prom_yml.write_text(text)
+    log.info("Patched prometheus.yml for .test hostnames + mkcert CA verification")
+
 def _wait_for_balance_monitor(
     namespace: str, pod_name: str, timeout: int = 60,
 ) -> None:
@@ -1516,6 +1540,8 @@ def monitoring_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         deployment_id="monitoring",
     )
+
+    _patch_prometheus_targets_for_test(deploy_info.deploy_dir)
 
     bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
 
