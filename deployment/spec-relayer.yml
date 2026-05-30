@@ -53,4 +53,4 @@ network:
           proxy-to: relayer:9091
 # Optional: override container images (service name → full image ref)
 # image-overrides:
-#   relayer: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+#   relayer: ghcr.io/gorbagana-dev/hyperlane-agent@sha256:696d1513085edf44b0a6910ad740edfbcf29e5e2059709492153e139a9b84b09

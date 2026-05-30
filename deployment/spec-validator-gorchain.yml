@@ -50,5 +50,5 @@ network:
           proxy-to: validator:9090
 # Optional: override container images (service name → full image ref)
 # image-overrides:
-#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
-#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0
+#   validator: ghcr.io/gorbagana-dev/hyperlane-agent@sha256:696d1513085edf44b0a6910ad740edfbcf29e5e2059709492153e139a9b84b09
+#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy@sha256:029b6aebe1fcb19fb5371a5d42aba25a08dfd4cb13555a17f145651a1dfece6c

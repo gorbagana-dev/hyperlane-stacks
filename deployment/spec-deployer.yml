@@ -46,7 +46,7 @@ image-pull-secret:
   token-env: GHCR_PAT
 # Optional: override container images (service name → full image ref)
 # image-overrides:
-#   deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v1.0.0
+#   deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer@sha256:098dd951c5e8138ffd3bdf9de4c6a8a4e84f67c50ddeebb4100681b691eabc0d
 # Optional: external services reachable by IP (creates headless Service + Endpoints)
 # external-services:
 #   gorchain-rpc:

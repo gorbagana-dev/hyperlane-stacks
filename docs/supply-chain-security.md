@@ -8,7 +8,7 @@ Covers build-time supply chain risks and mitigations for all bridge components.
 
 | Component | Threat | Impact | Likelihood |
 |-----------|--------|--------|-----------|
-| **Upstream agent image** (`gcr.io/abacus-labs-dev/hyperlane-agent`) | Compromised upstream CI injects malicious validator/relayer binary | CRITICAL — forge signatures, steal funds | Low (Hyperlane team maintains) |
+| **Agent image** (self-built from `hyperlane-monorepo`, patched validator/relayer) | Compromised build environment or monorepo source inserts malicious validator/relayer binary | CRITICAL — forge signatures, steal funds | Low-Medium |
 | **Sealevel `.so` programs** (self-built) | Compromised build environment or dependency inserts backdoor into on-chain programs | CRITICAL — programs control all bridge funds | Low-Medium |
 | **`hyperlane-sealevel-client`** (self-built) | Compromised CLI deploys backdoored programs or exfiltrates deployer key during deployment | CRITICAL — has access to deployer key at deploy time | Low-Medium |
 | **Rust crates (cargo dependencies)** | Malicious crate via typosquat, compromised maintainer, or supply chain attack | HIGH — `build.rs` executes at compile time with full system access | Medium |
@@ -21,7 +21,9 @@ Covers build-time supply chain risks and mitigations for all bridge components.
 
 ### Image Pinning
 
-**Decision:** Pin third-party images by version tag. Self-built images use `:latest`.
+**Decision:** Pin third-party images by version tag. Self-built images are
+tagged `:latest`, and pinned by digest at deploy time via `image-overrides:`
+(see `versions.json`).
 
 Third-party images pulled from external registries are pinned to specific
 version tags in compose files to prevent silent breakage:
@@ -31,17 +33,17 @@ version tags in compose files to prevent silent breakage:
 image: prom/prometheus:v3.11.3
 image: grafana/grafana:13.0.1
 
-# Self-built — :latest is fine (we control the build + push)
+# Self-built — :latest by default; pin by digest via image-overrides for reproducible deploys
 image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
 ```
 
-Pinned third-party images (`docker-compose-hyperlane-monitoring.yml`):
-- `prom/prometheus:v3.11.3`
-- `prom/pushgateway:v1.11.2`
-- `grafana/grafana:13.0.1`
-- `python:3.12.13-alpine` (balance-monitor sidecar)
-- `minio/minio:RELEASE.2025-09-07T16-13-09Z`
-- `minio/mc:RELEASE.2025-08-13T08-35-41Z`
+Pinned third-party images:
+- `prom/prometheus:v3.11.3` — monitoring compose
+- `prom/pushgateway:v1.11.2` — monitoring compose
+- `grafana/grafana:13.0.1` — monitoring compose
+- `python:3.12.13-alpine` — monitoring compose (balance-monitor sidecar)
+- `minio/minio:RELEASE.2025-09-07T16-13-09Z` — minio compose
+- `minio/mc:RELEASE.2025-08-13T08-35-41Z` — minio stack `deploy/commands.py`
 
 Self-built images (`:latest`, pinned at deploy time via `image-overrides:`):
 - `ghcr.io/gorbagana-dev/hyperlane-agent`
@@ -52,28 +54,23 @@ Self-built images (`:latest`, pinned at deploy time via `image-overrides:`):
 
 ### Cargo.lock + `--locked` Builds
 
-**Decision:** All Rust builds use `--locked` flag.
+**Decision:** Builds use the monorepo's committed `Cargo.lock`; the deployer build additionally passes `--locked`.
 
-- The `Cargo.lock` file from the hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`) is committed and used as-is
-- `cargo build --release --locked` ensures no dependency resolution drift
-- If `Cargo.lock` doesn't match `Cargo.toml`, the build fails rather than silently resolving different versions
+- The `Cargo.lock` from the hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`) is used as-is
+- The deployer build runs `cargo build --release --locked --bin hyperlane-sealevel-client` — `--locked` fails the build if `Cargo.lock` doesn't match `Cargo.toml`, preventing dependency resolution drift
+- The agent build (validator/relayer) compiles against the same committed `Cargo.lock` but does not pass `--locked`
 
 ### Dependency Auditing
 
-**Decision:** Run `cargo-audit` as part of the Docker build.
+**Decision:** Run `cargo-audit` as part of the deployer Docker build.
 
 ```dockerfile
-RUN cargo install cargo-audit && cargo audit
+RUN cargo install cargo-audit --locked && cd rust && cargo audit || true
 ```
 
 - Checks all transitive Rust dependencies against the RustSec Advisory Database
-- Build fails if known vulnerabilities are found
+- The `|| true` means findings are logged but do not fail the build
 - Advisory database is fetched at build time (requires network access during build)
-
-For npm (Warp UI):
-```dockerfile
-RUN pnpm audit --audit-level=high
-```
 
 ### Post-Deploy Program Hash Verification
 
@@ -114,7 +111,6 @@ This is included as a verification step in the deployer job. If any hash mismatc
 |-----------|--------|-----------|
 | Reproducible builds via `solana-verify build` (deterministic Docker) | Deferred | Adds build complexity; post-deploy hash check provides sufficient assurance for v1 |
 | On-chain verification PDA (OtterSec) | Deferred | Relevant for public-facing programs; our deployment is controlled scope |
-| Rebuild upstream agent image from source | Skipped | Trust Hyperlane team's CI. Image pinned by digest mitigates tag overwrite risk. |
 | `cargo-vet` (dependency review) | Deferred | High maintenance overhead for v1; `cargo-audit` catches known CVEs |
 | SBOM generation | Deferred | Low priority for v1 |
 | Binary signing (GPG/sigstore) | Deferred | No distribution to third parties in v1 |
@@ -134,3 +130,12 @@ drift between runs:
 | mkcert | v1.4.4 | `.github/workflows/e2e.yml` |
 | laconic-so | `v1.1.0-b3e9366-202605111309` | Both CI workflows (env `LACONIC_SO_VERSION`) |
 | Rust | Pinned via `rust-toolchain.toml` in monorepo | Dockerfile (rustup installs toolchain from file) |
+
+---
+
+## Version Manifest
+
+[versions.json](../versions.json) at the repo root records every pinned
+version in one place — self-built image digests, third-party images, base
+images, sources, CI tools. It is the audit trail; update it alongside the
+source file when bumping a pin.

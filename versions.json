@@ -1,0 +1,49 @@
+{
+  "hyperlane_deployer_source": "@hyperlane-xyz/core@10.2.0 (commit 16c056a09af862b3ce9e14bd3b5b8034750af9d0)",
+  "hyperlane_validator_source": "hyperlane-monorepo@4da9c4419ad89783fd005e0b776f1fdcd7b59c12",
+  "warp_ui_repo": "hyperlane-xyz/hyperlane-warp-ui-template",
+  "warp_ui_tag": "v2.0.0",
+  "spl_token_cli_fork": "hyperlane-xyz/solana-program-library@e101cca (branch dan/create-token-for-mint)",
+
+  "self_built_images": {
+    "hyperlane-agent": "ghcr.io/gorbagana-dev/hyperlane-agent@sha256:696d1513085edf44b0a6910ad740edfbcf29e5e2059709492153e139a9b84b09",
+    "hyperlane-svm-deployer": "ghcr.io/gorbagana-dev/hyperlane-svm-deployer@sha256:098dd951c5e8138ffd3bdf9de4c6a8a4e84f67c50ddeebb4100681b691eabc0d",
+    "hyperlane-kms-proxy": "ghcr.io/gorbagana-dev/hyperlane-kms-proxy@sha256:029b6aebe1fcb19fb5371a5d42aba25a08dfd4cb13555a17f145651a1dfece6c",
+    "hyperlane-warp-ui": "ghcr.io/gorbagana-dev/hyperlane-warp-ui@sha256:bcb0734331894a485dd55ebc8a5aa12afaececabe55b55b2a32982b19f35aaeb",
+    "hyperlane-gas-oracle": "ghcr.io/gorbagana-dev/hyperlane-gas-oracle@sha256:2a67a78bae6c41b5e1a50f2cee50105f015d219e218a225aee69366baa312fed"
+  },
+
+  "third_party_images": {
+    "prometheus": "prom/prometheus:v3.11.3",
+    "pushgateway": "prom/pushgateway:v1.11.2",
+    "grafana": "grafana/grafana:13.0.1",
+    "python": "python:3.12.13-alpine",
+    "minio": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "minio_mc": "minio/mc:RELEASE.2025-08-13T08-35-41Z"
+  },
+
+  "base_images": {
+    "ubuntu": "ubuntu:22.04",
+    "rust": "rust:1.88.0",
+    "node": "node:24-alpine",
+    "golang": "golang:1.24-alpine",
+    "alpine": "alpine:3.21"
+  },
+
+  "solana_cli": "3.0.14",
+  "rust_toolchain_spl_token": "1.76.0",
+  "rust_toolchain_deployer": "from monorepo rust/sealevel/rust-toolchain",
+  "go_version": "1.24.0",
+
+  "ci_tools": {
+    "laconic_so": "v1.1.0-b3e9366-202605111309",
+    "kubectl": "v1.35.0",
+    "solana_cli": "3.0.14",
+    "kind": "v0.31.0",
+    "mkcert": "v1.4.4"
+  },
+
+  "test_tools": {
+    "backpack_extension": "0.10.111"
+  }
+}

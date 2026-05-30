@@ -69,4 +69,4 @@ image-pull-secret:
   token-env: GHCR_PAT
 # Optional: override container images (service name → full image ref)
 # image-overrides:
-#   gas-oracle: ghcr.io/gorbagana-dev/hyperlane-gas-oracle:v1.0.0
+#   gas-oracle: ghcr.io/gorbagana-dev/hyperlane-gas-oracle@sha256:2a67a78bae6c41b5e1a50f2cee50105f015d219e218a225aee69366baa312fed
