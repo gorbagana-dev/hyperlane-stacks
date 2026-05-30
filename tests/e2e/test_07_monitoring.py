@@ -278,10 +278,12 @@ class TestMonitoring:
         """Agent metrics carry the hyperlane_instance label from the scrape target."""
         prom_url = monitoring_deployment["prometheus_url"]
 
+        # hyperlane_block_height is always emitted by a running validator;
+        # checkpoint metrics only appear after bridge messages are processed.
         results = _prometheus_query(
-            prom_url, 'hyperlane_latest_checkpoint{agent="validator"}',
+            prom_url, 'hyperlane_block_height{agent="validator"}',
         )
-        assert len(results) > 0, "No validator checkpoint metrics scraped"
+        assert len(results) > 0, "No validator metrics scraped"
         labels = {r["metric"].get("hyperlane_instance") for r in results}
         assert labels & {"gorchain-primary", "solana-primary"}, (
             f"hyperlane_instance label missing on agent metrics: {labels}"
