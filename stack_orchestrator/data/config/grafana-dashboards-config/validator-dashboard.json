@@ -108,7 +108,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by(chain) (increase (hyperlane_latest_checkpoint{\n    agent=\"validator\", \n    phase=\"validator_processed\",\n    chain=~\"${chain:regex}\"\n}[30m]))",
+          "expr": "max by(chain, hyperlane_instance) (increase (hyperlane_latest_checkpoint{\n    agent=\"validator\", \n    phase=\"validator_processed\",\n    chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"\n}[30m]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -206,7 +206,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by(chain) (hyperlane_latest_checkpoint{\n    agent=\"validator\", \n    phase=\"validator_observed\",\n    chain=~\"${chain:regex}\"\n})\n-\nmax by(chain) (hyperlane_latest_checkpoint{\n    agent=\"validator\", \n    phase=\"validator_processed\",\n    chain=~\"${chain:regex}\"\n})",
+          "expr": "max by(chain, hyperlane_instance) (hyperlane_latest_checkpoint{\n    agent=\"validator\", \n    phase=\"validator_observed\",\n    chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"\n})\n-\nmax by(chain, hyperlane_instance) (hyperlane_latest_checkpoint{\n    agent=\"validator\", \n    phase=\"validator_processed\",\n    chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"\n})",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -304,7 +304,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (chain) (increase(hyperlane_block_height{agent=\"validator\", chain=~\"${chain:regex}\"}[30m]))",
+          "expr": "max by (chain, hyperlane_instance) (increase(hyperlane_block_height{agent=\"validator\", chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"}[30m]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -402,7 +402,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by(chain) (hyperlane_contract_sync_liveness{\n    agent=\"validator\", \n    chain=~\"${chain:regex}\"\n})",
+          "expr": "max by(chain, hyperlane_instance) (hyperlane_contract_sync_liveness{\n    agent=\"validator\", \n    chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"\n})",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -500,7 +500,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (chain) (increase(hyperlane_contract_sync_block_height{agent=\"validator\", chain=~\"${chain:regex}\"}[30m]))",
+          "expr": "max by (chain, hyperlane_instance) (increase(hyperlane_contract_sync_block_height{agent=\"validator\", chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"}[30m]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -598,7 +598,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (chain) (increase(hyperlane_cursor_current_block{agent=\"validator\", cursor_type=\"forward_sequenced\", chain=~\"${chain:regex}\"}[30m]))",
+          "expr": "max by (chain, hyperlane_instance) (increase(hyperlane_cursor_current_block{agent=\"validator\", cursor_type=\"forward_sequenced\", chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"}[30m]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -696,7 +696,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (pod) (increase(hyperlane_span_events_total{\n    agent=\"validator\", \n    event_level=\"error\",\n    chain=~\"${chain:regex}\"\n}[30m]))",
+          "expr": "max by (chain, hyperlane_instance) (increase(hyperlane_span_events_total{\n    agent=\"validator\", \n    event_level=\"error\",\n    chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"\n}[30m]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -794,7 +794,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (pod) (increase(hyperlane_span_events_total{agent=\"validator\", event_level=\"warn\", chain=~\"${chain:regex}\"}[30m]))",
+          "expr": "max by (chain, hyperlane_instance) (increase(hyperlane_span_events_total{agent=\"validator\", event_level=\"warn\", chain=~\"${chain:regex}\", hyperlane_instance=~\"${hyperlane_instance:regex}\"}[30m]))",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
@@ -828,6 +828,29 @@
         "query": {
           "qryType": 1,
           "query": "label_values(chain)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "definition": "label_values(hyperlane_instance)",
+        "description": "Validator/relayer instance (e.g. gorchain-primary).",
+        "includeAll": true,
+        "label": "Instance",
+        "multi": true,
+        "name": "hyperlane_instance",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(hyperlane_instance)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
