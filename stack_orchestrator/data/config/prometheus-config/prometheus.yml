@@ -20,13 +20,12 @@ scrape_configs:
   # Validator metrics — scraped cross-host over public DNS via each
   # validator's Caddy hostname. Static list; append one target per validator.
   # hyperlane_instance distinguishes validators (incl. multiple on one chain).
+  # Prod serves Let's Encrypt certs (trusted by the default CA bundle), so no
+  # tls_config is needed. The e2e harness adds a tls_config.ca_file pointing at
+  # the mkcert root CA for the .test hostnames.
   - job_name: validators
     scheme: https
     metrics_path: /metrics
-    # insecure_skip_verify is false in prod (Let's Encrypt certs are trusted);
-    # the e2e harness flips it to true for mkcert certs.
-    tls_config:
-      insecure_skip_verify: false
     static_configs:
       - targets: ["validator-gorchain.bridge.gorbagana.wtf:443"]
         labels: { hyperlane_instance: gorchain-primary }
@@ -37,8 +36,6 @@ scrape_configs:
   - job_name: relayer
     scheme: https
     metrics_path: /metrics
-    tls_config:
-      insecure_skip_verify: false
     static_configs:
       - targets: ["relayer.bridge.gorbagana.wtf:443"]
         labels: { hyperlane_instance: primary }
