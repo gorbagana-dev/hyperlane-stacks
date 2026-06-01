@@ -3,3 +3,8 @@ profile: production
 exclude_paths:
   - collections/
   - tests/fixtures/
+# Role-default vars are referenced directly by playbooks and localhost tests
+# (e.g. secrets_file, deploy_base), so the role-name prefix convention does not
+# fit this layout. Skip only that stylistic rule; the rest of production holds.
+skip_list:
+  - var-naming[no-role-prefix]
