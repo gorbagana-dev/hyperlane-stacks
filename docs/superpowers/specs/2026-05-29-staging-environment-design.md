@@ -137,9 +137,10 @@ Two signer paths exist in playbook code:
   gated on a human walking to a physical device.
 
 The prod spec **must reject `signer: hot-key-file`** at validation time.
-The simplest way is an assertion in the prod spec's ansible variables
-file (`deployment/ops/group_vars/prod.yml`) that pins `signer: ledger` and
-fails the playbook if any operation requests otherwise.
+The simplest way is an assertion in the prod environment's ansible variables
+file (`ops/inventories/prod/group_vars/all.yml`) that pins `signer: ledger` and
+fails the playbook if any operation requests otherwise. (This `signer:` pin lands
+with the sub-project-3 ops playbooks; the deploy-side layer has no signing.)
 
 **Real-Ledger rehearsal cadence:** Before every prod promotion, the most
 recent staging release-candidate run is repeated end-to-end with

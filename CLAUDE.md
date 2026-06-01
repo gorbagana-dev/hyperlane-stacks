@@ -52,6 +52,9 @@ When you add/remove/rename an env var or configmap in a compose file:
 - Update the corresponding `deployment/spec-*.yml`
 - Update the corresponding `tests/e2e/fixtures/test-spec-*.yml` (if it exists)
 - Update the test code in `tests/e2e/test_*.py` if affected
+- Update the stack's entry in the `stack_env_vars` map in
+  `ops/inventories/*/group_vars/all.yml` — the deploy-side ansible layer assembles
+  each stack's `laconic-so` env from that map (see `ops/README.md`)
 
 ### 2. Config dirs ↔ Compose volumes ↔ Stack definitions
 
