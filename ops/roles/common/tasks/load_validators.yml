@@ -1,0 +1,33 @@
+---
+# Loads validators.yaml and sets derived facts (see Task 3 spec).
+# Input var: validators_file (path). Defaults to the env's operator file.
+- name: Resolve validators_file default
+  ansible.builtin.set_fact:
+    _default_validators_file: "{{ deployment_root ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}"
+
+- name: Apply validators_file override when provided
+  ansible.builtin.set_fact:
+    _validators_file: "{{ validators_file | default(_default_validators_file) }}"
+
+- name: Read validators.yaml
+  ansible.builtin.set_fact:
+    validators: "{{ (lookup('ansible.builtin.file', _validators_file) | from_yaml)['validators'] }}"
+
+- name: Derive MINIO_USERS
+  ansible.builtin.set_fact:
+    minio_users: "{{ validators | map(attribute='label') | join(',') }}"
+
+- name: Derive per-label env prefixes
+  ansible.builtin.set_fact:
+    validator_env_prefixes: "{{ validators | map(attribute='label') | map('upper') | map('replace', '-', '_') | list }}"
+
+- name: Derive validator DNS records
+  ansible.builtin.set_fact:
+    validator_dns_records: "{{ validator_dns_records | default([]) + [_record] }}"
+  vars:
+    _record:
+      name: "{{ item.hostname | regex_replace('\\.' ~ dns_zone ~ '$', '') }}"
+      host: "{{ item.host }}"
+  loop: "{{ validators }}"
+  loop_control:
+    label: "{{ item.label }}"

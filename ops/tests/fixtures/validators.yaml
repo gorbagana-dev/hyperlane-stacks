@@ -1,0 +1,12 @@
+---
+validators:
+  - label: gorchain-primary
+    chain: gorchain
+    host: bridge-host-1
+    privy_wallet_id: priv_aaa
+    hostname: validator-gorchain.bridge.gorbagana.wtf
+  - label: solana-primary
+    chain: solana
+    host: bridge-host-1
+    privy_wallet_id: priv_bbb
+    hostname: validator-solana.bridge.gorbagana.wtf

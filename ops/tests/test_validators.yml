@@ -1,0 +1,28 @@
+---
+- name: validators.yaml derivation assertions
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
+  tasks:
+    - name: Load + derive
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: MINIO_USERS is the comma-joined label list
+      ansible.builtin.assert:
+        that: "minio_users == 'gorchain-primary,solana-primary'"
+        fail_msg: "got '{{ minio_users }}'"
+
+    - name: Per-label env prefixes are upper-snake
+      ansible.builtin.assert:
+        that:
+          - "'GORCHAIN_PRIMARY' in validator_env_prefixes"
+          - "'SOLANA_PRIMARY' in validator_env_prefixes"
+
+    - name: Validator DNS records resolve label hostnames to the right host
+      ansible.builtin.assert:
+        that:
+          - "validator_dns_records | length == 2"
+          - "validator_dns_records[0].name == 'validator-gorchain'"
+          - "validator_dns_records[0].host == 'bridge-host-1'"
