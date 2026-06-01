@@ -142,9 +142,10 @@ CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint
 - **Optional warp-deployer** is not wired into `deploy-all.yml`. For a warp route,
   deploy `spec-warp-deployer.yml` via `stack_deploy` and re-run
   `commit-bridge-state.yml` between the deployer and the consumers.
-- **Deployer state path:** the `commit-bridge-state.yml` `synchronize` source path
-  (`{kind_mount_root}/deployments/hyperlane-svm-deployer/data/.../generated/`) is a
-  best-guess of the on-host layout — confirm against the real deployer run.
+- **Deployer state path:** `commit-bridge-state.yml` pulls from
+  `{kind_mount_root}/bridge/generated/` (the deployer spec's `bridge-state`
+  host-path volume). Confirm the files land there as expected on the first real
+  deployer run.
 - **gas-oracle / warp-ui state → env:** these consume state via laconic-so
   `conftest` rather than a ConfigMap; their `state_distribute` runs with an empty
   `configmap_names` (git-pull only). Confirm the conftest wiring on first run.
