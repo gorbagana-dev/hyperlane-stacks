@@ -21,9 +21,7 @@ scrape_configs:
   # Caddy hostname. The container entrypoint (render-targets.sh) renders the
   # target list from PROMETHEUS_VALIDATOR_TARGETS into validators.yml on start.
   # hyperlane_instance distinguishes validators (incl. multiple on one chain).
-  # Prod serves Let's Encrypt certs (trusted by the default CA bundle), so no
-  # tls_config is needed; the scheme is rendered from PROMETHEUS_SCRAPE_SCHEME
-  # (https in prod, http for in-cluster e2e scraping).
+  # Scheme is rendered from PROMETHEUS_SCRAPE_SCHEME (https prod, http e2e).
   - job_name: validators
     scheme: https
     metrics_path: /metrics

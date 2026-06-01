@@ -49,8 +49,7 @@ Each entry is `instance_label=host:port` (consistent with the existing
 `MONITORED_WALLETS_*` `label:addr:threshold` convention). Targets use the
 validators'/relayer's **existing** Caddy hostnames — no rename. The
 `hyperlane_instance` label is independent of hostname, so one validator per chain
-needs no extra config. Prod TLS is publicly trusted (Let's Encrypt via Caddy), so
-no `tls_config` is needed.
+needs no extra config.
 
 #### Render location: prometheus container entrypoint
 
