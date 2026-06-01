@@ -4,7 +4,7 @@
 
 **Goal:** Scrape validator/relayer `/metrics` cross-host over public DNS, with the target list configured per-deployment in the spec, and make the dashboards break data down per validator/relayer instance.
 
-**Architecture:** `prometheus.yml`'s `validators`/`relayers` jobs use `file_sd_configs`. The prometheus container's entrypoint (`render-targets.sh`) renders the target files and scrape scheme from spec-provided env vars (`PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` / `PROMETHEUS_SCRAPE_SCHEME`) on each start, then `exec`s prometheus — so adding a validator is an env change + restart. Prod scrapes the existing public Caddy hostnames over `https`; the e2e cluster scrapes the pods in-cluster via `external-services` over `http`. Dashboards gain a `hyperlane_instance` template variable and group by it.
+**Architecture:** `prometheus.yml`'s `validators`/`relayers` jobs use `file_sd_configs`. The prometheus container's entrypoint (`run.sh`) renders the target files and scrape scheme from spec-provided env vars (`PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` / `PROMETHEUS_SCRAPE_SCHEME`) on each start, then `exec`s prometheus — so adding a validator is an env change + restart. Prod scrapes the existing public Caddy hostnames over `https`; the e2e cluster scrapes the pods in-cluster via `external-services` over `http`. Dashboards gain a `hyperlane_instance` template variable and group by it.
 
 **Tech Stack:** Prometheus (`file_sd_configs`), POSIX `sh` entrypoint, Grafana dashboards (JSON), laconic-so k8s-kind deploy, pytest e2e.
 
@@ -17,7 +17,7 @@
 | File | Responsibility | Change |
 |---|---|---|
 | `stack_orchestrator/data/config/prometheus-config/prometheus.yml` | Prometheus scrape config | `validators`/`relayers` jobs use `file_sd_configs` at `/prometheus/targets/*.yml` |
-| `stack_orchestrator/data/config/prometheus-config/render-targets.sh` | prometheus container entrypoint | New. Render file_sd targets + scheme from env, then `exec` prometheus |
+| `stack_orchestrator/data/config/prometheus-config/run.sh` | prometheus container entrypoint | New. Render file_sd targets + scheme from env, then `exec` prometheus |
 | `stack_orchestrator/data/compose/docker-compose-hyperlane-monitoring.yml` | monitoring compose | prometheus `entrypoint` runs the script; `environment:` passes the three vars |
 | `deployment/spec-monitoring.yml` | prod spec | The three `config:` entries (prod hostnames + `https`) |
 | `tests/e2e/fixtures/test-spec-monitoring.yml` | e2e spec | In-cluster `service:port` targets + `PROMETHEUS_SCRAPE_SCHEME: http` + `external-services:` |
@@ -34,7 +34,7 @@ The monitoring stack has no `deploy/commands.py` hook — the entrypoint does th
 
 **Files:**
 - Modify: `stack_orchestrator/data/config/prometheus-config/prometheus.yml`
-- Add: `stack_orchestrator/data/config/prometheus-config/render-targets.sh`
+- Add: `stack_orchestrator/data/config/prometheus-config/run.sh`
 - Modify: `stack_orchestrator/data/compose/docker-compose-hyperlane-monitoring.yml`
 - Modify: `deployment/spec-monitoring.yml`
 
@@ -58,11 +58,11 @@ In `prometheus.yml`, replace the `kubernetes-pods` job with two `file_sd_configs
 
 - [ ] **Step 2: Add the entrypoint render script**
 
-Add `render-targets.sh` (POSIX `sh` — the `prom/prometheus` image is busybox). It reads `PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` (comma-separated `instance=host:port`) and writes file_sd YAML (each target tagged with its `hyperlane_instance` label) to `/prometheus/targets/` — `/etc/prometheus` is a read-only ConfigMap, so output goes to the writable data dir. It renders the scrape scheme from `PROMETHEUS_SCRAPE_SCHEME` (default `https`) into a writable copy of `prometheus.yml`, then `exec /bin/prometheus --config.file=/prometheus/prometheus.yml "$@"`. A malformed entry fails the container fast; an empty var writes `[]`.
+Add `run.sh` (POSIX `sh` — the `prom/prometheus` image is busybox). It reads `PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` (comma-separated `instance=host:port`) and writes file_sd YAML (each target tagged with its `hyperlane_instance` label) to `/prometheus/targets/` — `/etc/prometheus` is a read-only ConfigMap, so output goes to the writable data dir. It renders the scrape scheme from `PROMETHEUS_SCRAPE_SCHEME` (default `https`) into a writable copy of `prometheus.yml`, then `exec /bin/prometheus --config.file=/prometheus/prometheus.yml "$@"`. A malformed entry fails the container fast; an empty var writes `[]`.
 
 - [ ] **Step 3: Wire the entrypoint + env in compose**
 
-In the `prometheus` service: set `entrypoint: ["/bin/sh", "/etc/prometheus/render-targets.sh"]`, keep the prometheus flags in `command:` (minus `--config.file`, which the script supplies), and add an `environment:` block passing `PROMETHEUS_VALIDATOR_TARGETS`, `PROMETHEUS_RELAYER_TARGETS`, `PROMETHEUS_SCRAPE_SCHEME` from spec config. (Compose `entrypoint` → k8s `command`, `command` → k8s `args`.)
+In the `prometheus` service: set `entrypoint: ["/bin/sh", "/etc/prometheus/run.sh"]`, keep the prometheus flags in `command:` (minus `--config.file`, which the script supplies), and add an `environment:` block passing `PROMETHEUS_VALIDATOR_TARGETS`, `PROMETHEUS_RELAYER_TARGETS`, `PROMETHEUS_SCRAPE_SCHEME` from spec config. (Compose `entrypoint` → k8s `command`, `command` → k8s `args`.)
 
 - [ ] **Step 4: Add the spec config entries**
 
@@ -72,7 +72,7 @@ In `deployment/spec-monitoring.yml` `config:`, add `PROMETHEUS_VALIDATOR_TARGETS
 
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('stack_orchestrator/data/config/prometheus-config/prometheus.yml')); print('ok')"
-sh -n stack_orchestrator/data/config/prometheus-config/render-targets.sh && echo "script ok"
+sh -n stack_orchestrator/data/config/prometheus-config/run.sh && echo "script ok"
 ```
 
 - [ ] **Step 6: Commit**

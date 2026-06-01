@@ -14,8 +14,8 @@ RENDER_DIR=/prometheus
 TARGETS_DIR="$RENDER_DIR/targets"
 mkdir -p "$TARGETS_DIR"
 
-# run <comma-separated instance=host:port list> <output file>
-run() {
+# render_targets <comma-separated instance=host:port list> <output file>
+render_targets() {
     out=$2
     : > "$out"
     oldifs=$IFS
@@ -27,7 +27,7 @@ run() {
             case $entry in
                 *=*:*) : ;;
                 *)
-                    echo "render-targets: bad entry '$entry' (want instance=host:port)" >&2
+                    echo "run: bad entry '$entry' (want instance=host:port)" >&2
                     exit 1
                     ;;
             esac
@@ -40,8 +40,8 @@ run() {
     [ -s "$out" ] || printf '[]\n' > "$out"
 }
 
-run "${PROMETHEUS_VALIDATOR_TARGETS:-}" "$TARGETS_DIR/validators.yml"
-run "${PROMETHEUS_RELAYER_TARGETS:-}" "$TARGETS_DIR/relayer.yml"
+render_targets "${PROMETHEUS_VALIDATOR_TARGETS:-}" "$TARGETS_DIR/validators.yml"
+render_targets "${PROMETHEUS_RELAYER_TARGETS:-}" "$TARGETS_DIR/relayer.yml"
 
 # Scrape scheme: https in prod (Caddy + Let's Encrypt); the e2e harness sets
 # http to scrape pods in-cluster. Rendered into a writable copy of the config.

@@ -53,7 +53,7 @@ needs no extra config.
 
 #### Render location: prometheus container entrypoint
 
-The prometheus container's entrypoint (`render-targets.sh`) renders the targets
+The prometheus container's entrypoint (`run.sh`) renders the targets
 on **each container start**:
 
 - reads `PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` and
@@ -100,7 +100,7 @@ colliding.
 
 | File | Change |
 |---|---|
-| `data/config/prometheus-config/render-targets.sh` | New. Container entrypoint: render file_sd targets + scheme from env, then `exec` prometheus. |
+| `data/config/prometheus-config/run.sh` | New. Container entrypoint: render file_sd targets + scheme from env, then `exec` prometheus. |
 | `data/config/prometheus-config/prometheus.yml` | `validators`/`relayers` jobs use `file_sd_configs` at `/prometheus/targets/{validators,relayer}.yml`. |
 | `data/compose/docker-compose-hyperlane-monitoring.yml` | prometheus service: `entrypoint` runs the script; `command` keeps the flags; `environment:` passes the three vars from spec config. |
 | `data/config/grafana-dashboards-config/validator-dashboard.json` | Add `hyperlane_instance` variable; group/select by instance. |

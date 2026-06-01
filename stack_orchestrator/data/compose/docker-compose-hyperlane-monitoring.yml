@@ -5,7 +5,7 @@ services:
     hostname: prometheus
     # Entrypoint renders the file_sd targets + scheme from env on each start,
     # then execs prometheus (it supplies --config.file for the rendered config).
-    entrypoint: ["/bin/sh", "/etc/prometheus/render-targets.sh"]
+    entrypoint: ["/bin/sh", "/etc/prometheus/run.sh"]
     command:
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"

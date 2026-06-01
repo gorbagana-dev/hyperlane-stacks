@@ -18,7 +18,7 @@ scrape_configs:
       - targets: ["localhost:9091"]
 
   # Validator metrics — scraped cross-host over public DNS via each validator's
-  # Caddy hostname. The container entrypoint (render-targets.sh) renders the
+  # Caddy hostname. The container entrypoint (run.sh) renders the
   # target list from PROMETHEUS_VALIDATOR_TARGETS into validators.yml on start.
   # hyperlane_instance distinguishes validators (incl. multiple on one chain).
   # Scheme is rendered from PROMETHEUS_SCRAPE_SCHEME (https prod, http e2e).
