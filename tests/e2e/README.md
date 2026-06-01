@@ -17,6 +17,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - **Fee claims** -- claims accumulated IGP fees on both chains, verifies beneficiary balance increases (skips with warning if no fees to claim)
 - **Warp UI (Tier 1)** -- deploys the warp-ui stack, verifies pod health, HTML serving, runtime route/chain config serving, and chain config presence via HTTP
 - **Warp UI (Tier 2)** -- drives the warp-ui in a Playwright browser with a mock Solana wallet, executes real bridge transfers through the UI
+- **Ledger signing (hardware wallet)** -- signs a real on-chain op (a Solana mailbox ownership round-trip) with a physically connected Ledger via the native `hyperlane-sealevel-client`, verifying built-in hardware-wallet signing end to end. Skipped by default; see [Ledger hardware-wallet test](#ledger-hardware-wallet-test)
 
 ## Prerequisites
 
@@ -133,6 +134,63 @@ pytest -v -x test_13_warp_ui_bridge.py
 pytest -v -x -m "not slow"
 ```
 
+## Ledger hardware-wallet test
+
+`test_14_ledger_signing.py` exercises built-in Ledger signing in the
+`hyperlane-sealevel-client`: it transfers Solana mailbox ownership to the
+Ledger's key and back, with the transfer-back signed **on the device**, then
+checks ownership is restored. It needs a physically attached Ledger, so it is
+**skipped by default** — a normal run is never blocked by missing hardware.
+
+### Prerequisites
+
+- A Ledger with the **Solana app** installed and open (device unlocked).
+- **Blind signing enabled** in the Solana app (Settings → Blind signing).
+  Hyperlane's instructions aren't a plain transfer the app can decode, so
+  without this the device rejects them.
+- **Linux only:** Ledger udev rules installed, so the device is reachable over
+  USB-HID without root, then replug it:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/LedgerHQ/udev-rules/master/add_udev_rules.sh | sudo bash
+  ```
+- A **native** `hyperlane-sealevel-client` binary **with built-in Ledger
+  support** (a published release build). The Ledger talks USB-HID on the host,
+  so this can't run inside the deployer Docker image. Point
+  `HYPERLANE_SEALEVEL_CLIENT_BIN` at it (see below).
+
+### Get the Ledger's Solana address
+
+With the device unlocked and the Solana app open:
+
+```bash
+solana-keygen pubkey "usb://ledger?key=0/0"
+```
+
+That value is `E2E_LEDGER_PUBKEY` below. (`key=0/0` is the first account — bump
+it to match whichever derivation path you intend to sign with.)
+
+### Enable and run
+
+Export three variables, then run the test on its own or as part of the whole
+suite — it slots in after the bridge tests:
+
+```bash
+export E2E_LEDGER=1
+export HYPERLANE_SEALEVEL_CLIENT_BIN=/abs/path/to/hyperlane-sealevel-client
+export E2E_LEDGER_PUBKEY=<address from solana-keygen above>
+
+# Just this test (still brings up the full stack it depends on):
+xvfb-run pytest -v -x test_14_ledger_signing.py
+
+# As part of the entire suite:
+xvfb-run pytest -v -x
+```
+
+Approve the prompt on the device when the transfer-back is signed. If any of
+the three variables is unset the test skips with a message explaining what's
+missing, so the default suite run is unaffected. (You can also select it
+explicitly with `-m requires_ledger`.)
+
 ## Iterating on a specific stack
 
 The most common workflow during development: tear down one stack, fix something, rerun from that point without recreating the cluster or redeploying earlier stacks.
@@ -232,6 +290,7 @@ tests/e2e/
 ├── test_11_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
 ├── test_12_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
 ├── test_13_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
+├── test_14_ledger_signing.py            # Ledger hardware-wallet signing test (skipped without a device)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture

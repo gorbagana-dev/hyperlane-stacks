@@ -9,7 +9,7 @@ Run with:
     E2E_LEDGER=1 \
     HYPERLANE_SEALEVEL_CLIENT_BIN=/path/to/hyperlane-sealevel-client \
     E2E_LEDGER_PUBKEY=<ledger solana pubkey> \
-    pytest tests/e2e/test_13_ledger_signing.py -m requires_ledger
+    pytest tests/e2e/test_14_ledger_signing.py -m requires_ledger
 """
 
 import os

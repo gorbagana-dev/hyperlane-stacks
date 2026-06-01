@@ -32,7 +32,7 @@
 **hyperlane-stacks — `tests/e2e/`:**
 - Modify: `pytest.ini` — register a `requires_ledger` marker.
 - Modify: `lib/common.py` — `ledger_available()` gate + `run_native_client()` runner.
-- Create: `test_13_ledger_signing.py` — the gated ownership round-trip test.
+- Create: `test_14_ledger_signing.py` — the gated ownership round-trip test.
 
 ---
 
@@ -591,13 +591,13 @@ git commit -m "test(e2e): add Ledger gate and native sealevel-client runner"
 ## Task 8: e2e Ledger signing test (hyperlane-stacks)
 
 **Files:**
-- Create: `tests/e2e/test_13_ledger_signing.py`
+- Create: `tests/e2e/test_14_ledger_signing.py`
 
 The test proves the native client signs with a Ledger and the tx lands, via a mailbox-owner round-trip that restores the original owner. It runs last, is gated, and entangles only the solana mailbox owner (restored before exit). Operator prerequisites: Ledger connected + unlocked, Solana app open with **blind signing enabled**; on Linux, Ledger udev rules installed.
 
 - [ ] **Step 1: Write the test**
 
-Create `/home/dev/git_puller/repos/hyperlane-stacks/tests/e2e/test_13_ledger_signing.py`:
+Create `/home/dev/git_puller/repos/hyperlane-stacks/tests/e2e/test_14_ledger_signing.py`:
 
 ```python
 """Ledger hardware-signing e2e test.
@@ -611,7 +611,7 @@ Run with:
     E2E_LEDGER=1 \
     HYPERLANE_SEALEVEL_CLIENT_BIN=/path/to/hyperlane-sealevel-client \
     E2E_LEDGER_PUBKEY=<ledger solana pubkey> \
-    pytest tests/e2e/test_13_ledger_signing.py -m slow
+    pytest tests/e2e/test_14_ledger_signing.py -m slow
 """
 
 import os
@@ -694,21 +694,21 @@ class TestLedgerSigning:
 
 - [ ] **Step 2: Verify it collects and skips cleanly without a Ledger**
 
-Run: `cd /home/dev/git_puller/repos/hyperlane-stacks/tests/e2e && python3 -m pytest test_13_ledger_signing.py --collect-only -q`
+Run: `cd /home/dev/git_puller/repos/hyperlane-stacks/tests/e2e && python3 -m pytest test_14_ledger_signing.py --collect-only -q`
 Expected: collects `TestLedgerSigning::test_ledger_signs_ownership_roundtrip` with no import/collection errors.
 
-(A full run requires the deployed-bridge fixtures + hardware; do not run the body here. Collection success is the gate. If `--collect-only` triggers heavyweight session fixtures in this harness, instead assert importability: `python3 -c "import test_13_ledger_signing"` from `tests/e2e`.)
+(A full run requires the deployed-bridge fixtures + hardware; do not run the body here. Collection success is the gate. If `--collect-only` triggers heavyweight session fixtures in this harness, instead assert importability: `python3 -c "import test_14_ledger_signing"` from `tests/e2e`.)
 
 - [ ] **Step 3: Lint**
 
-Run: `cd /home/dev/git_puller/repos/hyperlane-stacks && ruff check tests/e2e/test_13_ledger_signing.py`
+Run: `cd /home/dev/git_puller/repos/hyperlane-stacks && ruff check tests/e2e/test_14_ledger_signing.py`
 Expected: passes.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd /home/dev/git_puller/repos/hyperlane-stacks
-git add tests/e2e/test_13_ledger_signing.py
+git add tests/e2e/test_14_ledger_signing.py
 git commit -m "test(e2e): Ledger-signed mailbox ownership round-trip"
 ```
 
