@@ -1,5 +1,5 @@
 ---
-- name: laconic-so is installed
+- name: Verify laconic-so is installed
   ansible.builtin.command: laconic-so version
   changed_when: false
   when: not ansible_check_mode

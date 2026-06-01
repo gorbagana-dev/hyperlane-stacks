@@ -1,0 +1,96 @@
+---
+- name: Resolve deploy dir (honor caller override, else derive)
+  ansible.builtin.set_fact:
+    deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"
+    init_spec: "{{ deploy_base }}/{{ stack_name }}-spec.yml"
+
+- name: Check whether the deployment was already created
+  ansible.builtin.stat:
+    path: "{{ deploy_dir }}/deployment.yml"
+  register: _dep
+
+- name: Assemble env from the per-stack map
+  ansible.builtin.set_fact:
+    stack_env: >-
+      {{ dict(stack_env_vars[stack_name]
+         | zip(stack_env_vars[stack_name] | map('extract', vars) | list)) }}
+
+- name: Prepare (init + create) when not yet created
+  when:
+    - not _dep.stat.exists
+    - not ansible_check_mode
+  block:
+    - name: Ensure deploy base exists
+      ansible.builtin.file:
+        path: "{{ deploy_base }}"
+        state: directory
+        mode: "0755"
+
+    - name: Run deploy init
+      ansible.builtin.command:
+        argv:
+          - laconic-so
+          - --stack
+          - "{{ stack_path }}"
+          - deploy
+          - init
+          - --output
+          - "{{ init_spec }}"
+      changed_when: true
+
+    - name: Install our committed spec over the generated one
+      ansible.builtin.copy:
+        src: "{{ spec_file }}"
+        dest: "{{ init_spec }}"
+        remote_src: true
+        mode: "0644"
+
+    - name: Run deploy create
+      ansible.builtin.command:
+        argv:
+          - laconic-so
+          - --stack
+          - "{{ stack_path }}"
+          - deploy
+          - create
+          - --spec-file
+          - "{{ init_spec }}"
+          - --deployment-dir
+          - "{{ deploy_dir }}"
+      changed_when: true
+
+    - name: Patch human-readable deployment-id
+      ansible.builtin.replace:
+        path: "{{ deploy_dir }}/deployment.yml"
+        regexp: '^(deployment-id:\s*).*$'
+        replace: '\g<1>{{ deployment_id }}'
+
+- name: Start deployment (create-or-reuse cluster + Caddy)
+  ansible.builtin.command:
+    argv:
+      - laconic-so
+      - deployment
+      - --dir
+      - "{{ deploy_dir }}"
+      - start
+      - --perform-cluster-management
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Wait for Job completion (deployer/warp-deployer specs only)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --context
+      - kind-hyperlane
+      - -n
+      - "laconic-{{ stack_name }}"
+      - wait
+      - --for=condition=complete
+      - job
+      - --all
+      - --timeout=1800s
+  changed_when: false
+  when:
+    - stack_is_job | default(false) | bool
+    - not ansible_check_mode
