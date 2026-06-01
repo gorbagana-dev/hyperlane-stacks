@@ -269,8 +269,8 @@ class TestMonitoring:
         """Relayer is scraped cross-host (up == 1)."""
         prom_url = monitoring_deployment["prometheus_url"]
 
-        results = _prometheus_query(prom_url, 'up{job="relayer"}')
-        assert len(results) > 0, "No up series for job=relayer"
+        results = _prometheus_query(prom_url, 'up{job="relayers"}')
+        assert len(results) > 0, "No up series for job=relayers"
         assert results[0]["value"][1] == "1", f"relayer target down: {results}"
         log.info("Relayer scrape target up")
 

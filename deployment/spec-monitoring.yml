@@ -13,11 +13,15 @@ config:
   MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
   BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
   BALANCE_CHECK_INTERVAL: "300"
-  # Prometheus scrape targets, rendered to file_sd by the stack's deploy hook.
-  # Format: comma-separated instance_label=host:port. Append one entry per
-  # validator/relayer; Prometheus reloads the targets live (no restart).
+  # Prometheus scrape targets, rendered to file_sd by the prometheus container's
+  # entrypoint on each start. Format: comma-separated instance_label=host:port,
+  # one entry per instance. Add an instance here and restart the stack to pick
+  # it up.
   PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.bridge.gorbagana.wtf:443,solana-primary=validator-solana.bridge.gorbagana.wtf:443"
   PROMETHEUS_RELAYER_TARGETS: "primary=relayer.bridge.gorbagana.wtf:443"
+  # Scrape scheme: https in prod (Caddy + Let's Encrypt). The e2e harness sets
+  # http to scrape pods in-cluster.
+  PROMETHEUS_SCRAPE_SCHEME: "https"
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:

@@ -17,24 +17,22 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9091"]
 
-  # Validator metrics — scraped cross-host over public DNS via each
-  # validator's Caddy hostname. The target list is rendered from the
-  # deployment spec (PROMETHEUS_VALIDATOR_TARGETS) into validators.yml by the
-  # stack's deploy/commands.py hook; Prometheus watches that file and reloads
-  # targets without a restart, so validators can be added to a live deployment.
+  # Validator metrics — scraped cross-host over public DNS via each validator's
+  # Caddy hostname. The container entrypoint (render-targets.sh) renders the
+  # target list from PROMETHEUS_VALIDATOR_TARGETS into validators.yml on start.
   # hyperlane_instance distinguishes validators (incl. multiple on one chain).
   # Prod serves Let's Encrypt certs (trusted by the default CA bundle), so no
-  # tls_config is needed. The e2e harness adds a tls_config.ca_file pointing at
-  # the mkcert root CA for the .test hostnames.
+  # tls_config is needed; the scheme is rendered from PROMETHEUS_SCRAPE_SCHEME
+  # (https in prod, http for in-cluster e2e scraping).
   - job_name: validators
     scheme: https
     metrics_path: /metrics
     file_sd_configs:
-      - files: ["/etc/prometheus/validators.yml"]
+      - files: ["/prometheus/targets/validators.yml"]
 
   # Relayer metrics — rendered from PROMETHEUS_RELAYER_TARGETS into relayer.yml.
-  - job_name: relayer
+  - job_name: relayers
     scheme: https
     metrics_path: /metrics
     file_sd_configs:
-      - files: ["/etc/prometheus/relayer.yml"]
+      - files: ["/prometheus/targets/relayer.yml"]

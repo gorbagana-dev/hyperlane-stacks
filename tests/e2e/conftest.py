@@ -1377,18 +1377,6 @@ PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
 
-def _patch_prometheus_scheme_for_test(deploy_dir: Path) -> None:
-    """Scrape the validator/relayer targets in-cluster over plain HTTP.
-
-    Prod scrapes over public HTTPS (Caddy + Let's Encrypt). The e2e cluster
-    routes Prometheus to the validator/relayer pods directly via the monitoring
-    spec's external-services, so the scrape jobs use http here."""
-    prom_yml = deploy_dir / "configmaps" / "prometheus-config" / "prometheus.yml"
-    prom_yml.write_text(
-        prom_yml.read_text().replace("scheme: https", "scheme: http")
-    )
-    log.info("Patched prometheus.yml scrape jobs to http (in-cluster targets)")
-
 def _wait_for_balance_monitor(
     namespace: str, pod_name: str, timeout: int = 60,
 ) -> None:
@@ -1529,8 +1517,6 @@ def monitoring_deployment(
         spec_replacements=SPEC_REPLACEMENTS,
         deployment_id="monitoring",
     )
-
-    _patch_prometheus_scheme_for_test(deploy_info.deploy_dir)
 
     bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
 
