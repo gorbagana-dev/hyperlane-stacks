@@ -1,0 +1,31 @@
+---
+- name: stack env assembly resolves names to values
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    GORCHAIN_RPC_URL: "https://gorchain.example"
+    SOLANA_RPC_URL: "https://solana.example"
+    MINIO_ROOT_USER: "root"
+    MINIO_ROOT_PASSWORD: "pw"
+    MINIO_USERS: "a,b"
+    stack_env_vars:
+      hyperlane-minio:
+        - MINIO_ROOT_USER
+        - MINIO_ROOT_PASSWORD
+        - MINIO_USERS
+      hyperlane-relayer:
+        - GORCHAIN_RPC_URL
+        - SOLANA_RPC_URL
+  tasks:
+    - name: Assemble env for minio
+      ansible.builtin.set_fact:
+        stack_env: >-
+          {{ dict(stack_env_vars['hyperlane-minio']
+             | zip(stack_env_vars['hyperlane-minio'] | map('extract', vars) | list)) }}
+    - name: Names resolved to values
+      ansible.builtin.assert:
+        that:
+          - "stack_env.MINIO_ROOT_USER == 'root'"
+          - "stack_env.MINIO_USERS == 'a,b'"
+          - "stack_env | length == 3"

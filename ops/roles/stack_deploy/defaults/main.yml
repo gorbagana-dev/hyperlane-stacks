@@ -1,0 +1,4 @@
+---
+# Caller sets: stack_name, spec_file (absolute), stack_path (absolute).
+deploy_base: "{{ kind_mount_root }}/deployments"
+deployment_id: "{{ stack_name }}"

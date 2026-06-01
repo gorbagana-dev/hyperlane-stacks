@@ -1,0 +1,15 @@
+---
+- name: laconic-so is installed
+  ansible.builtin.command: laconic-so version
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Expected hostnames resolve to this host's public IP
+  ansible.builtin.command: "dig +short {{ item }}"
+  register: _dig
+  changed_when: false
+  failed_when: "public_ip not in _dig.stdout"
+  loop: "{{ stack_hostnames | default([]) }}"
+  when:
+    - not ansible_check_mode
+    - stack_hostnames | default([]) | length > 0
