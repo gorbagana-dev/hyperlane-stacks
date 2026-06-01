@@ -1,4 +1,8 @@
 ---
+- name: Set Go-style arch for binary downloads
+  ansible.builtin.set_fact:
+    kube_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
 - name: Install prerequisite apt packages
   ansible.builtin.apt:
     name: [ca-certificates, curl, gnupg, git]
@@ -20,10 +24,22 @@
     mode: "0644"
   become: true
 
+- name: Read the downloaded Docker key fingerprint
+  ansible.builtin.command:
+    cmd: gpg --show-keys --with-colons /etc/apt/keyrings/docker.asc
+  register: docker_key_show
+  changed_when: false
+  become: true
+
+- name: Fail unless the Docker key matches the published fingerprint
+  ansible.builtin.assert:
+    that: "'9DC858229FC7DD38854AE2D88D81803C0EBFCD88' in docker_key_show.stdout"
+    fail_msg: "Docker GPG key fingerprint mismatch — refusing to add the repo (possible tampering)"
+
 - name: Add Docker apt repository
   ansible.builtin.apt_repository:
     repo: >-
-      deb [arch={{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}
+      deb [arch={{ kube_arch }}
       signed-by=/etc/apt/keyrings/docker.asc]
       https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
     state: present
@@ -43,20 +59,24 @@
     append: true
   become: true
 
-- name: Install kind binary
+- name: Install kind binary (checksum-verified against the release sha256sum)
   ansible.builtin.get_url:
     url: >-
-      https://kind.sigs.k8s.io/dl/{{ prerequisites_privileged_kind_version }}/kind-linux-{{ 'amd64' if
-      ansible_architecture == 'x86_64' else 'arm64' }}
+      https://kind.sigs.k8s.io/dl/{{ prerequisites_privileged_kind_version }}/kind-linux-{{ kube_arch }}
+    checksum: >-
+      sha256:https://github.com/kubernetes-sigs/kind/releases/download/{{
+      prerequisites_privileged_kind_version }}/kind-linux-{{ kube_arch }}.sha256sum
     dest: /usr/local/bin/kind
     mode: "0755"
   become: true
 
-- name: Install kubectl binary
+- name: Install kubectl binary (checksum-verified against the published sha256)
   ansible.builtin.get_url:
     url: >-
-      https://dl.k8s.io/release/{{ prerequisites_privileged_kubectl_version }}/bin/linux/{{ 'amd64' if
-      ansible_architecture == 'x86_64' else 'arm64' }}/kubectl
+      https://dl.k8s.io/release/{{ prerequisites_privileged_kubectl_version }}/bin/linux/{{ kube_arch }}/kubectl
+    checksum: >-
+      sha256:https://dl.k8s.io/release/{{ prerequisites_privileged_kubectl_version }}/bin/linux/{{
+      kube_arch }}/kubectl.sha256
     dest: /usr/local/bin/kubectl
     mode: "0755"
   become: true
