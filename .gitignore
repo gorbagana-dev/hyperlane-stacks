@@ -6,3 +6,4 @@ node_modules/
 .keys
 .venv/
 .backpack-ext/
+ops/collections/

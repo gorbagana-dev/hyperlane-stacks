@@ -1,0 +1,36 @@
+name: ops-lint
+
+on:
+  pull_request:
+    paths: ["ops/**", ".github/workflows/ops-lint.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ./ops
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tooling
+        run: pip install "ansible>=9" ansible-lint yamllint
+      - name: Install collections
+        run: ansible-galaxy collection install -r requirements.yml -p ./collections
+      - name: yamllint
+        run: yamllint .
+      - name: ansible-lint
+        run: ansible-lint .
+      - name: syntax-check playbooks + tests
+        run: |
+          shopt -s nullglob
+          for p in playbooks/*.yml tests/test_*.yml; do
+            echo "== $p =="
+            ansible-playbook --syntax-check "$p"
+          done
