@@ -16,6 +16,9 @@ config:
   MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "30"
+  # Cross-host scrape targets via the .test Caddy hostnames (mkcert-trusted).
+  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.test:443,solana-primary=validator-solana.test:443"
+  PROMETHEUS_RELAYER_TARGETS: "primary=relayer.test:443"
 volumes:
   prometheus-data: /tmp/hyperlane-bridge-e2e/monitoring/prometheus
   grafana-data: /tmp/hyperlane-bridge-e2e/monitoring/grafana

@@ -1378,8 +1378,10 @@ PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
 
 def _patch_prometheus_targets_for_test(deploy_dir: Path) -> None:
-    """Repoint the prometheus-config ConfigMap at the .test hostnames and mount
-    the mkcert root CA so Prometheus can verify their certs."""
+    """Mount the mkcert root CA and point each scrape job at it so Prometheus
+    can verify the .test certs. The .test target hostnames come from the test
+    spec's PROMETHEUS_*_TARGETS config (rendered to file_sd by the deploy hook),
+    so no hostname rewriting is needed here."""
     cm_dir = deploy_dir / "configmaps" / "prometheus-config"
 
     # Mount the mkcert root CA so Prometheus can verify the .test certs.
@@ -1390,7 +1392,6 @@ def _patch_prometheus_targets_for_test(deploy_dir: Path) -> None:
 
     prom_yml = cm_dir / "prometheus.yml"
     text = prom_yml.read_text()
-    text = text.replace(".bridge.gorbagana.wtf", ".test")
     text = text.replace(
         "    metrics_path: /metrics\n",
         "    metrics_path: /metrics\n"
@@ -1398,7 +1399,7 @@ def _patch_prometheus_targets_for_test(deploy_dir: Path) -> None:
         "      ca_file: /etc/prometheus/rootCA.pem\n",
     )
     prom_yml.write_text(text)
-    log.info("Patched prometheus.yml for .test hostnames + mkcert CA verification")
+    log.info("Patched prometheus.yml with mkcert CA verification")
 
 
 # Marker comment identifying the CoreDNS block this harness adds.

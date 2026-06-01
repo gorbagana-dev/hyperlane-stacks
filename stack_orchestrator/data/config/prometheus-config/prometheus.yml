@@ -18,7 +18,10 @@ scrape_configs:
       - targets: ["localhost:9091"]
 
   # Validator metrics — scraped cross-host over public DNS via each
-  # validator's Caddy hostname. Static list; append one target per validator.
+  # validator's Caddy hostname. The target list is rendered from the
+  # deployment spec (PROMETHEUS_VALIDATOR_TARGETS) into validators.yml by the
+  # stack's deploy/commands.py hook; Prometheus watches that file and reloads
+  # targets without a restart, so validators can be added to a live deployment.
   # hyperlane_instance distinguishes validators (incl. multiple on one chain).
   # Prod serves Let's Encrypt certs (trusted by the default CA bundle), so no
   # tls_config is needed. The e2e harness adds a tls_config.ca_file pointing at
@@ -26,16 +29,12 @@ scrape_configs:
   - job_name: validators
     scheme: https
     metrics_path: /metrics
-    static_configs:
-      - targets: ["validator-gorchain.bridge.gorbagana.wtf:443"]
-        labels: { hyperlane_instance: gorchain-primary }
-      - targets: ["validator-solana.bridge.gorbagana.wtf:443"]
-        labels: { hyperlane_instance: solana-primary }
+    file_sd_configs:
+      - files: ["/etc/prometheus/validators.yml"]
 
-  # Relayer metrics — one relayer per bridge in v1.
+  # Relayer metrics — rendered from PROMETHEUS_RELAYER_TARGETS into relayer.yml.
   - job_name: relayer
     scheme: https
     metrics_path: /metrics
-    static_configs:
-      - targets: ["relayer.bridge.gorbagana.wtf:443"]
-        labels: { hyperlane_instance: primary }
+    file_sd_configs:
+      - files: ["/etc/prometheus/relayer.yml"]
