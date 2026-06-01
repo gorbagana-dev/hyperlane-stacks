@@ -163,6 +163,14 @@
         spec_file: "{{ deployment_root }}/spec-validator-{{ item.label }}.yml"
         stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-validator"
         deploy_dir: "{{ hostvars[item.host].kind_mount_root }}/deployments/hyperlane-validator-{{ item.label }}"
+        stack_env_map_key: hyperlane-validator
+        GORCHAIN_RPC_URL: "{{ gorchain_rpc_url }}"
+        SOLANA_RPC_URL: "{{ solana_rpc_url }}"
+        PRIVY_APP_ID: "{{ privy_app_id }}"
+        PRIVY_APP_SECRET: "{{ privy_app_secret }}"
+        stack_env_extra: >-
+          {{ {(item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,
+              (item.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[item.label].secret} }}
       loop: "{{ validators }}"
       loop_control:
         label: "{{ item.label }}"

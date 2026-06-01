@@ -21,15 +21,16 @@ kind, kubectl (privileged) and laconic-so (unprivileged).
 
 ## Environments
 
-Everything is parameterised by `-e env=prod` (default) or `-e env=staging`, which
-selects two trees:
+The environment is selected entirely by the inventory you pass:
+`-i inventories/<env>/hosts.yml`. Each inventory's `group_vars/all.yml` sets the
+matching `deployment_root`, so picking the inventory picks both trees:
 
-- the inventory `-i inventories/<env>/hosts.yml` (hosts, `group_vars`,
-  `host_vars`, secrets)
+- the inventory itself (hosts, `group_vars`, `host_vars`, secrets)
 - the spec/state root `deployment/` (prod) or `deployment/staging/` (staging),
-  resolved as `deployment_root` in `group_vars/all.yml`
+  resolved as `deployment_root` in that inventory's `group_vars/all.yml`
 
-Per-env isolation: staging and prod share no mutable inventory or vars.
+There is no `-e env=` switch. Per-env isolation: staging and prod share no
+mutable inventory or vars.
 
 ## Secrets
 

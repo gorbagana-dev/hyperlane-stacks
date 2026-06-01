@@ -9,11 +9,11 @@
     generated_rel: "bridges/{{ bridge_name }}/generated"
     deployer_host: "{{ groups['deployer_hosts'][0] }}"
     deployer_data_root: >-
-      {{ hostvars[deployer_host].kind_mount_root }}/deployments/hyperlane-svm-deployer/data
+      {{ hostvars[deployer_host].kind_mount_root }}/bridge/generated
   tasks:
     - name: Pull generated files from the deployer host into the working tree
       ansible.posix.synchronize:
-        src: "{{ deployer_data_root }}/{{ generated_rel }}/"
+        src: "{{ deployer_data_root }}/"
         dest: "{{ deployment_root }}/{{ generated_rel }}/"
         mode: pull
       delegate_to: "{{ deployer_host }}"
