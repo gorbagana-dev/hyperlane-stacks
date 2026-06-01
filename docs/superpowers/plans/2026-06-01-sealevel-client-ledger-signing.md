@@ -47,7 +47,7 @@
 - **Version trap:** the lock contains both `solana-derivation-path` 2.2.1 and 3.0.0. `remote-wallet` uses **3.0.0**, so pin `=3.0.0` and import `DerivationPath` from `solana_derivation_path` (NOT `solana_sdk::derivation_path`, which may resolve to 2.2.1 and is a different type).
 - `context.rs` today: `PayerKeypair { keypair: Keypair, keypair_path: String }`; `payer_signer()` clones via `Keypair::try_from(&keypair.to_bytes()[..]).unwrap()` (`context.rs:117`) — impossible for `RemoteKeypair`. Call sites (`send_with_payer:298`, `send_with_pubkey_signer:312`) use `.as_deref()`, which works for `Option<Arc<dyn Signer>>` too (Arc derefs to `dyn Signer`).
 - Sealevel toolchain: `rust/sealevel/rust-toolchain` channel `1.86.0`; CI installs `libudev-dev` (so `hidapi` already builds). Binary name: `hyperlane-sealevel-client`. Build dir: `./rust/sealevel`.
-- e2e: existing `run_deployer_cli()` runs the client **in Docker** — unusable for a Ledger (USB passthrough is what we avoid). Chains: `CHAINS["solana"]["rpc"] == "http://127.0.0.1:18899"`. `mailbox transfer-ownership --program-id <id> --new-owner <pubkey>` is signed by the current owner; `mailbox query --program-id <id>` prints the account (incl. owner). Only registered marker today is `slow`; gating is done with runtime `pytest.skip(...)`.
+- e2e: existing `run_deployer_cli()` runs the client **in Docker** — unusable for a Ledger (USB passthrough is what we avoid). Chains: `CHAINS["solana"]["rpc"] == "http://127.0.0.1:18899"`. `mailbox transfer-ownership --program-id <id> <new-owner-pubkey>` (new_owner is a positional arg, not a flag) is signed by the current owner; `mailbox query --program-id <id>` prints the account (incl. owner). Only registered marker today is `slow`; gating is done with runtime `pytest.skip(...)`.
 
 ---
 
@@ -663,7 +663,7 @@ class TestLedgerSigning:
         to_ledger = run_deployer_cli(
             "mailbox", "transfer-ownership",
             "--program-id", mailbox,
-            "--new-owner", ledger_pubkey,
+            ledger_pubkey,
             rpc=rpc,
         )
         assert to_ledger.returncode == 0, to_ledger.stderr
@@ -674,7 +674,7 @@ class TestLedgerSigning:
         back = run_native_client(
             "mailbox", "transfer-ownership",
             "--program-id", mailbox,
-            "--new-owner", deployer_pubkey,
+            deployer_pubkey,
             keypair=LEDGER_KEYPAIR,
             rpc=rpc,
         )
