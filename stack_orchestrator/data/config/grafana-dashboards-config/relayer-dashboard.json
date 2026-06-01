@@ -108,7 +108,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (origin,remote)(round(increase(hyperlane_messages_processed_count[5m])))",
+          "expr": "sum by (origin,remote,hyperlane_instance)(round(increase(hyperlane_messages_processed_count{hyperlane_instance=~\"${hyperlane_instance:regex}\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{origin}}->{{remote}}",
@@ -205,7 +205,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (remote, queue_name)(\n    hyperlane_submitter_queue_length{queue_name=\"prepare_queue\"}\n)",
+          "expr": "sum by (remote, queue_name, hyperlane_instance)(\n    hyperlane_submitter_queue_length{queue_name=\"prepare_queue\", hyperlane_instance=~\"${hyperlane_instance:regex}\"}\n)",
           "interval": "",
           "legendFormat": "{{remote}}",
           "range": true,
@@ -302,7 +302,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "sum by(remote, queue_name) (hyperlane_submitter_queue_length{queue_name=\"submit_queue\"})",
+          "expr": "sum by(remote, queue_name, hyperlane_instance) (hyperlane_submitter_queue_length{queue_name=\"submit_queue\", hyperlane_instance=~\"${hyperlane_instance:regex}\"})",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "interval": "",
@@ -402,7 +402,7 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "sum by(remote, queue_name) (avg_over_time(hyperlane_submitter_queue_length{queue_name=\"confirm_queue\"}[20m]))",
+          "expr": "sum by(remote, queue_name, hyperlane_instance) (avg_over_time(hyperlane_submitter_queue_length{queue_name=\"confirm_queue\", hyperlane_instance=~\"${hyperlane_instance:regex}\"}[20m]))",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "interval": "",
@@ -420,7 +420,31 @@
   "schemaVersion": 39,
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "definition": "label_values(up{job=\"relayers\"}, hyperlane_instance)",
+        "description": "Validator/relayer instance (e.g. gorchain-primary).",
+        "includeAll": true,
+        "label": "Instance",
+        "multi": true,
+        "name": "hyperlane_instance",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up{job=\"relayers\"}, hyperlane_instance)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-7d",

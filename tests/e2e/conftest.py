@@ -1376,6 +1376,7 @@ GRAFANA_URL = f"https://{GRAFANA_HOSTNAME}"
 PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
+
 def _wait_for_balance_monitor(
     namespace: str, pod_name: str, timeout: int = 60,
 ) -> None:

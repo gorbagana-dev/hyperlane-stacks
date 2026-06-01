@@ -252,3 +252,40 @@ class TestMonitoring:
                 )
 
         log.info("Balance metrics have correct labels on both chains")
+
+    def test_validator_targets_up(self, monitoring_deployment: dict) -> None:
+        """Both validators are scraped cross-host (up == 1 per instance)."""
+        prom_url = monitoring_deployment["prometheus_url"]
+
+        results = _prometheus_query(prom_url, 'up{job="validators"}')
+        instances = {
+            r["metric"].get("hyperlane_instance"): r["value"][1] for r in results
+        }
+        assert instances.get("gorchain-primary") == "1", f"gorchain validator down: {instances}"
+        assert instances.get("solana-primary") == "1", f"solana validator down: {instances}"
+        log.info("Validator scrape targets up: %s", instances)
+
+    def test_relayer_target_up(self, monitoring_deployment: dict) -> None:
+        """Relayer is scraped cross-host (up == 1)."""
+        prom_url = monitoring_deployment["prometheus_url"]
+
+        results = _prometheus_query(prom_url, 'up{job="relayers"}')
+        assert len(results) > 0, "No up series for job=relayers"
+        assert results[0]["value"][1] == "1", f"relayer target down: {results}"
+        log.info("Relayer scrape target up")
+
+    def test_agent_metrics_have_instance_label(self, monitoring_deployment: dict) -> None:
+        """Agent metrics carry the hyperlane_instance label from the scrape target."""
+        prom_url = monitoring_deployment["prometheus_url"]
+
+        # hyperlane_block_height is always emitted by a running validator;
+        # checkpoint metrics only appear after bridge messages are processed.
+        results = _prometheus_query(
+            prom_url, 'hyperlane_block_height{agent="validator"}',
+        )
+        assert len(results) > 0, "No validator metrics scraped"
+        labels = {r["metric"].get("hyperlane_instance") for r in results}
+        assert labels & {"gorchain-primary", "solana-primary"}, (
+            f"hyperlane_instance label missing on agent metrics: {labels}"
+        )
+        log.info("Agent metrics carry hyperlane_instance: %s", labels)

@@ -3,10 +3,18 @@ services:
     image: prom/prometheus:latest
     restart: unless-stopped
     hostname: prometheus
+    # Entrypoint renders the file_sd targets + scheme from env on each start,
+    # then execs prometheus (it supplies --config.file for the rendered config).
+    entrypoint: ["/bin/sh", "/etc/prometheus/run.sh"]
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
+    environment:
+      # Scrape targets: comma-separated instance=host:port, one per instance.
+      PROMETHEUS_VALIDATOR_TARGETS: ${PROMETHEUS_VALIDATOR_TARGETS:-}
+      PROMETHEUS_RELAYER_TARGETS: ${PROMETHEUS_RELAYER_TARGETS:-}
+      # https in prod (Caddy + Let's Encrypt); http for in-cluster e2e scraping.
+      PROMETHEUS_SCRAPE_SCHEME: ${PROMETHEUS_SCRAPE_SCHEME:-https}
     volumes:
       - prometheus-config:/etc/prometheus:ro
       - prometheus-data:/prometheus

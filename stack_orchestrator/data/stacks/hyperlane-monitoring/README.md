@@ -2,7 +2,7 @@
 
 Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four containers:
 
-- **Prometheus** — scrapes metrics from validator and relayer pods via `kubernetes_sd_configs`, and from Pushgateway for balance metrics
+- **Prometheus** — scrapes validator and relayer `/metrics` over their public Caddy hostnames (targets configured in the spec), and Pushgateway for balance metrics
 - **Grafana** — dashboards for bridge operations, validator checkpoints, relayer throughput, and wallet balances
 - **Pushgateway** — receives balance metrics pushed by the balance monitor
 - **Balance monitor** — Python script that polls wallet balances via Solana JSON-RPC and pushes to Pushgateway
@@ -23,13 +23,12 @@ Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four
 
 **Metrics flow:**
 
-1. **Validator/relayer metrics**: Prometheus discovers pods with `prometheus.io/scrape: "true"` annotation via `kubernetes_sd_configs` and scrapes their `/metrics` endpoints directly
+1. **Validator/relayer metrics**: Prometheus scrapes each validator/relayer `/metrics` endpoint over its public Caddy hostname. Targets are declared in the spec (`PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS`); the prometheus container's entrypoint (`run.sh`) renders them to `validators.yml` / `relayer.yml` on each start, and the `validators` / `relayers` jobs in `prometheus.yml` consume them via `file_sd_configs`. Each target carries a `hyperlane_instance` label so multiple validators (including two on the same chain) appear as distinct series. Because rendering happens at container start, adding a validator is an env change plus a restart — no deploy hook or `laconic-so` update step. The scrape scheme is rendered from `PROMETHEUS_SCRAPE_SCHEME` (`https` in prod; the e2e harness sets `http` to scrape pods in-cluster).
 2. **Wallet balances**: The balance monitor queries Solana JSON-RPC (`getBalance`) for each configured wallet, then pushes `hyperlane_wallet_balance_sol` gauge metrics to Pushgateway. Prometheus scrapes Pushgateway on `localhost:9091`
 3. **Grafana**: Queries Prometheus as its datasource. Three dashboards are provisioned automatically: overview, validator detail, and relayer detail
 
 **Prerequisites:**
-- Validator and relayer specs must include `prometheus.io/scrape` and `prometheus.io/port` annotations (see `deployment/spec-validator-*.yml` and `deployment/spec-relayer.yml`)
-- The `deploy/commands.py` create hook applies RBAC (ClusterRole + ClusterRoleBinding) granting the namespace's default ServiceAccount permission to list/watch pods for Prometheus service discovery
+- Validator and relayer specs must expose `/metrics` via a `network.http-proxy` route (see `deployment/spec-validator-*.yml` and `deployment/spec-relayer.yml`), and their hostnames must be listed in `PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` in this stack's spec
 
 ## Configuration
 
@@ -55,6 +54,8 @@ relayer:ABC123:5.0,igp-oracle:DEF456:2.0,deployer:GHI789
 | `MONITORED_WALLETS_SOLANA` | Wallets to monitor on Solana | — |
 | `BALANCE_THRESHOLD_SOL` | Default low-balance warning threshold (SOL) | `1.0` |
 | `BALANCE_CHECK_INTERVAL` | Seconds between balance checks | `300` |
+| `PROMETHEUS_VALIDATOR_TARGETS` | Validator scrape targets, `instance=host:port` comma-separated | — |
+| `PROMETHEUS_RELAYER_TARGETS` | Relayer scrape targets, `instance=host:port` comma-separated | — |
 
 ### Secrets
 

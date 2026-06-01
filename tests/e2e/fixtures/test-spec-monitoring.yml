@@ -16,6 +16,12 @@ config:
   MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "30"
+  # Scrape targets via in-cluster external-services over plain http (prod uses
+  # the public .bridge hostnames over https). The container entrypoint renders
+  # these and the scheme below on start.
+  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090"
+  PROMETHEUS_RELAYER_TARGETS: "primary=relayer:9091"
+  PROMETHEUS_SCRAPE_SCHEME: "http"
 volumes:
   prometheus-data: /tmp/hyperlane-bridge-e2e/monitoring/prometheus
   grafana-data: /tmp/hyperlane-bridge-e2e/monitoring/grafana
@@ -36,6 +42,21 @@ external-services:
   solana-rpc:
     ip: REPLACE_HOST_IP
     port: 18899
+  # In-cluster routing to the validator/relayer metrics ports — SO creates a
+  # headless Service per entry with Endpoints discovered from the target NS.
+  # Prometheus scrapes these directly, no Caddy/TLS. Prod uses public DNS instead.
+  validator-gorchain:
+    selector: { app.kubernetes.io/stack: hyperlane-validator }
+    namespace: laconic-hyperlane-validator-gorchain
+    port: 9090
+  validator-solana:
+    selector: { app.kubernetes.io/stack: hyperlane-validator }
+    namespace: laconic-hyperlane-validator-solana
+    port: 9090
+  relayer:
+    selector: { app.kubernetes.io/stack: hyperlane-relayer }
+    namespace: laconic-hyperlane-relayer
+    port: 9091
 network:
   acme-email: e2e@example.test
   http-proxy:
