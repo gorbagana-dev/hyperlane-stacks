@@ -1,0 +1,39 @@
+---
+# Stop every stack on a host. Single-stack stops skip cluster management; pass
+# -e destroy_cluster=true to tear the cluster down after.
+- name: Stop stacks
+  hosts: all:!controller
+  gather_facts: false
+  vars:
+    destroy_cluster: false
+    stacks:
+      - hyperlane-warp-ui
+      - hyperlane-monitoring
+      - hyperlane-gas-oracle
+      - hyperlane-relayer
+      - hyperlane-svm-deployer
+      - hyperlane-minio
+  tasks:
+    - name: Stop each stack (skip cluster management)
+      ansible.builtin.command:
+        argv:
+          - laconic-so
+          - deployment
+          - --dir
+          - "{{ kind_mount_root }}/deployments/{{ item }}"
+          - stop
+          - --skip-cluster-management
+      changed_when: true
+      failed_when: false
+      loop: "{{ stacks }}"
+
+    - name: Destroy the host cluster on request
+      ansible.builtin.command:
+        argv:
+          - kind
+          - delete
+          - cluster
+          - --name
+          - hyperlane
+      changed_when: true
+      when: destroy_cluster | bool

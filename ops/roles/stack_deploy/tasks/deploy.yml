@@ -13,7 +13,8 @@
   ansible.builtin.set_fact:
     stack_env: >-
       {{ dict(stack_env_vars[stack_name]
-         | zip(stack_env_vars[stack_name] | map('extract', vars) | list)) }}
+         | zip(stack_env_vars[stack_name] | map('extract', vars) | list))
+         | combine(stack_env_extra | default({})) }}
 
 - name: Prepare (init + create) when not yet created
   when:

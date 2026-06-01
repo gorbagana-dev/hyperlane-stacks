@@ -1,0 +1,10 @@
+---
+# Phase 1 — provision the whole fleet. No stacks deployed.
+- name: Bootstrap hosts
+  ansible.builtin.import_playbook: bootstrap-host.yml
+
+- name: Configure DNS
+  ansible.builtin.import_playbook: configure-dns.yml
+
+- name: Generate + distribute credentials
+  ansible.builtin.import_playbook: distribute-credentials.yml
