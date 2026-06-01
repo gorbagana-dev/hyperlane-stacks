@@ -4,185 +4,157 @@ _Design spec — 2026-05-30_
 
 ## Status
 
-Proposed. Covers two of the three monitoring follow-ups from
+Covers two of the three monitoring follow-ups from
 `docs/architecture-decisions.md` (§Monitoring): **cross-host scraping** and
-**showing data for multiple validators/relayers**. The third follow-up —
-**metrics authentication** — is explicitly **deferred to a separate PR**
-(see [Deferred: metrics auth](#deferred-metrics-auth)).
+**showing data for multiple validators/relayers**. The third — **metrics
+authentication** — is a separate PR (see [Deferred: metrics auth](#deferred-metrics-auth)).
 
 ## Problem
 
-Today Prometheus discovers validator/relayer pods with `kubernetes_sd_configs`
-(pod role) and scrapes them inside a single Kind cluster on one host
-(`stack_orchestrator/data/config/prometheus-config/prometheus.yml`). In
-production each validator and the relayer run on **separate hosts**, each
-behind its own Caddy + public DNS, so in-cluster pod discovery cannot reach
-them. The dashboards also assume one validator per chain — the `chain` label
-alone cannot distinguish two validators on the same chain (the deployment
+In production each validator and the relayer run on **separate hosts**, each
+behind its own Caddy + public DNS, so Prometheus must scrape their `/metrics`
+over public DNS. The dashboards also assume one validator per chain: the `chain`
+label alone cannot distinguish two validators on the same chain (the deployment
 specs are already named `…-primary`, anticipating primary/secondary).
 
 ## Scope
 
-**In scope (this PR):**
+**In scope:**
 1. Cross-host scraping — Prometheus scrapes validator/relayer `/metrics` over
-   public DNS instead of in-cluster pod discovery.
+   public DNS.
 2. Multiple validators/relayers — per-instance labels + dashboards that break
    data down per instance.
 
-**Out of scope (next PR):** metrics authentication. It is the only facet that
-depends on the `laconicnetwork/caddy-ingress` fork's capabilities and on a
-mechanism SO does not currently provide; neither of the two facets above
-depends on it.
-
-## Current state (verified)
-
-| Fact | Source |
-|---|---|
-| Prometheus uses `kubernetes_sd_configs` (in-cluster, single host) | `prometheus-config/prometheus.yml:23-54` |
-| Validator exposes `/metrics` on `:9090`, published at `validator-gorchain.bridge.<zone>` | `spec-validator-gorchain.yml` (`HYP_METRICSPORT: 9090`, `http-proxy`) |
-| Relayer exposes `/metrics` on `:9091`, published at `relayer.bridge.<zone>` | `spec-relayer.yml` (`--metricsPort 9091`, `http-proxy`) |
-| Dashboards already have a `chain` template variable, group `by(chain)` | `grafana-dashboards-config/validator-dashboard.json` |
-| Agent metrics carry `agent` + `chain` labels (e.g. `hyperlane_latest_checkpoint{agent="validator",chain="gorchain"}`) | dashboard panel exprs |
-| `test_07_monitoring.py` asserts Prometheus self / Pushgateway / balance / Grafana — **not** validator/relayer scraping | `tests/e2e/test_07_monitoring.py` |
-| Ops/ansible layer is archived (`deployment/ops` → `deployment/ops-archive`) | repo tree, PR #22 |
+**Out of scope:** metrics authentication — see
+`docs/superpowers/research/2026-06-01-metrics-auth-caddy-ingress-findings.md`.
 
 ## Design
 
-### Facet 1 — Cross-host scraping
+### Cross-host scraping
 
-Replace the `kubernetes-pods` (`kubernetes_sd_configs`) job with **static
-HTTPS targets** pointing at the validator/relayer Caddy hostnames. This is the
-"static, hardcoded target list; append one entry per new validator" model from
-the architecture decision.
+The `validators`/`relayers` jobs in `prometheus.yml` use Prometheus' native
+**`file_sd_configs`** (file-based service discovery), reading their target lists
+from files. The target lists are **configured per-deployment in the spec** and
+rendered into those files — the operator owns the targets in
+`deployment/spec-monitoring.yml`, not in shared stack code.
 
 ```yaml
-scrape_configs:
-  - job_name: prometheus
-    static_configs:
-      - targets: ["localhost:9090"]
-
-  - job_name: pushgateway
-    honor_labels: true
-    static_configs:
-      - targets: ["localhost:9091"]
-
-  - job_name: validators
-    scheme: https
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["validator-gorchain.bridge.gorbagana.wtf:443"]
-        labels: { hyperlane_instance: gorchain-primary }
-      - targets: ["validator-solana.bridge.gorbagana.wtf:443"]
-        labels: { hyperlane_instance: solana-primary }
-
-  - job_name: relayer
-    scheme: https
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["relayer.bridge.gorbagana.wtf:443"]
-        labels: { hyperlane_instance: primary }
+# spec-monitoring.yml config:
+PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.bridge.gorbagana.wtf:443,solana-primary=validator-solana.bridge.gorbagana.wtf:443"
+PROMETHEUS_RELAYER_TARGETS: "primary=relayer.bridge.gorbagana.wtf:443"
+PROMETHEUS_SCRAPE_SCHEME: "https"
 ```
 
-Targets use the validators' and relayer's **existing** Caddy hostnames — no
-rename. The `hyperlane_instance` label is independent of the hostname, so one
-validator per chain needs no spec change at all.
+Each entry is `instance_label=host:port` (consistent with the existing
+`MONITORED_WALLETS_*` `label:addr:threshold` convention). Targets use the
+validators'/relayer's **existing** Caddy hostnames — no rename. The
+`hyperlane_instance` label is independent of hostname, so one validator per chain
+needs no extra config. Prod TLS is publicly trusted (Let's Encrypt via Caddy), so
+no `tls_config` is needed.
 
-- **No container changes.** Prometheus reads the verbatim ConfigMap as today;
-  only the file's contents change.
-- **No dependency on the archived ansible layer.** The static list lives in the
-  committed `prometheus.yml` (prod hostnames). Adding a validator = appending
-  one target entry, matching the GitOps add-validator flow.
-- **Prod TLS** is publicly-trusted (Let's Encrypt via Caddy), so no
-  `tls_config` is needed in prod.
-- **Hostname convention (future).** A second validator on the same chain needs
-  its own hostname; adopt an instance suffix then (`validator-gorchain-secondary`,
-  …), keeping the existing `validator-gorchain` as the primary. No rename is
-  required for the current single-primary-per-chain setup.
+#### Render location: prometheus container entrypoint
 
-The monitoring stack's pod-discovery RBAC
-(`hyperlane-monitoring/deploy/rbac.yaml`, applied by `deploy/commands.py`)
-becomes unused once `kubernetes_sd_configs` is removed. Leave it in place for
-this PR (removing it is unrelated cleanup); note it as dead for a later sweep.
+The prometheus container's entrypoint (`render-targets.sh`) renders the targets
+on **each container start**:
 
-### Facet 2 — Multiple validators/relayers
+- reads `PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS` and
+  `PROMETHEUS_SCRAPE_SCHEME` from the environment (injected from spec `config:`
+  via the compose `environment:` block);
+- writes `validators.yml` / `relayer.yml` (file_sd format, each target carrying
+  its `hyperlane_instance` label) under the writable data dir
+  `/prometheus/targets/` (the ConfigMap mount at `/etc/prometheus` is read-only);
+- renders the scrape scheme into a writable copy of `prometheus.yml`; then
+- `exec`s prometheus pointing at the rendered config.
 
-Each static target carries a `hyperlane_instance` label (above). Prometheus
-also auto-adds an `instance` label (the target address), but `hyperlane_instance`
-gives a stable, human-readable grouping key independent of hostname.
+Because rendering happens at container start, **adding a validator is an env
+change plus a restart** — no deploy hook and no `laconic-so` update command.
+Compose maps `entrypoint` → k8s `command` (overriding the image entrypoint) and
+`command` → k8s `args`, so the script receives the prometheus flags as `"$@"`
+and `exec`s the real binary. The script is plain POSIX `sh` (the
+`prom/prometheus` image is busybox-based).
 
-Dashboard changes (`validator-dashboard.json`, `relayer-dashboard.json`):
+This stack has **no `deploy/commands.py` hook** — the entrypoint does all the
+rendering.
+
+**Hostname convention (future).** A second validator on the same chain gets its
+own hostname (e.g. `validator-gorchain-secondary`), keeping `validator-gorchain`
+as the primary. No rename is required for the current single-primary-per-chain
+setup.
+
+### Multiple validators/relayers
+
+Each target carries a `hyperlane_instance` label, giving a stable,
+human-readable grouping key independent of hostname. Dashboard changes
+(`validator-dashboard.json`, `relayer-dashboard.json`):
+
 1. Add a `hyperlane_instance` template variable
    (`label_values(hyperlane_instance)`, multi-select, include-all) alongside the
    existing `chain` variable.
-2. Update panel queries to group by the instance as well, e.g.
-   `max by(chain) (…)` → `max by(chain, hyperlane_instance) (…)`, and add a
+2. Group panel queries by the instance too, e.g. `max by(chain) (…)` →
+   `max by(chain, hyperlane_instance) (…)`, with a
    `hyperlane_instance=~"${hyperlane_instance:regex}"` matcher.
-3. Update legends to include the instance so two validators on the same chain
-   render as separate series instead of colliding.
 
-The `hyperlane-overview.json` dashboard is reviewed for the same treatment
-where it shows per-validator/relayer data.
+So two validators on the same chain render as separate series instead of
+colliding.
 
 ## Files touched
 
 | File | Change |
 |---|---|
-| `stack_orchestrator/data/config/prometheus-config/prometheus.yml` | Replace `kubernetes-pods` job with static `validators` + `relayer` jobs |
-| `stack_orchestrator/data/config/grafana-dashboards-config/validator-dashboard.json` | Add `hyperlane_instance` variable; group/legend by instance |
-| `stack_orchestrator/data/config/grafana-dashboards-config/relayer-dashboard.json` | Same |
-| `stack_orchestrator/data/config/grafana-dashboards-config/hyperlane-overview.json` | Per-instance breakdown where applicable |
-| `tests/e2e/` (conftest + fixtures) | Validator/relayer test ingress + cert SANs; `prometheus.yml` hostname substitution; new scrape-up assertions |
-| `stack_orchestrator/data/stacks/hyperlane-monitoring/README.md` | Document static-target scraping model |
+| `data/config/prometheus-config/render-targets.sh` | New. Container entrypoint: render file_sd targets + scheme from env, then `exec` prometheus. |
+| `data/config/prometheus-config/prometheus.yml` | `validators`/`relayers` jobs use `file_sd_configs` at `/prometheus/targets/{validators,relayer}.yml`. |
+| `data/compose/docker-compose-hyperlane-monitoring.yml` | prometheus service: `entrypoint` runs the script; `command` keeps the flags; `environment:` passes the three vars from spec config. |
+| `data/config/grafana-dashboards-config/validator-dashboard.json` | Add `hyperlane_instance` variable; group/select by instance. |
+| `data/config/grafana-dashboards-config/relayer-dashboard.json` | Same. |
+| `deployment/spec-monitoring.yml` | The three `config:` entries (prod hostnames + `https`). |
+| `tests/e2e/fixtures/test-spec-monitoring.yml` | In-cluster `service:port` targets; `PROMETHEUS_SCRAPE_SCHEME: http`; `external-services:` to route Prometheus to the pods. |
+| `tests/e2e/test_07_monitoring.py` | Cross-host scrape-up + instance-label assertions. |
+| `data/stacks/hyperlane-monitoring/README.md` | Document the spec-driven targets + entrypoint render. |
 
-Prod `deployment/spec-validator-*.yml` / `spec-relayer.yml` need **no change** —
-they already publish `/metrics` via Caddy.
+Prod `spec-validator-*.yml` / `spec-relayer.yml` need no change — they already
+publish `/metrics` via Caddy.
 
-## Testing strategy
+## E2E approach
 
-True multi-*host* (separate machines) cannot be replicated on one test box, but
-the cross-host **code path** can: point Prometheus at the validator/relayer
-Caddy ingress hostnames (e.g. `validator-gorchain.test/metrics`) — exactly what
-prod does — instead of in-cluster pod IPs.
+Multi-*host* (separate machines) can't be replicated on one test box, but the
+cross-host **code path** can. The test deployment routes Prometheus to the
+validator/relayer pods **in-cluster** via the monitoring spec's
+`external-services` (selector mode — the same pattern the validators use to reach
+MinIO), scraping over plain HTTP (`PROMETHEUS_SCRAPE_SCHEME: http`). Prod's
+public-DNS + HTTPS path is unchanged; only the targets and scheme differ, both
+via spec config — no harness patching of `prometheus.yml`.
 
-E2E harness additions (`tests/e2e/`):
-- Expose validator + relayer **ingress hostnames** and add them to the mkcert
-  **cert SANs**, so Prometheus can scrape them through Caddy.
-- The harness substitutes the prod hostnames in `prometheus.yml` with the
-  `.test` equivalents (matches the existing `REPLACE_AT_RUNTIME` /
-  `REPLACE_HOST_IP` placeholder-substitution pattern) and adds
-  `tls_config: { insecure_skip_verify: true }` for the mkcert certs in test.
-- New assertions in `test_07_monitoring.py`: `up{job="validators"} == 1` and
-  `up{job="relayer"} == 1`, plus presence of an agent metric
-  (e.g. `hyperlane_latest_checkpoint`) carrying the `hyperlane_instance` label.
-- Multiple-instance is demonstrated by adding a second target label entry
-  (may point at the same pod in test) and asserting two series.
+Assertions in `test_07_monitoring.py`:
+- `up{job="validators"} == 1` for both instances, and `up{job="relayers"} == 1`
+  — proves cross-host scraping reaches the targets and the `hyperlane_instance`
+  labels are attached.
+- An always-emitted agent metric (`hyperlane_block_height{agent="validator"}`)
+  carries `hyperlane_instance` — proves the label propagates onto real agent
+  metrics (what the dashboards group by).
 
-Existing `test_07` assertions are unaffected (none currently test
-validator/relayer scraping), so this does not break current functionality.
+## Rendered targets file format
+
+`validators.yml` (Prometheus file_sd):
+
+```yaml
+- targets: ["validator-gorchain.bridge.gorbagana.wtf:443"]
+  labels: { hyperlane_instance: gorchain-primary }
+- targets: ["validator-solana.bridge.gorbagana.wtf:443"]
+  labels: { hyperlane_instance: solana-primary }
+```
+
+## Error handling
+
+- Malformed entry (no `=`, or no `:` in `host:port`): the entrypoint exits
+  non-zero with a message naming the offending entry, so the container fails
+  fast (visible in pod logs) rather than scraping a broken target set.
+- Empty/unset target var: an empty list (`[]`) is written; the job has no targets
+  and Prometheus stays healthy.
 
 ## Deferred: metrics auth
 
-The third facet — basic auth on `/metrics` — is a separate PR because:
-- SO's `http-proxy` block cannot express `basic_auth` (only `path` +
-  `proxy-to`), and SO injects secrets as **env vars only** (no file mounts),
-  so Prometheus cannot use `basic_auth.password_file`.
-- Whether auth can be applied at the ingress depends on the **custom
-  `laconicnetwork/caddy-ingress`** fork (not upstream `caddyserver/ingress`,
-  which has no basic_auth annotation). That fork must be investigated first.
-- Likely landing spots: an auth reverse-proxy **sidecar** on the
-  validator/relayer pods (controller-agnostic, matches the existing
-  kms-proxy/igp-fee-claim sidecar pattern), or a **network/IP ACL** restricting
-  `/metrics` to the monitoring host.
-
-When auth lands, the scrape jobs above gain a `basic_auth` block whose password
-must reach the Prometheus container — at which point the env-only secret
-constraint forces a render step (e.g. `prometheus.yml.tmpl` substituted at
-container start). That is the auth PR's problem, not this one.
-
-## Implementation order
-
-1. Static-target `prometheus.yml` (Facet 1).
-2. E2E harness: validator/relayer ingress + cert SANs + hostname substitution;
-   new scrape-up assertions.
-3. Dashboard instance variable + groupings (Facet 2).
-4. README update.
+Basic auth on `/metrics` is a separate PR. The `laconicnetwork/caddy-ingress`
+fork exposes no basic-auth annotation, and SO injects secrets as env vars only,
+so the design space (auth sidecar vs. extending the fork vs. network ACL) is
+worked out separately in
+`docs/superpowers/research/2026-06-01-metrics-auth-caddy-ingress-findings.md`.
