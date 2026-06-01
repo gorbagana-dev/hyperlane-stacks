@@ -841,7 +841,7 @@
             "$__all"
           ]
         },
-        "definition": "label_values(hyperlane_instance)",
+        "definition": "label_values(up{job=\"validators\"}, hyperlane_instance)",
         "description": "Validator/relayer instance (e.g. gorchain-primary).",
         "includeAll": true,
         "label": "Instance",
@@ -850,7 +850,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(hyperlane_instance)",
+          "query": "label_values(up{job=\"validators\"}, hyperlane_instance)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
