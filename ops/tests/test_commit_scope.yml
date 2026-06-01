@@ -1,0 +1,40 @@
+---
+- name: commit-bridge-state scopes add and skips when unchanged
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    work: /tmp/ops-commit-test
+    generated_rel: "deployment/bridges/default/generated"
+  tasks:
+    - name: Fresh temp git repo with a generated file plus an unrelated dirty file
+      ansible.builtin.shell: |
+        set -e
+        rm -rf {{ work }} && mkdir -p {{ work }}/{{ generated_rel }}
+        cd {{ work }} && git init -q && git config user.email t@t && git config user.name t
+        echo '{"a":1}' > {{ generated_rel }}/program-ids.json
+        echo unrelated > other.txt
+        git add -A && git commit -qm init
+        echo '{"a":2}' > {{ generated_rel }}/program-ids.json
+        echo dirty >> other.txt
+      changed_when: true
+
+    - name: Scoped add plus commit (mimics the playbook core)
+      ansible.builtin.shell: |
+        cd {{ work }}
+        git add {{ generated_rel }}
+        git diff --cached --quiet && echo SKIP || git commit -qm "state update"
+      register: _c
+      changed_when: true
+
+    - name: other.txt remains uncommitted (not swept in)
+      ansible.builtin.command:
+        cmd: "git -C {{ work }} status --porcelain other.txt"
+      register: _st
+      changed_when: false
+
+    - name: Generated change committed, unrelated file left dirty
+      ansible.builtin.assert:
+        that:
+          - "'other.txt' in _st.stdout"
+          - "'SKIP' not in _c.stdout"

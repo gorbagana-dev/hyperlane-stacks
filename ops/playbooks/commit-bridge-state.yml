@@ -1,0 +1,100 @@
+---
+# Pull deployer-host state into the controller's working tree, then commit+push.
+# Default: hands-off (auto commit + push). -e state_review=true to gate.
+- name: Commit bridge state to git
+  hosts: controller
+  gather_facts: false
+  vars:
+    state_review: false
+    generated_rel: "bridges/{{ bridge_name }}/generated"
+    deployer_host: "{{ groups['deployer_hosts'][0] }}"
+    deployer_data_root: >-
+      {{ hostvars[deployer_host].kind_mount_root }}/deployments/hyperlane-svm-deployer/data
+  tasks:
+    - name: Pull generated files from the deployer host into the working tree
+      ansible.posix.synchronize:
+        src: "{{ deployer_data_root }}/{{ generated_rel }}/"
+        dest: "{{ deployment_root }}/{{ generated_rel }}/"
+        mode: pull
+      delegate_to: "{{ deployer_host }}"
+      when: not ansible_check_mode
+
+    - name: Stage only the generated paths
+      ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git add
+        argv:
+          - git
+          - -C
+          - "{{ repo_root }}"
+          - add
+          - "{{ deployment_root }}/{{ generated_rel }}"
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: Check whether anything is staged
+      ansible.builtin.command:  # noqa: command-instead-of-module no module for git diff --cached
+        argv:
+          - git
+          - -C
+          - "{{ repo_root }}"
+          - diff
+          - --cached
+          - --quiet
+      register: _staged
+      changed_when: false
+      failed_when: false
+      when: not ansible_check_mode
+
+    - name: Capture the staged diff
+      ansible.builtin.command:  # noqa: command-instead-of-module no module for git diff --cached
+        argv:
+          - git
+          - -C
+          - "{{ repo_root }}"
+          - diff
+          - --cached
+      register: _diff
+      changed_when: false
+      when:
+        - not ansible_check_mode
+        - _staged.rc | default(0) != 0
+
+    - name: Display the staged diff
+      ansible.builtin.debug:
+        var: _diff.stdout_lines
+      when:
+        - not ansible_check_mode
+        - _staged.rc | default(0) != 0
+
+    - name: Review gate (only when state_review=true)
+      ansible.builtin.pause:
+        prompt: "Press enter to commit + push the above, or Ctrl-C to abort"
+      when:
+        - not ansible_check_mode
+        - _staged.rc | default(0) != 0
+        - state_review | bool
+
+    - name: Commit the staged state
+      ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git commit
+        argv:
+          - git
+          - -C
+          - "{{ repo_root }}"
+          - commit
+          - -m
+          - "chore: update bridge state"
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - _staged.rc | default(0) != 0
+
+    - name: Push to the current tracking branch (via forwarded agent)
+      ansible.builtin.command:  # noqa: command-instead-of-module no module for git push
+        argv:
+          - git
+          - -C
+          - "{{ repo_root }}"
+          - push
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - _staged.rc | default(0) != 0
