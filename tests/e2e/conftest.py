@@ -1377,117 +1377,17 @@ PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
 
-def _patch_prometheus_targets_for_test(deploy_dir: Path) -> None:
-    """Mount the mkcert root CA and point each scrape job at it so Prometheus
-    can verify the .test certs. The .test target hostnames come from the test
-    spec's PROMETHEUS_*_TARGETS config (rendered to file_sd by the deploy hook),
-    so no hostname rewriting is needed here."""
-    cm_dir = deploy_dir / "configmaps" / "prometheus-config"
+def _patch_prometheus_scheme_for_test(deploy_dir: Path) -> None:
+    """Scrape the validator/relayer targets in-cluster over plain HTTP.
 
-    # Mount the mkcert root CA so Prometheus can verify the .test certs.
-    caroot = subprocess.run(
-        ["mkcert", "-CAROOT"], capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    (cm_dir / "rootCA.pem").write_bytes((Path(caroot) / "rootCA.pem").read_bytes())
-
-    prom_yml = cm_dir / "prometheus.yml"
-    text = prom_yml.read_text()
-    text = text.replace(
-        "    metrics_path: /metrics\n",
-        "    metrics_path: /metrics\n"
-        "    tls_config:\n"
-        "      ca_file: /etc/prometheus/rootCA.pem\n",
+    Prod scrapes over public HTTPS (Caddy + Let's Encrypt). The e2e cluster
+    routes Prometheus to the validator/relayer pods directly via the monitoring
+    spec's external-services, so the scrape jobs use http here."""
+    prom_yml = deploy_dir / "configmaps" / "prometheus-config" / "prometheus.yml"
+    prom_yml.write_text(
+        prom_yml.read_text().replace("scheme: https", "scheme: http")
     )
-    prom_yml.write_text(text)
-    log.info("Patched prometheus.yml with mkcert CA verification")
-
-
-# Marker comment identifying the CoreDNS block this harness adds.
-_COREDNS_TEST_MARKER = "hyperlane-stacks test-domain -> caddy ingress"
-
-
-def _coredns_corefile() -> str:
-    return subprocess.run(
-        ["kubectl", "-n", "kube-system", "get", "configmap", "coredns",
-         "-o", "jsonpath={.data.Corefile}"],
-        capture_output=True, text=True, check=True,
-    ).stdout
-
-
-def _write_coredns_corefile(corefile: str) -> None:
-    """Replace the coredns ConfigMap's Corefile with the given content."""
-    with tempfile.NamedTemporaryFile("w", suffix="Corefile", delete=False) as fh:
-        fh.write(corefile)
-        tmp_path = fh.name
-    try:
-        rendered = subprocess.run(
-            ["kubectl", "-n", "kube-system", "create", "configmap", "coredns",
-             f"--from-file=Corefile={tmp_path}", "--dry-run=client", "-o", "yaml"],
-            capture_output=True, text=True, check=True,
-        ).stdout
-        subprocess.run(["kubectl", "replace", "-f", "-"], input=rendered,
-                       capture_output=True, text=True, check=True)
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
-    subprocess.run(["kubectl", "-n", "kube-system", "rollout", "restart",
-                    "deployment/coredns"], check=True)
-    subprocess.run(["kubectl", "-n", "kube-system", "rollout", "status",
-                    "deployment/coredns", "--timeout=120s"], check=True)
-
-
-def _patch_coredns_for_test_domain() -> None:
-    """Make `*.test` resolve to the Caddy ingress ClusterIP cluster-wide.
-
-    Pods reach validators/relayer over their `.test` Caddy hostnames (prod uses
-    public DNS); a `test:53` template block points `*.test` at Caddy so the
-    Prometheus pod scrapes them through Caddy over TLS. Idempotent.
-    """
-    corefile = _coredns_corefile()
-    if _COREDNS_TEST_MARKER in corefile:
-        log.info("CoreDNS test:53 block already present")
-        return
-
-    caddy_ip = subprocess.run(
-        ["kubectl", "-n", "caddy-system", "get", "svc",
-         "caddy-ingress-controller", "-o", "jsonpath={.spec.clusterIP}"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    assert caddy_ip, "could not resolve Caddy ingress ClusterIP"
-
-    block = (
-        f"\n\ntest:53 {{\n"
-        f"    errors\n"
-        f"    # marker: {_COREDNS_TEST_MARKER}\n"
-        f"    template IN A test {{\n"
-        f'        answer "{{{{ .Name }}}} 60 IN A {caddy_ip}"\n'
-        f"        fallthrough\n"
-        f"    }}\n"
-        f"    template IN AAAA test {{\n"
-        f"        rcode NOERROR\n"
-        f"    }}\n"
-        f"    reload\n"
-        f"}}\n"
-    )
-    _write_coredns_corefile(corefile + block)
-    log.info("Patched CoreDNS: *.test -> Caddy ingress %s", caddy_ip)
-
-
-def _unpatch_coredns_for_test_domain() -> None:
-    """Remove the harness-added `test:53` CoreDNS block, if present."""
-    try:
-        corefile = _coredns_corefile()
-    except subprocess.CalledProcessError:
-        return
-    if _COREDNS_TEST_MARKER not in corefile:
-        return
-    # Drop the trailing `test:53 { ... }` block we appended (it is the last
-    # server block and contains the marker).
-    idx = corefile.rfind("\ntest:53 {")
-    if idx == -1:
-        return
-    cleaned = corefile[:idx].rstrip() + "\n"
-    _write_coredns_corefile(cleaned)
-    log.info("Removed CoreDNS test:53 block")
+    log.info("Patched prometheus.yml scrape jobs to http (in-cluster targets)")
 
 def _wait_for_balance_monitor(
     namespace: str, pod_name: str, timeout: int = 60,
@@ -1630,7 +1530,7 @@ def monitoring_deployment(
         deployment_id="monitoring",
     )
 
-    _patch_prometheus_targets_for_test(deploy_info.deploy_dir)
+    _patch_prometheus_scheme_for_test(deploy_info.deploy_dir)
 
     bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
 
@@ -1638,10 +1538,6 @@ def monitoring_deployment(
 
     log.info("Starting monitoring stack...")
     deploy_start(deploy_info.deploy_dir)
-
-    # Make *.test resolve to the Caddy ingress in-cluster so Prometheus can
-    # scrape the validator/relayer metrics over their .test hostnames.
-    _patch_coredns_for_test_domain()
 
     try:
         log.info("Waiting for monitoring pod to be running...")
@@ -1708,7 +1604,6 @@ def monitoring_deployment(
     patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping monitoring stack...")
-        _unpatch_coredns_for_test_domain()
         stop_stack("hyperlane-monitoring")
 
 

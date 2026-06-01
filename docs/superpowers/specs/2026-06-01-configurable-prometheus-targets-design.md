@@ -95,7 +95,8 @@ separate cleanup sweep to keep this change focused.
 | `data/stacks/hyperlane-monitoring/deploy/commands.py` | Rewrite `create()`: parse `PROMETHEUS_VALIDATOR_TARGETS`/`PROMETHEUS_RELAYER_TARGETS` from spec config, write file_sd YAML into `configmaps/prometheus-config/`. |
 | `data/stacks/hyperlane-monitoring/deploy/rbac.yaml` | Delete (dead pod-discovery RBAC). |
 | `deployment/spec-monitoring.yml` | Add the two `config:` entries with prod hostnames. |
-| `tests/e2e/conftest.py` | Stop rewriting prod hostnames inside `prometheus.yml`; instead set the two config vars to `.test` hostnames before deploy create so the hook renders `.test` targets. Keep the mkcert `ca_file` injection into `prometheus.yml`. |
+| `tests/e2e/fixtures/test-spec-monitoring.yml` | Point the two target vars at in-cluster `service:port` names and declare `external-services:` (selector mode, same pattern the validators use for MinIO) so SO routes Prometheus to the validator/relayer pods directly. |
+| `tests/e2e/conftest.py` | Simplify `_patch_prometheus_targets_for_test` to flip the scrape jobs `https`→`http` (in-cluster targets are plain HTTP). Remove the CoreDNS `.test`→Caddy machinery and the mkcert `ca_file` injection — no longer needed once scraping is in-cluster. |
 | `data/stacks/hyperlane-monitoring/README.md` | Document the spec-driven target config + file_sd. |
 
 ## Data flow
@@ -144,9 +145,9 @@ Existing `test_07_monitoring.py` cross-host assertions
 `test_agent_metrics_have_instance_label`) already verify the targets are scraped
 with the right `hyperlane_instance` labels. They continue to pass unchanged —
 they assert on the *result* (targets `up`, labels present), which is identical
-whether the targets came from inline `static_configs` or rendered file_sd. The
-only harness change is *how* the `.test` hostnames get into the targets
-(config-driven render vs. in-place rewrite).
+whether the targets came from inline `static_configs` or rendered file_sd, and
+whether Prometheus reaches them over the public https hostname (prod) or the
+in-cluster external-service over http (e2e).
 
 No new behavior needs a new test: the render is exercised end-to-end by the
 existing target-up assertions, and an empty/malformed config is an operator
