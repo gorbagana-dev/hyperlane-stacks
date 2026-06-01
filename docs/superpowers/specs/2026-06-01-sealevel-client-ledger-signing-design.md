@@ -131,6 +131,47 @@ the device's own confirmation screen.
 
 ---
 
+## Review model & why blind signing is acceptable
+
+The Ledger Solana app cannot decode Hyperlane's instructions, so the device
+shows blind signing (a warning + opaque hash) rather than human-readable
+content. This is a firmware limitation, not something we can fix from the
+client:
+
+- The Solana app clear-signs only a hardcoded allowlist baked into its firmware
+  (System transfers, stake operations, SPL token transfers). Hyperlane's ops
+  instructions — mailbox, multisig-ISM, IGP, ownership transfer, program close —
+  are **custom program** instructions with no parser in the app.
+- Unlike the EVM side (Ledger Live plugins / ERC-7730 clear-signing metadata),
+  Solana has **no dynamic plugin or metadata system** for third-party programs.
+  Making the device decode them would require writing C parsers into the
+  `app-solana` firmware and getting Ledger to review and ship it — out of scope.
+
+The device screen is therefore not the review surface. Human review happens in
+the CLI, and the device confirmation is a "sign the thing I just reviewed" gate:
+
+1. **CLI decoded output** — `pretty_print_transaction` (`context.rs:182`) prints
+   the full instruction list with human descriptions before signing. This is the
+   human-readable review.
+2. **`--require-tx-approval`** (`main.rs:111`) — gates signing on that review.
+3. **Post-op read-back** (`verify-ownership`, sub-project 3) — confirms on-chain
+   state matches intent. Defense in depth; catches a tampered tx after the fact.
+
+**Residual gap:** a compromised operator *host* could print benign CLI output
+while feeding a different tx to the device — the device hash won't catch this
+(operators do not hand-compare Solana message hashes). Mitigated by running ops
+from a clean/dedicated machine, not by the device screen.
+
+**Upgrade path — Squads multisig.** If on-screen decoded review or multi-party
+approval is later required, Squads provides it: its UI decodes and displays the
+instructions for review, and the Ledger signs the Squads approval — "recognition"
+moves to Squads instead of device firmware. Upstream already has first-class
+Squads support (`main.rs:127`, `process_squads_cmd`). The cost is reintroducing
+the heavier unsigned-tx/multisig two-step flow this redesign deliberately moved
+away from, so it stays a documented v2 option, not the v1 path.
+
+---
+
 ## Error handling
 
 - No device / locked / wrong app → surface the error from `maybe_wallet_manager()`
