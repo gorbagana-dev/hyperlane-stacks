@@ -1,0 +1,28 @@
+---
+- name: Require Cloudflare token
+  ansible.builtin.assert:
+    that: "cloudflare_api_token | default('') | length > 0"
+    fail_msg: "cloudflare_api_token missing — set it in secrets.yml"
+
+- name: Load validator-derived DNS records
+  ansible.builtin.include_tasks: ../common/tasks/load_validators.yml
+
+- name: Build host -> public_ip map from host_vars
+  ansible.builtin.set_fact:
+    host_ip_map: "{{ host_ip_map | default({}) | combine({item: hostvars[item].public_ip}) }}"
+  loop: "{{ (dns_records + validator_dns_records) | map(attribute='host') | unique }}"
+
+- name: Reconcile A records (additive)
+  community.general.cloudflare_dns:
+    api_token: "{{ cloudflare_api_token }}"
+    zone: "{{ dns_zone }}"
+    record: "{{ item.name }}"
+    type: A
+    value: "{{ host_ip_map[item.host] }}"
+    ttl: "{{ dns_record_ttl }}"
+    proxied: "{{ dns_proxied }}"
+    state: present
+  loop: "{{ dns_records + validator_dns_records }}"
+  loop_control:
+    label: "{{ item.name }}.{{ dns_zone }}"
+  when: not ansible_check_mode
