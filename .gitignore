@@ -7,3 +7,6 @@ node_modules/
 .venv/
 .backpack-ext/
 ops/collections/
+
+# ops: per-env operator + generated secrets (never commit)
+ops/inventories/*/secrets.yml

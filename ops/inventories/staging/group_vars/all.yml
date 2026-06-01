@@ -1,0 +1,71 @@
+---
+# --- Environment wiring ---
+bridge_name: default
+deployment_root: "{{ playbook_dir }}/../../../deployment/staging"   # staging deployment specs
+repo_root: "{{ playbook_dir }}/../../.."
+
+# --- laconic-so install (prerequisites_user) ---
+laconic_so_version: "v1.1.0-b3e9366-202605111309"
+laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"
+
+# --- Chain config (canonical chain-specific vars; see CLAUDE.md) ---
+gorchain_rpc_url: "https://gorchain-rpc.bridge.gorbagana.wtf"
+solana_rpc_url: "REPLACE_WITH_HELIUS_DEVNET_URL"
+gorchain_domain_id: 99999
+solana_domain_id: 99998
+gorchain_chain_id: 99999
+solana_chain_id: 101
+
+# --- Ownership / wallets (public values only) ---
+hardware_wallet_pubkey: "REPLACE_WITH_HW_WALLET_PUBKEY"
+
+# --- DNS ---
+dns_zone: staging.bridge.gorbagana.wtf
+dns_record_ttl: 300
+dns_records:
+  - name: s3
+    host: staging-bridge-ops
+  - name: minio-console
+    host: staging-bridge-ops
+  - name: grafana
+    host: staging-bridge-ops
+  - name: prometheus
+    host: staging-bridge-ops
+  - name: warp-ui
+    host: staging-bridge-ops
+  - name: relayer
+    host: staging-bridge-ops
+
+# --- Per-stack env-var maps ---
+# Each key is a stack name; the value lists the env var NAMES that stack's
+# spec consumes. stack_deploy resolves each NAME to the same-named ansible
+# variable (from group_vars config or secrets.yml) when building the shell
+# environment for `laconic-so`. Keep in sync with deployment/spec-*.yml.
+stack_env_vars:
+  hyperlane-minio:
+    - MINIO_ROOT_USER
+    - MINIO_ROOT_PASSWORD
+    - MINIO_USERS
+  hyperlane-svm-deployer:
+    - GORCHAIN_RPC_URL
+    - SOLANA_RPC_URL
+    - GORCHAIN_DOMAIN_ID
+    - SOLANA_DOMAIN_ID
+    - HARDWARE_WALLET_PUBKEY
+  hyperlane-relayer:
+    - GORCHAIN_RPC_URL
+    - SOLANA_RPC_URL
+  hyperlane-gas-oracle:
+    - GORCHAIN_RPC_URL
+    - SOLANA_RPC_URL
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
+  hyperlane-monitoring: []
+  hyperlane-warp-ui:
+    - GORCHAIN_RPC_URL
+    - SOLANA_RPC_URL
+  hyperlane-validator:
+    - GORCHAIN_RPC_URL
+    - SOLANA_RPC_URL
+    - PRIVY_APP_ID
+    - PRIVY_APP_SECRET
