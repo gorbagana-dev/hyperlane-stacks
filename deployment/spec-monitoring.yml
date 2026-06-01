@@ -19,9 +19,6 @@ config:
   # it up.
   PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.bridge.gorbagana.wtf:443,solana-primary=validator-solana.bridge.gorbagana.wtf:443"
   PROMETHEUS_RELAYER_TARGETS: "primary=relayer.bridge.gorbagana.wtf:443"
-  # Scrape scheme: https in prod (Caddy + Let's Encrypt). The e2e harness sets
-  # http to scrape pods in-cluster.
-  PROMETHEUS_SCRAPE_SCHEME: "https"
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
