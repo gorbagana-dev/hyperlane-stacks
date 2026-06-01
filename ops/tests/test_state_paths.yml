@@ -1,0 +1,24 @@
+---
+- name: generated-file to configmap path mapping
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    deployment_root: "/repo/deployment"
+    bridge_name: default
+    deploy_dir: "/srv/deployments/hyperlane-relayer"
+    configmap_names:
+      - agent-config
+  tasks:
+    - name: Compute src + configmap targets
+      ansible.builtin.set_fact:
+        src_dir: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated"
+        cm_targets: >-
+          {{ configmap_names
+          | map('regex_replace', '^(.*)$', deploy_dir ~ '/configmaps/\1')
+          | list }}
+    - name: Paths are correct
+      ansible.builtin.assert:
+        that:
+          - "src_dir == '/repo/deployment/bridges/default/generated'"
+          - "cm_targets == ['/srv/deployments/hyperlane-relayer/configmaps/agent-config']"

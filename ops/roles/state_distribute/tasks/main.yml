@@ -1,0 +1,30 @@
+---
+- name: Ensure git is present on the host
+  ansible.builtin.command: git --version  # noqa: command-instead-of-module read-only presence probe
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Pull bridge state repo (uses the forwarded SSH agent)
+  ansible.builtin.git:  # noqa: latest[git] tracking the branch tip on purpose
+    repo: "{{ state_repo_url }}"
+    dest: "{{ state_repo_dir }}"
+    version: "{{ state_repo_branch }}"
+    accept_hostkey: true
+  environment:
+    GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes"
+  when: not ansible_check_mode
+
+- name: Resolve the repo-relative generated dir on the host
+  ansible.builtin.set_fact:
+    _generated_src: >-
+      {{ state_repo_dir }}/{{ deployment_root
+      | regex_replace('^.*/(deployment(?:/staging)?)$', '\1') }}/bridges/{{ bridge_name }}/generated/
+
+- name: Copy generated state into each configmap dir
+  ansible.builtin.copy:
+    src: "{{ _generated_src }}"
+    dest: "{{ deploy_dir }}/configmaps/{{ item }}/"
+    remote_src: true
+    mode: "0644"
+  loop: "{{ configmap_names }}"
+  when: not ansible_check_mode
