@@ -27,11 +27,38 @@
              deployment_root ~ '/' ~ generated_rel ~ '/program-ids.json') | from_json }}
       when: not ansible_check_mode
 
+    - name: Stat the warp-deployer artifacts (present only after the warp Job)
+      ansible.builtin.stat:
+        path: "{{ deployment_root }}/{{ generated_rel }}/{{ item }}"
+      register: _warp_stat
+      loop:
+        - token-config.json
+        - warp-deploy-outputs/program-ids.json
+      when: not ansible_check_mode
+
+    - name: Derive warp-route values when the warp artifacts are present
+      ansible.builtin.set_fact:
+        _warp_collateral_addr: "{{ _wpids[_tcfg.warpRoute.collateral.chain].base58 }}"
+        _warp_synthetic_addr: "{{ _wpids[_tcfg.warpRoute.synthetic.chain].base58 }}"
+        _warp_token_mint: "{{ _tcfg.warpRoute.tokenMint }}"
+      vars:
+        _tcfg: >-
+          {{ lookup('ansible.builtin.file',
+             deployment_root ~ '/' ~ generated_rel ~ '/token-config.json') | from_json }}
+        _wpids: >-
+          {{ lookup('ansible.builtin.file',
+             deployment_root ~ '/' ~ generated_rel ~ '/warp-deploy-outputs/program-ids.json') | from_json }}
+      when:
+        - not ansible_check_mode
+        - _warp_stat.results | selectattr('stat.exists') | list | length == 2
+
     # Patch the scalar deployment-derived values into the committed specs. The rich
     # agent-config.json is distributed as a ConfigMap by state_distribute, not here.
-    # warp-ui WARP_* (collateral/synthetic address + synthetic mint) stay placeholders
-    # until the warp-deployer flow is wired — token-config.json lacks those.
-    - name: Patch deployment-derived config keys into committed specs
+    # Core values (IGP/mailbox) come from program-ids.json; warp-route addresses + the
+    # collateral mint come from the warp-deployer (token-config.json +
+    # warp-deploy-outputs/program-ids.json). WARP_SYNTHETIC_MINT is not emitted by the
+    # warp-deployer yet — left empty in the committed spec (warp-ui tolerates empty).
+    - name: Patch core deployment-derived config keys into committed specs
       ansible.builtin.replace:
         path: "{{ deployment_root }}/{{ item.spec }}"
         regexp: '^(\s*{{ item.key }}:\s*).*$'
@@ -64,6 +91,24 @@
       loop_control:
         label: "{{ item.spec }}:{{ item.key }}"
       when: not ansible_check_mode
+
+    - name: Patch warp-route values into spec-warp-ui.yml (after the warp Job)
+      ansible.builtin.replace:
+        path: "{{ deployment_root }}/spec-warp-ui.yml"
+        regexp: '^(\s*{{ item.key }}:\s*).*$'
+        replace: '\g<1>"{{ item.value }}"'
+      loop:
+        - key: WARP_COLLATERAL_ADDRESS
+          value: "{{ _warp_collateral_addr | default('') }}"
+        - key: WARP_SYNTHETIC_ADDRESS
+          value: "{{ _warp_synthetic_addr | default('') }}"
+        - key: WARP_TOKEN_MINT
+          value: "{{ _warp_token_mint | default('') }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when:
+        - not ansible_check_mode
+        - _warp_collateral_addr is defined
 
     - name: Stage the generated paths and patched specs (scoped)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git add

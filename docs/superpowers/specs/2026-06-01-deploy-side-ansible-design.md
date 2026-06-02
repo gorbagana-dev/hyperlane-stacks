@@ -219,18 +219,22 @@ create`/`start`. The Helius URL is built from one operator secret
   fast naming any missing required key.
 
 **3. Deployment-derived — produced by a Job, publish-patched into the spec.**
-IGP program IDs/accounts and mailbox addresses (from the deployer's
-`generated/program-ids.json`), plus warp collateral/synthetic addresses + token
-mints (from the warp-deployer's `token-config.json`). `publish-bridge-state` reads
-those artifacts and patches the matching `config:` keys in the committed per-env
-spec, then commits (see flow). Mapping:
+Core values (IGP program IDs/accounts, mailbox addresses) from the deployer's
+`generated/program-ids.json`; warp-route values from the warp-deployer's
+`token-config.json` + `warp-deploy-outputs/program-ids.json`. `publish-bridge-state`
+reads those artifacts and patches the matching `config:` keys in the committed
+per-env spec, then commits (see flow). Mapping:
 
 | Spec | `config:` key | Source |
 |---|---|---|
 | relayer, gas-oracle | `GORCHAIN/SOLANA_IGP_PROGRAM_ID` | `program-ids.json .<chain>.igp_program_id` |
 | relayer | `GORCHAIN/SOLANA_IGP_ACCOUNT` | `.<chain>.igp_account` |
 | warp-ui | `GORCHAIN/SOLANA_MAILBOX` | `.<chain>.mailbox` |
-| warp-ui | `WARP_COLLATERAL/SYNTHETIC_ADDRESS`, `WARP_TOKEN/SYNTHETIC_MINT` | warp-deployer `token-config.json` |
+| warp-ui | `WARP_COLLATERAL/SYNTHETIC_ADDRESS` | `warp-deploy-outputs/program-ids.json .<chain>.base58` |
+| warp-ui | `WARP_TOKEN_MINT` | `token-config.json .warpRoute.tokenMint` |
+
+`WARP_SYNTHETIC_MINT` is the one warp-ui value the warp-deployer doesn't emit yet —
+left empty in the committed spec (warp-ui tolerates it).
 
 The rich `agent-config.json` (validators + relayer) stays a **ConfigMap**
 distributed by `state_distribute`; only the scalar env values above are
@@ -267,14 +271,15 @@ first" rather than failing deep inside a stack. Then, per the locked order:
 
 4. **MinIO** — `stack_deploy spec-minio.yml` (per-validator IAM auto-provisioned
    by the `minio-provision` CronJob from `MINIO_USERS`).
-5. **deployer** Job — `stack_deploy spec-deployer.yml`, wait-for-job-complete
-   (writes state to `generated/`).
-6. **publish-bridge-state** — commits `generated/` **and** patches the
-   deployment-derived `config:` keys into the committed per-env consumer specs
-   (see gate below).
-7. **warp-deployer** Job (optional) — `stack_deploy spec-warp-deployer.yml`, then
-   re-run `publish-bridge-state` to patch the warp addresses/mints into
-   `spec-warp-ui.yml`.
+5. **core deployer** Job — `stack_deploy spec-deployer.yml`, wait-for-job-complete
+   (writes mailbox/IGP/ISM program-ids to `generated/`).
+6. **warp-deployer** Job — **required** (this deploys the USDC collateral↔synthetic
+   route that actually moves tokens; the core deployer only lays down message
+   passing). Same host as the core deployer; reads its `program-ids.json` from the
+   shared bridge-state volume, writes `token-config.json` + `warp-deploy-outputs/`.
+7. **publish-bridge-state** — commits `generated/` **and** patches the
+   deployment-derived `config:` keys (core IGP/mailbox + warp route addresses/mint)
+   into the committed per-env consumer specs (see gate below).
 8. **long-running stacks** — relayer + validators run `state_distribute` (for the
    `agent-config` ConfigMap) → `stack_deploy`; gas-oracle, monitoring, and warp-ui
    run `stack_deploy` only (no `state_distribute` — their derived values are

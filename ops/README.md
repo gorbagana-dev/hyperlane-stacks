@@ -196,9 +196,10 @@ CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint
 
 ## Known follow-ups (verify/extend on a real VM run)
 
-- **Optional warp-deployer** is not wired into `deploy-all.yml`. For a warp route,
-  deploy `spec-warp-deployer.yml` via `stack_deploy` and re-run
-  `publish-bridge-state.yml` between the deployer and the consumers.
+- **`WARP_SYNTHETIC_MINT`** is the one warp-ui value the warp-deployer doesn't emit
+  yet, so it's left empty in `spec-warp-ui.yml` (warp-ui tolerates empty / derives it
+  client-side). To populate it, have the warp-deployer write the synthetic mint into
+  `token-config.json` and add a patch line in `publish-bridge-state.yml`.
 - **Multi-host validators:** the validator loop delegates per-host via
   `include_role` + `apply: delegate_to`; confirm fact/`ansible_env` behavior on a
   real multi-VM split (correct for single-host v1).

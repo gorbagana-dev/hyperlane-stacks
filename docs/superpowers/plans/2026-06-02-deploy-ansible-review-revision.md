@@ -151,9 +151,12 @@ references in `ops/playbooks/setup-all.yml`/`deploy-all.yml`/`README.md`.
   `  KEY: "..."`), so re-running with identical artifacts is a no-op.
 - [ ] **Scope `git add`** to the `generated/` paths **and** the patched `spec-*.yml` only.
   Keep the skip-if-unchanged and `state_review` gate.
-- [ ] **Leave the warp-ui `WARP_*` keys as placeholders** with a comment: filled once the
-  warp-deployer flow is wired (existing follow-up; `token-config.json` lacks the deployed
-  addresses/synthetic mint).
+- [ ] **Wire the warp-deployer Job into `deploy-all.yml`** — REQUIRED (it deploys the USDC
+  collateral↔synthetic route), between the core deployer and publish — and patch the
+  warp-ui route values: `WARP_COLLATERAL/SYNTHETIC_ADDRESS` ←
+  `warp-deploy-outputs/program-ids.json .<chain>.base58`, `WARP_TOKEN_MINT` ←
+  `token-config.json .warpRoute.tokenMint`. `WARP_SYNTHETIC_MINT` is not emitted by the
+  warp-deployer yet → committed empty (warp-ui tolerates it).
 - [ ] **Verify** `--syntax-check` passes.
 - [ ] **Commit:** `git commit -m "feat(ops): publish-bridge-state patches derived config into specs"`
 
@@ -209,7 +212,8 @@ staging inventory is used.
 ---
 
 ## Notes / out of scope
-- **warp-deployer → warp-ui `WARP_*` patching** stays a follow-up (warp-deployer not in
-  `deploy-all`; `token-config.json` lacks deployed warp addresses + synthetic mint).
+- **warp-deployer is wired into `deploy-all`** (required step). Only `WARP_SYNTHETIC_MINT`
+  is left empty — the warp-deployer doesn't emit it yet (would need a deploy.sh change to
+  write the synthetic mint into `token-config.json`).
 - **Per-label validator specs** (two validators on one chain) is a sub-project-3 lifecycle
   concern; v1 keys specs off `item.chain`.
