@@ -1,0 +1,11 @@
+---
+# Resolve per-stack metadata once, before preflight and deploy (caller-set values
+# win — validators pass spec_file/stack_path explicitly; singletons derive from the
+# stacks map in group_vars). Runs first so spec_file/stack_path/stack_is_job are
+# defined for every later task.
+- name: Resolve stack metadata from the stacks map when not provided
+  when: spec_file is not defined
+  ansible.builtin.set_fact:
+    spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
+    stack_path: "{{ repo_root }}/{{ stacks[stack_name].path }}"
+    stack_is_job: "{{ stacks[stack_name].is_job | default(false) }}"

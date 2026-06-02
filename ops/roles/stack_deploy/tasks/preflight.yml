@@ -1,9 +1,4 @@
 ---
-- name: Resolve spec_file from the stacks map when not provided
-  when: spec_file is not defined
-  ansible.builtin.set_fact:
-    spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
-
 - name: Verify laconic-so is installed
   ansible.builtin.command: laconic-so version
   changed_when: false

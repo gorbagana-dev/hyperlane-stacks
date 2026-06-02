@@ -1,4 +1,7 @@
 ---
+- name: Resolve stack metadata
+  ansible.builtin.import_tasks: resolve.yml
+
 - name: Preflight checks
   ansible.builtin.import_tasks: preflight.yml
 
