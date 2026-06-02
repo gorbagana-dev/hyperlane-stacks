@@ -196,11 +196,6 @@ CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint
 
 ## Known follow-ups (verify/extend on a real VM run)
 
-- **`WARP_SYNTHETIC_MINT`** is left empty in `spec-warp-ui.yml`. It's not missing data:
-  the synthetic token's mint is a PDA — `find_program_address(["hyperlane_token","-","mint"],
-  WARP_SYNTHETIC_ADDRESS)` — so it's fully determined by the synthetic program address
-  (which publish patches), and warp-ui derives it client-side. To pre-compute it instead,
-  derive that PDA in `publish-bridge-state.yml` and patch the key.
 - **Multi-host validators:** the validator loop delegates per-host via
   `include_role` + `apply: delegate_to`; confirm fact/`ansible_env` behavior on a
   real multi-VM split (correct for single-host v1).

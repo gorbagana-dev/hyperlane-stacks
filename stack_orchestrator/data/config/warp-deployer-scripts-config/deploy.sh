@@ -225,6 +225,43 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
 fi
 
 # -------------------------------------------------------
+# Resolve the synthetic token mint
+# It is a PDA of the synthetic warp program (seeds ["hyperlane_token","-","mint"]).
+# The Hyperlane SDK requires it explicitly in warp config and does not auto-derive
+# it, so query the deployed program and emit it for warp-UI to consume.
+# -------------------------------------------------------
+echo ""
+echo "=== Resolving synthetic token mint ==="
+WARP_PROGRAMS_FILE="${WARP_OUTPUT_DIR}/program-ids.json"
+SYNTHETIC_WARP_PROGRAM=""
+if [ -f "${WARP_PROGRAMS_FILE}" ]; then
+  SYNTHETIC_WARP_PROGRAM=$(jq -r --arg c "${SYNTHETIC_CHAIN}" '.[$c].base58 // empty' "${WARP_PROGRAMS_FILE}")
+fi
+SYNTHETIC_MINT=""
+if [ -n "${SYNTHETIC_WARP_PROGRAM}" ]; then
+  MINT_QUERY_OUT=$(hyperlane-sealevel-client \
+    --keypair "${DEPLOYER_KEY_FILE}" \
+    --url "${SYNTHETIC_CHAIN_RPC_URL}" \
+    token query --program-id "${SYNTHETIC_WARP_PROGRAM}" synthetic 2>&1 || true)
+  SYNTHETIC_MINT=$(echo "${MINT_QUERY_OUT}" \
+    | grep -oE 'Mint / Mint Authority:[[:space:]]*[1-9A-HJ-NP-Za-km-z]{32,44}' \
+    | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
+  if [ -z "${SYNTHETIC_MINT}" ]; then
+    SYNTHETIC_MINT=$(echo "${MINT_QUERY_OUT}" \
+      | grep -oE 'mint:[[:space:]]+[1-9A-HJ-NP-Za-km-z]{32,44}' \
+      | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
+  fi
+fi
+if [ -z "${SYNTHETIC_MINT}" ]; then
+  echo "ERROR: could not resolve synthetic mint for ${SYNTHETIC_CHAIN} (program ${SYNTHETIC_WARP_PROGRAM:-<none>})"
+  echo "Query output:"
+  echo "${MINT_QUERY_OUT:-<no output>}"
+  exit 1
+fi
+export SYNTHETIC_MINT
+echo "Synthetic token mint (${SYNTHETIC_CHAIN}): ${SYNTHETIC_MINT}"
+
+# -------------------------------------------------------
 # Build token-config.json output
 # -------------------------------------------------------
 echo ""
@@ -245,6 +282,7 @@ cat > "${WORK_DIR}/output/token-config.json" <<TOKEN_EOF
       "chain": "${SYNTHETIC_CHAIN}",
       "domainId": ${SYNTHETIC_DOMAIN_ID},
       "mailbox": "${SYNTHETIC_MAILBOX}",
+      "mint": "${SYNTHETIC_MINT}",
       "rpcUrl": "${SYNTHETIC_CHAIN_RPC_URL}"
     }
   }

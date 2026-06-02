@@ -41,6 +41,7 @@
         _warp_collateral_addr: "{{ _wpids[_tcfg.warpRoute.collateral.chain].base58 }}"
         _warp_synthetic_addr: "{{ _wpids[_tcfg.warpRoute.synthetic.chain].base58 }}"
         _warp_token_mint: "{{ _tcfg.warpRoute.tokenMint }}"
+        _warp_synthetic_mint: "{{ _tcfg.warpRoute.synthetic.mint }}"
       vars:
         _tcfg: >-
           {{ lookup('ansible.builtin.file',
@@ -54,10 +55,9 @@
 
     # Patch the scalar deployment-derived values into the committed specs. The rich
     # agent-config.json is distributed as a ConfigMap by state_distribute, not here.
-    # Core values (IGP/mailbox) come from program-ids.json; warp-route addresses + the
-    # collateral mint come from the warp-deployer (token-config.json +
-    # warp-deploy-outputs/program-ids.json). WARP_SYNTHETIC_MINT is not emitted by the
-    # warp-deployer yet — left empty in the committed spec (warp-ui tolerates empty).
+    # Core values (IGP/mailbox) come from program-ids.json; warp-route addresses, the
+    # collateral mint, and the synthetic mint come from the warp-deployer
+    # (token-config.json + warp-deploy-outputs/program-ids.json).
     - name: Patch core deployment-derived config keys into committed specs
       ansible.builtin.replace:
         path: "{{ deployment_root }}/{{ item.spec }}"
@@ -104,6 +104,8 @@
           value: "{{ _warp_synthetic_addr | default('') }}"
         - key: WARP_TOKEN_MINT
           value: "{{ _warp_token_mint | default('') }}"
+        - key: WARP_SYNTHETIC_MINT
+          value: "{{ _warp_synthetic_mint | default('') }}"
       loop_control:
         label: "{{ item.key }}"
       when:

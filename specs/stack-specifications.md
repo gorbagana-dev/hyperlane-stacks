@@ -134,6 +134,51 @@ One-time Job that deploys warp route contracts (collateral on one chain, synthet
 3. Deploys collateral + synthetic warp route programs
 4. Writes `hyperlane-token-config` ConfigMap with warp route addresses
 
+### Warp route token model
+
+A `collateral-and-synthetic` route spans two chains, and each chain has two
+distinct on-chain objects: the Hyperlane **token-router program** and the SPL
+**mint** it operates on. That 2×2 is the whole model — the four warp variables
+the downstream warp-UI consumes are one per cell:
+
+| | Token-router program | SPL mint |
+|---|---|---|
+| **Collateral side** (Solana) | `WARP_COLLATERAL_ADDRESS` | `WARP_TOKEN_MINT` |
+| **Synthetic side** (gorchain) | `WARP_SYNTHETIC_ADDRESS` | `WARP_SYNTHETIC_MINT` |
+
+- **`WARP_COLLATERAL_ADDRESS`** — the warp program on Solana that escrows real
+  USDC. Created by the warp deploy; read from
+  `warp-deploy-outputs/program-ids.json` (`<collateral-chain>.base58`).
+- **`WARP_SYNTHETIC_ADDRESS`** — the warp program on gorchain that mints/burns
+  gUSDC. Created by the warp deploy; `<synthetic-chain>.base58` from the same file.
+- **`WARP_TOKEN_MINT`** — the SPL mint of the **collateral** token = the real
+  Solana USDC mint. It **pre-exists** (Circle's mint); the operator supplies it
+  as the deployer input `WARP_TOKEN_MINT`, and the deployer echoes it back out as
+  `token-config.json` → `warpRoute.tokenMint`. Named from the deployer's "token
+  to bridge" perspective; conceptually it is the collateral-side mint.
+- **`WARP_SYNTHETIC_MINT`** — the SPL mint of the **synthetic** token = the gUSDC
+  mint on gorchain. It is **created** by the warp deploy (that is what "synthetic"
+  means — the wrapped token is minted into existence). Its address is the PDA
+  `find_program_address(["hyperlane_token","-","mint"], WARP_SYNTHETIC_ADDRESS)`,
+  so it is fully determined by the synthetic program.
+
+Pre-exists vs minted is exactly what makes this route `collateral-and-synthetic`
+rather than `collateral-collateral`; it holds only because gorchain has no native
+canonical USDC.
+
+**Why the synthetic mint must be emitted, not left blank.** Although the mint is a
+deterministic PDA, the warp-UI's Hyperlane SDK (`@hyperlane-xyz/sdk`) does **not**
+auto-derive it: `Token.getHypAdapter`'s `SealevelHypSynthetic` branch asserts
+`collateralAddressOrDenom` is present and feeds it to the adapter as the mint used
+for balance/ATA lookups — an empty value throws and the gorchain side of the UI
+fails to construct. So the deployer resolves it explicitly: after deploy it runs
+`hyperlane-sealevel-client token query --program-id <synthetic-program> synthetic`,
+parses the `Mint / Mint Authority:` line, and writes it to `token-config.json` →
+`warpRoute.synthetic.mint`. `publish-bridge-state.yml` then patches all four
+variables into `spec-warp-ui.yml`. (The e2e suite does the equivalent query in
+`conftest.py` and patches `test-spec-warp-ui.yml` at runtime, which is why bridging
+tests pass even though the prod spec ships placeholders.)
+
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
