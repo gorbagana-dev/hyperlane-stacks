@@ -197,15 +197,12 @@ PR but cannot land prod changes without the prod reviewers.
 
 ## DNS and TLS
 
-Staging lives at `staging.<bridge-domain>` on the same Cloudflare zone as
-prod (`<bridge-domain>`). Subdomains under it follow the same pattern as
-prod's hostnames (e.g., `validator-gorchain.staging.<bridge-domain>`,
-`relayer.staging.<bridge-domain>`).
-
-**Cloudflare API token for staging** is scoped to records under
-`staging.<bridge-domain>` only. The prod token is scoped to non-staging
-records on the same zone. The `dns_cloudflare` role takes the token as a
-variable and otherwise behaves identically across environments.
+The staging DNS zone is **not yet decided** — it is an operator-supplied
+value (`dns_zone` in the staging `group_vars`, currently a placeholder), not
+a fixed subdomain of the prod zone. Hostnames under it follow the same
+pattern as prod's. The `dns_cloudflare` role takes the zone and its API
+token as variables and behaves identically across environments, so the zone
+choice is settled at staging standup without code changes.
 
 Same cert-manager / ACME setup as prod (the MinIO PR2 will land the TLS
 strategy; staging follows it). Real Let's Encrypt certs, not a fake CA —
