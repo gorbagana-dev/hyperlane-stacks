@@ -117,10 +117,26 @@ separate deployment of the `hyperlane-svm-warp-deployer` stack:
 - `deployment/spec-warp-deployer-gor.yml` (new)
 
 Each spec sets its own `WARP_ROUTE_NAME`, collateral/synthetic chain + domain +
-RPC, metadata, and references its own token-config ConfigMap. Like the two
-validators, both deployments resolve to the same SO-derived namespace
-(`laconic-hyperlane-svm-warp-deployer`) but get distinct deployment-ids, so
-their Jobs and resources do not collide.
+RPC, metadata, and references its own token-config ConfigMap.
+
+**Each route must set an explicit `namespace:`.** Both routes are the same
+stack, so they default to the same namespace (`laconic-hyperlane-svm-warp-deployer`),
+and both deploy on the one bridge cluster. SO enforces one deployment per
+namespace — `deployment start` stamps the namespace with the deploying directory
+and throws if a different deployment tries to share it
+(`stack-orchestrator/.../deploy_k8s.py:230-246`). So:
+
+- `spec-warp-deployer-usdc.yml` → `namespace: laconic-hyperlane-warp-usdc`
+- `spec-warp-deployer-gor.yml` → `namespace: laconic-hyperlane-warp-gor`
+
+The two validators don't hit this because in production each runs on its own
+host/cluster; the warp routes all deploy on the same bridge cluster, so they
+need distinct namespaces. Resource names (Job, PVC) are already deployment-id
+scoped and wouldn't collide, but the namespace guard is unconditional, so the
+override is required, not optional. The shared `/state` host-path mount is
+unaffected — each route writes its own `warp-routes/<route>/` subdir, and the
+two PVs (distinct names, same hostPath) coexist exactly as the core-deployer and
+warp-deployer already share `/state` today.
 
 **Why per-route specs over a single list-shaped `warp-routes:` block:** matches
 the established validator per-instance convention; isolates failures (one route
@@ -223,8 +239,8 @@ the change is contained.
 
 | File | Change |
 |---|---|
-| `deployment/spec-warp-deployer.yml` → `spec-warp-deployer-usdc.yml` | Rename; reference per-route token-config CM. |
-| `deployment/spec-warp-deployer-gor.yml` | New. GOR route: native gorchain + synthetic Solana, own `WARP_ROUTE_NAME`. |
+| `deployment/spec-warp-deployer.yml` → `spec-warp-deployer-usdc.yml` | Rename; reference per-route token-config CM; add `namespace: laconic-hyperlane-warp-usdc`. |
+| `deployment/spec-warp-deployer-gor.yml` | New. GOR route: native gorchain + synthetic Solana, own `WARP_ROUTE_NAME`, `namespace: laconic-hyperlane-warp-gor`. |
 | `stack_orchestrator/data/config/warp-deployer-token-config-usdc/token-config.json.tmpl` | USDC template (moved from `warp-deployer-token-config/`). |
 | `stack_orchestrator/data/config/warp-deployer-token-config-gor/token-config.json.tmpl` | New. `native`+`synthetic` template. |
 | `stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh` | Per-route state subdir + idempotency; generalize output `token-config.json` to honor per-side type. |
@@ -237,7 +253,7 @@ the change is contained.
 | `tests/e2e/conftest.py` | Per-route warp-deployer deployment; per-route address resolution + warp-UI patching. |
 | `tests/e2e/test_02_warp_deployer.py` | Assert both routes deploy (per-route state, `native`+`synthetic` program-ids). |
 | `tests/e2e/test_10_warp_ui.py` | Assert both routes' tokens render. |
-| `tests/e2e/fixtures/test-spec-warp-deployer-*.yml`, `test-spec-warp-ui.yml` | Per-route fixtures + UI env. |
+| `tests/e2e/fixtures/test-spec-warp-deployer-*.yml`, `test-spec-warp-ui.yml` | Per-route fixtures (distinct `namespace:` each) + UI env. |
 | `specs/stack-specifications.md` | Replace the single-route limitation note with multi-route reality. |
 | `docs/architecture-decisions.md` | Update the warp-deployer row (multi-route). |
 | `docs/production-readiness-gaps.md` | Fill §5.4 (multiple warp routes). |
@@ -276,6 +292,9 @@ USDC transfer test and is route-independent at the agent layer.
 5. **Accept build-time route count for the UI** — the `tokens[]` list already
    supports N; a runtime/registry loader would be a larger UI fork change with
    no payoff for a known, rarely-changing route set (YAGNI).
+6. **Explicit per-route namespace** — SO refuses to let two deployments of one
+   stack share a namespace (`deploy_k8s.py:230-246`), so each route's spec sets
+   its own `namespace:`. Required by SO, not a stylistic choice.
 
 ## Known limitations
 
