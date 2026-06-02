@@ -1,4 +1,11 @@
 ---
+- name: Resolve stack metadata from the stacks map (caller-set spec_file wins)
+  when: spec_file is not defined
+  ansible.builtin.set_fact:
+    spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
+    stack_path: "{{ repo_root }}/{{ stacks[stack_name].path }}"
+    stack_is_job: "{{ stacks[stack_name].is_job | default(false) }}"
+
 - name: Resolve deploy dir (honor caller override, else derive)
   ansible.builtin.set_fact:
     deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"

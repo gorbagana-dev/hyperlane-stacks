@@ -64,7 +64,6 @@ stack_env_vars:
   hyperlane-minio:
     - MINIO_ROOT_USER
     - MINIO_ROOT_PASSWORD
-    - MINIO_USERS
   hyperlane-svm-deployer:
     - HARDWARE_WALLET_PUBKEY
     - IGP_ORACLE_PUBKEY
@@ -95,3 +94,38 @@ stack_env_vars:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
     - GHCR_PAT
+
+# --- Per-stack static metadata ---
+# deploy-all plays pass only stack_name; stack_deploy resolves spec_file/stack_path/
+# is_job from here (caller-set spec_file wins — validators override per-chain). Keep
+# in sync with deployment/spec-*.yml and stack_orchestrator/data/stacks/.
+stacks:
+  hyperlane-minio:
+    spec: spec-minio.yml
+    path: stack_orchestrator/data/stacks/hyperlane-minio
+  hyperlane-svm-deployer:
+    spec: spec-deployer.yml
+    path: stack_orchestrator/data/stacks/hyperlane-svm-deployer
+    is_job: true
+  hyperlane-svm-warp-deployer:
+    spec: spec-warp-deployer.yml
+    path: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
+    is_job: true
+  hyperlane-relayer:
+    spec: spec-relayer.yml
+    path: stack_orchestrator/data/stacks/hyperlane-relayer
+    configmaps:
+      - agent-config
+  hyperlane-gas-oracle:
+    spec: spec-gas-oracle.yml
+    path: stack_orchestrator/data/stacks/hyperlane-gas-oracle
+  hyperlane-monitoring:
+    spec: spec-monitoring.yml
+    path: stack_orchestrator/data/stacks/hyperlane-monitoring
+  hyperlane-warp-ui:
+    spec: spec-warp-ui.yml
+    path: stack_orchestrator/data/stacks/hyperlane-warp-ui
+  hyperlane-validator:
+    path: stack_orchestrator/data/stacks/hyperlane-validator
+    configmaps:
+      - agent-config

@@ -1,11 +1,13 @@
 ---
 # Phase 2 — deploy stacks (assumes setup-all has run). Stops after stacks are
-# running; on-chain ownership/ISM is sub-project 3.
+# running; on-chain ownership/ISM is sub-project 3. Each singleton play passes only
+# stack_name; stack_deploy resolves spec/path/is_job from the `stacks` map in
+# group_vars and assembles the secret env from `stack_env_vars`.
 - name: Preflight — fleet is provisioned
   hosts: all:!controller
   gather_facts: false
   tasks:
-    - name: laconic-so is present (else run setup-all first)
+    - name: Verify laconic-so is present (else run setup-all first)
       ansible.builtin.command: laconic-so version
       changed_when: false
 
@@ -16,20 +18,13 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-minio
-    spec_file: "{{ deployment_root }}/spec-minio.yml"
-    stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-minio"
   pre_tasks:
     - name: Derive validator labels + MINIO_USERS
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
-    - name: Expose MinIO root + users as env-named facts
-      ansible.builtin.set_fact:
-        MINIO_USERS: "{{ minio_users }}"
-        MINIO_ROOT_USER: "{{ minio_root_user }}"
-        MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
-    - name: Build per-validator MinIO IAM env (PREFIX_KEY_ID / PREFIX_SECRET)
+    - name: Build MinIO env (MINIO_USERS + per-validator IAM)
       ansible.builtin.set_fact:
         stack_env_extra: >-
-          {{ stack_env_extra | default({}) | combine({
+          {{ stack_env_extra | default({'MINIO_USERS': minio_users}) | combine({
              (item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,
              (item.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[item.label].secret }) }}
       loop: "{{ validators }}"
@@ -46,19 +41,11 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-svm-deployer
-    spec_file: "{{ deployment_root }}/spec-deployer.yml"
-    stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-svm-deployer"
-    stack_is_job: true
-    GORCHAIN_RPC_URL: "{{ gorchain_rpc_url }}"
-    SOLANA_RPC_URL: "{{ solana_rpc_url }}"
-    GORCHAIN_DOMAIN_ID: "{{ gorchain_domain_id }}"
-    SOLANA_DOMAIN_ID: "{{ solana_domain_id }}"
-    HARDWARE_WALLET_PUBKEY: "{{ hardware_wallet_pubkey }}"
   roles:
     - stack_deploy
 
-- name: Commit deployer-produced bridge state
-  ansible.builtin.import_playbook: commit-bridge-state.yml
+- name: Publish deployer-produced bridge state
+  ansible.builtin.import_playbook: publish-bridge-state.yml
 
 - name: Relayer
   hosts: relayer_hosts
@@ -67,13 +54,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-relayer
-    spec_file: "{{ deployment_root }}/spec-relayer.yml"
-    stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-relayer"
-    deploy_dir: "{{ kind_mount_root }}/deployments/hyperlane-relayer"
-    configmap_names:
-      - agent-config
-    GORCHAIN_RPC_URL: "{{ gorchain_rpc_url }}"
-    SOLANA_RPC_URL: "{{ solana_rpc_url }}"
+    configmap_names: "{{ stacks['hyperlane-relayer'].configmaps }}"
   roles:
     - state_distribute
     - stack_deploy
@@ -85,16 +66,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-gas-oracle
-    spec_file: "{{ deployment_root }}/spec-gas-oracle.yml"
-    stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-gas-oracle"
-    deploy_dir: "{{ kind_mount_root }}/deployments/hyperlane-gas-oracle"
-    configmap_names: []
-    GORCHAIN_RPC_URL: "{{ gorchain_rpc_url }}"
-    SOLANA_RPC_URL: "{{ solana_rpc_url }}"
-    PRIVY_APP_ID: "{{ privy_app_id }}"
-    PRIVY_APP_SECRET: "{{ privy_app_secret }}"
   roles:
-    - state_distribute
     - stack_deploy
 
 - name: Monitoring
@@ -104,8 +76,6 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-monitoring
-    spec_file: "{{ deployment_root }}/spec-monitoring.yml"
-    stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-monitoring"
   roles:
     - stack_deploy
 
@@ -116,18 +86,12 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-warp-ui
-    spec_file: "{{ deployment_root }}/spec-warp-ui.yml"
-    stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-warp-ui"
-    deploy_dir: "{{ kind_mount_root }}/deployments/hyperlane-warp-ui"
-    configmap_names: []
-    GORCHAIN_RPC_URL: "{{ gorchain_rpc_url }}"
-    SOLANA_RPC_URL: "{{ solana_rpc_url }}"
   roles:
-    - state_distribute
     - stack_deploy
 
 # Validators: looped over validators.yaml, each on its own host. state_distribute
-# then stack_deploy, delegated to the validator's host.
+# then stack_deploy, delegated to the validator's host. Spec is chosen per chain
+# (spec-validator-<chain>.yml); deploy_dir is home-based on the target host.
 # NOTE (VM-verify): delegate_to + ansible_env/fact behavior for multi-host
 # validators needs confirmation on a real multi-VM run; correct for single-host v1.
 - name: Validators
@@ -146,9 +110,8 @@
           delegate_to: "{{ item.host }}"
       vars:
         stack_name: "hyperlane-validator-{{ item.label }}"
-        deploy_dir: "{{ hostvars[item.host].kind_mount_root }}/deployments/hyperlane-validator-{{ item.label }}"
-        configmap_names:
-          - agent-config
+        deploy_dir: "/home/{{ hostvars[item.host].deploy_user }}/deployments/hyperlane-validator-{{ item.label }}"
+        configmap_names: "{{ stacks['hyperlane-validator'].configmaps }}"
       loop: "{{ validators }}"
       loop_control:
         label: "{{ item.label }}"
@@ -160,14 +123,10 @@
           delegate_to: "{{ item.host }}"
       vars:
         stack_name: "hyperlane-validator-{{ item.label }}"
-        spec_file: "{{ deployment_root }}/spec-validator-{{ item.label }}.yml"
-        stack_path: "{{ repo_root }}/stack_orchestrator/data/stacks/hyperlane-validator"
-        deploy_dir: "{{ hostvars[item.host].kind_mount_root }}/deployments/hyperlane-validator-{{ item.label }}"
+        spec_file: "{{ deployment_root }}/spec-validator-{{ item.chain }}.yml"
+        stack_path: "{{ repo_root }}/{{ stacks['hyperlane-validator'].path }}"
+        deploy_dir: "/home/{{ hostvars[item.host].deploy_user }}/deployments/hyperlane-validator-{{ item.label }}"
         stack_env_map_key: hyperlane-validator
-        GORCHAIN_RPC_URL: "{{ gorchain_rpc_url }}"
-        SOLANA_RPC_URL: "{{ solana_rpc_url }}"
-        PRIVY_APP_ID: "{{ privy_app_id }}"
-        PRIVY_APP_SECRET: "{{ privy_app_secret }}"
         stack_env_extra: >-
           {{ {(item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,
               (item.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[item.label].secret} }}
