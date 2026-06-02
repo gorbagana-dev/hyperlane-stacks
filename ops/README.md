@@ -118,7 +118,7 @@ Per-host facts live in `host_vars/<alias>.yml`: `public_ip`, `privileged_user`,
 # Phase 1 — provision every host (Docker/kind/kubectl, laconic-so, DNS, creds)
 ansible-playbook -i inventories/prod/hosts.yml playbooks/setup-all.yml
 
-# Phase 2 — deploy the stacks (MinIO → deployer Job → commit state → consumers)
+# Phase 2 — deploy the stacks (MinIO → deployer Job → publish state → consumers)
 ansible-playbook -i inventories/prod/hosts.yml playbooks/deploy-all.yml
 ```
 
@@ -133,10 +133,11 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/distribute-credentials.
 `deploy-all.yml` runs hands-off end to end. The one attended option is the state
 publish:
 
-- **`publish-bridge-state.yml`** pulls the deployer-produced `generated/` state
-  into the controller's tree, **patches the deployment-derived `config:` keys**
-  (IGP program IDs/accounts into `spec-relayer.yml`/`spec-gas-oracle.yml`,
-  mailboxes into `spec-warp-ui.yml`), then auto-commits + pushes by default. Pass
+- **`publish-bridge-state.yml`** runs on the deployer host: it copies the
+  deployer-produced `generated/` state into the on-host clone, **patches the
+  deployment-derived `config:` keys** (IGP program IDs/accounts into
+  `spec-relayer.yml`/`spec-gas-oracle.yml`, mailboxes + warp addresses/mints into
+  `spec-warp-ui.yml`), then auto-commits + pushes `deploy_branch` by default. Pass
   **`-e state_review=true`** to print the diff and pause for approval before
   commit/push. Its git-add is scoped to the `bridges/<bridge>/generated/` paths
   **plus** the three patched specs, and it skips entirely if nothing changed.
@@ -151,14 +152,29 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/stop-all.yml -e destroy
 
 ## How a stack gets deployed
 
-`stack_deploy` mirrors the proven e2e sequence: `laconic-so deploy init` →
-overwrite the generated spec with the committed `deployment/spec-*.yml` →
-`deploy create` → patch a readable `deployment-id` → `deployment start
---perform-cluster-management`. Cluster sharing is automatic — every spec sets
-`kind-cluster-name: hyperlane`, so all stacks on a host share the `kind-hyperlane`
-cluster. Single-stack stops use `--skip-cluster-management` so they never tear it
-down. It's idempotent: re-running skips `init`/`create` if the deployment already
-exists.
+Every deploy host fetches the stack repo itself, so `laconic-so` reads the specs
+and stack definitions locally — single-host and multi-host work the same way, with
+no repo paths leaking from the operator's machine. The `fetch_stack` role runs
+first on each host:
+
+```
+CERC_REPO_BASE_DIR=~/deployments laconic-so fetch-stack \
+  github.com/gorbagana-dev/hyperlane-stacks@<deploy_branch> --git-ssh --pull
+```
+
+→ clones/updates `~/deployments/hyperlane-stacks` on the host (over the forwarded
+SSH agent — no creds stored on hosts) and checks out `deploy_branch` (default
+`main`; `-e deploy_branch=<branch>` to test off main). `repo_root`/`deployment_root`
+then resolve against that on-host clone.
+
+`stack_deploy` then runs `laconic-so --stack {{ repo_root }}/… deploy create
+--spec-file {{ deployment_root }}/spec-*.yml` directly against the committed spec
+(no `deploy init` — SO reads the spec file as-is) → patches a readable
+`deployment-id` → `deployment start --perform-cluster-management`. Cluster sharing
+is automatic — every spec sets `kind-cluster-name: hyperlane`, so all stacks on a
+host share the `kind-hyperlane` cluster. Single-stack stops use
+`--skip-cluster-management` so they never tear it down. It's idempotent: re-running
+skips `create` if the deployment already exists.
 
 Each stack's secret `laconic-so` environment is assembled from the
 `stack_env_vars` map in `group_vars/all.yml` — a list of the **secret** env-var
@@ -166,15 +182,20 @@ names each spec injects via `secrets: { env: NAME }`, resolved to the same-named
 ansible vars. `config:` vars are committed spec literals and are **not** in this
 map. **Keep the map in sync** with each spec's `secrets:` block.
 
-Deployments live under `~/deployments/<stack-name>` on each host (the
-`deploy_base` role default); the state-repo clone used by `state_distribute` is
-`~/deployments/state-repo`.
+Deployments live under `~/deployments/<stack-name>` on each host (the `deploy_base`
+role default); the fetched stack repo is `~/deployments/hyperlane-stacks` — one
+clone per host, shared by `fetch_stack`, `state_distribute`, and `stack_deploy`.
 
-State flows deployer-host → git → consumer-hosts: `publish-bridge-state.yml`
-commits the deployer's `generated/` files (and the publish-patched specs), and
-`state_distribute` git-pulls them on each consumer host (over the forwarded SSH
-agent — no creds stored on hosts) and copies the `agent-config` ConfigMap into
-each stack's `configmaps/`.
+State flows deployer-host → git → consumer-hosts. `publish-bridge-state.yml` runs
+**on the deployer host** (the artifacts are already there): it copies the deployer's
+`generated/` from the host-path volume into the on-host clone, patches the
+deployment-derived `config:` keys (IGP IDs/accounts into
+`spec-relayer.yml`/`spec-gas-oracle.yml`, mailboxes + warp addresses/mints into
+`spec-warp-ui.yml`), then commits (with the operator's git identity, read from the
+controller) and pushes `deploy_branch` over the forwarded agent. Each consumer's
+`fetch_stack --pull` then brings down the published specs + `generated/`, and
+`state_distribute` copies the `agent-config` ConfigMap from the clone into each
+stack's `configmaps/`.
 
 ## Linting (Layer 0)
 

@@ -1,13 +1,14 @@
 ---
 # Loads validators.yaml and sets derived facts (see Task 3 spec).
 # Input var: validators_file (path). Defaults to the env's operator file.
-- name: Resolve validators_file default
+- name: Resolve the validators file (explicit override, else the env's operator file)
+  # Inline-if so deployment_root (which derives from ansible_env.HOME at runtime) is
+  # only evaluated when no explicit validators_file is given — `| default(expr)` would
+  # evaluate expr eagerly and break callers that pass validators_file without facts.
   ansible.builtin.set_fact:
-    _default_validators_file: "{{ deployment_root ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}"
-
-- name: Apply validators_file override when provided
-  ansible.builtin.set_fact:
-    _validators_file: "{{ validators_file | default(_default_validators_file) }}"
+    _validators_file: >-
+      {{ validators_file if validators_file is defined
+         else deployment_root ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}
 
 - name: Read validators.yaml
   ansible.builtin.set_fact:

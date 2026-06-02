@@ -1,8 +1,17 @@
 ---
 # --- Environment wiring ---
+# Each deploy host fetches the stack repo itself (laconic-so fetch-stack), so
+# repo_root/deployment_root resolve against the ON-HOST clone, not the operator's
+# checkout — laconic-so deploy create runs on the host and reads them there.
 bridge_name: default
-deployment_root: "{{ playbook_dir }}/../../../deployment/staging"   # staging deployment specs
-repo_root: "{{ playbook_dir }}/../../.."
+stack_repo_locator: github.com/gorbagana-dev/hyperlane-stacks
+# Branch the hosts fetch and publish-bridge-state pushes to. Override to test off
+# main: -e deploy_branch=<branch>
+deploy_branch: main
+repo_base_dir: "{{ ansible_env.HOME }}/deployments"
+repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
+deployment_subdir: deployment/staging               # staging specs live in deployment/staging/
+deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 
 # --- laconic-so install (prerequisites_user) ---
 laconic_so_version: "v1.1.0-b3e9366-202605111309"

@@ -1,30 +1,55 @@
 ---
-# Pull deployer-host state into the controller's working tree, patch the
-# deployment-derived config: keys into the committed specs, then commit+push.
+# Publish bridge state from the DEPLOYER HOST, where the artifacts already live.
+# fetch_stack put the stack repo clone on this host (on deploy_branch); we copy the
+# deployer's generated/ from its host-path volume into that clone, patch the
+# deployment-derived config: keys into the committed specs, then commit + push over
+# the forwarded SSH agent using the operator's git identity. No controller round-trip.
 # Default: hands-off (auto commit + push). -e state_review=true to gate.
 - name: Publish bridge state to git
-  hosts: controller
-  gather_facts: false
+  hosts: deployer_hosts
+  gather_facts: true
   vars:
     state_review: false
     generated_rel: "bridges/{{ bridge_name }}/generated"
-    deployer_host: "{{ groups['deployer_hosts'][0] }}"
-    deployer_data_root: >-
-      {{ hostvars[deployer_host].kind_mount_root }}/bridge/generated
+  roles:
+    - fetch_stack            # ensure the clone exists + is current on deploy_branch
   tasks:
-    - name: Pull generated files from the deployer host into the working tree
-      ansible.posix.synchronize:
-        src: "{{ deployer_data_root }}/"
+    - name: Read the operator git identity from the controller
+      ansible.builtin.command: "git -C {{ playbook_dir }} config user.{{ item }}"  # noqa: command-instead-of-module
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+      register: _git_id
+      loop:
+        - name
+        - email
+
+    - name: Operator git identity must be set (committer for published state)
+      ansible.builtin.assert:
+        that:
+          - _git_id.results[0].stdout | length > 0
+          - _git_id.results[1].stdout | length > 0
+        fail_msg: >-
+          git user.name/user.email not configured on the controller; set them so
+          the published commit has an author.
+
+    - name: Copy the deployer's generated state into the on-host clone
+      ansible.builtin.copy:
+        src: "{{ kind_mount_root }}/bridge/generated/"
         dest: "{{ deployment_root }}/{{ generated_rel }}/"
-        mode: pull
-      delegate_to: "{{ deployer_host }}"
+        remote_src: true
+        mode: "0644"
       when: not ansible_check_mode
 
     - name: Load deployer program-ids.json
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/{{ generated_rel }}/program-ids.json"
+      register: _pids_raw
+      when: not ansible_check_mode
+
+    - name: Parse program-ids.json
       ansible.builtin.set_fact:
-        _pids: >-
-          {{ lookup('ansible.builtin.file',
-             deployment_root ~ '/' ~ generated_rel ~ '/program-ids.json') | from_json }}
+        _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
     - name: Stat the warp-deployer artifacts (present only after the warp Job)
@@ -36,6 +61,17 @@
         - warp-deploy-outputs/program-ids.json
       when: not ansible_check_mode
 
+    - name: Read warp artifacts when present
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/{{ generated_rel }}/{{ item }}"
+      register: _warp_raw
+      loop:
+        - token-config.json
+        - warp-deploy-outputs/program-ids.json
+      when:
+        - not ansible_check_mode
+        - _warp_stat.results | selectattr('stat.exists') | list | length == 2
+
     - name: Derive warp-route values when the warp artifacts are present
       ansible.builtin.set_fact:
         _warp_collateral_addr: "{{ _wpids[_tcfg.warpRoute.collateral.chain].base58 }}"
@@ -43,12 +79,8 @@
         _warp_token_mint: "{{ _tcfg.warpRoute.tokenMint }}"
         _warp_synthetic_mint: "{{ _tcfg.warpRoute.synthetic.mint }}"
       vars:
-        _tcfg: >-
-          {{ lookup('ansible.builtin.file',
-             deployment_root ~ '/' ~ generated_rel ~ '/token-config.json') | from_json }}
-        _wpids: >-
-          {{ lookup('ansible.builtin.file',
-             deployment_root ~ '/' ~ generated_rel ~ '/warp-deploy-outputs/program-ids.json') | from_json }}
+        _tcfg: "{{ _warp_raw.results[0].content | b64decode | from_json }}"
+        _wpids: "{{ _warp_raw.results[1].content | b64decode | from_json }}"
       when:
         - not ansible_check_mode
         - _warp_stat.results | selectattr('stat.exists') | list | length == 2
@@ -169,12 +201,16 @@
         - _staged.rc | default(0) != 0
         - state_review | bool
 
-    - name: Commit the staged state
+    - name: Commit the staged state (operator identity)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git commit
         argv:
           - git
           - -C
           - "{{ repo_root }}"
+          - -c
+          - "user.name={{ _git_id.results[0].stdout }}"
+          - -c
+          - "user.email={{ _git_id.results[1].stdout }}"
           - commit
           - -m
           - "chore: publish bridge state"
@@ -183,13 +219,17 @@
         - not ansible_check_mode
         - _staged.rc | default(0) != 0
 
-    - name: Push to the current tracking branch (via forwarded agent)
+    - name: Push to deploy_branch (via forwarded agent)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for git push
         argv:
           - git
           - -C
           - "{{ repo_root }}"
           - push
+          - origin
+          - "HEAD:{{ deploy_branch }}"
+      environment:
+        GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes"
       changed_when: true
       when:
         - not ansible_check_mode

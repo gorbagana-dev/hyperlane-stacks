@@ -1,0 +1,22 @@
+---
+# Clone/update the stack repo on this host so laconic-so deploy create can read
+# the committed specs + stack definitions locally. Tracks deploy_branch, which
+# publish-bridge-state pushes the deployment-derived spec edits back to. Uses the
+# forwarded SSH agent (ansible.cfg sets ForwardAgent) — no creds stored on hosts.
+# Caller may override repo_base_dir (validators do, under delegation).
+- name: Fetch/update the stack repo on this host
+  ansible.builtin.command:
+    argv:
+      - laconic-so
+      - fetch-stack
+      - "{{ stack_repo_locator }}@{{ deploy_branch }}"
+      - --git-ssh
+      - --pull
+  environment:
+    CERC_REPO_BASE_DIR: "{{ repo_base_dir }}"
+    GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes"
+  register: _fetch
+  changed_when: >-
+    'Cloning' in _fetch.stdout or 'Updating' in _fetch.stdout
+    or 'switching to branch' in _fetch.stdout
+  when: not ansible_check_mode

@@ -1,5 +1,5 @@
 ---
-state_repo_url: "git@github.com:gorbagana-dev/hyperlane-stacks.git"
-state_repo_branch: main
-state_repo_dir: "{{ ansible_env.HOME }}/deployments/state-repo"
-# Caller sets: stack_name, deploy_dir, configmap_names (list)
+# Reads generated state from the on-host clone fetch_stack maintains
+# ({{ deployment_root }}/bridges/{{ bridge_name }}/generated). No own repo clone.
+# Caller sets: deploy_dir, configmap_names (list). repo_root/deployment_root come
+# from group_vars (or per-host overrides for delegated validators).
