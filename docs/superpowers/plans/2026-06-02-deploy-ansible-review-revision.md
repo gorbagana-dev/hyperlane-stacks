@@ -17,8 +17,9 @@ by `publish-bridge-state`. See `docs/superpowers/specs/2026-06-01-deploy-side-an
 **Tech Stack:** Ansible (community.general, kubernetes.core, ansible.posix), laconic-so,
 yamllint/ansible-lint, localhost pytest-style assertion playbooks.
 
-**Canonical IDs:** gorchain domain==chain==`99999`; Solana domain==chain==`1399811149`
-(prod/mainnet), `1399811151` (staging/devnet).
+**Canonical IDs:** SVM chains, name-derived `u32` (`chainId==domainId`). gorchain
+domain==chain==`1198486093` prod / `1198486095` devnet (`"Gor"` 0x476F72 + net byte);
+Solana==`1399811149` mainnet / `1399811151` devnet.
 
 ---
 
@@ -37,7 +38,8 @@ yamllint/ansible-lint, localhost pytest-style assertion playbooks.
 - [ ] **Set Solana domain/chain IDs to canonical mainnet** everywhere they appear:
   `SOLANA_DOMAIN_ID: "1399811149"`, `SOLANA_CHAIN_ID: "1399811149"` (was `99998`).
   In `spec-warp-deployer.yml`, `COLLATERAL_DOMAIN_ID: "1399811149"` (collateral=Solana);
-  `SYNTHETIC_DOMAIN_ID` stays `99999` (synthetic=gorchain). Gorchain IDs stay `99999`.
+  `SYNTHETIC_DOMAIN_ID` (synthetic=gorchain) and the gorchain domain/chain IDs are the
+  name-derived `1198486093` (prod) / `1198486095` (devnet).
 - [ ] **Verify** `yamllint deployment/spec-*.yml` passes; each spec still has a valid
   `secrets:` block.
 - [ ] **Commit:** `git commit -m "fix(specs): canonical Solana IDs + move Helius RPC to secrets"`

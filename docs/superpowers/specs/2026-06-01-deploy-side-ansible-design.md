@@ -194,12 +194,15 @@ placeholder once the value is known and commits it. Because prod and staging
 differ, these live in **two committed spec trees** — `deployment/` (prod) and
 `deployment/staging/` (devnet) — selected by `deployment_root`.
 
-Canonical IDs: gorchain domain == chain == `99999` (our own SVM chain; arbitrary
-but fixed, collision-free against Hyperlane's known-domains enum). Solana domain
-== chain == the canonical Hyperlane value — **`1399811149`** mainnet (prod),
-**`1399811151`** devnet (staging). Hyperlane derives SVM domain IDs from the chain
-name (`0x536F6C` = ASCII `"Sol"` + a network byte), and uses `chainId == domainId`
-for Solana in its own agent config, so equal values are correct.
+Canonical IDs: both chains are SVM (no EIP-155 chainId — agave/Solana identify by
+genesis hash, not a number), so Hyperlane assigns a `u32` domain derived from the
+chain name (`0x536F6C` = ASCII `"Sol"` + a network byte) and sets `chainId ==
+domainId` (verified in Hyperlane's own agent config). Solana = the canonical value
+**`1399811149`** mainnet (prod) / **`1399811151`** devnet (staging). gorchain has no
+canonical Hyperlane domain (we deploy our own core on it), so we derive one the same
+way from `"Gor"` (`0x476F72`) + the matching network byte: domain == chain ==
+**`1198486093`** (prod) / **`1198486095`** (staging devnet). Collision-free against
+Hyperlane's known-domains enum.
 
 **2. Secret — never committed, env-injected via `secrets:`.**
 `SOLANA_RPC_URL` (the Helius URL embeds an API key → it is a secret, **moved out

@@ -17,7 +17,7 @@ config:
   SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
 
   # --- Hyperlane domain IDs (must match deployer config) ---
-  GORCHAIN_DOMAIN_ID: "99999"
+  GORCHAIN_DOMAIN_ID: "1198486093"
   SOLANA_DOMAIN_ID: "1399811149"
 
   # --- Update frequency ---

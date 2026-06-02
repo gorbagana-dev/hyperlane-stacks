@@ -17,9 +17,9 @@ configmaps:
   deployer-registry-config: ./configmaps/deployer-registry-config
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
-  GORCHAIN_DOMAIN_ID: "99999"
+  GORCHAIN_DOMAIN_ID: "1198486093"
   SOLANA_DOMAIN_ID: "1399811149"
-  GORCHAIN_CHAIN_ID: "99999"
+  GORCHAIN_CHAIN_ID: "1198486093"
   SOLANA_CHAIN_ID: "1399811149"
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
