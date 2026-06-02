@@ -1,0 +1,54 @@
+# Hyperlane Relayer - LOCAL (own-chains) deployment spec
+# Delivers cross-chain messages between Gorchain and Solana.
+#
+# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host;
+# everything else mirrors prod (Caddy + LE, MinIO via public s3.<zone>).
+stack: stack_orchestrator/data/stacks/hyperlane-relayer
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+config:
+  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
+  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
+  GORCHAIN_IGP_ACCOUNT: "REPLACE_WITH_GORCHAIN_IGP_ACCOUNT"
+  SOLANA_IGP_ACCOUNT: "REPLACE_WITH_SOLANA_IGP_ACCOUNT"
+  AWS_ENDPOINT_URL_S3: "https://s3.__DNS_ZONE__"
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
+volumes:
+  relayer-data: /srv/kind/hyperlane/relayer/data
+resources:
+  volumes:
+    relayer-data:
+      reservations:
+        storage: 5Gi
+configmaps:
+  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
+  agent-config: ./configmaps/agent-config
+# Before deploying, place these keyfiles on the host:
+#   ~/.credentials/hyperlane/relayer-gorchain.key  (hex-encoded relayer signing key for Gorchain)
+#   ~/.credentials/hyperlane/relayer-solana.key    (hex-encoded relayer signing key for Solana)
+#   ~/.credentials/hyperlane/relayer-fee-claim.json (Solana keypair JSON array for IGP fee claims)
+# No MinIO credentials needed — the relayer uses an anonymous S3 client.
+secrets:
+  hyperlane-relayer-secrets:
+    keys:
+      HYP_CHAINS_GORCHAIN_SIGNER_KEY: { file: ~/.credentials/hyperlane/relayer-gorchain.key }
+      HYP_CHAINS_SOLANA_SIGNER_KEY:   { file: ~/.credentials/hyperlane/relayer-solana.key }
+      RELAYER_KEYPAIR_JSON:           { file: ~/.credentials/hyperlane/relayer-fee-claim.json }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: relayer.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: relayer:9091

@@ -1,0 +1,49 @@
+# Hyperlane MinIO - LOCAL (own-chains) deployment spec
+# S3-compatible storage for validator checkpoints. Fronted by Caddy + Let's Encrypt
+# at s3.<zone> (real cert → the Rust validator's S3 client trusts it), exactly like
+# prod. acme-email here also configures Caddy's ACME email for the cluster.
+stack: stack_orchestrator/data/stacks/hyperlane-minio
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+volumes:
+  minio-data: /srv/kind/hyperlane/minio/data
+resources:
+  volumes:
+    minio-data:
+      reservations:
+        storage: 10Gi
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: s3.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: minio:9000
+    - host-name: minio-console.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: minio:9001
+# Before deploying, export these env vars in the shell that runs `laconic-so`:
+#
+#   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD      — MinIO root credentials
+#
+#   MINIO_USERS                               — Comma-separated validator labels
+#                                               e.g. "gorchain-primary,solana-primary"
+#
+#   For each label in MINIO_USERS, export two creds:
+#   <LABEL_UPPER>_KEY_ID, <LABEL_UPPER>_SECRET
+#   e.g. GORCHAIN_PRIMARY_KEY_ID, GORCHAIN_PRIMARY_SECRET
+#        SOLANA_PRIMARY_KEY_ID, SOLANA_PRIMARY_SECRET
+secrets:
+  hyperlane-minio-secrets:
+    keys:
+      MINIO_ROOT_USER:     { env: MINIO_ROOT_USER }
+      MINIO_ROOT_PASSWORD: { env: MINIO_ROOT_PASSWORD }
+  minio-validator-secrets:
+    keys:
+      MINIO_USERS:             { env: MINIO_USERS }
+      GORCHAIN_PRIMARY_KEY_ID: { env: GORCHAIN_PRIMARY_KEY_ID }
+      GORCHAIN_PRIMARY_SECRET: { env: GORCHAIN_PRIMARY_SECRET }
+      SOLANA_PRIMARY_KEY_ID:   { env: SOLANA_PRIMARY_KEY_ID }
+      SOLANA_PRIMARY_SECRET:   { env: SOLANA_PRIMARY_SECRET }

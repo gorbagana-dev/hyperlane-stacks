@@ -1,0 +1,47 @@
+# Hyperlane Gas Oracle - LOCAL (own-chains) deployment spec
+# Periodically updates IGP gas oracle configurations on both chains. Internal only
+# (no ingress), same as prod.
+#
+# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host;
+# devnet domain IDs.
+stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+config:
+  # --- Chain RPCs (rendered on the host from spec_token_renders) ---
+  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
+  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
+
+  # --- IGP program addresses (base58, from deployer output) ---
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
+
+  # --- Hyperlane domain IDs (must match deployer config) ---
+  GORCHAIN_DOMAIN_ID: "1198486095"
+  SOLANA_DOMAIN_ID: "1399811151"
+
+  # How often the oracle re-fetches prices and submits new configs (ms).
+  GAS_ORACLE_INTERVAL_MS: "900000"
+
+  # --- Gas oracle parameters (see deployment/spec-gas-oracle.yml for the rationale) ---
+  GAS_PRICE: "0.000000001"
+  GAS_OVERHEAD: "200000"
+  EXCHANGE_RATE_MARGIN_PCT: "10"
+  MIN_USD_COST: "0.50"
+  GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
+
+  # CoinGecko-compatible API base URL. If empty, the oracle skips updates.
+  PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+# Before deploying, export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_ORACLE_WALLET_ID
+secrets:
+  hyperlane-gas-oracle-secrets:
+    keys:
+      PRIVY_APP_ID:           { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
+      PRIVY_ORACLE_WALLET_ID: { env: PRIVY_ORACLE_WALLET_ID }
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT

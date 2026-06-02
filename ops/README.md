@@ -26,11 +26,24 @@ The environment is selected entirely by the inventory you pass:
 matching `deployment_root`, so picking the inventory picks both trees:
 
 - the inventory itself (hosts, `group_vars`, `host_vars`, secrets)
-- the spec/state root `deployment/` (prod) or `deployment/staging/` (staging),
-  resolved as `deployment_root` in that inventory's `group_vars/all.yml`
+- the spec/state root `deployment/` (prod), `deployment/staging/` (staging), or
+  `deployment/local/` (local), resolved as `deployment_root` in that inventory's
+  `group_vars/all.yml`
 
-There is no `-e env=` switch. Per-env isolation: staging and prod share no
-mutable inventory or vars.
+There is no `-e env=` switch. Per-env isolation: the environments share no mutable
+inventory or vars.
+
+- **prod** / **staging** — mainnet / devnet, Cloudflare DNS + Let's Encrypt TLS.
+- **local** — own-chains testing (Layers 1-2): self-run gorchain + a local
+  solana-test-validator. Same ingress path as prod/staging (Caddy + Cloudflare DNS +
+  LE) under an operator-supplied zone, so multi-host routing works exactly like prod.
+  Local-specific bits: no Helius (`SOLANA_RPC_URL` is the own chain), and the
+  operator-supplied `dns_zone` + own-chain RPC URLs ship as `__TOKENS__` in the specs,
+  rendered on the host (`spec_token_renders`). See `runbooks/local.md` (and its
+  no-public-DNS / local-ACME fallback).
+
+**From-scratch operator guides per environment live in `runbooks/`** (start there
+to bring an environment up; this README is the mechanics reference behind them).
 
 ## Secrets
 

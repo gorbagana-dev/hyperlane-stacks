@@ -7,4 +7,5 @@
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
   roles:
-    - dns_cloudflare
+    - role: dns_cloudflare
+      when: manage_dns | default(true) | bool

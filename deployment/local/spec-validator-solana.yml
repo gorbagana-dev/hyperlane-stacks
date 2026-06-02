@@ -1,0 +1,50 @@
+# Hyperlane Validator (Solana) - LOCAL (own-chains) deployment spec
+# Fronted by Caddy + LE like prod; MinIO reached via the public s3.<zone> endpoint
+# (real cert, trusted by the Rust S3 client). __DNS_ZONE__ is rendered on the host.
+stack: stack_orchestrator/data/stacks/hyperlane-validator
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+config:
+  ORIGIN_CHAIN_NAME: solana
+  CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
+  PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
+  AWS_ENDPOINT_URL_S3: "https://s3.__DNS_ZONE__"
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+volumes:
+  validator-data: /srv/kind/hyperlane/validator-solana/data
+resources:
+  volumes:
+    validator-data:
+      reservations:
+        storage: 5Gi
+configmaps:
+  agent-config: ./configmaps/agent-config
+# Before deploying, place the keyfile on the host:
+#   ~/.credentials/hyperlane/validator-solana.key (hex-encoded validator signing key)
+# and export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET
+#   SOLANA_PRIMARY_KEY_ID, SOLANA_PRIMARY_SECRET    — per-validator MinIO IAM creds
+secrets:
+  hyperlane-validator-solana-secrets:
+    keys:
+      HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-solana.key }
+      PRIVY_APP_ID:           { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID:      { env: SOLANA_PRIMARY_KEY_ID }
+      AWS_SECRET_ACCESS_KEY:  { env: SOLANA_PRIMARY_SECRET }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: validator-solana.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: validator:9090

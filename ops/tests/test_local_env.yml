@@ -1,0 +1,41 @@
+---
+- name: Local own-chains env wiring (deployment_root, token renders, relaxed secrets)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_env:
+      HOME: /home/op
+  tasks:
+    - name: Load local env wiring
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
+
+    - name: Stand in operator-supplied values (set_fact > include_vars)
+      ansible.builtin.set_fact:
+        dns_zone: "staging.gorbagana.wtf"
+        gorchain_rpc_url: "https://gorchain-rpc.example"
+        solana_rpc_url: "https://solana-rpc.example"
+
+    - name: Flatten every secret-env name across all stacks
+      ansible.builtin.set_fact:
+        all_secret_env: "{{ stack_env_vars.values() | map('list') | flatten | unique }}"
+
+    - name: Local wiring resolves as designed
+      ansible.builtin.assert:
+        that:
+          # deployment_root points at the local spec tree on the on-host clone
+          - "deployment_root == '/home/op/deployments/hyperlane-stacks/deployment/local'"
+          # on-host token renders resolve to the operator-supplied values
+          - "spec_token_renders.__DNS_ZONE__ == 'staging.gorbagana.wtf'"
+          - "spec_token_renders.__GORCHAIN_RPC_URL__ == 'https://gorchain-rpc.example'"
+          - "spec_token_renders.__SOLANA_RPC_URL__ == 'https://solana-rpc.example'"
+          # chain RPCs are rendered config: literals, never secret-env names
+          - "'SOLANA_RPC_URL' not in all_secret_env"
+          - "'COLLATERAL_CHAIN_RPC_URL' not in all_secret_env"
+          - "'GORCHAIN_RPC_URL' not in all_secret_env"
+          # local needs Cloudflare (DNS) but not Helius
+          - "'cloudflare_api_token' in required_operator_secrets"
+          - "'helius_api_key' not in required_operator_secrets"
+          - "'privy_app_id' in required_operator_secrets"
+          - "'ghcr_pat' in required_operator_secrets"

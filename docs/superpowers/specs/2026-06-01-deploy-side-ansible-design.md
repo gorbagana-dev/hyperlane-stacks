@@ -352,32 +352,49 @@ MinIO buckets; relayer delivering a test message end-to-end; warp-ui reachable.
 Plus **idempotency**: re-running `setup-all.yml` and `deploy-all.yml` reports no
 changes and breaks nothing (no cred rotation, no duplicate commits, cluster reused).
 
-### Own-chains environment for Layers 1–2 (next piece of work — not in this PR)
+### Own-chains environment for Layers 1–2 (implemented — see `ops/runbooks/local.md`)
 
 Layers 1–2 run against self-run chains, which need their own committed inputs —
-neither the prod tree (mainnet) nor the staging tree (devnet/Helius) fits. Resolved
-design (decided 2026-06-02, to build as a follow-up):
+neither the prod tree (mainnet) nor the staging tree (devnet/Helius) fits. Built as
+the `local` env (`ops/inventories/local/` + `deployment/local/`); the from-scratch
+operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
+2026-06-03):
 
 - **New `local` env, mirroring prod/staging:** `ops/inventories/local/` +
   `deployment/local/spec-*.yml` (`deployment_subdir: deployment/local`) +
   `deployment/local/bridges/default/operator/validators.yaml`. `hosts.yml` supports
   **both** topologies — single-host (all groups incl. a `chain_hosts` group on one
   VM, Layer 1) and the multi-host split (Layer 2).
-- **Chains are out-of-band:** gorchain (via `gorchain-stacks`) and a local
-  `solana-test-validator` are stood up separately, as the Kind e2e already does; the
-  env only consumes their RPC endpoints.
-- **Chain endpoints (Option 2 — patch at deploy):** `GORCHAIN_RPC_URL` /
-  `SOLANA_RPC_URL` stay `config:` literals shipped as `REPLACE_AT_RUNTIME`. A
-  `render_chain_endpoints` step in `stack_deploy`, **gated on render vars set only in
-  `local/group_vars`** (no-op for prod/staging), seds them on the host's fetched clone
-  before `deploy create`, using `http://{{ hostvars[<chain host>].public_ip }}:8899`
-  so single- and multi-host both resolve. Local-only render, nothing committed/pushed
-  (like the e2e conftest patch). For `local`, `SOLANA_RPC_URL` therefore moves out of
-  `secrets:` — no Helius key locally.
+- **Networking = the prod/staging path.** On the kind path the laconic caddy-ingress
+  controller does automatic HTTPS via **ACME → Let's Encrypt** (the `use_tls` flag
+  only gates the *cert-manager* path used off-kind; woodburn confirms kind+LE works).
+  So `local` uses **Caddy + Cloudflare DNS + real LE** under an **operator-supplied
+  public zone** (`dns_zone`) — not a bespoke plain-HTTP scheme. This makes multi-host
+  routing "just work": `https://s3.<zone>`, `https://validator-x.<zone>` resolve via
+  public DNS to the right host's Caddy, and the Rust validator trusts the LE-issued
+  MinIO cert (so MinIO stays HTTPS, no `aws-sdk-rust` CA problem). Decision: in
+  multi-host you need a hostname-routing layer per host anyway, so reuse Caddy/TLS
+  rather than invent NodePort/plain-HTTP routing.
+- **Chains are out-of-band, and domain-routed:** gorchain (via `gorchain-stacks`) and
+  a local `solana-test-validator` are stood up separately *with their own domain
+  endpoints*; the env consumes those RPC URLs.
+- **On-host token render (generalized from the earlier chain-only render):**
+  operator-supplied values not known until the zone/chains exist — `__DNS_ZONE__`
+  (woven into the specs' `http-proxy` host-names and `AWS_ENDPOINT_URL_S3`) and the
+  chain RPC URLs (`__GORCHAIN_RPC_URL__` / `__SOLANA_RPC_URL__`) — ship as committed
+  tokens and are substituted into the host's fetched clone before `deploy create` by
+  `stack_deploy`, gated on `spec_token_renders` (set only in `local/group_vars`;
+  no-op for prod/staging). For `local`, `SOLANA_RPC_URL` is a rendered `config:`
+  literal, not a Helius secret. The render runs before each consumer deploys (after
+  publish), so `publish-bridge-state` commits the un-rendered tokens, never the
+  host-specific values.
 - **IDs:** reuse the devnet values (`1198486095` gorchain / `1399811151` solana,
   `*_IS_TESTNET=true`).
-- **TLS:** skipped — `local` serves plain HTTP (own-chains VMs have no public DNS for
-  LE HTTP-01). Real TLS is exercised at Layer 3 (staging) and prod.
+- **Fallback if no public DNS:** point the caddy-ingress controller's `acmeCA` at a
+  local ACME server (step-ca/Pebble) instead of LE; MinIO/S3 then has to drop to a
+  plain-HTTP Caddy site (the SDK won't trust a non-public CA), needing a small
+  caddy-ingress enhancement. **Not built** — used only if a public zone can't be
+  provisioned (see `ops/runbooks/local.md` → Fallback).
 
 ### Layer 3 staging environment requirements
 

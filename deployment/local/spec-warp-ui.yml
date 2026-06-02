@@ -1,0 +1,46 @@
+# Hyperlane Warp UI - LOCAL (own-chains) deployment spec
+# Browser-based bridge UI. Fronted by Caddy + LE at warp-ui.<zone> like prod.
+#
+# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host —
+# SOLANA_RPC_URL is the own out-of-band chain, not a Helius secret; devnet IDs.
+stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+config:
+  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
+  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
+  GORCHAIN_DOMAIN_ID: "1198486095"
+  SOLANA_DOMAIN_ID: "1399811151"
+  GORCHAIN_CHAIN_ID: "1198486095"
+  SOLANA_CHAIN_ID: "1399811151"
+  GORCHAIN_MAILBOX: "REPLACE_WITH_GORCHAIN_MAILBOX_ADDRESS"
+  SOLANA_MAILBOX: "REPLACE_WITH_SOLANA_MAILBOX_ADDRESS"
+  # WARP_* are publish-patched from the warp-deployer output (publish-bridge-state.yml).
+  WARP_COLLATERAL_ADDRESS: "REPLACE_WITH_COLLATERAL_ADDRESS"
+  WARP_SYNTHETIC_ADDRESS: "REPLACE_WITH_SYNTHETIC_ADDRESS"
+  WARP_TOKEN_MINT: "REPLACE_WITH_COLLATERAL_TOKEN_MINT"
+  WARP_SYNTHETIC_MINT: "REPLACE_WITH_SYNTHETIC_MINT"
+  NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
+resources:
+  containers:
+    warp-ui:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "0.5"
+        memory: 512M
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: warp-ui.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: warp-ui:3000

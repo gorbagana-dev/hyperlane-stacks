@@ -1,0 +1,52 @@
+# Hyperlane Monitoring - LOCAL (own-chains) deployment spec
+# Prometheus, Grafana, pushgateway, and balance monitoring. Fronted by Caddy + LE
+# like prod; scrapes validators/relayer over the public DNS endpoints (works across
+# hosts in the multi-host topology). __DNS_ZONE__ is rendered on the host.
+stack: stack_orchestrator/data/stacks/hyperlane-monitoring
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+config:
+  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
+  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
+  # Wallet format: label:address or label:address:threshold
+  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  BALANCE_THRESHOLD_SOL: "1.0"
+  BALANCE_CHECK_INTERVAL: "300"
+  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.__DNS_ZONE__:443,solana-primary=validator-solana.__DNS_ZONE__:443"
+  PROMETHEUS_RELAYER_TARGETS: "primary=relayer.__DNS_ZONE__:443"
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: grafana.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: grafana:3000
+    - host-name: prometheus.__DNS_ZONE__
+      routes:
+        - path: /
+          proxy-to: prometheus:9090
+volumes:
+  prometheus-data: /srv/kind/hyperlane/monitoring/prometheus
+  grafana-data: /srv/kind/hyperlane/monitoring/grafana
+resources:
+  volumes:
+    prometheus-data:
+      reservations:
+        storage: 10Gi
+    grafana-data:
+      reservations:
+        storage: 2Gi
+configmaps:
+  prometheus-config: ./configmaps/prometheus-config
+  grafana-datasources-config: ./configmaps/grafana-datasources-config
+  grafana-dashboard-config: ./configmaps/grafana-dashboard-config
+  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
+  balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
+# Before deploying, export this env var in the shell that runs `laconic-so`:
+#   GF_SECURITY_ADMIN_PASSWORD
+secrets:
+  hyperlane-monitoring-secrets:
+    keys:
+      GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
