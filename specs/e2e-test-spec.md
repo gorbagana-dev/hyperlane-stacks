@@ -799,12 +799,10 @@ accounts needed for transfers.
 
 1. **Recover warp program addresses** from `hyperlane-warp-deploy-outputs` ConfigMap
    (same helper as `test_02_warp_deployer.py::_get_warp_program_addresses`)
-2. **Get the synthetic mint address** on Gorchain by querying the warp token program:
-   ```bash
-   hyperlane-sealevel-client -u http://localhost:8899 \
-     token query --program-id <gorchain-warp-program> synthetic
-   ```
-   Parse `Mint / Mint Authority:` from output to get the synthetic token mint.
+2. **Read the synthetic mint address** from `warpRoute.synthetic.mint` in the
+   deployer-emitted `token-config.json` (`_read_synthetic_mint`). The warp deployer
+   resolves the mint at deploy time and writes it to state; tests no longer query the
+   program themselves.
 3. **Use the deployer keypair as sender** — it already has SOL on both chains and
    collateral USDC tokens on Solana (minted during warp deployer setup). No need
    to create a separate sender wallet.
