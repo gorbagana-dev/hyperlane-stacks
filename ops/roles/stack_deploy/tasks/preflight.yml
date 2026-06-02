@@ -1,7 +1,22 @@
 ---
+- name: Resolve spec_file from the stacks map when not provided
+  when: spec_file is not defined
+  ansible.builtin.set_fact:
+    spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
+
 - name: Verify laconic-so is installed
   ansible.builtin.command: laconic-so version
   changed_when: false
+  when: not ansible_check_mode
+
+- name: Read the spec to derive served hostnames
+  ansible.builtin.set_fact:
+    _spec_data: "{{ lookup('ansible.builtin.file', spec_file) | from_yaml }}"
+  when: not ansible_check_mode
+
+- name: Derive stack hostnames from the spec http-proxy
+  ansible.builtin.set_fact:
+    stack_hostnames: "{{ (_spec_data.network['http-proxy'] | default([])) | map(attribute='host-name') | list }}"
   when: not ansible_check_mode
 
 - name: Expected hostnames resolve to this host's public IP

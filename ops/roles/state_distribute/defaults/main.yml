@@ -1,5 +1,5 @@
 ---
 state_repo_url: "git@github.com:gorbagana-dev/hyperlane-stacks.git"
 state_repo_branch: main
-state_repo_dir: "{{ ansible_env.HOME }}/hyperlane-stacks"
+state_repo_dir: "{{ ansible_env.HOME }}/deployments/state-repo"
 # Caller sets: stack_name, deploy_dir, configmap_names (list)

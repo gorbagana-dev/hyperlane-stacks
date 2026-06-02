@@ -2,14 +2,14 @@
 # Two plays: privileged host setup, then unprivileged deploy_user setup.
 # Target a host/group with: -e target=<host-or-group>  (default: all)
 - name: Privileged host prerequisites
-  hosts: "{{ target | default('all') }}"
+  hosts: "{{ target | default('all:!controller') }}"
   become: true
   remote_user: "{{ privileged_user }}"
   roles:
     - prerequisites_privileged
 
 - name: Unprivileged deploy_user prerequisites
-  hosts: "{{ target | default('all') }}"
+  hosts: "{{ target | default('all:!controller') }}"
   remote_user: "{{ deploy_user }}"
   roles:
     - prerequisites_user
