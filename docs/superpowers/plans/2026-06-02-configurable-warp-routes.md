@@ -140,6 +140,7 @@ git commit -m "feat(warp): build token-config generically from per-route config 
 **Files:**
 - Delete: `stack_orchestrator/data/config/warp-deployer-token-config/` (the `.tmpl`)
 - Modify: `…/compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml`
+- Modify: `stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer/README.md`
 
 - [ ] **Step 1: Delete the template dir**
 
@@ -151,10 +152,14 @@ git rm -r stack_orchestrator/data/config/warp-deployer-token-config
 
 Remove the `- warp-deployer-token-config:/config/token:ro` mount and the `warp-deployer-token-config:` entry under `volumes:`. (deploy.sh no longer reads `/config/token`.)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Update the stack README**
+
+In `stacks/hyperlane-svm-warp-deployer/README.md`, remove the `warp-deployer-token-config` ConfigMap line (~49) and its description row (~69); replace with a note that the token-config is built from the route's `config:` fields by `deploy.sh`.
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git add stack_orchestrator/data/config stack_orchestrator/data/compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml
+git add stack_orchestrator/data/config stack_orchestrator/data/compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer/README.md
 git commit -m "feat(warp): drop per-token token-config template + its ConfigMap"
 ```
 
@@ -323,7 +328,7 @@ git commit -m "feat(e2e): route discovery + per-route reads in BridgeStateLoader
 
 ## Phase C — Warp-UI route values from config
 
-> The UI's route *set* stays baked (option 1 in the spec); only *values* are config. **Checkpoint:** decide whether to bake a second (native) route slot for the e2e UI assertion, or scope the UI test to the USDC route. Baking a dormant unfilled slot risks Zod rejecting empty addresses (`warpCoreConfig.ts` validates entries), so the safe default is: ship the USDC slot, and only bake a second slot when its values will be filled (i.e. in the e2e image). Resolve before Step 1.
+> Minimal. The UI displays the baked USDC route with its values coming from config — which it already does via sentinels — so there is little to change here. Route *functionality* (including the native route) is proven by the CLI bridge test in Phase D, independent of the UI. Do **not** bake an unfilled route slot; `warpCoreConfig.ts` rejects empty addresses.
 
 ### Task C1: Keep the USDC route value-driven; confirm config flow
 
@@ -346,7 +351,7 @@ git commit -m "chore(warp-ui): route values are fully config-driven"
 
 ---
 
-## Phase D — E2E proves configurable, two-shape routes
+## Phase D — E2E: routes deploy (collateral + native) and the native route bridges
 
 ### Task D1: Per-route warp-deployer fixtures
 
@@ -386,9 +391,9 @@ WARP_ROUTES = [
 
 - [ ] **Step 2: Rework `warp_deployment`** (lines ~781-863) to loop `WARP_ROUTES`, deploy each, and yield `{"routes": {name: {deployment, namespace, origin_token}}}`. For `needs_spl_mint`, create+fund the SPL and patch `WARP_ORIGIN_TOKEN`; otherwise no mint. Make `_patch_warp_spec(spec_path, origin_token)` take the spec path and write a per-spec patched file. Wait for each route's Job (`{deployment_id}-job-hyperlane-svm-warp-deployer`).
 
-> **Checkpoint (native deploy):** the native route deploys with no SPL mint and the existing `--ata-payer-funding-amount`. Confirm the native Job completes on first run; capture its log. If the funding flag errors for native, gate it in `deploy.sh` on `WARP_ORIGIN_TYPE != native`.
+> **Note (native deploy):** the native route deploys with no SPL mint. `--ata-payer-funding-amount` is a plain lamport transfer to a derived PDA (`warp_route.rs:233-250`) — harmless for native, no gating needed. Just capture the native Job log on first run.
 
-- [ ] **Step 3: Update consumers** of the old `warp_deployment` shape (the warp-ui fixture, any test using `warp_deployment["token_mint"]`) to index by route: `warp_deployment["routes"]["USDC-solana-gorchain"][...]`. In `warp_ui_deployment`, resolve addresses via `bridge_state_loader.read_route_program_addresses("USDC-solana-gorchain")`.
+- [ ] **Step 3: Update consumers** of the old `warp_deployment` shape (the warp-ui fixture, any test using `warp_deployment["token_mint"]`) to index by route: `warp_deployment["routes"]["USDC-solana-gorchain"][...]`. In `warp_ui_deployment`, resolve addresses via `bridge_state_loader.read_route_program_addresses("USDC-solana-gorchain")`. Also update the `bridge_setup` fixture to expose **per-route** data — for each route, its solana/gorchain warp programs (`read_route_program_addresses`) and synthetic mint, e.g. `bridge_setup["routes"][name] = {"warp_solana": …, "warp_gorchain": …, "synthetic_mint": …}` — and replace the old flat `_get_warp_program_addresses` helper + its callers (bridge setup, warp-ui fixture, test_08) with the per-route reads.
 
 - [ ] **Step 4: Commit**
 
@@ -431,6 +436,61 @@ git add tests/e2e/test_02_warp_deployer.py
 git commit -m "test(e2e): assert collateral and native routes both deploy"
 ```
 
+### Task D4: Native-route bridge test (CLI — functional proof)
+
+Proves a configured route actually moves tokens, end-to-end, without the UI.
+
+**Files:**
+- Modify: `tests/e2e/test_08_bridge.py`
+- Modify: `tests/e2e/conftest.py` (only if `bridge_setup` per-route data from D2-step-3 is missing) and `tests/e2e/lib/chain.py` (SOL-balance helper, if absent)
+
+- [ ] **Step 1: Ensure a native-balance helper exists**
+
+If there's no `get_sol_balance(keypair_path, rpc)` (solana `getBalance` for the native coin) in `tests/e2e/lib/`, add one mirroring `get_spl_token_balance`. (SPL balance won't work for a `native` origin.)
+
+- [ ] **Step 2: Add a forward native transfer test**
+
+Mirror `test_concurrent_forward_transfers`, but for the native route — `transfer-remote … "native" --program-id <native warp on solana>`, asserting the origin native balance drops and the remote synthetic balance rises:
+
+```python
+def test_native_forward_transfer(self, bridge_setup, bridge_state_loader):
+    route = bridge_setup["routes"]["SOL-solana-gorchain"]
+    user = bridge_setup["users"][0]
+    solana_rpc = CHAINS["solana"]["rpc"]
+    gorchain_rpc = CHAINS["gorchain"]["rpc"]
+    gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
+
+    before_syn = get_spl_token_balance(route["synthetic_mint"], user["keypair_path"], gorchain_rpc)
+    before_sol = get_sol_balance(user["keypair_path"], solana_rpc)
+
+    res = _run_transfer_remote(
+        "/tmp/key.json", str(NATIVE_AMOUNT), gorchain_domain, user["pubkey"],
+        "native", "--program-id", route["warp_solana"],
+        rpc=solana_rpc, keypair_path=user["keypair_path"],
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+
+    # Poll for relayer delivery on the remote, like the USDC test does.
+    after_syn = _wait_for_balance_increase(
+        route["synthetic_mint"], user["keypair_path"], gorchain_rpc, before_syn,
+    )
+    assert after_syn > before_syn, "native route synthetic balance did not increase"
+    assert get_sol_balance(user["keypair_path"], solana_rpc) < before_sol
+```
+
+Add `NATIVE_AMOUNT` (lamports) next to the existing `FORWARD_*` constants. Reuse the existing relayer-delivery wait pattern (extract a `_wait_for_balance_increase` helper from the USDC test if one isn't already factored out).
+
+- [ ] **Step 3: Run on the test machine**
+
+Run: `python -m pytest tests/e2e/test_08_bridge.py -v` → the native route transfer succeeds; remote synthetic balance increases; origin native balance decreases.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests/e2e/test_08_bridge.py tests/e2e/conftest.py tests/e2e/lib
+git commit -m "test(e2e): native-route cross-chain transfer (functional proof)"
+```
+
 ---
 
 ## Phase E — Docs
@@ -453,6 +513,6 @@ git commit -m "docs: document configurable warp routes in stack specs"
 
 ## Self-review notes
 
-- **Spec coverage:** configurable deployer (A1–A4), generic builder/no template (A1–A2), explicit per-side type (A1), per-route state+namespace (A1, A4, D1), state discovery (B1), UI values from config (C1), e2e two shapes (D1–D3), docs (A5, E1). Relayer/gas-oracle/validators/storage untouched — no tasks, by design.
-- **Open checkpoints:** native `--ata-payer-funding-amount` (D2); UI second-slot-vs-USDC-only decision (Phase C header); both flagged inline, neither blocks the deployer work.
+- **Spec coverage:** configurable deployer (A1–A4), generic builder/no template (A1–A2), explicit per-side type (A1), per-route state+namespace (A1, A4, D1), state discovery (B1), UI values from config (C1), e2e routes deploy (D1–D3) + native route bridges via CLI (D4), docs (A5, A2 README, E1). Relayer/gas-oracle/validators/storage untouched — no tasks, by design.
+- **Resolved:** native ATA funding is harmless (D2 note); UI is minimal/baked (Phase C) with route functionality proven by the CLI bridge test (D4) — no UI app change.
 - **Type consistency:** contract fields (`WARP_ORIGIN_*`/`WARP_REMOTE_*`/`WARP_TOKEN_*`) identical across A1/A3/A4/D1; loader methods `discover_routes`/`read_route_token_config`/`read_route_program_addresses` identical across B1/D2/D3.
