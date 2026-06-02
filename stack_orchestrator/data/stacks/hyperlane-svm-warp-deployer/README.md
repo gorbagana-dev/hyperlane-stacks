@@ -46,7 +46,6 @@ config:
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
-  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
 secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
@@ -66,7 +65,8 @@ Edit the config templates in `warp-deployer-deployment/configmaps/`:
 | ConfigMap directory | Contents |
 |---|---|
 | `warp-deployer-scripts-config/` | `deploy.sh` -- warp route deployment script |
-| `warp-deployer-token-config/` | Token metadata (name, symbol, decimals, mint address) |
+
+The token-config is built at runtime by `deploy.sh` from the route's `config:` fields (no per-token template).
 
 ## 5. Create secrets
 

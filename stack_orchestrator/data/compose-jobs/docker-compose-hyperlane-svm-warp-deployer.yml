@@ -30,14 +30,12 @@ services:
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
     volumes:
       - warp-deployer-scripts-config:/opt/scripts:ro
-      - warp-deployer-token-config:/config/token:ro
       - warp-deployer-registry-config:/config/registry:ro
       - bridge-state:/state
       - bridge-logs:/logs
 
 volumes:
   warp-deployer-scripts-config:
-  warp-deployer-token-config:
   warp-deployer-registry-config:
   bridge-state:
   bridge-logs:
