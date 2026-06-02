@@ -346,11 +346,38 @@ selected by inventory (`-i inventories/staging/hosts.yml`). The long-lived
 rehearsal/soak ground once Layers 1–2 are stable.
 
 **Acceptance per layer** (verified by hand, mirroring the e2e assertions): all
-stacks `Running`; Caddy serving TLS per hostname; validators announcing + writing
-checkpoints to their MinIO buckets; relayer delivering a test message end-to-end;
-warp-ui reachable. Plus **idempotency**: re-running `setup-all.yml` and
-`deploy-all.yml` reports no changes and breaks nothing (no cred rotation, no
-duplicate commits, cluster reused).
+stacks `Running`; Caddy serving TLS per hostname (plain HTTP for the own-chains
+`local` env — see below); validators announcing + writing checkpoints to their
+MinIO buckets; relayer delivering a test message end-to-end; warp-ui reachable.
+Plus **idempotency**: re-running `setup-all.yml` and `deploy-all.yml` reports no
+changes and breaks nothing (no cred rotation, no duplicate commits, cluster reused).
+
+### Own-chains environment for Layers 1–2 (next piece of work — not in this PR)
+
+Layers 1–2 run against self-run chains, which need their own committed inputs —
+neither the prod tree (mainnet) nor the staging tree (devnet/Helius) fits. Resolved
+design (decided 2026-06-02, to build as a follow-up):
+
+- **New `local` env, mirroring prod/staging:** `ops/inventories/local/` +
+  `deployment/local/spec-*.yml` (`deployment_subdir: deployment/local`) +
+  `deployment/local/bridges/default/operator/validators.yaml`. `hosts.yml` supports
+  **both** topologies — single-host (all groups incl. a `chain_hosts` group on one
+  VM, Layer 1) and the multi-host split (Layer 2).
+- **Chains are out-of-band:** gorchain (via `gorchain-stacks`) and a local
+  `solana-test-validator` are stood up separately, as the Kind e2e already does; the
+  env only consumes their RPC endpoints.
+- **Chain endpoints (Option 2 — patch at deploy):** `GORCHAIN_RPC_URL` /
+  `SOLANA_RPC_URL` stay `config:` literals shipped as `REPLACE_AT_RUNTIME`. A
+  `render_chain_endpoints` step in `stack_deploy`, **gated on render vars set only in
+  `local/group_vars`** (no-op for prod/staging), seds them on the host's fetched clone
+  before `deploy create`, using `http://{{ hostvars[<chain host>].public_ip }}:8899`
+  so single- and multi-host both resolve. Local-only render, nothing committed/pushed
+  (like the e2e conftest patch). For `local`, `SOLANA_RPC_URL` therefore moves out of
+  `secrets:` — no Helius key locally.
+- **IDs:** reuse the devnet values (`1198486095` gorchain / `1399811151` solana,
+  `*_IS_TESTNET=true`).
+- **TLS:** skipped — `local` serves plain HTTP (own-chains VMs have no public DNS for
+  LE HTTP-01). Real TLS is exercised at Layer 3 (staging) and prod.
 
 ### Layer 3 staging environment requirements
 
