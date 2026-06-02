@@ -2,7 +2,6 @@ import json
 import logging
 import re
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -17,10 +16,14 @@ from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
 
-# Warp route: solana=collateral, gorchain=synthetic
+# Deployed warp routes (origin solana, remote gorchain=synthetic).
+USDC_ROUTE = "USDC-solana-gorchain"
+SOL_ROUTE = "SOL-solana-gorchain"
+
+# Per-route on-chain token types, keyed by route then chain.
 WARP_TOKEN_TYPES = {
-    "solana": "collateral",
-    "gorchain": "synthetic",
+    USDC_ROUTE: {"solana": "collateral", "gorchain": "synthetic"},
+    SOL_ROUTE: {"solana": "native", "gorchain": "synthetic"},
 }
 
 
@@ -98,23 +101,6 @@ def _parse_token_query_output(output: str) -> dict:
     return info
 
 
-def _get_warp_program_addresses(state_dir: Path) -> dict[str, str]:
-    """Read warp-deploy-outputs dir and return {chain: base58_address}."""
-    outputs = state_dir / "warp-deploy-outputs"
-    assert outputs.is_dir(), f"warp-deploy-outputs missing at {outputs}"
-
-    programs: dict[str, str] = {}
-    for f in outputs.iterdir():
-        if not f.is_file():
-            continue
-        parsed = json.loads(f.read_text())
-        for chain_name, entry in parsed.items():
-            if entry.get("base58"):
-                programs[chain_name] = entry["base58"]
-    assert programs, f"no base58 program addresses found in {outputs}"
-    return programs
-
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -122,96 +108,69 @@ def _get_warp_program_addresses(state_dir: Path) -> dict[str, str]:
 
 @pytest.mark.slow
 class TestWarpDeployer:
-    def test_warp_token_configmap(
+    def test_both_routes_deployed(
         self,
         warp_deployment: dict,
         bridge_state_loader: BridgeStateLoader,
     ) -> None:
-        """Validate warp token-config state file has correct structure and references."""
-        token_mint = warp_deployment["token_mint"]
-        parsed = bridge_state_loader.read_json("token-config.json")
-
-        warp_route = parsed.get("warpRoute")
-        assert isinstance(warp_route, dict), "token-config missing 'warpRoute' object"
-
-        # Verify token mint matches
-        assert warp_route.get("tokenMint") == token_mint, (
-            f"tokenMint mismatch: expected {token_mint}, got {warp_route.get('tokenMint')}"
+        """Both the collateral (USDC) and native (SOL) routes were deployed."""
+        routes = set(bridge_state_loader.discover_routes())
+        assert {USDC_ROUTE, SOL_ROUTE} <= routes, (
+            f"expected both routes deployed, discovered: {sorted(routes)}"
         )
 
-        # Verify chain references
-        collateral = warp_route.get("collateral")
-        assert isinstance(collateral, dict), "warpRoute missing 'collateral'"
-        assert collateral.get("chain") == "solana", (
-            f"collateral.chain: expected 'solana', got '{collateral.get('chain')}'"
-        )
-
-        synthetic = warp_route.get("synthetic")
-        assert isinstance(synthetic, dict), "warpRoute missing 'synthetic'"
-        assert synthetic.get("chain") == "gorchain", (
-            f"synthetic.chain: expected 'gorchain', got '{synthetic.get('chain')}'"
-        )
-
-        # Verify mailbox addresses are valid
-        for side_name, side in [("collateral", collateral), ("synthetic", synthetic)]:
-            mailbox = side.get("mailbox")
-            assert mailbox and is_base58_pubkey(mailbox), (
-                f"warpRoute.{side_name}.mailbox is not valid base58: {mailbox}"
-            )
-
-        # Synthetic mint is queried + emitted by the deployer (warp-UI's SDK
-        # requires it explicitly; it does not auto-derive the PDA).
-        synthetic_mint = synthetic.get("mint")
-        assert synthetic_mint and is_base58_pubkey(synthetic_mint), (
-            f"warpRoute.synthetic.mint is not valid base58: {synthetic_mint}"
-        )
-
-    def test_warp_deploy_outputs(
+    def test_usdc_route_collateral(
         self,
         warp_deployment: dict,
         bridge_state_loader: BridgeStateLoader,
     ) -> None:
-        """Validate warp-deploy-outputs dir has program IDs in hex+base58 format."""
-        outputs_dir = bridge_state_loader.state_dir / "warp-deploy-outputs"
-        assert outputs_dir.is_dir(), f"warp-deploy-outputs dir missing at {outputs_dir}"
-        files = [f for f in outputs_dir.iterdir() if f.is_file()]
-        assert files, f"warp-deploy-outputs directory is empty: {outputs_dir}"
+        """USDC route: solana side is collateral (has token), gorchain synthetic."""
+        cfg = bridge_state_loader.read_route_token_config(USDC_ROUTE)["warpRoute"]
+        assert cfg["solana"]["type"] == "collateral" and "token" in cfg["solana"]
+        assert cfg["gorchain"]["type"] == "synthetic"
+        # The deployer queries + emits the synthetic mint (warp-UI needs it).
+        mint = cfg["gorchain"].get("mint")
+        assert mint and is_base58_pubkey(mint), (
+            f"USDC synthetic mint not valid base58: {mint}"
+        )
 
-        # The CLI writes program-ids.json with chain -> {hex, base58} entries
-        for f in files:
-            parsed = json.loads(f.read_text())
-            key = f.name
-            assert isinstance(parsed, dict), f"warp output '{key}' is not a JSON object"
-
-            for chain_name, entry in parsed.items():
-                assert isinstance(entry, dict), (
-                    f"warp output '{key}'.{chain_name} is not an object"
-                )
-                hex_val = entry.get("hex")
-                base58_val = entry.get("base58")
-                assert hex_val and hex_val.startswith("0x"), (
-                    f"warp output '{key}'.{chain_name}.hex missing or not 0x-prefixed"
-                )
-                assert base58_val and is_base58_pubkey(base58_val), (
-                    f"warp output '{key}'.{chain_name}.base58 not valid: {base58_val}"
-                )
+    def test_native_route_native(
+        self,
+        warp_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """SOL route: solana side is native (no token), gorchain synthetic."""
+        cfg = bridge_state_loader.read_route_token_config(SOL_ROUTE)["warpRoute"]
+        assert cfg["solana"]["type"] == "native" and "token" not in cfg["solana"]
+        assert cfg["gorchain"]["type"] == "synthetic"
+        # The deployer queries + emits the synthetic mint (warp-UI needs it).
+        mint = cfg["gorchain"].get("mint")
+        assert mint and is_base58_pubkey(mint), (
+            f"SOL synthetic mint not valid base58: {mint}"
+        )
 
     def test_warp_programs_exist_on_chain(
         self,
         warp_deployment: dict,
         bridge_state_loader: BridgeStateLoader,
     ) -> None:
-        """Verify warp route programs are actually deployed on-chain."""
-        warp_programs = _get_warp_program_addresses(bridge_state_loader.state_dir)
-
-        for chain_name, addr in warp_programs.items():
-            chain_info = CHAINS.get(chain_name)
-            if not chain_info:
-                log.warning("No chain config for %s, skipping", chain_name)
-                continue
-            assert_program_on_chain(
-                chain_name, chain_info["rpc"], addr, label="warp-token",
+        """Verify each route's warp programs are deployed on-chain (both chains)."""
+        for route in (USDC_ROUTE, SOL_ROUTE):
+            warp_programs = bridge_state_loader.read_route_program_addresses(route)
+            assert {"solana", "gorchain"} <= set(warp_programs), (
+                f"{route}: missing program addresses, got {sorted(warp_programs)}"
             )
+            for chain_name, addr in warp_programs.items():
+                chain_info = CHAINS.get(chain_name)
+                if not chain_info:
+                    log.warning("No chain config for %s, skipping", chain_name)
+                    continue
+                assert is_base58_pubkey(addr), (
+                    f"{route}.{chain_name}: program address not valid base58: {addr}"
+                )
+                assert_program_on_chain(
+                    chain_name, chain_info["rpc"], addr, label="warp-token",
+                )
 
     def test_warp_token_state_on_chain(
         self,
@@ -224,10 +183,6 @@ class TestWarpDeployer:
         inspect the deployed warp token programs. Validates mailbox matches
         core deployment, remote routers are configured, and decimals are correct.
         """
-        token_mint = warp_deployment["token_mint"]
-
-        warp_programs = _get_warp_program_addresses(bridge_state_loader.state_dir)
-
         # Get core program addresses for cross-reference
         core_mailboxes: dict[str, str] = {}
         core_isms: dict[str, str] = {}
@@ -238,103 +193,104 @@ class TestWarpDeployer:
             core_isms[chain_name] = program_ids["multisig_ism_message_id"]
             core_igps[chain_name] = program_ids["overhead_igp_account"]
 
-        for chain_name, program_id in warp_programs.items():
-            chain_info = CHAINS.get(chain_name)
-            if not chain_info:
-                continue
-            rpc = chain_info["rpc"]
-            token_type = WARP_TOKEN_TYPES.get(chain_name)
-            if not token_type:
-                continue
+        for route in (USDC_ROUTE, SOL_ROUTE):
+            origin_token = warp_deployment["routes"][route]["origin_token"]
+            warp_programs = bridge_state_loader.read_route_program_addresses(route)
+            route_types = WARP_TOKEN_TYPES[route]
 
-            log.info(
-                "Querying warp token state: %s (%s) on %s",
-                program_id, token_type, chain_name,
-            )
-            result = run_deployer_cli(
-                "token", "query",
-                "--program-id", program_id,
-                token_type,
-                rpc=rpc,
-            )
-            assert result.returncode == 0, (
-                f"token query failed for {chain_name} ({token_type}): "
-                f"{result.stderr.strip()}"
-            )
+            for chain_name, program_id in warp_programs.items():
+                chain_info = CHAINS.get(chain_name)
+                if not chain_info:
+                    continue
+                rpc = chain_info["rpc"]
+                token_type = route_types.get(chain_name)
+                if not token_type:
+                    continue
 
-            output = result.stdout + result.stderr
-            log.info("token query output (%s):\n%s", chain_name, output[:2000])
-
-            info = _parse_token_query_output(output)
-
-            # Validate mailbox matches core deployment
-            if info.get("mailbox"):
-                assert info["mailbox"] == core_mailboxes[chain_name], (
-                    f"{chain_name}: warp token mailbox {info['mailbox']} != "
-                    f"core mailbox {core_mailboxes[chain_name]}"
+                log.info(
+                    "Querying warp token state: %s (%s/%s) on %s",
+                    program_id, route, token_type, chain_name,
                 )
-                log.info("%s: mailbox matches core deployment", chain_name)
-
-            # Validate decimals (SPL token = 6 for USDC-like)
-            if info.get("decimals"):
-                assert info["decimals"] == "6", (
-                    f"{chain_name}: expected decimals=6, got {info['decimals']}"
+                result = run_deployer_cli(
+                    "token", "query",
+                    "--program-id", program_id,
+                    token_type,
+                    rpc=rpc,
+                )
+                assert result.returncode == 0, (
+                    f"token query failed for {route}/{chain_name} ({token_type}): "
+                    f"{result.stderr.strip()}"
                 )
 
-            # Validate remote routers are configured
-            routers = info.get("remote_routers", {})
-            assert len(routers) > 0, (
-                f"{chain_name}: warp token has no remote routers configured"
-            )
+                output = result.stdout + result.stderr
+                log.info("token query output (%s/%s):\n%s", route, chain_name, output[:2000])
 
-            # For each chain, the remote router should point to the other chain's domain
-            if chain_name == "gorchain":
-                remote_domain = CHAINS["solana"]["domain_id"]
-            else:
-                remote_domain = CHAINS["gorchain"]["domain_id"]
+                info = _parse_token_query_output(output)
 
-            assert remote_domain in routers, (
-                f"{chain_name}: remote router for domain {remote_domain} not found. "
-                f"Configured routers: {routers}"
-            )
-            log.info(
-                "%s: remote router for domain %d = %s",
-                chain_name, remote_domain, routers[remote_domain],
-            )
+                # Validate mailbox matches core deployment
+                if info.get("mailbox"):
+                    assert info["mailbox"] == core_mailboxes[chain_name], (
+                        f"{route}/{chain_name}: warp token mailbox {info['mailbox']} != "
+                        f"core mailbox {core_mailboxes[chain_name]}"
+                    )
+                    log.info("%s/%s: mailbox matches core deployment", route, chain_name)
 
-            # For collateral type, verify mint matches the test SPL token
-            if token_type == "collateral" and info.get("mint"):
-                assert info["mint"] == token_mint, (
-                    f"{chain_name}: collateral mint {info['mint']} != "
-                    f"expected token mint {token_mint}"
+                # Validate remote routers are configured
+                routers = info.get("remote_routers", {})
+                assert len(routers) > 0, (
+                    f"{route}/{chain_name}: warp token has no remote routers configured"
                 )
-                log.info("%s: collateral mint matches test token", chain_name)
 
-            # Validate ISM is set and matches core deployment
-            ism = info.get("interchain_security_module")
-            assert ism is not None, (
-                f"{chain_name}: interchain_security_module is None "
-                f"(expected {core_isms[chain_name]})"
-            )
-            assert ism == core_isms[chain_name], (
-                f"{chain_name}: ISM {ism} != core ISM {core_isms[chain_name]}"
-            )
-            log.info("%s: ISM matches core deployment", chain_name)
+                # For each chain, the remote router should point to the other chain's domain
+                if chain_name == "gorchain":
+                    remote_domain = CHAINS["solana"]["domain_id"]
+                else:
+                    remote_domain = CHAINS["gorchain"]["domain_id"]
 
-            # Validate IGP is set and overhead_igp_account matches core deployment
-            igp = info.get("interchain_gas_paymaster")
-            assert igp is not None, (
-                f"{chain_name}: interchain_gas_paymaster is None "
-                f"(expected overhead_igp_account={core_igps[chain_name]})"
-            )
-            assert isinstance(igp, dict), (
-                f"{chain_name}: interchain_gas_paymaster has unexpected format: {igp}"
-            )
-            assert igp["overhead_igp_account"] == core_igps[chain_name], (
-                f"{chain_name}: IGP overhead account {igp['overhead_igp_account']} != "
-                f"core overhead_igp_account {core_igps[chain_name]}"
-            )
-            log.info("%s: IGP matches core deployment", chain_name)
+                assert remote_domain in routers, (
+                    f"{route}/{chain_name}: remote router for domain {remote_domain} "
+                    f"not found. Configured routers: {routers}"
+                )
+                log.info(
+                    "%s/%s: remote router for domain %d = %s",
+                    route, chain_name, remote_domain, routers[remote_domain],
+                )
+
+                # For collateral type, verify mint matches the route's origin token
+                if token_type == "collateral" and info.get("mint"):
+                    assert info["mint"] == origin_token, (
+                        f"{route}/{chain_name}: collateral mint {info['mint']} != "
+                        f"expected origin token {origin_token}"
+                    )
+                    log.info("%s/%s: collateral mint matches origin token", route, chain_name)
+
+                # Validate ISM is set and matches core deployment
+                ism = info.get("interchain_security_module")
+                assert ism is not None, (
+                    f"{route}/{chain_name}: interchain_security_module is None "
+                    f"(expected {core_isms[chain_name]})"
+                )
+                assert ism == core_isms[chain_name], (
+                    f"{route}/{chain_name}: ISM {ism} != core ISM {core_isms[chain_name]}"
+                )
+                log.info("%s/%s: ISM matches core deployment", route, chain_name)
+
+                # Validate IGP is set and overhead_igp_account matches core deployment
+                igp = info.get("interchain_gas_paymaster")
+                assert igp is not None, (
+                    f"{route}/{chain_name}: interchain_gas_paymaster is None "
+                    f"(expected overhead_igp_account={core_igps[chain_name]})"
+                )
+                assert isinstance(igp, dict), (
+                    f"{route}/{chain_name}: interchain_gas_paymaster has unexpected "
+                    f"format: {igp}"
+                )
+                assert igp["overhead_igp_account"] == core_igps[chain_name], (
+                    f"{route}/{chain_name}: IGP overhead account "
+                    f"{igp['overhead_igp_account']} != core "
+                    f"overhead_igp_account {core_igps[chain_name]}"
+                )
+                log.info("%s/%s: IGP matches core deployment", route, chain_name)
 
     def test_warp_upgrade_authority_transferred(
         self,
@@ -350,34 +306,35 @@ class TestWarpDeployer:
         """
         expected_authority = keypairs.hardware_wallet_pubkey
 
-        warp_programs = _get_warp_program_addresses(bridge_state_loader.state_dir)
-        assert warp_programs, "No warp program addresses found"
+        for route in (USDC_ROUTE, SOL_ROUTE):
+            warp_programs = bridge_state_loader.read_route_program_addresses(route)
+            assert warp_programs, f"{route}: no warp program addresses found"
 
-        for chain_name, program_id in warp_programs.items():
-            chain_info = CHAINS.get(chain_name)
-            if not chain_info:
-                continue
+            for chain_name, program_id in warp_programs.items():
+                chain_info = CHAINS.get(chain_name)
+                if not chain_info:
+                    continue
 
-            result = subprocess.run(
-                [
-                    "solana", "program", "show", program_id,
-                    "--url", chain_info["rpc"],
-                    "--keypair", str(keypairs.deployer_path),
-                    "--output", "json",
-                ],
-                capture_output=True, text=True, check=False,
-            )
-            assert result.returncode == 0, (
-                f"{chain_name}: solana program show failed for warp route "
-                f"{program_id}: {result.stderr.strip()}"
-            )
-            info = json.loads(result.stdout)
-            actual_authority = info.get("authority")
-            assert actual_authority == expected_authority, (
-                f"{chain_name}: warp route upgrade authority is "
-                f"{actual_authority}, expected {expected_authority}"
-            )
-            log.info(
-                "%s: warp route upgrade authority verified (%s)",
-                chain_name, actual_authority,
-            )
+                result = subprocess.run(
+                    [
+                        "solana", "program", "show", program_id,
+                        "--url", chain_info["rpc"],
+                        "--keypair", str(keypairs.deployer_path),
+                        "--output", "json",
+                    ],
+                    capture_output=True, text=True, check=False,
+                )
+                assert result.returncode == 0, (
+                    f"{route}/{chain_name}: solana program show failed for warp route "
+                    f"{program_id}: {result.stderr.strip()}"
+                )
+                info = json.loads(result.stdout)
+                actual_authority = info.get("authority")
+                assert actual_authority == expected_authority, (
+                    f"{route}/{chain_name}: warp route upgrade authority is "
+                    f"{actual_authority}, expected {expected_authority}"
+                )
+                log.info(
+                    "%s/%s: warp route upgrade authority verified (%s)",
+                    route, chain_name, actual_authority,
+                )
