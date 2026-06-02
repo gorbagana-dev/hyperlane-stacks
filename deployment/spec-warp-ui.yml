@@ -17,8 +17,9 @@ config:
   WARP_COLLATERAL_ADDRESS: "REPLACE_WITH_COLLATERAL_ADDRESS"
   WARP_SYNTHETIC_ADDRESS: "REPLACE_WITH_SYNTHETIC_ADDRESS"
   WARP_TOKEN_MINT: "REPLACE_WITH_COLLATERAL_TOKEN_MINT"
-  # Not emitted by the warp-deployer yet; warp-ui tolerates empty (derives it
-  # client-side from the synthetic program). Left empty rather than a placeholder.
+  # Synthetic mint is a PDA of the synthetic token program (seeds
+  # ["hyperlane_token","-","mint"], program = WARP_SYNTHETIC_ADDRESS), so warp-ui
+  # derives it client-side. Left empty rather than a placeholder.
   WARP_SYNTHETIC_MINT: ""
   NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
 # Before deploying, export this env var in the shell that runs `laconic-so`:
