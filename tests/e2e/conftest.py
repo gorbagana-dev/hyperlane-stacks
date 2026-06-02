@@ -92,7 +92,8 @@ from lib.state_loader import BridgeStateLoader
 log = logging.getLogger(__name__)
 
 FIXTURE_SPEC = E2E_DIR / "fixtures" / "test-spec-deployer.yml"
-WARP_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer.yml"
+WARP_USDC_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer-usdc.yml"
+WARP_NATIVE_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-deployer-native.yml"
 MINIO_SPEC = E2E_DIR / "fixtures" / "test-spec-minio.yml"
 VALIDATOR_GORCHAIN_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-gorchain.yml"
 VALIDATOR_SOLANA_SPEC = E2E_DIR / "fixtures" / "test-spec-validator-solana.yml"
@@ -100,6 +101,19 @@ RELAYER_SPEC = E2E_DIR / "fixtures" / "test-spec-relayer.yml"
 GAS_ORACLE_SPEC = E2E_DIR / "fixtures" / "test-spec-gas-oracle.yml"
 MONITORING_SPEC = E2E_DIR / "fixtures" / "test-spec-monitoring.yml"
 WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
+
+# Warp routes deployed by the warp_deployment fixture. Each route is its own
+# warp-deployer deployment (distinct deployment-id, namespace, and deploy_dir)
+# sharing the hyperlane-svm-warp-deployer stack. `needs_spl_mint` routes are
+# collateral-origin: the fixture creates/funds a test SPL mint and patches the
+# spec's WARP_ORIGIN_TOKEN placeholder with it. Native-origin routes have no
+# such placeholder and deploy as-is.
+WARP_ROUTES = [
+    {"name": "USDC-solana-gorchain", "spec": WARP_USDC_SPEC,
+     "deployment_id": "warp-usdc", "namespace": "laconic-warp-usdc-e2e", "needs_spl_mint": True},
+    {"name": "SOL-solana-gorchain", "spec": WARP_NATIVE_SPEC,
+     "deployment_id": "warp-native", "namespace": "laconic-warp-native-e2e", "needs_spl_mint": False},
+]
 
 PRIVY_MOCK_PORT = 19876
 
@@ -769,11 +783,15 @@ def _create_and_fund_spl_token(keypair_path: str, rpc_url: str = "http://localho
     return mint
 
 
-def _patch_warp_spec(token_mint: str) -> Path:
-    """Substitute the token mint placeholder in the warp spec."""
-    content = WARP_SPEC.read_text()
+def _patch_warp_spec(spec: Path, token_mint: str, deployment_id: str) -> Path:
+    """Substitute the origin-token placeholder in a route's warp spec.
+
+    Writes a per-route patched file so concurrent routes don't clobber each
+    other's patched spec.
+    """
+    content = spec.read_text()
     patched = content.replace("REPLACE_AT_RUNTIME", token_mint)
-    patched_path = E2E_DIR / ".warp-spec-patched.yml"
+    patched_path = E2E_DIR / f".warp-spec-patched-{deployment_id}.yml"
     patched_path.write_text(patched)
     return patched_path
 
@@ -785,84 +803,106 @@ def warp_deployment(
     keypairs: KeypairSet,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
-    """Deploy the warp route stack once for the entire test session."""
+    """Deploy every configured warp route once for the entire test session.
+
+    Each route in WARP_ROUTES is its own warp-deployer deployment (distinct
+    deployment-id, namespace, and deploy_dir). Collateral routes
+    (needs_spl_mint) get a freshly created+funded test SPL mint patched into
+    their spec's WARP_ORIGIN_TOKEN placeholder; native routes deploy as-is.
+
+    Yields {"routes": {route_name: {"deployment", "namespace", "origin_token"}}}.
+    """
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_warp_deploy = request.config.getoption("--skip-warp-deploy")
-
-    if skip_warp_deploy:
-        # Reuse existing warp deployment — recover token_mint from the
-        # token-config.json state file written by the warp deployer job.
-        deploy_dir = DEPLOY_DIR / "hyperlane-svm-warp-deployer"
-        if deployment_exists(deploy_dir):
-            namespace = "laconic-hyperlane-svm-warp-deployer"
-            log.info("Reusing existing warp deployment (namespace: %s)", namespace)
-            token_config = bridge_state_loader.read_json("token-config.json")
-            token_mint = token_config.get("warpRoute", {}).get("tokenMint", "")
-            assert token_mint, "Cannot recover token_mint from token-config.json (is warp deployed?)"
-            log.info("Recovered token mint from state file: %s", token_mint)
-            deployment_id = get_deployment_id(deploy_dir)
-            yield {
-                "deployment": DeploymentInfo(
-                    deploy_dir=deploy_dir,
-                    deployment_id=deployment_id,
-                    namespace=namespace,
-                ),
-                "token_mint": token_mint,
-                "namespace": namespace,
-            }
-            return
-        log.info("--skip-warp-deploy set but %s missing — deploying fresh", deploy_dir)
-
-    log.info("Creating and funding test SPL token on Solana...")
     deployer_keypair = str(KEYS_DIR / "deployer.json")
-    token_mint = _create_and_fund_spl_token(keypair_path=deployer_keypair)
-    log.info("Test SPL token mint: %s", token_mint)
 
-    log.info("Patching warp deployer spec with token mint...")
-    patched_spec = _patch_warp_spec(token_mint)
-
-    log.info("Preparing warp deployer stack...")
-    warp_info = deploy_prepare(
-        "hyperlane-svm-warp-deployer",
-        patched_spec,
-        spec_replacements=SPEC_REPLACEMENTS,
-        deployment_id="warp-deployer",
-    )
-
-    bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
-
-    os.environ.update({
-        "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
-        "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
-        "SOLANA_RPC_URL":         "http://solana-rpc:18899",
-    })
-
-    log.info("Starting warp deployer stack...")
-    deploy_start(warp_info.deploy_dir)
+    routes: dict[str, dict] = {}
+    patched_specs: list[Path] = []
 
     try:
-        log.info("Waiting for warp deployer job to complete...")
-        job_name = f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer"
-        wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
-        save_job_logs(warp_info.namespace, job_name)
-        log.info("Warp deployer job complete, artifacts available")
-    except Exception:
-        save_job_logs(warp_info.namespace, f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer")
-        save_job_describe(warp_info.namespace, f"{warp_info.deployment_id}-job-hyperlane-svm-warp-deployer")
-        raise
+        for route in WARP_ROUTES:
+            name = route["name"]
+            deployment_id = route["deployment_id"]
+            namespace = route["namespace"]
+            deploy_dir = DEPLOY_DIR / f"hyperlane-svm-warp-deployer-{deployment_id}"
+            job_name = f"{deployment_id}-job-hyperlane-svm-warp-deployer"
 
-    ctx = {
-        "deployment": warp_info,
-        "token_mint": token_mint,
-        "namespace": warp_info.namespace,
-    }
+            if skip_warp_deploy and deployment_exists(deploy_dir):
+                # Reuse existing route deployment — recover the origin token (if any)
+                # from the per-route token-config.json written by the deployer job.
+                log.info("Reusing existing warp route %s (namespace: %s)", name, namespace)
+                token_config = bridge_state_loader.read_route_token_config(name)
+                origin_token = token_config.get("warpRoute", {}).get("tokenMint") or None
+                log.info("Route %s origin token: %s", name, origin_token)
+                routes[name] = {
+                    "deployment": DeploymentInfo(
+                        deploy_dir=deploy_dir,
+                        deployment_id=get_deployment_id(deploy_dir),
+                        namespace=namespace,
+                    ),
+                    "namespace": namespace,
+                    "origin_token": origin_token,
+                }
+                continue
+            if skip_warp_deploy:
+                log.info("--skip-warp-deploy set but %s missing — deploying fresh", deploy_dir)
 
-    yield ctx
+            origin_token = None
+            spec = route["spec"]
+            if route["needs_spl_mint"]:
+                log.info("Creating and funding test SPL token for route %s...", name)
+                origin_token = _create_and_fund_spl_token(keypair_path=deployer_keypair)
+                log.info("Route %s origin token mint: %s", name, origin_token)
+                log.info("Patching warp deployer spec for route %s with token mint...", name)
+                spec = _patch_warp_spec(spec, origin_token, deployment_id)
+                patched_specs.append(spec)
 
-    patched_spec.unlink(missing_ok=True)
-    if not skip_cleanup:
-        log.info("Stopping warp deployer stack...")
-        stop_stack("hyperlane-svm-warp-deployer")
+            log.info("Preparing warp deployer stack for route %s...", name)
+            warp_info = deploy_prepare(
+                "hyperlane-svm-warp-deployer",
+                spec,
+                deploy_dir=deploy_dir,
+                namespace=namespace,
+                spec_replacements=SPEC_REPLACEMENTS,
+                deployment_id=deployment_id,
+            )
+
+            bridge_state_loader.populate("hyperlane-svm-warp-deployer", warp_info.deploy_dir)
+
+            os.environ.update({
+                "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
+                "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
+                "SOLANA_RPC_URL":         "http://solana-rpc:18899",
+            })
+
+            log.info("Starting warp deployer stack for route %s...", name)
+            deploy_start(warp_info.deploy_dir)
+
+            try:
+                log.info("Waiting for warp deployer job to complete (route %s)...", name)
+                wait_for_job_complete(warp_info.namespace, job_name, timeout=1200)
+                save_job_logs(warp_info.namespace, job_name)
+                log.info("Warp deployer job complete for route %s, artifacts available", name)
+            except Exception:
+                save_job_logs(warp_info.namespace, job_name)
+                save_job_describe(warp_info.namespace, job_name)
+                raise
+
+            routes[name] = {
+                "deployment": warp_info,
+                "namespace": warp_info.namespace,
+                "origin_token": origin_token,
+            }
+
+        yield {"routes": routes}
+    finally:
+        for spec in patched_specs:
+            spec.unlink(missing_ok=True)
+        if not skip_cleanup:
+            for route in WARP_ROUTES:
+                deploy_dir = DEPLOY_DIR / f"hyperlane-svm-warp-deployer-{route['deployment_id']}"
+                log.info("Stopping warp deployer stack for route %s...", route["name"])
+                stop_stack("hyperlane-svm-warp-deployer", deploy_dir=deploy_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -1600,38 +1640,24 @@ def monitoring_deployment(
 # ---------------------------------------------------------------------------
 
 
-def _get_warp_program_addresses(state_loader: BridgeStateLoader) -> dict[str, str]:
-    """Read warp-deploy-outputs state files and return {chain: base58_address}."""
-    import json
+def _read_route_synthetic_mint(bridge_state_loader: BridgeStateLoader, route: str) -> str:
+    """Read the synthetic SPL mint the warp deployer emits into a route's token-config.
 
-    outputs_dir = state_loader.state_dir / "warp-deploy-outputs"
-    assert outputs_dir.is_dir(), f"{outputs_dir} does not exist"
-
-    files = list(outputs_dir.iterdir())
-    assert files, f"{outputs_dir} has no files"
-
-    programs: dict[str, str] = {}
-    for f in files:
-        if not f.is_file():
-            continue
-        for chain_name, entry in json.loads(f.read_text()).items():
-            if entry.get("base58"):
-                programs[chain_name] = entry["base58"]
-    return programs
-
-
-def _read_synthetic_mint(bridge_state_loader: BridgeStateLoader) -> str:
-    """Read the synthetic SPL mint the warp deployer emits into token-config.json.
-
-    The deployer queries the synthetic program and writes warpRoute.synthetic.mint;
-    the warp-UI SDK requires this value explicitly (it does not auto-derive the PDA).
+    The deployer queries the synthetic program and writes the synthetic side's mint
+    (warpRoute.<synthetic chain>.mint); the warp-UI SDK requires this value
+    explicitly (it does not auto-derive the PDA).
     """
-    token_config = bridge_state_loader.read_json("token-config.json")
-    synthetic_mint = (
-        token_config.get("warpRoute", {}).get("synthetic", {}).get("mint", "")
+    warp_route = bridge_state_loader.read_route_token_config(route).get("warpRoute", {})
+    synthetic_mint = next(
+        (
+            side["mint"]
+            for side in warp_route.values()
+            if isinstance(side, dict) and side.get("type") == "synthetic" and side.get("mint")
+        ),
+        "",
     )
     assert synthetic_mint, (
-        "warpRoute.synthetic.mint missing from token-config.json "
+        f"synthetic mint missing from route {route} token-config.json "
         "(is the warp deployer emitting it?)"
     )
     return synthetic_mint
@@ -1681,17 +1707,38 @@ def bridge_setup(
     Also configures a dedicated IGP beneficiary (separate from the deployer)
     so that fee claim tests can observe balance changes.
     """
-    token_mint = warp_deployment["token_mint"]
     sender_keypair = str(KEYS_DIR / "deployer.json")
 
-    log.info("Resolving warp program addresses...")
-    warp_programs = _get_warp_program_addresses(bridge_state_loader)
-    assert "solana" in warp_programs, "No warp program for solana"
-    assert "gorchain" in warp_programs, "No warp program for gorchain"
-    log.info("Warp programs: %s", warp_programs)
+    # Resolve per-route warp program addresses and synthetic mints from each
+    # route's warp-deploy-outputs state files.
+    route_setups: dict[str, dict] = {}
+    for name, route_ctx in warp_deployment["routes"].items():
+        log.info("Resolving warp program addresses for route %s...", name)
+        programs = bridge_state_loader.read_route_program_addresses(name)
+        assert "solana" in programs, f"No warp program for solana in route {name}"
+        assert "gorchain" in programs, f"No warp program for gorchain in route {name}"
+        log.info("Route %s warp programs: %s", name, programs)
 
-    synthetic_mint = _read_synthetic_mint(bridge_state_loader)
-    log.info("Synthetic mint: %s", synthetic_mint)
+        log.info("Reading synthetic mint for route %s...", name)
+        synthetic = _read_route_synthetic_mint(bridge_state_loader, name)
+        log.info("Route %s synthetic mint: %s", name, synthetic)
+
+        route_setups[name] = {
+            "warp_solana": programs["solana"],
+            "warp_gorchain": programs["gorchain"],
+            "synthetic_mint": synthetic,
+            "origin_token": route_ctx["origin_token"],
+        }
+
+    # USDC route drives the flat keys / user funding consumed by the CLI bridge
+    # tests; per-route data lives under "routes".
+    usdc_route = WARP_ROUTES[0]["name"]
+    token_mint = route_setups[usdc_route]["origin_token"]
+    synthetic_mint = route_setups[usdc_route]["synthetic_mint"]
+    warp_programs = {
+        "solana": route_setups[usdc_route]["warp_solana"],
+        "gorchain": route_setups[usdc_route]["warp_gorchain"],
+    }
 
     # Change IGP beneficiary on both chains from deployer → dedicated account.
     # The beneficiary keypair is generated and funded during initial test setup
@@ -1775,6 +1822,14 @@ def bridge_setup(
         "warp_programs": warp_programs,
         "relayer_deployment_id": relayer_deployment.deployment_id,
         "users": users,
+        "routes": {
+            name: {
+                "warp_solana": r["warp_solana"],
+                "warp_gorchain": r["warp_gorchain"],
+                "synthetic_mint": r["synthetic_mint"],
+            }
+            for name, r in route_setups.items()
+        },
     }
 
 
@@ -1820,15 +1875,16 @@ def warp_ui_deployment(
     solana_mailbox = solana_programs["mailbox"]
     log.info("Mailboxes — gorchain: %s, solana: %s", gorchain_mailbox, solana_mailbox)
 
-    warp_programs = _get_warp_program_addresses(bridge_state_loader)
+    usdc_route = WARP_ROUTES[0]["name"]
+    warp_programs = bridge_state_loader.read_route_program_addresses(usdc_route)
     warp_collateral = warp_programs["solana"]
     warp_synthetic = warp_programs["gorchain"]
     log.info("Warp addresses — collateral: %s, synthetic: %s", warp_collateral, warp_synthetic)
 
-    token_mint = warp_deployment["token_mint"]
+    token_mint = warp_deployment["routes"][usdc_route]["origin_token"]
     log.info("Token mint: %s", token_mint)
 
-    synthetic_mint = _read_synthetic_mint(bridge_state_loader)
+    synthetic_mint = _read_route_synthetic_mint(bridge_state_loader, usdc_route)
     log.info("Synthetic mint: %s", synthetic_mint)
 
     if skip_warp_ui:

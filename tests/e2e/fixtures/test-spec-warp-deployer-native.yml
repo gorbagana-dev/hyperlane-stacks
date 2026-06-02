@@ -20,7 +20,6 @@ config:
   WARP_TOKEN_NAME: "Solana"
   WARP_TOKEN_DECIMALS: "9"
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SOLANA_RPC_URL: "http://solana-rpc:18899"
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
@@ -46,6 +45,7 @@ secrets:
     keys:
       DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
       HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      SOLANA_RPC_URL: { env: SOLANA_RPC_URL }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
