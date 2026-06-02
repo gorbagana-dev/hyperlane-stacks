@@ -126,13 +126,13 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 ## Stack 2: hyperlane-svm-warp-deployer
 
 ### Purpose
-One-time Job that deploys warp route contracts (collateral on one chain, synthetic on the other) for a specific SPL token pair.
+One-time Job that deploys the warp route contracts for a single configurable route. A route is a set of config fields where each side has an explicit token type: an origin side (`native` or `collateral`) and a remote side (`synthetic` or `collateral`).
 
 ### How It Works
 1. Same `jobs:` pattern as core deployer — runs as a k8s Job with ConfigMap-mounted deploy script at `/opt/scripts/`
 2. Reads `hyperlane-program-ids` ConfigMap (created by Stack 1) for mailbox addresses
-3. Deploys collateral + synthetic warp route programs
-4. Writes `hyperlane-token-config` ConfigMap with warp route addresses
+3. `deploy.sh` builds the on-chain token-config generically with `jq` from the route's `config:` fields (origin/remote chain, type, token, and metadata) — there is no per-token template
+4. Deploys the warp route programs for both sides and writes the route's addresses to state
 
 ### Warp route token model
 
@@ -188,31 +188,26 @@ tests pass even though the prod spec ships placeholders.)
 - Requires Stack 1 (core deployer) to have run first
 
 ### Config (spec.yml)
-`WARP_TOKEN_MINT`, `COLLATERAL_CHAIN`, `SYNTHETIC_CHAIN`, RPC URLs, domain IDs, `FORCE_REDEPLOY`
+Per-route fields: `WARP_ROUTE_NAME`, `WARP_ORIGIN_CHAIN`, `WARP_ORIGIN_TYPE`
+(`native` | `collateral`), `WARP_ORIGIN_TOKEN`, `WARP_REMOTE_CHAIN`,
+`WARP_REMOTE_TYPE` (`synthetic` | `collateral`), `WARP_TOKEN_SYMBOL`,
+`WARP_TOKEN_NAME`, `WARP_TOKEN_DECIMALS`, `WARP_TOKEN_METADATA_URI`; plus RPC
+URLs, domain IDs, and `FORCE_REDEPLOY`.
 
 ### Secrets (injected separately)
 `DEPLOYER_KEYPAIR`, `HARDWARE_WALLET_PUBKEY`
 
-### Known Limitations
+### Multiple routes
 
-**Single warp route per bridge.** The stack is structurally single-route:
-`spec-warp-deployer.yml` exposes scalar `WARP_TOKEN_MINT`, `WARP_ROUTE_NAME`,
-`WARP_TOKEN_METADATA_URI`, and one `COLLATERAL_CHAIN`/`SYNTHETIC_CHAIN` pair;
-`token-config.json.tmpl` hardcodes `USDC` name/symbol and `decimals: 6`;
-state files (`/state/token-config.json`, `/state/program-ids.json`) live at
-the top level with no per-route subdirectory; and the deploy script's "skip
-if token-config populated" idempotency check assumes one config exists.
-Downstream consumers (relayer, gas-oracle, warp-UI) read those state files
-as if exactly one route exists.
+Each deployment deploys exactly one route. Run additional routes by deploying
+the stack multiple times, each with its own explicit `namespace:` (laconic-so
+enforces one deployment per namespace) and its own per-route config fields.
+Each route keeps its state under `/state/warp-routes/<route-name>/`, so routes
+do not collide and the deploy script's idempotency check is scoped per route.
 
-To support multiple token pairs on the same bridge in future, the changes
-required are: per-route specs (or a list-shaped `warp-routes:` block);
-per-route state subdirectories (`/state/warp-routes/<route-name>/`);
-parameterized token metadata per route; per-route ConfigMaps populated by
-BridgeStateLoader for relayer / gas-oracle / warp-UI; and independent
-redeploy / pause / kill-switch flows per route. Not a v1 concern — the
-current bridge is single-chain-pair single-route (USDC between gorchain
-and solana) by design.
+The relayer, gas-oracle, validators, and storage are route-agnostic — they
+operate at the mailbox/domain level — so adding a route needs no per-route
+changes to those stacks.
 
 ---
 

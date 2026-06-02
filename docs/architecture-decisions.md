@@ -11,7 +11,7 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 | Stack | Type | Purpose |
 |-------|------|---------|
 | `hyperlane-svm-deployer` | One-time job | Deploys Hyperlane core contracts, configures IGP + Multisig ISM. Writes state files to a host-path volume. |
-| `hyperlane-svm-warp-deployer` | One-time job | Deploys warp route contracts for a specific token pair. Separate from core deployer to allow multiple warp routes against the same core deployment. |
+| `hyperlane-svm-warp-deployer` | One-time job | Deploys one configurable warp route per deployment, parameterized by per-route config fields (token-config built generically from those fields). Separate from core deployer to allow multiple warp routes against the same core deployment. |
 | `hyperlane-validator` | Long-running | Runs a Hyperlane validator for one chain with KMS proxy sidecar for Privy signing. **One deployment per validator instance.** Multiple instances per chain supported via per-instance specs derived from `validators.yaml`. |
 | `hyperlane-relayer` | Long-running | Delivers cross-chain messages. Includes IGP fee claim sidecar. |
 | `hyperlane-minio` | Long-running | S3-compatible checkpoint storage (MinIO) for validators and relayer. Per-validator IAM users with bucket-scoped policies. |

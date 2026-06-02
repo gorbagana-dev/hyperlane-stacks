@@ -97,7 +97,7 @@ When making structural changes, update:
 
 - Template files use `.tmpl` extension and `${VAR}` placeholder syntax
 - Deploy scripts render them at runtime via `envsubst`
-- Examples: `metadata.yaml.tmpl`, `token-config.json.tmpl`
+- Examples: `metadata.yaml.tmpl`
 - ConfigMaps flatten directories; scripts reconstruct needed dir structures at runtime
   (e.g. `mkdir -p /tmp/registry/chains && envsubst < .tmpl > .../chains/metadata.yaml`)
 

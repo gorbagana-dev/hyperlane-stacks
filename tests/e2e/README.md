@@ -240,7 +240,8 @@ tests/e2e/
 └── fixtures/
     ├── kind-config.yaml                 # Kind cluster with ingress ports
     ├── test-spec-deployer.yml           # laconic-so spec for core deployer
-    ├── test-spec-warp-deployer.yml      # laconic-so spec for warp deployer
+    ├── test-spec-warp-deployer-usdc.yml   # laconic-so spec for USDC collateral warp route
+    ├── test-spec-warp-deployer-native.yml # laconic-so spec for SOL native warp route
     ├── test-spec-minio.yml              # laconic-so spec for MinIO
     ├── test-spec-validator-gorchain.yml # laconic-so spec for gorchain validator
     ├── test-spec-validator-solana.yml   # laconic-so spec for solana validator
