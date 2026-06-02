@@ -102,3 +102,29 @@ class BridgeStateLoader:
                 f"program-ids.json missing chain {chain!r}; keys={list(ids)}"
             )
         return ids[chain]
+
+    def discover_routes(self) -> list[str]:
+        """Route directory names under <state>/warp-routes/ (per-route layout
+        written by deploy.sh). Empty list when no warp-routes/ dir exists."""
+        base = self.state_dir / "warp-routes"
+        if not base.is_dir():
+            return []
+        return [d.name for d in base.iterdir() if d.is_dir()]
+
+    def read_route_token_config(self, route: str) -> dict:
+        """Parsed token-config.json for a route under warp-routes/<route>/."""
+        return self.read_json(str(Path("warp-routes") / route / "token-config.json"))
+
+    def read_route_program_addresses(self, route: str) -> dict[str, str]:
+        """`{chain: base58}` from every file in a route's warp-deploy-outputs/,
+        taking each top-level chain entry's `base58` value."""
+        outputs = self.state_dir / "warp-routes" / route / "warp-deploy-outputs"
+        if not outputs.is_dir():
+            raise FileNotFoundError(f"{outputs} does not exist")
+        programs: dict[str, str] = {}
+        for f in outputs.iterdir():
+            if f.is_file():
+                for chain, entry in json.loads(f.read_text()).items():
+                    if isinstance(entry, dict) and entry.get("base58"):
+                        programs[chain] = entry["base58"]
+        return programs
