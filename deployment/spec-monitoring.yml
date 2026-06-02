@@ -5,8 +5,7 @@ deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 config:
-  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
-  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   # Wallet format: label:address or label:address:threshold
   # Per-wallet threshold overrides BALANCE_THRESHOLD_SOL (the fallback).
   MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
@@ -53,6 +52,7 @@ secrets:
   hyperlane-monitoring-secrets:
     keys:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
+      SOLANA_RPC_URL:             { env: SOLANA_RPC_URL }
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   prometheus: prom/prometheus:v2.53.0

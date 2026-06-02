@@ -87,6 +87,7 @@ stack_env_vars:
     - GHCR_PAT
   hyperlane-monitoring:
     - GF_SECURITY_ADMIN_PASSWORD
+    - SOLANA_RPC_URL
   hyperlane-warp-ui:
     - SOLANA_RPC_URL
     - GHCR_PAT
