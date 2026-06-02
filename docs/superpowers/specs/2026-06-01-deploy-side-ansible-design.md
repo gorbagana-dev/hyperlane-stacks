@@ -1,7 +1,10 @@
 # Deploy-Side Ansible Design
 
 **Date:** 2026-06-01
-**Status:** Brainstormed and approved (decisions below). Ready for implementation plan.
+**Status:** Implemented, then revised after a deploy-ansible review (2026-06-02):
+config model split into static-committed / secret-env-injected / deployment-derived
+publish-patched; per-env committed spec trees; `deploy init` dropped;
+`commit-bridge-state` → `publish-bridge-state`. See the configuration model below.
 
 This is **sub-project 2** of the ops-layer redesign
 (`docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`).
@@ -63,13 +66,10 @@ The env split mirrors the spec-tree split already in `deployment/`:
 - `ops/inventories/{prod,staging}/` holds the **ansible control data** —
   inventory, host/group vars, secrets.
 
-Every playbook takes `-e env=prod|staging`, which resolves to both paths: the
-spec/state tree (`deployment/` or `deployment/staging/`) and the inventory
-(`-i ops/inventories/<env>/hosts.yml`). Otherwise identical between environments.
-
-> Note: `2026-05-29-staging-environment-design.md` line ~141 has a stale
-> `deployment/ops/group_vars/prod.yml` reference predating the top-level-`ops/`
-> decision; fix when next touching that doc.
+The environment is selected entirely by the inventory passed
+(`-i inventories/<env>/hosts.yml`); there is **no** `-e env=` switch. Each
+inventory's `group_vars/all.yml` sets `deployment_root` (→ `deployment/` for prod,
+`deployment/staging/` for staging), so choosing the inventory picks both trees.
 
 ## Topology model (already locked)
 
@@ -123,18 +123,27 @@ the sub-project-3 add-validator flow call just a `-e validator_label=` slice.
 
 ### 5. `stack_deploy`
 The workhorse. For one spec on its target host:
-- **Pre-flight**: DNS resolves to the host's `public_ip` (`dig` check, fails fast
-  with a clear message); host has docker + laconic-so.
-- **Assemble env**: build the env the spec consumes from `group_vars` (config) +
-  `secrets.yml` (secrets), driven by a **per-stack env-var map** so each stack
-  only gets the vars its spec declares.
-- **Deploy**: `laconic-so deploy create` if the deploy_dir is absent (skip if
-  present → idempotent); patch `deployment.yml` cluster-id; then
-  `laconic-so deployment start --perform-cluster-management`.
+- **Pre-flight**: the spec's hostnames resolve to the host's `public_ip` (`dig`
+  check, fails fast with a clear message); host has docker + laconic-so.
+- **Assemble env**: build the **secrets-only** env the spec's `secrets:` declares
+  from `secrets.yml`, driven by a per-stack env-var map (`no_log`). Config values
+  are already literal in the committed spec — see the configuration model; the
+  process env cannot set them (SO writes `config:` verbatim).
+- **Deploy**: `laconic-so deploy create --spec-file <committed per-env spec>` if
+  the deploy_dir is absent (skip if present → idempotent) — **no `deploy init`**,
+  since `deploy create` reads the committed spec directly; patch a readable
+  `deployment-id`; then `laconic-so deployment start
+  --perform-cluster-management`, with the assembled secret env applied to **both**
+  create and start.
 - **Job specs** (deployer, warp-deployer): detect job-type and wait for
   completion (mirrors the e2e `_wait_for_job_complete`), not pod-ready.
 
-Inputs: `spec_file`, target host, assembled env.
+The deployment dir lives under `~/deployments/<stack>` (home, ext4), **not** under
+`kind_mount_root` (reserved for runtime host-path data); runtime volumes stay
+pinned to their absolute `/srv/kind/...` paths inside the spec. Mirrors the
+`woodburn_deployer` pattern.
+
+Inputs: `spec_file` (committed), target host, assembled secret env.
 
 ### 6. `state_distribute`
 On each consumer host, git-pulls the repo via **ansible SSH agent forwarding**
@@ -168,22 +177,62 @@ Rule the roles encode:
 
 ---
 
-## Secret model
+## Configuration & secret model
 
-Three tiers, matching "generate what we can, operator supplies the rest":
+Every value a spec's `config:`/`secrets:` consumes falls into one of three
+categories, each resolved by a different mechanism. This split is **forced by
+SO**: `deployment_create.py:_write_config_file` writes spec `config:` values
+**verbatim** to `config.env` — it does *not* expand `${VAR}` from the process
+environment. So the process env (assembled by `stack_deploy`) can only feed the
+`secrets:` path; `config:` values must already be literal in the committed spec.
 
-**A. Generated on the controller** (no operator input): MinIO root creds,
-per-validator MinIO IAM pairs, relayer hot key (if needed). Generated once into
-`secrets.yml`, never rotated on re-run. The bulk of the secret surface.
+**1. Static, non-secret — committed in the spec (per env).**
+gorchain RPC URL (public), domain IDs, chain IDs, `*_IS_TESTNET`,
+`AWS_ENDPOINT_URL_S3`, `NEXT_PUBLIC_WALLET_CONNECT_ID`, GHCR username, and the
+per-validator `PRIVY_WALLET_ID`. The operator replaces each `REPLACE_WITH_*`
+placeholder once the value is known and commits it. Because prod and staging
+differ, these live in **two committed spec trees** — `deployment/` (prod) and
+`deployment/staging/` (devnet) — selected by `deployment_root`.
 
-**B. Operator-supplied** (truly external): `CLOUDFLARE_API_TOKEN`, Privy app
-ID + secret, AWS-KMS access key/secret. Live in the gitignored `secrets.yml`,
-created from the committed `secrets.example.yml` (documents every key). The
-`credentials` role fails fast on any missing required key.
+Canonical IDs: gorchain domain == chain == `99999` (our own SVM chain; arbitrary
+but fixed, collision-free against Hyperlane's known-domains enum). Solana domain
+== chain == the canonical Hyperlane value — **`1399811149`** mainnet (prod),
+**`1399811151`** devnet (staging). Hyperlane derives SVM domain IDs from the chain
+name (`0x536F6C` = ASCII `"Sol"` + a network byte), and uses `chainId == domainId`
+for Solana in its own agent config, so equal values are correct.
 
-**C. Not secret — config** (committed): `HARDWARE_WALLET_PUBKEY`, Privy wallet
-IDs, chain RPC URLs, domain/chain IDs, `dns_zone`, `dns_records` →
-`group_vars/all.yml` and `validators.yaml`.
+**2. Secret — never committed, env-injected via `secrets:`.**
+`SOLANA_RPC_URL` (the Helius URL embeds an API key → it is a secret, **moved out
+of `config:` into `secrets:`**), `PRIVY_APP_ID/SECRET` and `PRIVY_*_WALLET_ID`,
+MinIO root + per-validator IAM, `GHCR_PAT`, and the `~/.credentials` keyfiles.
+`stack_deploy` assembles these into the process environment for `deploy
+create`/`start`. The Helius URL is built from one operator secret
+`helius_api_key`: `https://{mainnet,devnet}.helius-rpc.com/?api-key={{ helius_api_key }}`.
+
+- *Generated on the controller* (no operator input; written once to the gitignored
+  `secrets.yml`, never rotated on re-run): MinIO root creds, per-validator IAM.
+- *Operator-supplied* (external): `cloudflare_api_token`, `privy_app_id`,
+  `privy_app_secret`, `helius_api_key`, `ghcr_pat`. The `credentials` role fails
+  fast naming any missing required key.
+
+**3. Deployment-derived — produced by a Job, publish-patched into the spec.**
+IGP program IDs/accounts and mailbox addresses (from the deployer's
+`generated/program-ids.json`), plus warp collateral/synthetic addresses + token
+mints (from the warp-deployer's `token-config.json`). `publish-bridge-state` reads
+those artifacts and patches the matching `config:` keys in the committed per-env
+spec, then commits (see flow). Mapping:
+
+| Spec | `config:` key | Source |
+|---|---|---|
+| relayer, gas-oracle | `GORCHAIN/SOLANA_IGP_PROGRAM_ID` | `program-ids.json .<chain>.igp_program_id` |
+| relayer | `GORCHAIN/SOLANA_IGP_ACCOUNT` | `.<chain>.igp_account` |
+| warp-ui | `GORCHAIN/SOLANA_MAILBOX` | `.<chain>.mailbox` |
+| warp-ui | `WARP_COLLATERAL/SYNTHETIC_ADDRESS`, `WARP_TOKEN/SYNTHETIC_MINT` | warp-deployer `token-config.json` |
+
+The rich `agent-config.json` (validators + relayer) stays a **ConfigMap**
+distributed by `state_distribute`; only the scalar env values above are
+publish-patched. gas-oracle and warp-ui therefore need **no** `state_distribute` —
+their derived values arrive via publish-patched `config:`.
 
 `secrets.yml` is gitignored per env; `secrets.example.yml` is committed alongside.
 
@@ -191,8 +240,9 @@ IDs, chain RPC URLs, domain/chain IDs, `dns_zone`, `dns_records` →
 
 ## Playbooks and flow
 
-All take `-e env=prod|staging`. Granular playbooks stay independently runnable;
-`setup-all.yml` and `deploy-all.yml` are the two top-level phase wrappers. The
+Environment chosen by inventory (`-i inventories/<env>/hosts.yml`). Granular
+playbooks stay independently runnable; `setup-all.yml` and `deploy-all.yml` are
+the two top-level phase wrappers. The
 phases are deliberately separate so the whole fleet is provisioned before any
 stack comes up (a half-provisioned host can't block a deploy midway).
 
@@ -216,31 +266,40 @@ first" rather than failing deep inside a stack. Then, per the locked order:
    by the `minio-provision` CronJob from `MINIO_USERS`).
 5. **deployer** Job — `stack_deploy spec-deployer.yml`, wait-for-job-complete
    (writes state to `generated/`).
-6. **commit-bridge-state** — see gate below.
+6. **publish-bridge-state** — commits `generated/` **and** patches the
+   deployment-derived `config:` keys into the committed per-env consumer specs
+   (see gate below).
 7. **warp-deployer** Job (optional) — `stack_deploy spec-warp-deployer.yml`, then
-   commit its outputs.
-8. **long-running stacks** — for each, `state_distribute` → `stack_deploy`:
-   validators (loop over `validators.yaml` → `spec-validator-<label>.yml` on each
-   validator's host), relayer, gas-oracle, monitoring, warp-ui (optional).
+   re-run `publish-bridge-state` to patch the warp addresses/mints into
+   `spec-warp-ui.yml`.
+8. **long-running stacks** — relayer + validators run `state_distribute` (for the
+   `agent-config` ConfigMap) → `stack_deploy`; gas-oracle, monitoring, and warp-ui
+   run `stack_deploy` only (no `state_distribute` — their derived values are
+   publish-patched into `config:`). Validators loop over `validators.yaml` →
+   `spec-validator-<label>.yml` on each validator's host.
 
 (Step 10, on-chain ownership/ISM setup, is sub-project 3. `deploy-all` stops
 after the stacks are running.) Steps 4–8 are idempotent; the only attended point
 is the optional state-review gate.
 
-### `commit-bridge-state.yml` (flag-gated)
+### `publish-bridge-state.yml` (flag-gated)
 Pulls deployer-host state into the controller's working tree under
-`deployment/bridges/default/generated/`, then commits + pushes via
-**agent-forwarded SSH**.
+`deployment/[staging/]bridges/default/generated/`, **patches** the
+deployment-derived `config:` keys into the committed per-env consumer specs (per
+the mapping in the configuration model), then commits + pushes via
+**agent-forwarded SSH**. (Renamed from `commit-bridge-state` — it both commits and
+publishes.)
 
 - **Default** (`state_review=false`): commits and pushes automatically —
   `deploy-all.yml` runs hands-off end to end.
 - **`-e state_review=true`**: shows the diff and pauses for operator approval
   before commit/push.
 
-Safety regardless of flag: `git add` is **scoped to the `generated/` paths only**
-(never sweeps unrelated working-tree changes); the commit is **skipped if state
-is unchanged** (idempotent); the diff is **always printed**; push targets the
-current tracking branch.
+Safety regardless of flag: `git add` is **scoped to the `generated/` paths and the
+patched `spec-*.yml` only** (never sweeps unrelated working-tree changes); each
+spec patch only rewrites the listed keys, and re-running with the same artifacts
+is a no-op; the commit is **skipped if nothing changed** (idempotent); the diff is
+**always printed**; push targets the current tracking branch.
 
 State only flows deployer-host → git → consumer-hosts (the multi-machine
 principle: consumers never read peer namespaces).
@@ -296,14 +355,20 @@ What the staging rehearsal ground needs, per the staging topology
 - **Only gorchain runs a local chain node.** The Solana side points at **Helius
   devnet** (remote), so that host stays light.
 
-**VMs — 3 required + 1 transient:**
+**VMs — 3 required:**
 
 | Host | Stacks | Starting spec |
 |---|---|---|
 | `staging-gorchain` | single-node agave/gorchain validator + gorbagana RPC + hyperlane-validator (gorchain) | 8 vCPU / 32 GB / 500 GB NVMe SSD |
 | `staging-solana-validator` | hyperlane-validator (solana) → Helius devnet | 2 vCPU / 4 GB / 40 GB SSD |
 | `staging-bridge-ops` | relayer, gas-oracle, monitoring, MinIO, warp-ui | 4 vCPU / 8 GB / 80 GB SSD |
-| `staging-scratch` (transient) | second validator for add/remove + 2-of-2 ISM rehearsals; on demand | 2 vCPU / 4 GB / 40 GB SSD |
+
+- **Scratch (second) validator** for the add/remove + 2-of-2 ISM rehearsals does
+  **not** need a 4th VM. A `hyperlane-validator` is a lightweight agent pod
+  (~1 GB RAM, 5 Gi RocksDB), placement is independent of which chain it validates
+  (it reaches the chain over RPC), and adding one is just a `validators.yaml` +
+  DNS entry on its host's existing shared Kind cluster. Co-locate it transiently
+  on `staging-gorchain` (the most RAM headroom) for the drill, then tear it down.
 
 - **gorchain is the host to get right** — agave is RAM/IO-heavy and prunes its
   blockstore to ~100–400 GB; NVMe is effectively mandatory. Defer to
