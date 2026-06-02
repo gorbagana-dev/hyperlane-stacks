@@ -16,12 +16,11 @@ configmaps:
   deployer-multisig-config: ./configmaps/deployer-multisig-config
   deployer-registry-config: ./configmaps/deployer-registry-config
 config:
-  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
-  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  GORCHAIN_DOMAIN_ID: "99999"
-  SOLANA_DOMAIN_ID: "99998"
-  GORCHAIN_CHAIN_ID: "99999"
-  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
+  GORCHAIN_DOMAIN_ID: "1198486093"
+  SOLANA_DOMAIN_ID: "1399811149"
+  GORCHAIN_CHAIN_ID: "1198486093"
+  SOLANA_CHAIN_ID: "1399811149"
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
   FORCE_REDEPLOY: "false"
@@ -38,6 +37,7 @@ secrets:
       IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
       GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
       SOLANA_VALIDATOR_ADDRESS:   { env: SOLANA_VALIDATOR_ADDRESS }
+      SOLANA_RPC_URL:             { env: SOLANA_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

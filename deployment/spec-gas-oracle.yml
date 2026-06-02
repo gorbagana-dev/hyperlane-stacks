@@ -10,16 +10,15 @@ network:
   acme-email: admin@gorbagana.wtf
 config:
   # --- Chain RPCs ---
-  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
-  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
 
   # --- IGP program addresses (base58, from deployer output) ---
   GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
   SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
 
   # --- Hyperlane domain IDs (must match deployer config) ---
-  GORCHAIN_DOMAIN_ID: "99999"
-  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_DOMAIN_ID: "1198486093"
+  SOLANA_DOMAIN_ID: "1399811149"
 
   # --- Update frequency ---
   # How often the oracle re-fetches prices and submits new configs (ms).
@@ -63,6 +62,7 @@ secrets:
       PRIVY_APP_ID:            { env: PRIVY_APP_ID }
       PRIVY_APP_SECRET:        { env: PRIVY_APP_SECRET }
       PRIVY_ORACLE_WALLET_ID:  { env: PRIVY_ORACLE_WALLET_ID }
+      SOLANA_RPC_URL:          { env: SOLANA_RPC_URL }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

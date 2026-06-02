@@ -52,6 +52,9 @@ When you add/remove/rename an env var or configmap in a compose file:
 - Update the corresponding `deployment/spec-*.yml`
 - Update the corresponding `tests/e2e/fixtures/test-spec-*.yml` (if it exists)
 - Update the test code in `tests/e2e/test_*.py` if affected
+- Update the stack's entry in the `stack_env_vars` map in
+  `ops/inventories/*/group_vars/all.yml` — the deploy-side ansible layer assembles
+  each stack's `laconic-so` env from that map (see `ops/README.md`)
 
 ### 2. Config dirs ↔ Compose volumes ↔ Stack definitions
 
@@ -84,6 +87,11 @@ When making structural changes, update:
 - **Derived vars** (e.g. `COLLATERAL_CHAIN_RPC_URL`) use compose-level defaults:
   `${COLLATERAL_CHAIN_RPC_URL:-${SOLANA_RPC_URL}}` — users only set chain-specific vars
 - Deployment specs should use chain-specific vars, not derived vars
+- **`SOLANA_RPC_URL` is a secret** (the Helius URL embeds an API key): it lives
+  under each spec's `secrets:` (`{ env: SOLANA_RPC_URL }`), not `config:`. SO
+  injects it as a pod env var either way; only its provenance differs.
+- **Domain/chain IDs are committed per-env spec literals** under `config:`.
+  SO writes `config:` values verbatim — it does not expand `${VAR}` in `config:`.
 
 ### Templates (envsubst)
 

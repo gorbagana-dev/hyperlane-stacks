@@ -1,0 +1,41 @@
+---
+- name: Repo + deploy + state paths resolve against the on-host fetched clone
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # HOME is resolved from ansible_env (gather_facts would populate it); set it
+    # explicitly so the wiring expands deterministically without facts.
+    ansible_env:
+      HOME: /home/op
+    deploy_dir: "/home/op/deployments/hyperlane-relayer"
+    configmap_names:
+      - agent-config
+  tasks:
+    # Read the real prod env wiring so this test breaks if repo_root/deployment_root
+    # move again, and the stack_deploy default so deploy_base stays aligned.
+    - name: Load prod env wiring (repo_base_dir/repo_root/deployment_root)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../inventories/prod/group_vars/all.yml"
+
+    - name: Load stack_deploy defaults (deploy_base)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../roles/stack_deploy/defaults/main.yml"
+
+    - name: Compute the generated src + configmap targets (as state_distribute does)
+      ansible.builtin.set_fact:
+        src_dir: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated"
+        cm_targets: >-
+          {{ configmap_names
+          | map('regex_replace', '^(.*)$', deploy_dir ~ '/configmaps/\1')
+          | list }}
+
+    - name: Roots resolve to the on-host clone and paths map correctly
+      ansible.builtin.assert:
+        that:
+          - "repo_base_dir == '/home/op/deployments'"
+          - "deploy_base == '/home/op/deployments'"
+          - "repo_root == '/home/op/deployments/hyperlane-stacks'"
+          - "deployment_root == '/home/op/deployments/hyperlane-stacks/deployment'"
+          - "src_dir == '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated'"
+          - "cm_targets == ['/home/op/deployments/hyperlane-relayer/configmaps/agent-config']"

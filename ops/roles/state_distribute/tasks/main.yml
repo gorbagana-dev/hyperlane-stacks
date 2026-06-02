@@ -1,0 +1,16 @@
+---
+# The fetch_stack role already cloned/pulled the stack repo on this host (on
+# deploy_branch, which publish-bridge-state pushed the generated state to), so the
+# generated artifacts are right here in the clone — no separate state-repo needed.
+- name: Resolve the generated dir in the on-host clone
+  ansible.builtin.set_fact:
+    _generated_src: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated/"
+
+- name: Copy generated state into each configmap dir
+  ansible.builtin.copy:
+    src: "{{ _generated_src }}"
+    dest: "{{ deploy_dir }}/configmaps/{{ item }}/"
+    remote_src: true
+    mode: "0644"
+  loop: "{{ configmap_names }}"
+  when: not ansible_check_mode

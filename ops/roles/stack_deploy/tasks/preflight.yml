@@ -1,0 +1,30 @@
+---
+- name: Verify laconic-so is installed
+  ansible.builtin.command: laconic-so version
+  changed_when: false
+  when: not ansible_check_mode
+
+# spec_file lives on the deploy host (fetched clone), so read it there with slurp;
+# lookup('file') would read the controller's filesystem instead.
+- name: Read the spec to derive served hostnames
+  ansible.builtin.slurp:
+    src: "{{ spec_file }}"
+  register: _spec_raw
+  when: not ansible_check_mode
+
+- name: Derive stack hostnames from the spec http-proxy
+  ansible.builtin.set_fact:
+    stack_hostnames: >-
+      {{ ((_spec_raw.content | b64decode | from_yaml).network['http-proxy'] | default([]))
+         | map(attribute='host-name') | list }}
+  when: not ansible_check_mode
+
+- name: Expected hostnames resolve to this host's public IP
+  ansible.builtin.command: "dig +short {{ item }}"
+  register: _dig
+  changed_when: false
+  failed_when: "public_ip not in _dig.stdout"
+  loop: "{{ stack_hostnames | default([]) }}"
+  when:
+    - not ansible_check_mode
+    - stack_hostnames | default([]) | length > 0

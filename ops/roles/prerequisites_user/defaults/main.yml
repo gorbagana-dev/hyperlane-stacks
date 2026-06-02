@@ -1,0 +1,3 @@
+---
+# credentials_dir is defined in inventories/<env>/group_vars/all.yml (single source
+# of truth; must match the file: paths in deployment/spec-*.yml).

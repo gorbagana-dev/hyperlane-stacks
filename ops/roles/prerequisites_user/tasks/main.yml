@@ -1,0 +1,34 @@
+---
+- name: Ensure ~/bin exists
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/bin"
+    state: directory
+    mode: "0755"
+
+- name: Install laconic-so release binary
+  ansible.builtin.get_url:
+    url: "{{ laconic_so_release_base_url }}/{{ laconic_so_version }}/laconic-so"
+    dest: "{{ ansible_env.HOME }}/bin/laconic-so"
+    mode: "0755"
+
+- name: Ensure ~/bin on PATH for non-interactive shells
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.profile"
+    line: 'export PATH="$HOME/bin:$PATH"'
+    create: true
+    mode: "0644"
+
+- name: Create credentials dir (0700)
+  ansible.builtin.file:
+    path: "{{ credentials_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: Create kind_mount_root owned by deploy_user
+  ansible.builtin.file:
+    path: "{{ kind_mount_root }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+  become: true

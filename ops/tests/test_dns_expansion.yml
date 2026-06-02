@@ -1,0 +1,32 @@
+---
+- name: DNS record expansion assertions
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
+    dns_zone: bridge.gorbagana.wtf
+    dns_records:
+      - name: s3
+        host: bridge-host-1
+      - name: relayer
+        host: bridge-host-1
+    host_ip_map:
+      bridge-host-1: "203.0.113.10"
+  tasks:
+    - name: Load validator-derived DNS records
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Build combined record set + resolved IPs
+      ansible.builtin.set_fact:
+        all_records: "{{ dns_records + validator_dns_records }}"
+        resolved_ips: >-
+          {{ (dns_records + validator_dns_records) | map(attribute='host')
+             | map('extract', host_ip_map) | list }}
+
+    - name: Static + 2 validator records present, all IPs resolved
+      ansible.builtin.assert:
+        that:
+          - "all_records | length == 4"
+          - "resolved_ips | unique == ['203.0.113.10']"
+        fail_msg: "records={{ all_records }} resolved={{ resolved_ips }}"

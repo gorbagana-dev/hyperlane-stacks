@@ -159,6 +159,13 @@ class TestWarpDeployer:
                 f"warpRoute.{side_name}.mailbox is not valid base58: {mailbox}"
             )
 
+        # Synthetic mint is queried + emitted by the deployer (warp-UI's SDK
+        # requires it explicitly; it does not auto-derive the PDA).
+        synthetic_mint = synthetic.get("mint")
+        assert synthetic_mint and is_base58_pubkey(synthetic_mint), (
+            f"warpRoute.synthetic.mint is not valid base58: {synthetic_mint}"
+        )
+
     def test_warp_deploy_outputs(
         self,
         warp_deployment: dict,

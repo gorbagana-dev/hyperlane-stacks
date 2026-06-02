@@ -1,0 +1,3 @@
+---
+dns_record_ttl: 300
+dns_proxied: false

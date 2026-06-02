@@ -1,0 +1,10 @@
+---
+# Reconcile Cloudflare DNS from the controller. Run with:
+#   ansible-playbook -i inventories/<env>/hosts.yml playbooks/configure-dns.yml
+- name: Reconcile Cloudflare DNS from the controller
+  hosts: controller
+  gather_facts: false
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  roles:
+    - dns_cloudflare

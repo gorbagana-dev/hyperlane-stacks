@@ -1,0 +1,46 @@
+---
+# Stop every stack on a host. Single-stack stops skip cluster management; pass
+# -e destroy_cluster=true to tear the cluster down after. Deployments are
+# discovered under ~/deployments (excluding the fetched hyperlane-stacks clone),
+# so this covers every stack — deployers, validators, consumers — without a list
+# to keep in sync.
+- name: Stop stacks
+  hosts: all:!controller
+  gather_facts: true
+  vars:
+    destroy_cluster: false
+  tasks:
+    - name: Find laconic deployments on this host
+      ansible.builtin.find:
+        paths: "{{ ansible_env.HOME }}/deployments"
+        file_type: directory
+        patterns: "hyperlane-*"
+        excludes: "hyperlane-stacks"
+        recurse: false
+      register: _deployments
+
+    - name: Stop each deployment (skip cluster management)
+      ansible.builtin.command:
+        argv:
+          - laconic-so
+          - deployment
+          - --dir
+          - "{{ item.path }}"
+          - stop
+          - --skip-cluster-management
+      changed_when: true
+      failed_when: false
+      loop: "{{ _deployments.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Destroy the host cluster on request
+      ansible.builtin.command:
+        argv:
+          - kind
+          - delete
+          - cluster
+          - --name
+          - hyperlane
+      changed_when: true
+      when: destroy_cluster | bool

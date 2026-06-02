@@ -692,6 +692,7 @@ def deployer_deployment(
         "IGP_ORACLE_PUBKEY":          keypairs.igp_oracle_pubkey,
         "GORCHAIN_VALIDATOR_ADDRESS": keypairs.gorchain_validator_address,
         "SOLANA_VALIDATOR_ADDRESS":   keypairs.solana_validator_address,
+        "SOLANA_RPC_URL":             "http://solana-rpc:18899",
     })
 
     log.info("Starting deployer stack...")
@@ -833,6 +834,7 @@ def warp_deployment(
     os.environ.update({
         "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
         "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
+        "SOLANA_RPC_URL":         "http://solana-rpc:18899",
     })
 
     log.info("Starting warp deployer stack...")
@@ -1618,26 +1620,21 @@ def _get_warp_program_addresses(state_loader: BridgeStateLoader) -> dict[str, st
     return programs
 
 
-def _get_synthetic_mint(warp_program: str, rpc: str) -> str:
-    """Query the synthetic warp token program and extract the mint address."""
-    result = run_deployer_cli(
-        "token", "query",
-        "--program-id", warp_program,
-        "synthetic",
-        rpc=rpc,
+def _read_synthetic_mint(bridge_state_loader: BridgeStateLoader) -> str:
+    """Read the synthetic SPL mint the warp deployer emits into token-config.json.
+
+    The deployer queries the synthetic program and writes warpRoute.synthetic.mint;
+    the warp-UI SDK requires this value explicitly (it does not auto-derive the PDA).
+    """
+    token_config = bridge_state_loader.read_json("token-config.json")
+    synthetic_mint = (
+        token_config.get("warpRoute", {}).get("synthetic", {}).get("mint", "")
     )
-    output = result.stdout + result.stderr
-    assert result.returncode == 0, f"token query synthetic failed: {output}"
-
-    # Parse "Mint / Mint Authority: <pubkey>" from the Rust output
-    match = re.search(r"Mint / Mint Authority:\s*(\w{32,44})", output)
-    if match:
-        return match.group(1)
-
-    # Fallback: look for "mint: <pubkey>"
-    match = re.search(r"\bmint:\s+(\w{32,44})", output)
-    assert match, f"Could not parse synthetic mint from output: {output[:500]}"
-    return match.group(1)
+    assert synthetic_mint, (
+        "warpRoute.synthetic.mint missing from token-config.json "
+        "(is the warp deployer emitting it?)"
+    )
+    return synthetic_mint
 
 
 def _set_igp_beneficiary(
@@ -1693,10 +1690,7 @@ def bridge_setup(
     assert "gorchain" in warp_programs, "No warp program for gorchain"
     log.info("Warp programs: %s", warp_programs)
 
-    log.info("Querying synthetic mint on Gorchain...")
-    synthetic_mint = _get_synthetic_mint(
-        warp_programs["gorchain"], rpc="http://localhost:8899",
-    )
+    synthetic_mint = _read_synthetic_mint(bridge_state_loader)
     log.info("Synthetic mint: %s", synthetic_mint)
 
     # Change IGP beneficiary on both chains from deployer → dedicated account.
@@ -1834,7 +1828,7 @@ def warp_ui_deployment(
     token_mint = warp_deployment["token_mint"]
     log.info("Token mint: %s", token_mint)
 
-    synthetic_mint = _get_synthetic_mint(warp_synthetic, rpc="http://localhost:8899")
+    synthetic_mint = _read_synthetic_mint(bridge_state_loader)
     log.info("Synthetic mint: %s", synthetic_mint)
 
     if skip_warp_ui:

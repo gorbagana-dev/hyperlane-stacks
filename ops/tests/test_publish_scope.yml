@@ -1,0 +1,63 @@
+---
+- name: Publish-bridge-state scopes add to generated + patched specs, skips when unchanged
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    work: /tmp/ops-publish-test
+    generated_rel: "deployment/bridges/default/generated"
+  tasks:
+    - name: Fresh temp git repo with generated state, patched specs, and an unrelated dirty file
+      ansible.builtin.shell: |
+        set -e
+        rm -rf {{ work }} && mkdir -p {{ work }}/{{ generated_rel }} {{ work }}/deployment
+        cd {{ work }} && git init -q && git config user.email t@t && git config user.name t
+        echo '{"a":1}' > {{ generated_rel }}/program-ids.json
+        for s in spec-relayer.yml spec-gas-oracle.yml spec-warp-ui.yml; do
+          echo 'GORCHAIN_IGP_PROGRAM_ID: ""' > deployment/$s
+        done
+        echo unrelated > other.txt
+        git add -A && git commit -qm init
+        # Mimic the playbook: generated state + the three publish-patched specs change,
+        # plus an unrelated dirty file that must NOT be swept in.
+        echo '{"a":2}' > {{ generated_rel }}/program-ids.json
+        sed -i 's/""/"PID123"/' deployment/spec-relayer.yml
+        sed -i 's/""/"PID456"/' deployment/spec-gas-oracle.yml
+        sed -i 's/""/"MBX789"/' deployment/spec-warp-ui.yml
+        echo dirty >> other.txt
+      changed_when: true
+
+    - name: Scoped add (generated + the three patched specs) plus commit (mimics the playbook)
+      ansible.builtin.shell: |
+        cd {{ work }}
+        git add {{ generated_rel }} \
+          deployment/spec-relayer.yml \
+          deployment/spec-gas-oracle.yml \
+          deployment/spec-warp-ui.yml
+        git diff --cached --quiet && echo SKIP || git commit -qm "chore: publish bridge state"
+      register: _c
+      changed_when: true
+
+    - name: Inspect what landed in the commit vs what stayed dirty
+      ansible.builtin.command:  # noqa: command-instead-of-module inspecting the test repo
+        cmd: "git -C {{ work }} show --name-only --pretty=format: HEAD"
+      register: _committed
+      changed_when: false
+
+    - name: Unrelated file stayed out of the index
+      ansible.builtin.command:  # noqa: command-instead-of-module inspecting the test repo
+        cmd: "git -C {{ work }} status --porcelain other.txt"
+      register: _st
+      changed_when: false
+
+    - name: Generated + patched specs committed; unrelated file left dirty
+      ansible.builtin.assert:
+        that:
+          - "'SKIP' not in _c.stdout"
+          - "generated_rel ~ '/program-ids.json' in _committed.stdout"
+          - "'deployment/spec-relayer.yml' in _committed.stdout"
+          - "'deployment/spec-gas-oracle.yml' in _committed.stdout"
+          - "'deployment/spec-warp-ui.yml' in _committed.stdout"
+          - "'other.txt' not in _committed.stdout"
+          - "'other.txt' in _st.stdout"
+        fail_msg: "committed={{ _committed.stdout }} dirty={{ _st.stdout }}"

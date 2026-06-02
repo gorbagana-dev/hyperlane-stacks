@@ -18,19 +18,18 @@ config:
   WARP_ROUTE_NAME: "USDC-solana-gorchain"
   COLLATERAL_CHAIN: solana
   SYNTHETIC_CHAIN: gorchain
-  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
-  GORCHAIN_DOMAIN_ID: "99999"
-  GORCHAIN_CHAIN_ID: "99999"
-  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  SOLANA_DOMAIN_ID: "99998"
-  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
+  GORCHAIN_DOMAIN_ID: "1198486093"
+  GORCHAIN_CHAIN_ID: "1198486093"
+  SOLANA_DOMAIN_ID: "1399811149"
+  SOLANA_CHAIN_ID: "1399811149"
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
-  # Derived vars (collateral=solana, synthetic=gorchain by default)
-  COLLATERAL_CHAIN_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  COLLATERAL_DOMAIN_ID: "99998"
-  SYNTHETIC_CHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
-  SYNTHETIC_DOMAIN_ID: "99999"
+  # Derived vars (collateral=solana, synthetic=gorchain by default).
+  # COLLATERAL_CHAIN_RPC_URL == SOLANA_RPC_URL (Helius, secret) → see secrets:.
+  COLLATERAL_DOMAIN_ID: "1399811149"
+  SYNTHETIC_CHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
+  SYNTHETIC_DOMAIN_ID: "1198486093"
   # Synthetic token metadata URI — required when IS_TESTNET=false.
   # Must point to JSON with matching name/symbol, description, and image URL.
   # Example: https://raw.githubusercontent.com/.../metadata.json
@@ -48,7 +47,9 @@ secrets:
   hyperlane-warp-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
-      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      HARDWARE_WALLET_PUBKEY:   { env: HARDWARE_WALLET_PUBKEY }
+      SOLANA_RPC_URL:           { env: SOLANA_RPC_URL }
+      COLLATERAL_CHAIN_RPC_URL: { env: COLLATERAL_CHAIN_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

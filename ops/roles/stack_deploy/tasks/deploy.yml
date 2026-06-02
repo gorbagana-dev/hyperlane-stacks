@@ -1,0 +1,80 @@
+---
+- name: Resolve deploy dir (honor caller override, else derive)
+  ansible.builtin.set_fact:
+    deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"
+
+- name: Check whether the deployment was already created
+  ansible.builtin.stat:
+    path: "{{ deploy_dir }}/deployment.yml"
+  register: _dep
+
+- name: Assemble secret env from the per-stack map
+  ansible.builtin.set_fact:
+    stack_env: >-
+      {{ dict(stack_env_vars[stack_env_map_key | default(stack_name)]
+         | zip(stack_env_vars[stack_env_map_key | default(stack_name)] | map('extract', vars) | list))
+         | combine(stack_env_extra | default({})) }}
+  no_log: true
+
+- name: Create the deployment from the committed spec (idempotent)
+  when:
+    - not _dep.stat.exists
+    - not ansible_check_mode
+  block:
+    - name: Ensure deploy base exists
+      ansible.builtin.file:
+        path: "{{ deploy_base }}"
+        state: directory
+        mode: "0755"
+
+    - name: Run deploy create (committed spec — no init; SO reads it directly)
+      ansible.builtin.command:
+        argv:
+          - laconic-so
+          - --stack
+          - "{{ stack_path }}"
+          - deploy
+          - create
+          - --spec-file
+          - "{{ spec_file }}"
+          - --deployment-dir
+          - "{{ deploy_dir }}"
+      environment: "{{ stack_env }}"
+      changed_when: true
+
+    - name: Patch human-readable deployment-id
+      ansible.builtin.replace:
+        path: "{{ deploy_dir }}/deployment.yml"
+        regexp: '^(deployment-id:\s*).*$'
+        replace: '\g<1>{{ deployment_id }}'
+
+- name: Start deployment (create-or-reuse cluster + Caddy)
+  ansible.builtin.command:
+    argv:
+      - laconic-so
+      - deployment
+      - --dir
+      - "{{ deploy_dir }}"
+      - start
+      - --perform-cluster-management
+  environment: "{{ stack_env }}"
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Wait for Job completion (deployer/warp-deployer specs only)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --context
+      - kind-hyperlane
+      - -n
+      - "laconic-{{ stack_name }}"
+      - wait
+      - --for=condition=complete
+      - job
+      - --all
+      - --timeout=1800s
+  changed_when: false
+  when:
+    - stack_is_job | default(false) | bool
+    - not ansible_check_mode

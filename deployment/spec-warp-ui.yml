@@ -5,19 +5,29 @@ deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 config:
-  GORCHAIN_RPC_URL: "REPLACE_WITH_GORCHAIN_RPC_URL"
-  SOLANA_RPC_URL: "REPLACE_WITH_SOLANA_RPC_URL"
-  GORCHAIN_DOMAIN_ID: "99999"
-  SOLANA_DOMAIN_ID: "99998"
-  GORCHAIN_CHAIN_ID: "99999"
-  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
+  GORCHAIN_DOMAIN_ID: "1198486093"
+  SOLANA_DOMAIN_ID: "1399811149"
+  GORCHAIN_CHAIN_ID: "1198486093"
+  SOLANA_CHAIN_ID: "1399811149"
   GORCHAIN_MAILBOX: "REPLACE_WITH_GORCHAIN_MAILBOX_ADDRESS"
   SOLANA_MAILBOX: "REPLACE_WITH_SOLANA_MAILBOX_ADDRESS"
+  # WARP_COLLATERAL_ADDRESS / WARP_SYNTHETIC_ADDRESS / WARP_TOKEN_MINT /
+  # WARP_SYNTHETIC_MINT are publish-patched from the warp-deployer output
+  # (publish-bridge-state.yml). The synthetic mint is a deterministic PDA of the
+  # synthetic program, but the Hyperlane SDK requires it explicitly in warp config
+  # (it does not auto-derive it), so the deployer queries and emits it.
   WARP_COLLATERAL_ADDRESS: "REPLACE_WITH_COLLATERAL_ADDRESS"
   WARP_SYNTHETIC_ADDRESS: "REPLACE_WITH_SYNTHETIC_ADDRESS"
   WARP_TOKEN_MINT: "REPLACE_WITH_COLLATERAL_TOKEN_MINT"
-  WARP_SYNTHETIC_MINT: "REPLACE_WITH_SYNTHETIC_TOKEN_MINT"
+  WARP_SYNTHETIC_MINT: "REPLACE_WITH_SYNTHETIC_MINT"
   NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
+# Before deploying, export this env var in the shell that runs `laconic-so`:
+#   SOLANA_RPC_URL  (Helius RPC URL — embeds an API key, so kept out of config)
+secrets:
+  hyperlane-warp-ui-secrets:
+    keys:
+      SOLANA_RPC_URL: { env: SOLANA_RPC_URL }
 resources:
   containers:
     warp-ui:

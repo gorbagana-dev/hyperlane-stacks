@@ -1,0 +1,34 @@
+---
+# Loads validators.yaml and sets derived facts (see Task 3 spec).
+# Input var: validators_file (path). Defaults to the env's operator file.
+- name: Resolve the validators file (explicit override, else the env's operator file)
+  # Inline-if so deployment_root (which derives from ansible_env.HOME at runtime) is
+  # only evaluated when no explicit validators_file is given — `| default(expr)` would
+  # evaluate expr eagerly and break callers that pass validators_file without facts.
+  ansible.builtin.set_fact:
+    _validators_file: >-
+      {{ validators_file if validators_file is defined
+         else deployment_root ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}
+
+- name: Read validators.yaml
+  ansible.builtin.set_fact:
+    validators: "{{ (lookup('ansible.builtin.file', _validators_file) | from_yaml)['validators'] }}"
+
+- name: Derive MINIO_USERS
+  ansible.builtin.set_fact:
+    minio_users: "{{ validators | map(attribute='label') | join(',') }}"
+
+- name: Derive per-label env prefixes
+  ansible.builtin.set_fact:
+    validator_env_prefixes: "{{ validators | map(attribute='label') | map('upper') | map('replace', '-', '_') | list }}"
+
+- name: Derive validator DNS records
+  ansible.builtin.set_fact:
+    validator_dns_records: "{{ validator_dns_records | default([]) + [_record] }}"
+  vars:
+    _record:
+      name: "{{ item.hostname | regex_replace('\\.' ~ dns_zone ~ '$', '') }}"
+      host: "{{ item.host }}"
+  loop: "{{ validators }}"
+  loop_control:
+    label: "{{ item.label }}"

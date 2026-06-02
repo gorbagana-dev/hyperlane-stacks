@@ -1,0 +1,33 @@
+---
+- name: Inventory structure assertions
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    expected_groups:
+      - controller
+      - deployer_hosts
+      - minio_hosts
+      - relayer_hosts
+      - gas_oracle_hosts
+      - monitoring_hosts
+      - warp_ui_hosts
+  tasks:
+    - name: Every singleton group is defined
+      ansible.builtin.assert:
+        that: "item in groups"
+        fail_msg: "Inventory group '{{ item }}' missing"
+      loop: "{{ expected_groups }}"
+
+    - name: Stack_env_vars map covers every deployable stack
+      ansible.builtin.assert:
+        that: "item in stack_env_vars"
+        fail_msg: "stack_env_vars missing key '{{ item }}'"
+      loop:
+        - hyperlane-minio
+        - hyperlane-svm-deployer
+        - hyperlane-relayer
+        - hyperlane-gas-oracle
+        - hyperlane-monitoring
+        - hyperlane-warp-ui
+        - hyperlane-validator
