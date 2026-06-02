@@ -832,7 +832,14 @@ def warp_deployment(
                 # from the per-route token-config.json written by the deployer job.
                 log.info("Reusing existing warp route %s (namespace: %s)", name, namespace)
                 token_config = bridge_state_loader.read_route_token_config(name)
-                origin_token = token_config.get("warpRoute", {}).get("tokenMint") or None
+                # The origin collateral mint is the side carrying a "token" field;
+                # a native origin has none, so this is None for the native route.
+                warp_route = token_config.get("warpRoute", {})
+                origin_token = next(
+                    (side["token"] for side in warp_route.values()
+                     if isinstance(side, dict) and side.get("token")),
+                    None,
+                )
                 log.info("Route %s origin token: %s", name, origin_token)
                 routes[name] = {
                     "deployment": DeploymentInfo(
