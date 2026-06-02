@@ -1,0 +1,59 @@
+stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
+deploy-to: k8s-kind
+namespace: laconic-warp-native-e2e
+image-overrides:
+  warp-deployer: REPLACE_DEPLOYER_IMAGE
+kind-cluster-name: hyperlane
+kind-mount-root: /tmp/hyperlane-bridge-e2e
+network:
+  acme-email: e2e@example.test
+volumes:
+  bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
+  bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
+config:
+  WARP_ROUTE_NAME: "SOL-solana-gorchain"
+  WARP_ORIGIN_CHAIN: solana
+  WARP_ORIGIN_TYPE: native
+  WARP_REMOTE_CHAIN: gorchain
+  WARP_REMOTE_TYPE: synthetic
+  WARP_TOKEN_SYMBOL: "SOL"
+  WARP_TOKEN_NAME: "Solana"
+  WARP_TOKEN_DECIMALS: "9"
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_IS_TESTNET: "true"
+  SOLANA_IS_TESTNET: "true"
+  WARP_TOKEN_METADATA_URI: ""
+  FORCE_REDEPLOY: "false"
+configmaps:
+  warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
+  warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
+resources:
+  containers:
+    warp-deployer:
+      reservations:
+        cpus: "0.5"
+        memory: 512M
+      limits:
+        cpus: "2"
+        memory: 1G
+secrets:
+  hyperlane-warp-deployer-secrets:
+    keys:
+      DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
+      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899
