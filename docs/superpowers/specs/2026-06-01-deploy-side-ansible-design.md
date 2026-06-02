@@ -341,9 +341,9 @@ can't: `state_distribute` git-pull over agent forwarding, per-host DNS,
 credential distribution to multiple hosts, `check_mounts_compatible` cluster
 reuse per host.
 
-**Layer 3 — staging on Solana devnet + single-node gorchain.** Same `ops/` with
-`-e env=staging`. The long-lived rehearsal/soak ground once Layers 1–2 are
-stable.
+**Layer 3 — staging on Solana devnet + single-node gorchain.** Same `ops/`,
+selected by inventory (`-i inventories/staging/hosts.yml`). The long-lived
+rehearsal/soak ground once Layers 1–2 are stable.
 
 **Acceptance per layer** (verified by hand, mirroring the e2e assertions): all
 stacks `Running`; Caddy serving TLS per hostname; validators announcing + writing
@@ -390,8 +390,9 @@ What the staging rehearsal ground needs, per the staging topology
 (real Let's Encrypt HTTP-01); inbound 22 from the controller; outbound to Helius
 devnet, Cloudflare API, GHCR, cerc-io (laconic-so binary), Circle devnet faucet.
 
-**DNS:** a Cloudflare-managed zone with records under `staging.<bridge-domain>`,
-and a Cloudflare API token scoped to `staging.*` (separate from the prod token).
+**DNS:** a Cloudflare-managed zone, operator-supplied via `dns_zone` (not
+necessarily a subdomain of the prod zone), and a Cloudflare API token scoped to
+that zone.
 
 **External accounts/keys:** Helius devnet API key (separate project from prod);
 a Privy project (validator keys + gas-oracle wallet); GHCR pull access for the
