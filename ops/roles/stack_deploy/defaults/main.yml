@@ -1,4 +1,6 @@
 ---
-# Caller sets: stack_name, spec_file (absolute), stack_path (absolute).
-deploy_base: "{{ kind_mount_root }}/deployments"
+# Caller sets: stack_name, spec_file (committed, absolute), stack_path (absolute).
+# Deployment dirs live under the deploy_user's home (ext4), NOT under
+# kind_mount_root (reserved for runtime host-path volume data).
+deploy_base: "{{ ansible_env.HOME }}/deployments"
 deployment_id: "{{ stack_name }}"
