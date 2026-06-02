@@ -8,19 +8,15 @@ repo_root: "{{ playbook_dir }}/../../.."
 laconic_so_version: "v1.1.0-b3e9366-202605111309"
 laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"
 
-# --- Chain config (canonical chain-specific vars; see CLAUDE.md) ---
-gorchain_rpc_url: "https://gorchain-rpc.bridge.gorbagana.wtf"
-solana_rpc_url: "REPLACE_WITH_HELIUS_DEVNET_URL"
-gorchain_domain_id: 99999
-solana_domain_id: 99998
-gorchain_chain_id: 99999
-solana_chain_id: 101
-
-# --- Ownership / wallets (public values only) ---
-hardware_wallet_pubkey: "REPLACE_WITH_HW_WALLET_PUBKEY"
+# --- Credentials dir ---
+# Host dir holding operator-placed keyfiles. MUST match the `file:` paths in the
+# deployment/staging/spec-*.yml secrets blocks (read by laconic-so, not ansible).
+credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 
 # --- DNS ---
-dns_zone: staging.bridge.gorbagana.wtf
+# Staging zone is not yet decided — placeholder. The staging gorchain RPC and all
+# hostnames in deployment/staging/spec-*.yml derive from this zone.
+dns_zone: "REPLACE_WITH_STAGING_DNS_ZONE"
 dns_record_ttl: 300
 dns_records:
   - name: s3
@@ -36,36 +32,57 @@ dns_records:
   - name: relayer
     host: staging-bridge-ops
 
-# --- Per-stack env-var maps ---
-# Each key is a stack name; the value lists the env var NAMES that stack's
-# spec consumes. stack_deploy resolves each NAME to the same-named ansible
-# variable (from group_vars config or secrets.yml) when building the shell
-# environment for `laconic-so`. Keep in sync with deployment/spec-*.yml.
+# --- Secret-env values ---
+# See the prod group_vars for the full rationale. Staging differences: Solana uses
+# the Helius DEVNET endpoint; chain RPC/domain IDs (Solana devnet 1399811151,
+# *_IS_TESTNET=true) are committed literals in deployment/staging/spec-*.yml.
+SOLANA_RPC_URL: "https://devnet.helius-rpc.com/?api-key={{ helius_api_key }}"
+COLLATERAL_CHAIN_RPC_URL: "{{ SOLANA_RPC_URL }}"   # warp collateral chain == Solana
+HARDWARE_WALLET_PUBKEY: "REPLACE_WITH_HW_WALLET_PUBKEY"
+IGP_ORACLE_PUBKEY: "REPLACE_WITH_IGP_ORACLE_PUBKEY"
+GORCHAIN_VALIDATOR_ADDRESS: "REPLACE_WITH_GORCHAIN_VALIDATOR_ADDRESS"
+SOLANA_VALIDATOR_ADDRESS: "REPLACE_WITH_SOLANA_VALIDATOR_ADDRESS"
+PRIVY_APP_ID: "{{ privy_app_id }}"
+PRIVY_APP_SECRET: "{{ privy_app_secret }}"
+PRIVY_ORACLE_WALLET_ID: "{{ privy_oracle_wallet_id }}"
+GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+GHCR_PAT: "{{ ghcr_pat }}"
+MINIO_ROOT_USER: "{{ minio_root_user }}"
+MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
+
+# --- Per-stack secret env-var map (see prod group_vars for the contract) ---
 stack_env_vars:
   hyperlane-minio:
     - MINIO_ROOT_USER
     - MINIO_ROOT_PASSWORD
     - MINIO_USERS
   hyperlane-svm-deployer:
-    - GORCHAIN_RPC_URL
-    - SOLANA_RPC_URL
-    - GORCHAIN_DOMAIN_ID
-    - SOLANA_DOMAIN_ID
     - HARDWARE_WALLET_PUBKEY
+    - IGP_ORACLE_PUBKEY
+    - GORCHAIN_VALIDATOR_ADDRESS
+    - SOLANA_VALIDATOR_ADDRESS
+    - SOLANA_RPC_URL
+    - GHCR_PAT
+  hyperlane-svm-warp-deployer:
+    - HARDWARE_WALLET_PUBKEY
+    - SOLANA_RPC_URL
+    - COLLATERAL_CHAIN_RPC_URL
+    - GHCR_PAT
   hyperlane-relayer:
-    - GORCHAIN_RPC_URL
     - SOLANA_RPC_URL
+    - GHCR_PAT
   hyperlane-gas-oracle:
-    - GORCHAIN_RPC_URL
-    - SOLANA_RPC_URL
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
-  hyperlane-monitoring: []
+    - PRIVY_ORACLE_WALLET_ID
+    - SOLANA_RPC_URL
+    - GHCR_PAT
+  hyperlane-monitoring:
+    - GF_SECURITY_ADMIN_PASSWORD
   hyperlane-warp-ui:
-    - GORCHAIN_RPC_URL
     - SOLANA_RPC_URL
+    - GHCR_PAT
   hyperlane-validator:
-    - GORCHAIN_RPC_URL
-    - SOLANA_RPC_URL
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
+    - GHCR_PAT
