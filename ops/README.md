@@ -217,6 +217,17 @@ CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint
 
 ## Known follow-ups (verify/extend on a real VM run)
 
-- **Multi-host validators:** the validator loop delegates per-host via
-  `include_role` + `apply: delegate_to`; confirm fact/`ansible_env` behavior on a
-  real multi-VM split (correct for single-host v1).
+The Layer-0 tests lock the var-wiring and logic contracts but exercise no real
+host, so the cross-machine paths are unproven end to end. On a real multi-VM run,
+confirm:
+
+- **`fetch-stack` over the forwarded agent:** each host clones the private repo
+  with `--git-ssh`; verify SSH agent forwarding reaches the host (and validator
+  hosts under `delegate_to`) and that `deploy_branch` is checked out.
+- **Publish from the deployer host:** `publish-bridge-state.yml` commits with the
+  operator's git identity (read from the controller) and pushes `deploy_branch`
+  over the forwarded agent — confirm the push authenticates and consumers'
+  `fetch_stack --pull` then sees the patched specs + `generated/`.
+- **Delegated validators:** the loop gathers each validator host's facts so
+  repo/deploy paths use its real `ansible_env.HOME`; confirm fact gathering and
+  path resolution on a genuine multi-host split (correct in the localhost tests).
