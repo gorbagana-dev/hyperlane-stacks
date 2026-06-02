@@ -1,31 +1,50 @@
 ---
-- name: stack env assembly resolves names to values
+- name: Stack env assembly resolves secret names to values
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    GORCHAIN_RPC_URL: "https://gorchain.example"
+    # Only secret-injected names live in stack_env_vars now; config: vars (RPC URLs,
+    # domain/chain IDs) are committed spec literals and must NOT appear here.
     SOLANA_RPC_URL: "https://solana.example"
+    GHCR_PAT: "ghp_example"
     MINIO_ROOT_USER: "root"
     MINIO_ROOT_PASSWORD: "pw"
-    MINIO_USERS: "a,b"
     stack_env_vars:
       hyperlane-minio:
         - MINIO_ROOT_USER
         - MINIO_ROOT_PASSWORD
-        - MINIO_USERS
       hyperlane-relayer:
-        - GORCHAIN_RPC_URL
         - SOLANA_RPC_URL
+        - GHCR_PAT
+    # Mirrors deploy-all.yml: per-validator IAM + MINIO_USERS injected at runtime.
+    stack_env_extra:
+      MINIO_USERS: "gorchain-primary,solana-primary"
   tasks:
-    - name: Assemble env for minio
+    - name: Assemble env for minio (mirrors stack_deploy assembly)
       ansible.builtin.set_fact:
-        stack_env: >-
+        minio_env: >-
           {{ dict(stack_env_vars['hyperlane-minio']
-             | zip(stack_env_vars['hyperlane-minio'] | map('extract', vars) | list)) }}
-    - name: Names resolved to values
+             | zip(stack_env_vars['hyperlane-minio'] | map('extract', vars) | list))
+             | combine(stack_env_extra) }}
+
+    - name: Assemble env for relayer (no dynamic extras)
+      ansible.builtin.set_fact:
+        relayer_env: >-
+          {{ dict(stack_env_vars['hyperlane-relayer']
+             | zip(stack_env_vars['hyperlane-relayer'] | map('extract', vars) | list)) }}
+
+    - name: Secret names resolved to values; config vars absent; extras merged
       ansible.builtin.assert:
         that:
-          - "stack_env.MINIO_ROOT_USER == 'root'"
-          - "stack_env.MINIO_USERS == 'a,b'"
-          - "stack_env | length == 3"
+          # minio: only root creds from the map, plus runtime MINIO_USERS extra
+          - "minio_env.MINIO_ROOT_USER == 'root'"
+          - "minio_env.MINIO_USERS == 'gorchain-primary,solana-primary'"
+          - "minio_env | length == 3"
+          # relayer carries the secret RPC URL + GHCR PAT, nothing else
+          - "relayer_env.SOLANA_RPC_URL == 'https://solana.example'"
+          - "relayer_env.GHCR_PAT == 'ghp_example'"
+          - "relayer_env | length == 2"
+          # config: vars are committed spec literals, never in the env map
+          - "'GORCHAIN_RPC_URL' not in relayer_env"
+          - "'GORCHAIN_DOMAIN_ID' not in relayer_env"

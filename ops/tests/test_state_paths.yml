@@ -1,15 +1,28 @@
 ---
-- name: generated-file to configmap path mapping
+- name: Deploy + state paths and generated-file to configmap mapping
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
+    # HOME is resolved from ansible_env (gather_facts would populate it); set it
+    # explicitly so the role defaults expand deterministically without facts.
+    ansible_env:
+      HOME: /home/op
     deployment_root: "/repo/deployment"
     bridge_name: default
     deploy_dir: "/srv/deployments/hyperlane-relayer"
     configmap_names:
       - agent-config
   tasks:
+    # Read the real role defaults so this test breaks if the roots move again.
+    - name: Load stack_deploy defaults (deploy_base)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../roles/stack_deploy/defaults/main.yml"
+
+    - name: Load state_distribute defaults (state_repo_dir)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../roles/state_distribute/defaults/main.yml"
+
     - name: Compute src + configmap targets
       ansible.builtin.set_fact:
         src_dir: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated"
@@ -17,8 +30,11 @@
           {{ configmap_names
           | map('regex_replace', '^(.*)$', deploy_dir ~ '/configmaps/\1')
           | list }}
-    - name: Paths are correct
+
+    - name: Roots live under ~/deployments and paths map correctly
       ansible.builtin.assert:
         that:
+          - "deploy_base == '/home/op/deployments'"
+          - "state_repo_dir == '/home/op/deployments/state-repo'"
           - "src_dir == '/repo/deployment/bridges/default/generated'"
           - "cm_targets == ['/srv/deployments/hyperlane-relayer/configmaps/agent-config']"

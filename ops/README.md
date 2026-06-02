@@ -43,13 +43,31 @@ cp inventories/prod/secrets.example.yml inventories/prod/secrets.yml
 ```
 
 - **Operator-supplied (required):** `cloudflare_api_token`, `privy_app_id`,
-  `privy_app_secret`.
+  `privy_app_secret`, `privy_oracle_wallet_id`, `helius_api_key` (builds the
+  secret `SOLANA_RPC_URL`), `ghcr_pat` (private GHCR pulls).
 - **Generated automatically** by the `credentials` role on first run and written
   back into `secrets.yml` (never rotated on re-run): `minio_root_user`,
-  `minio_root_password`, and per-validator `minio_iam` (key_id/secret pairs).
+  `minio_root_password`, `grafana_admin_password`, and per-validator `minio_iam`
+  (key_id/secret pairs).
 
 `distribute-credentials.yml` asserts the required keys are present and fails fast
 naming any that are missing.
+
+## Configuration model
+
+laconic-so writes a spec's `config:` block **verbatim** — it does not expand
+`${VAR}` — so three kinds of value reach a pod by three different routes:
+
+- **`config:` values** (chain RPC URLs, domain/chain IDs, `*_IS_TESTNET`) are
+  committed literals in the per-env `deployment/[staging/]spec-*.yml`. Editing
+  them is a spec edit, not an ansible var change.
+- **Secrets** are injected as env vars: each spec lists them under
+  `secrets: { env: NAME }`, and `stack_deploy` resolves each `NAME` from the
+  `stack_env_vars` map (see below). `SOLANA_RPC_URL` is a **secret** — the Helius
+  URL embeds an API key — built in `group_vars` from `helius_api_key`.
+- **Deployment-derived values** (IGP program IDs/accounts, mailboxes) are not
+  known until the deployer Job runs; `publish-bridge-state.yml` patches them into
+  the committed specs after the fact (see below).
 
 ## Inventory + topology
 
@@ -83,12 +101,15 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/distribute-credentials.
 ```
 
 `deploy-all.yml` runs hands-off end to end. The one attended option is the state
-commit:
+publish:
 
-- **`commit-bridge-state.yml`** auto-commits + pushes the deployer-produced
-  `generated/` state by default. Pass **`-e state_review=true`** to print the diff
-  and pause for approval before commit/push. It stages only the
-  `bridges/<bridge>/generated/` paths and skips entirely if nothing changed.
+- **`publish-bridge-state.yml`** pulls the deployer-produced `generated/` state
+  into the controller's tree, **patches the deployment-derived `config:` keys**
+  (IGP program IDs/accounts into `spec-relayer.yml`/`spec-gas-oracle.yml`,
+  mailboxes into `spec-warp-ui.yml`), then auto-commits + pushes by default. Pass
+  **`-e state_review=true`** to print the diff and pause for approval before
+  commit/push. Its git-add is scoped to the `bridges/<bridge>/generated/` paths
+  **plus** the three patched specs, and it skips entirely if nothing changed.
 
 Reset a host between test runs:
 
@@ -109,15 +130,21 @@ cluster. Single-stack stops use `--skip-cluster-management` so they never tear i
 down. It's idempotent: re-running skips `init`/`create` if the deployment already
 exists.
 
-Each stack's `laconic-so` environment is assembled from the `stack_env_vars` map
-in `group_vars/all.yml` (a list of env-var names per stack, resolved to the
-same-named ansible vars). **Keep that map in sync** when a spec's `config:`/
-`secrets:` env vars change.
+Each stack's secret `laconic-so` environment is assembled from the
+`stack_env_vars` map in `group_vars/all.yml` — a list of the **secret** env-var
+names each spec injects via `secrets: { env: NAME }`, resolved to the same-named
+ansible vars. `config:` vars are committed spec literals and are **not** in this
+map. **Keep the map in sync** with each spec's `secrets:` block.
 
-State flows deployer-host → git → consumer-hosts: `commit-bridge-state.yml`
-commits the deployer's `generated/` files, and `state_distribute` git-pulls them
-on each consumer host (over the forwarded SSH agent — no creds stored on hosts)
-and copies them into each stack's `configmaps/`.
+Deployments live under `~/deployments/<stack-name>` on each host (the
+`deploy_base` role default); the state-repo clone used by `state_distribute` is
+`~/deployments/state-repo`.
+
+State flows deployer-host → git → consumer-hosts: `publish-bridge-state.yml`
+commits the deployer's `generated/` files (and the publish-patched specs), and
+`state_distribute` git-pulls them on each consumer host (over the forwarded SSH
+agent — no creds stored on hosts) and copies the `agent-config` ConfigMap into
+each stack's `configmaps/`.
 
 ## Linting (Layer 0)
 
@@ -128,8 +155,8 @@ for p in playbooks/*.yml tests/test_*.yml; do ansible-playbook --syntax-check "$
 ```
 
 The localhost assertion tests under `tests/` need no VM and lock the logic-bearing
-contracts (validators derivation, DNS expansion, credential idempotency, env
-assembly, state paths, commit scoping):
+contracts (validators derivation, DNS expansion, credential idempotency, secret-env
+assembly, deploy/state paths, publish scoping):
 
 ```bash
 for t in tests/test_*.yml; do ansible-playbook -i inventories/prod/hosts.yml "$t"; done
@@ -141,14 +168,7 @@ CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint
 
 - **Optional warp-deployer** is not wired into `deploy-all.yml`. For a warp route,
   deploy `spec-warp-deployer.yml` via `stack_deploy` and re-run
-  `commit-bridge-state.yml` between the deployer and the consumers.
-- **Deployer state path:** `commit-bridge-state.yml` pulls from
-  `{kind_mount_root}/bridge/generated/` (the deployer spec's `bridge-state`
-  host-path volume). Confirm the files land there as expected on the first real
-  deployer run.
-- **gas-oracle / warp-ui state → env:** these consume state via laconic-so
-  `conftest` rather than a ConfigMap; their `state_distribute` runs with an empty
-  `configmap_names` (git-pull only). Confirm the conftest wiring on first run.
+  `publish-bridge-state.yml` between the deployer and the consumers.
 - **Multi-host validators:** the validator loop delegates per-host via
   `include_role` + `apply: delegate_to`; confirm fact/`ansible_env` behavior on a
   real multi-VM split (correct for single-host v1).

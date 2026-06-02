@@ -19,7 +19,7 @@
         fail_msg: "Inventory group '{{ item }}' missing"
       loop: "{{ expected_groups }}"
 
-    - name: stack_env_vars map covers every deployable stack
+    - name: Stack_env_vars map covers every deployable stack
       ansible.builtin.assert:
         that: "item in stack_env_vars"
         fail_msg: "stack_env_vars missing key '{{ item }}'"

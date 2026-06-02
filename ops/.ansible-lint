@@ -5,6 +5,11 @@ exclude_paths:
   - tests/fixtures/
 # Role-default vars are referenced directly by playbooks and localhost tests
 # (e.g. secrets_file, deploy_base), so the role-name prefix convention does not
-# fit this layout. Skip only that stylistic rule; the rest of production holds.
+# fit this layout. The secret-env values in group_vars are deliberately named
+# after the exact process-environment NAMES they carry (UPPER_SNAKE, e.g.
+# SOLANA_RPC_URL) so stack_deploy can extract them by name — that is the whole
+# point of the stack_env_vars map. Skip only those two stylistic rules; the rest
+# of the production profile holds.
 skip_list:
   - var-naming[no-role-prefix]
+  - var-naming[pattern]
