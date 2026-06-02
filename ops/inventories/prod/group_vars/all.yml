@@ -14,7 +14,7 @@ deployment_subdir: deployment                       # prod specs live in deploym
 deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 
 # --- laconic-so install (prerequisites_user) ---
-laconic_so_version: "v1.1.0-b3e9366-202605111309"
+laconic_so_version: "v1.1.0-fe77540-202605271117"
 laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"
 
 # --- Credentials dir ---

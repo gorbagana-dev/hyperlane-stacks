@@ -46,10 +46,6 @@
     - fetch_stack
     - stack_deploy
 
-# Warp route deployer (Job) — REQUIRED: this deploys the USDC collateral↔synthetic
-# route that actually moves tokens; the core deployer only lays down mailbox/IGP/ISM.
-# Runs on the same host as the core deployer and reads its program-ids.json from the
-# shared bridge-state volume, then writes token-config.json + warp-deploy-outputs.
 - name: Warp route deployer (Job)
   hosts: deployer_hosts
   gather_facts: true
@@ -110,10 +106,7 @@
     - fetch_stack
     - stack_deploy
 
-# Validators: looped over validators.yaml, each on its own host, delegated from the
-# controller. Facts are gathered for each validator host first, so repo/deploy paths
-# derive from its real ansible_env.HOME (no /home/<user> assumption). Per host:
-# fetch_stack → state_distribute → stack_deploy. Spec is chosen per chain.
+# Validators come from validators.yaml (not inventory), so loop + delegate per host.
 - name: Validators
   hosts: controller
   gather_facts: false
