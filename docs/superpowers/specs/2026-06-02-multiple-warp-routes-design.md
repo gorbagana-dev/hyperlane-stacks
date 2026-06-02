@@ -11,9 +11,9 @@ ordinary configured route.
 
 ## Problem
 
-A warp route bridges one asset: a token that is *locked* (collateral) or
-*native* on its origin chain and *minted* (synthetic) on the remote chain. The
-warp-deployer stack is hard-wired to a single route:
+A warp route bridges one asset across two chains. Each side has a token type —
+`native`, `collateral`, or `synthetic`. The warp-deployer stack is hard-wired to
+a single route:
 
 - the token metadata (name, symbol, decimals) is baked into a fixed template;
 - the deploy script assumes a collateral origin with an SPL mint;
@@ -63,12 +63,12 @@ examples, showing the model generalizes across token types:
 
 ```yaml
 # Native ↔ synthetic: a chain's native coin, wrapped on the remote.
-- name: GOR-gorchain-solana
-  symbol: GOR
-  display_name: Gorbagana
+- name: SOL-solana-gorchain
+  symbol: SOL
+  display_name: Solana
   decimals: 9
-  origin: { chain: gorchain, type: native }
-  remote: { chain: solana,   type: synthetic, metadata_uri: "https://…/gor.json" }
+  origin: { chain: solana,   type: native }
+  remote: { chain: gorchain, type: synthetic, metadata_uri: "https://…/sol.json" }
 ```
 
 The operator supplies only what a human knows: the route name, the token's
@@ -192,8 +192,10 @@ entries is compiled into the app, and startup only fills their values. Adding a
 *new* route to the UI therefore requires adding an entry and rebuilding the UI
 image. This is an accepted operational step (the route set changes rarely and the
 image is already built as part of deployment) and is documented as a limitation.
-A future enhancement can make the UI load its routes at runtime (e.g. from a
-registry) to drop the rebuild; that is out of scope here.
+A future enhancement can drop the rebuild: the UI already merges runtime route
+configs (its "add warp config" path), so loading an operator-provided routes file
+at startup would reduce a route change to a config update plus restart. Out of
+scope here.
 
 ## Unchanged by design
 
@@ -255,9 +257,9 @@ needed for tests.
    token-config and supports any valid combination; a forgotten field becomes a
    fast error instead of a silently mis-typed deployment, which matters for
    on-chain deploys.
-3. **On-the-fly spec generation, no committed derived files** — the operator
-   edits one short route block; the full spec is produced at deploy time. Avoids
-   two representations drifting and an extra regenerate-and-commit step.
+3. **Routes are configuration, not code** — adding a route means supplying config
+   fields; no per-token template or script change. laconic-so generates the
+   deployment artifacts from a per-route spec.
 4. **Independent deployment per route (own namespace + state)** — required for
    namespace-scoped resource isolation and per-route idempotency; also isolates
    failures and enables per-route redeploy.
@@ -270,8 +272,9 @@ needed for tests.
 ## Known limitations
 
 - **Adding a route to the UI requires a UI image rebuild** (the route set is
-  compiled into the image). Mitigation/path: runtime-loaded routes via a registry
-  — out of scope here.
+  compiled into the image). Path: load routes at startup from a mounted config
+  via the UI's existing runtime-override hook (config update + restart instead of
+  rebuild) — out of scope here.
 - **Same chain pair only.** New chain pairs need new agents/infrastructure and
   are out of scope.
 - **Production route orchestration is external.** The stack exposes the
