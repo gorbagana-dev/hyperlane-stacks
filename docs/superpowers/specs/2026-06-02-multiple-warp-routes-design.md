@@ -1,308 +1,279 @@
-# Multiple Warp Route Deployments
+# Configurable Warp Routes
 
 _Design spec — 2026-06-02_
 
 ## Status
 
-The bridge deploys exactly one warp route today (USDC, Solana ↔ gorchain).
-This spec generalizes the warp-deployer and warp-UI to support **multiple warp
-routes on the same chain pair**, and adds a second route: **GOR** (gorchain's
-native token, bridged to a synthetic on Solana).
-
-It supersedes the "Known Limitations / single warp route" note in
-`specs/stack-specifications.md` (Stack 2). That note came from a quick
-investigation; the scope it describes is verified and **corrected** below
-against the code.
+Make warp routes **configurable**: an operator declares a route's details and
+that route is deployed, with multiple routes supported on the same chain pair.
+No token pair is special-cased in code. The existing USDC route becomes one
+ordinary configured route.
 
 ## Problem
 
-A warp route is one bridged asset: a token that is *locked* (collateral) or
+A warp route bridges one asset: a token that is *locked* (collateral) or
 *native* on its origin chain and *minted* (synthetic) on the remote chain. The
-bridge is structurally single-route:
+warp-deployer stack is hard-wired to a single route:
 
-- `spec-warp-deployer.yml` exposes scalar `WARP_TOKEN_MINT`, `WARP_ROUTE_NAME`,
-  `WARP_TOKEN_METADATA_URI`, and one `COLLATERAL_CHAIN`/`SYNTHETIC_CHAIN` pair
-  (`deployment/spec-warp-deployer.yml:17-20`).
-- `token-config.json.tmpl` hardcodes `USDC`/`USDC`/`decimals: 6` and a
-  `collateral`+`synthetic` shape with an SPL `token` mint on both sides
-  (`stack_orchestrator/data/config/warp-deployer-token-config/token-config.json.tmpl`).
-- The deploy script writes a single `/state/token-config.json` and
-  `/state/warp-deploy-outputs/`, and its idempotency gate skips when that one
-  file is populated (`.../warp-deployer-scripts-config/deploy.sh:60-70, 260`).
-- The deploy script's output builder hardcodes a `collateral`+`synthetic`
-  `warpRoute` object (`deploy.sh:233-252`) — it cannot represent a `native`
-  side.
+- the token metadata (name, symbol, decimals) is baked into a fixed template;
+- the deploy script assumes a collateral origin with an SPL mint;
+- deployer state lives at a single top-level path with one idempotency check,
+  so a second route can't be deployed alongside the first.
 
-## What was verified (and corrected)
+Adding a token pair therefore requires editing templates and scripts. The goal
+is to make a route **pure configuration** — declared in a few fields, deployed
+with no code or template changes — and to let several routes run side by side.
 
-Each claim in the `stack-specifications.md` note was checked against code.
+## Goals
 
-**Confirmed:** the scalar spec vars, the hardcoded USDC template, and the flat
-single-file state + single idempotency gate (citations above).
+1. A route is defined entirely by a small set of operator-supplied fields.
+2. The deployer builds the on-chain token-config from those fields, supporting
+   collateral, native, and synthetic token types generically.
+3. Multiple routes deploy independently on the same chain pair.
+4. The bridge UI shows the configured routes.
+5. The e2e suite proves the above by deploying more than one route.
 
-**Corrected — the blast radius is smaller than the note states:**
+## Non-goals
 
-- The note lists **relayer and gas-oracle** as single-route consumers that need
-  per-route ConfigMaps. They are **route-agnostic and need no changes**:
-  - The relayer delivers every message between the two mailboxes; its compose
-    has no warp/route/recipient filtering — only gas-payment enforcement and
-    signer keys (`docker-compose-hyperlane-relayer.yml`). A new route on the
-    same mailboxes is relayed automatically.
-  - The gas-oracle sets IGP gas-oracle configs **per domain**, not per route;
-    `spec-gas-oracle.yml` carries no warp variables. The same IGP serves all
-    routes on that domain.
-  - Validators (per-chain checkpoint signing over the mailbox merkle tree) and
-    MinIO are likewise per-chain, not per-route.
+- **New chain pairs.** Routes share the existing chains' core contracts,
+  validators, relayer, gas-oracle, and storage. Spanning a new chain pair (new
+  validators / relayer chains / gas-oracle domains) is out of scope.
+- **The production orchestration that turns a route list into deployments.** The
+  stack exposes a configuration contract (below); the automation that reads an
+  operator's route list and deploys each route lives in the deployment
+  automation layer, not in the stack. This spec defines the contract that layer
+  drives.
+- **Per-route pause / kill-switch / rate-limit controls.** Operational concerns,
+  tracked separately.
 
-- The note treats **warp-UI** as structurally single-route. It is not: the UI
-  assembles its token list from `registry + warpRoutes.ts + warpRoutes.yaml +
-  store overrides`, flattens, dedupes, and drops unconnected tokens
-  (`hyperlane-warp-ui-template/src/features/warpCore/warpCoreConfig.ts:62-67`).
-  The `tokens:` list already supports N routes. The *only* single-route limit
-  is that the baked `warpRoutes.yaml` and its startup sentinels are fixed at
-  **image build time**, so adding a route requires a UI image rebuild.
+## Route configuration model
 
-## Route model
+An operator declares a route with a small block of human-known facts. Two
+examples, showing the model generalizes across token types:
 
-Both routes are on the **Solana ↔ gorchain** pair and share the same core
-contracts, validators, relayer, gas-oracle, and MinIO.
+```yaml
+# Collateral ↔ synthetic: a real SPL token on the origin, wrapped on the remote.
+- name: USDC-solana-gorchain
+  symbol: USDC
+  display_name: USD Coin
+  decimals: 6
+  origin: { chain: solana,   type: collateral, token: "<USDC SPL mint>" }
+  remote: { chain: gorchain, type: synthetic,  metadata_uri: "https://…/usdc.json" }
+```
 
-| Route name | gorchain side | Solana side | Token types |
-|---|---|---|---|
-| `USDC-solana-gorchain` (existing) | `gUSDC` — `synthetic` | `sUSDC` — `collateral` (real SPL) | collateral + synthetic |
-| `GOR-gorchain-solana` (new) | `gGOR` — **`native`** (decimals 9) | `sGOR` — `synthetic` (decimals 9) | **native + synthetic** |
+```yaml
+# Native ↔ synthetic: a chain's native coin, wrapped on the remote.
+- name: GOR-gorchain-solana
+  symbol: GOR
+  display_name: Gorbagana
+  decimals: 9
+  origin: { chain: gorchain, type: native }
+  remote: { chain: solana,   type: synthetic, metadata_uri: "https://…/gor.json" }
+```
 
-**Direction is derived from code, not assumed.** `gGOR` is gorchain's native
-token: `spec-gas-oracle.yml:47-49` ("Gorchain's native token (gGOR) … 1 gGOR =
-100 sGOR") and the registry metadata
-(`warp-deployer-registry-config/metadata.yaml.tmpl:9-11`, gorchain `nativeToken`
-= GOR, decimals 9). So the gorchain side is `type: native`; the Solana side is a
-`synthetic` SPL (`sGOR`). The sealevel client supports all three token types —
-`native` → `hyperlane_sealevel_token_native`, `collateral` →
-`hyperlane_sealevel_token_collateral`, `synthetic` → `hyperlane_sealevel_token`
-(`hyperlane-monorepo/rust/sealevel/client/src/warp_route.rs:201-203`).
+The operator supplies only what a human knows: the route name, the token's
+`symbol` / `display_name` / `decimals`, each side's chain and **token type**, the
+origin token mint (for a `collateral` side), and a metadata URI for the minted
+(`synthetic`) side. Everything else — domain IDs, RPC URLs, and the ISM / IGP /
+mailbox addresses for each side — is derived automatically from the core
+deployment.
 
-## Scope
+**Token type is declared explicitly per side** — `collateral` (locks an existing
+SPL `token`), `native` (the chain's native coin), or `synthetic` (mints a wrapped
+SPL with the given metadata) — mirroring the on-chain token-config. Declaring the
+type, rather than inferring it from which fields are present, (a) makes a
+forgotten field a fast, explicit error instead of a silently mis-typed
+deployment, and (b) supports any combination the deployer allows (e.g. a side
+that is collateral on both chains), rather than assuming the remote is always
+synthetic.
 
-**In scope:** N warp routes on one chain pair — per-route warp-deployer
-deployments, per-route state, a deploy script that honors any per-side token
-type, and a warp-UI that renders all routes. Adds the GOR route as the second
-instance.
+### Stack configuration contract
 
-**Out of scope:**
-- New chain pairs (would pull in new validators/relayer chains/MinIO buckets/IGP
-  domains). Same-pair only.
-- Per-route pause / kill-switch / rate-limit ops flows — these belong to the ops
-  layer and `docs/production-readiness-gaps.md` §5. Tracked, not built here.
-- Fully dynamic route count in the UI (arbitrary N without an image rebuild).
-  See [Known limitations](#known-limitations).
+The stack consumes the route as flat spec `config:` fields (one route per
+deployer spec). This is the contract the deployment automation fills:
 
-## Design
+| Field | Meaning | Notes |
+|---|---|---|
+| `WARP_ROUTE_NAME` | Unique route identifier | e.g. `USDC-solana-gorchain` |
+| `WARP_ORIGIN_CHAIN` | Origin chain | |
+| `WARP_ORIGIN_TYPE` | `collateral` or `native` | |
+| `WARP_ORIGIN_TOKEN` | Origin SPL mint | required when origin type is `collateral` |
+| `WARP_REMOTE_CHAIN` | Remote chain | |
+| `WARP_REMOTE_TYPE` | `synthetic` (or `collateral` for a both-sides-collateral route) | |
+| `WARP_TOKEN_SYMBOL` | Token symbol | |
+| `WARP_TOKEN_NAME` | Display name | defaults to symbol |
+| `WARP_TOKEN_DECIMALS` | Decimals | |
+| `WARP_TOKEN_METADATA_URI` | Metadata JSON for a `synthetic` side | required when that side's chain is non-testnet; skipped on testnet |
 
-### Repository boundary
+Existing global chain config (`GORCHAIN_*`, `SOLANA_*` RPC / domain / testnet
+flags) is reused; the route fields only name *which* chain is origin vs remote.
 
-All changes are in **`hyperlane-stacks`**. The warp-UI customization
-(`warpRoutes.yaml`, `chains.yaml`, `entrypoint.sh`, `fix-numeric-types.js`)
-lives in this repo's `container-build/` dir and is `COPY`'d over the template at
-docker build (`Dockerfile: COPY configs/warpRoutes.yaml src/consts/warpRoutes.yaml`),
-so `hyperlane-warp-ui-template` is untouched. The token types are already
-supported by the sealevel client, so `hyperlane-monorepo` is untouched.
+### On-the-fly spec generation (no committed derived files)
 
-### Warp-deployer: one deployment per route
+The operator edits a **short route block**; they never hand-write a full deployer
+spec. The deployment automation expands each route block into a complete deployer
+spec **at deploy time** and deploys it — the expanded spec is plumbing, not a
+committed artifact. This keeps a single source of truth (the route list), avoids
+derived files drifting out of sync, and adds no "regenerate and commit" step.
+The stack's only obligation is to accept the contract fields above; how the spec
+is produced (templating in production automation, parameterization in the e2e
+harness, or a hand-edited example) is the caller's concern.
 
-Mirror the per-chain validator pattern (two specs, one stack). Each route is a
-separate deployment of the `hyperlane-svm-warp-deployer` stack:
+## Deployer: generic token-config builder
 
-- `deployment/spec-warp-deployer-usdc.yml` (renamed from `spec-warp-deployer.yml`)
-- `deployment/spec-warp-deployer-gor.yml` (new)
+The deployer stack runs once per route. The deploy script builds the
+hyperlane-sealevel-client token-config from the contract fields — there is **no
+per-token template**:
 
-Each spec sets its own `WARP_ROUTE_NAME`, collateral/synthetic chain + domain +
-RPC, metadata, and references its own token-config ConfigMap.
+1. Resolve each side's domain ID, RPC URL, and ISM / IGP / mailbox addresses
+   from the global chain config and the core deployment's program IDs.
+2. Construct the token-config (keyed by chain name) with `jq`, using each side's
+   declared `type`: `collateral` carries the `token` mint; `native` carries
+   neither mint nor metadata; `synthetic` carries `name` / `symbol` / `decimals`
+   and, when present, `uri`.
+3. Invoke `hyperlane-sealevel-client warp-route deploy` with the rendered config.
 
-**Each route must set an explicit `namespace:`.** Both routes are the same
-stack, so they default to the same namespace (`laconic-hyperlane-svm-warp-deployer`),
-and both deploy on the one bridge cluster. SO enforces one deployment per
-namespace — `deployment start` stamps the namespace with the deploying directory
-and throws if a different deployment tries to share it
-(`stack-orchestrator/.../deploy_k8s.py:230-246`). So:
+Rendered token-config for a collateral route:
 
-- `spec-warp-deployer-usdc.yml` → `namespace: laconic-hyperlane-warp-usdc`
-- `spec-warp-deployer-gor.yml` → `namespace: laconic-hyperlane-warp-gor`
+```json
+{
+  "solana":   { "type": "collateral", "token": "<mint>", "interchainSecurityModule": "…", "interchainGasPaymaster": "…" },
+  "gorchain": { "type": "synthetic", "name": "USD Coin", "symbol": "USDC", "decimals": 6, "uri": "…", "interchainSecurityModule": "…", "interchainGasPaymaster": "…" }
+}
+```
 
-The two validators don't hit this because in production each runs on its own
-host/cluster; the warp routes all deploy on the same bridge cluster, so they
-need distinct namespaces. Resource names (Job, PVC) are already deployment-id
-scoped and wouldn't collide, but the namespace guard is unconditional, so the
-override is required, not optional. The shared `/state` host-path mount is
-unaffected — each route writes its own `warp-routes/<route>/` subdir, and the
-two PVs (distinct names, same hostPath) coexist exactly as the core-deployer and
-warp-deployer already share `/state` today.
+For a native route the origin side is `{ "type": "native", "decimals": 9, … }`
+with no `token`; the remote side is unchanged. `jq` includes `token` / `uri`
+only when supplied, so each token type renders correctly from the same builder.
 
-**Why per-route specs over a single list-shaped `warp-routes:` block:** matches
-the established validator per-instance convention; isolates failures (one route
-failing to deploy doesn't block the other); gives each route an independent
-idempotency gate and redeploy; and avoids encoding a list inside a single env
-var, which SO's k8s config path handles poorly.
+## Per-route deployment
 
-### Per-route token-config
+Each route is an independent deployment of the one warp-deployer stack,
+parameterized by its route config. Independence is required for correctness:
 
-Replace the single hardcoded template with **one token-config template per
-route**, each a ConfigMap source dir under `stack_orchestrator/data/config/`:
+- **Separate namespace per route.** The deployer creates namespace-scoped
+  resources (the Job and its config maps). Two deployments of one stack cannot
+  share a namespace, so each route's spec sets an explicit `namespace:`
+  (e.g. `laconic-hyperlane-warp-<route>`).
+- **Per-route state + idempotency.** Each route writes to its own state subdir
+  (below) and its "already deployed?" check reads that subdir, so deploying one
+  route never sees another as done.
 
-- `warp-deployer-token-config-usdc/token-config.json.tmpl` — USDC: collateral on
-  Solana, synthetic on gorchain (today's content).
-- `warp-deployer-token-config-gor/token-config.json.tmpl` — GOR: `native` on
-  gorchain (no `token` mint, no `uri`), `synthetic` on Solana.
+Independent deployments also isolate failures (one route failing to deploy does
+not block another) and allow per-route redeploy. The route config travels as
+flat fields rather than a list inside a single deployment, matching how the
+deployment tooling resolves configuration.
 
-Each template carries the route's real metadata (per-side `type`, `decimals`,
-`symbol`, optional `token`/`uri`); only the deploy-time addresses
-(`${COLLATERAL_ISM}`, `${…_IGP}`, `${…_MAILBOX}`) stay as `envsubst`
-placeholders. The deploy script stays generic — it renders whichever template is
-mounted. The existing post-render `jq` step that strips empty `uri` fields
-already lets a side omit `uri` (needed for `native`).
+## State layout
 
-### Generalize the deploy script's output builder
-
-`deploy.sh:233-252` hardcodes the output `warpRoute` object as
-`collateral`+`synthetic` with a `tokenMint`. This is the one place the script
-itself assumes a token shape. Generalize it so the emitted
-`token-config.json` reflects the route's actual per-side types (derive from the
-rendered input token-config rather than re-templating collateral/synthetic).
-Everything else in the script (program-id lookup, CLI invocation, upgrade
-authority transfer) is already chain-name-driven and route-agnostic.
-
-### State layout
-
-Each route writes to its own subdirectory; the shared core deployer output
-(`/state/program-ids.json`) is unchanged (read-only input):
+Each route owns a subdirectory; the shared core deployment output
+(`program-ids.json`) is unchanged and read-only:
 
 ```
 /state/
-  program-ids.json                         ← core deployer (shared, unchanged)
+  program-ids.json                      ← core deployment (shared input)
   warp-routes/
-    USDC-solana-gorchain/
-      token-config.json
-      warp-deploy-outputs/
-    GOR-gorchain-solana/
-      token-config.json
-      warp-deploy-outputs/
+    <route-name>/
+      token-config.json                 ← this route's config + addresses
+      warp-deploy-outputs/              ← deployed warp program IDs per chain
 ```
 
-The idempotency gate checks the route's own
-`warp-routes/<WARP_ROUTE_NAME>/token-config.json`, so deploying the GOR route
-does not see the USDC route as "already done."
+The idempotency gate checks `warp-routes/<route-name>/token-config.json`.
 
-This is a breaking change to the on-disk layout. There is no production
-multi-route deployment yet, so no migration is required; the single existing
-USDC route simply moves under `warp-routes/USDC-solana-gorchain/`.
+## Bridge UI
 
-### State aggregation (tests + future ops)
+The UI displays the configured routes. Each route's values — token metadata and
+the deployed program / mint addresses — are supplied as configuration and filled
+into the UI's route entries when the container starts. A route's *values* are
+therefore pure configuration.
 
-`tests/e2e/lib/state_loader.py` and `tests/e2e/conftest.py` read a fixed
-`token-config.json` and a `{chain: address}` program map
-(`_get_warp_program_addresses`, conftest:1601). Two routes on the same chains
-collide in that map. Change the loader to **discover all
-`warp-routes/<route>/` subdirs** and key program addresses by
-`(route, chain)`, so each route's collateral/synthetic addresses are
-distinguishable.
+The UI's **route set is fixed when its image is built**: the number of route
+entries is compiled into the app, and startup only fills their values. Adding a
+*new* route to the UI therefore requires adding an entry and rebuilding the UI
+image. This is an accepted operational step (the route set changes rarely and the
+image is already built as part of deployment) and is documented as a limitation.
+A future enhancement can make the UI load its routes at runtime (e.g. from a
+registry) to drop the rebuild; that is out of scope here.
 
-### Warp-UI: render all routes
+## Unchanged by design
 
-The UI's `tokens:` list already supports N routes; the work is to add the
-second route and feed it real addresses:
+The relayer, gas-oracle, validators, and storage are **not modified**. They
+operate below the warp-route abstraction — the relayer delivers every message
+between the two mailboxes, the gas-oracle sets gas-oracle configs per domain, and
+validators sign the mailbox checkpoints — so additional routes on the same chain
+pair are handled without change. This is the main reason the work is contained.
 
-- `container-build/.../configs/warpRoutes.yaml` — add the GOR route's **two
-  connected token entries** (gorchain `native`, Solana `synthetic`), each with a
-  fresh sentinel set (e.g. `__GGOR_NATIVE_ADDRESS__`,
-  `__SGOR_SYNTHETIC_ADDRESS__`, `__SGOR_SYNTHETIC_MINT__`, plus
-  symbol/decimals). The two entries cross-reference via `connections` so neither
-  is dropped by `filterUnconnectedToken`.
-- `container-build/.../entrypoint.sh` — add matching `sed` lines for the new
-  sentinels.
-- `docker-compose-hyperlane-warp-ui.yml` + `deployment/spec-warp-ui.yml` — add
-  the new route's env vars (addresses, symbol, decimals).
-- Address values come from the GOR route's state subdir, filled the same way the
-  USDC route's are (conftest patching in e2e; operator/state in prod).
+## E2E approach
 
-Because the route set is baked at build time, **adding the GOR route requires a
-warp-UI image rebuild.** The warp-deployer side needs no rebuild — it is driven
-by per-route specs and ConfigMaps at deploy time.
+The e2e suite drives a small list of routes through the configurable path,
+deploying each via the deployer stack directly (the same CLI the production
+automation uses). It deploys **two differently-shaped routes** — a collateral
+route and a native route — to prove the generic builder, and asserts:
 
-### Unchanged by design
+- both routes deploy: each `warp-routes/<route>/token-config.json` and
+  `warp-deploy-outputs/` is populated, with the collateral route showing a
+  `collateral` origin and the native route a `native` origin (no mint);
+- per-route idempotency is independent (deploying one does not skip the other);
+- the UI renders both routes' token pairs.
 
-Relayer, gas-oracle, validators, and MinIO are **not modified** — each operates
-at the mailbox / domain / chain level, below the warp-route abstraction (see
-[What was verified](#what-was-verified-and-corrected)). This is the main reason
-the change is contained.
+The native route runs on the test chains with the testnet flag set, so the
+minted token's metadata-URI validation is skipped and no hosted metadata JSON is
+needed for tests.
 
 ## Files touched
 
 | File | Change |
 |---|---|
-| `deployment/spec-warp-deployer.yml` → `spec-warp-deployer-usdc.yml` | Rename; reference per-route token-config CM; add `namespace: laconic-hyperlane-warp-usdc`. |
-| `deployment/spec-warp-deployer-gor.yml` | New. GOR route: native gorchain + synthetic Solana, own `WARP_ROUTE_NAME`, `namespace: laconic-hyperlane-warp-gor`. |
-| `stack_orchestrator/data/config/warp-deployer-token-config-usdc/token-config.json.tmpl` | USDC template (moved from `warp-deployer-token-config/`). |
-| `stack_orchestrator/data/config/warp-deployer-token-config-gor/token-config.json.tmpl` | New. `native`+`synthetic` template. |
-| `stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh` | Per-route state subdir + idempotency; generalize output `token-config.json` to honor per-side type. |
-| `stack_orchestrator/data/compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | Reference per-route token-config CM volume. |
-| `container-build/gorbagana-dev-hyperlane-warp-ui/configs/warpRoutes.yaml` | Add GOR route's two token entries + sentinels. |
-| `container-build/gorbagana-dev-hyperlane-warp-ui/entrypoint.sh` | Add `sed` lines for GOR sentinels. |
-| `stack_orchestrator/data/compose/docker-compose-hyperlane-warp-ui.yml` | GOR route env vars. |
-| `deployment/spec-warp-ui.yml` | GOR route env vars. |
-| `tests/e2e/lib/state_loader.py` | Discover `warp-routes/<route>/` subdirs; key programs by `(route, chain)`. |
-| `tests/e2e/conftest.py` | Per-route warp-deployer deployment; per-route address resolution + warp-UI patching. |
-| `tests/e2e/test_02_warp_deployer.py` | Assert both routes deploy (per-route state, `native`+`synthetic` program-ids). |
-| `tests/e2e/test_10_warp_ui.py` | Assert both routes' tokens render. |
-| `tests/e2e/fixtures/test-spec-warp-deployer-*.yml`, `test-spec-warp-ui.yml` | Per-route fixtures (distinct `namespace:` each) + UI env. |
-| `specs/stack-specifications.md` | Replace the single-route limitation note with multi-route reality. |
-| `docs/architecture-decisions.md` | Update the warp-deployer row (multi-route). |
-| `docs/production-readiness-gaps.md` | Fill §5.4 (multiple warp routes). |
+| `stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh` | Build token-config generically from contract fields (per-side declared type); per-route state subdir + idempotency. |
+| `stack_orchestrator/data/config/warp-deployer-token-config/` | Remove the hardcoded token-config template — no longer needed. |
+| `stack_orchestrator/data/compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | Pass the route contract fields through to the container. |
+| `deployment/spec-warp-deployer.yml` | Express the route as contract `config:` fields (USDC as the worked example); add explicit `namespace:`. |
+| `stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-warp-ui/configs/warpRoutes.yaml` | Route entries filled from config; one entry per configured route. |
+| `stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-warp-ui/entrypoint.sh` | Fill each route entry's values from config at startup. |
+| `stack_orchestrator/data/compose/docker-compose-hyperlane-warp-ui.yml`, `deployment/spec-warp-ui.yml` | Per-route UI config fields. |
+| `tests/e2e/lib/state_loader.py` | Discover routes under `warp-routes/`; read per-route token-config and program addresses. |
+| `tests/e2e/conftest.py`, `tests/e2e/fixtures/*` | Drive a routes list; deploy each route; resolve per-route addresses. |
+| `tests/e2e/test_02_warp_deployer.py`, `test_10_warp_ui.py` | Assert multiple, differently-shaped routes deploy and render. |
+| `specs/stack-specifications.md`, `docs/architecture-decisions.md` | Document configurable routes. |
 
-## E2E approach
+## Error handling
 
-Add the GOR native route as a second warp-deployer deployment alongside USDC.
-Assert:
-
-- Both routes deploy: each `warp-routes/<route>/token-config.json` and
-  `warp-deploy-outputs/program-ids.json` are populated, with the GOR route's
-  gorchain side deployed as the `native` program and its Solana side as
-  `synthetic`.
-- The per-route idempotency gate is independent (deploying GOR does not skip on
-  USDC's state, and vice versa).
-- Warp-UI renders both routes' token pairs (the assembled `tokens[]` contains
-  all four entries, correctly connected).
-
-A bridge transfer over the GOR route is a nice-to-have but depends on a funded
-native balance; checkpoint/relay correctness is already covered by the existing
-USDC transfer test and is route-independent at the agent layer.
+- A route missing a required field, or naming a chain absent from the core
+  program IDs, fails the deploy fast with a message naming the route — no partial
+  or mis-shaped deployment.
+- An unknown `type`, or a `collateral` side without a `token` mint, fails fast.
+  Because the type is declared, a missing mint is a clear error rather than a
+  silently mis-typed (native) deployment.
+- A minted (synthetic) token on a non-testnet remote chain without a metadata URI
+  fails fast (the client requires it); on a testnet remote the URI is optional.
 
 ## Decision log
 
-1. **Per-route specs, not a `warp-routes:` list** — matches the validator
-   per-instance pattern, isolates failures, independent idempotency/redeploy,
-   avoids list-in-env in SO's k8s path.
-2. **Per-route token-config templates, not richer env vars** — `native` and
-   `collateral` differ structurally (mint present/absent, metadata fields), and
-   `envsubst` has no conditionals; a full per-route template is clearer than
-   branching one template across token types.
-3. **State under `warp-routes/<route>/`** — gives each route an isolated
-   idempotency target and lets the loader enumerate routes without a manifest.
-4. **Relayer/gas-oracle/validator/MinIO untouched** — verified route-agnostic
-   in code; touching them would be unfounded scope.
-5. **Accept build-time route count for the UI** — the `tokens[]` list already
-   supports N; a runtime/registry loader would be a larger UI fork change with
-   no payoff for a known, rarely-changing route set (YAGNI).
-6. **Explicit per-route namespace** — SO refuses to let two deployments of one
-   stack share a namespace (`deploy_k8s.py:230-246`), so each route's spec sets
-   its own `namespace:`. Required by SO, not a stylistic choice.
+1. **Generic `jq` token-config builder, not per-token templates** — one builder
+   handles native / collateral / synthetic; adding a token needs no template.
+2. **Token type declared explicitly per side** — mirrors the on-chain
+   token-config and supports any valid combination; a forgotten field becomes a
+   fast error instead of a silently mis-typed deployment, which matters for
+   on-chain deploys.
+3. **On-the-fly spec generation, no committed derived files** — the operator
+   edits one short route block; the full spec is produced at deploy time. Avoids
+   two representations drifting and an extra regenerate-and-commit step.
+4. **Independent deployment per route (own namespace + state)** — required for
+   namespace-scoped resource isolation and per-route idempotency; also isolates
+   failures and enables per-route redeploy.
+5. **UI route set fixed at image build (values configurable)** — keeps the UI in
+   step with the configured routes using the existing fill-at-startup mechanism;
+   runtime-loaded routes (no rebuild) are a documented future step.
+6. **Relayer / gas-oracle / validators / storage untouched** — route-agnostic by
+   construction; changing them would be unfounded scope.
 
 ## Known limitations
 
-- **UI route count is fixed at image build.** Adding a route requires rebuilding
-  the warp-ui image. The fully-dynamic path is to have the UI load warp routes
-  from a runtime registry or mounted config instead of the build-time
-  `warpRoutes.yaml` — deferred until there's a real need for operator-added
-  routes without a rebuild.
-- **No per-route ops controls.** Independent pause / kill-switch / rate limits
-  per route are an ops-layer concern (`production-readiness-gaps.md` §5), not
-  part of this deployment-plumbing change.
+- **Adding a route to the UI requires a UI image rebuild** (the route set is
+  compiled into the image). Mitigation/path: runtime-loaded routes via a registry
+  — out of scope here.
+- **Same chain pair only.** New chain pairs need new agents/infrastructure and
+  are out of scope.
+- **Production route orchestration is external.** The stack exposes the
+  configuration contract; the automation that expands an operator's route list
+  into per-route deployments is a separate layer that consumes this contract.
