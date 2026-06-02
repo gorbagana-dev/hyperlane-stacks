@@ -707,6 +707,29 @@ def get_spl_token_balance(
         return 0.0
 
 
+def get_sol_balance(
+    owner_keypair: str,
+    rpc_url: str,
+) -> float:
+    """Query native SOL balance for a keypair. Returns 0.0 if the query fails."""
+    result = run_cmd(
+        [
+            "solana", "balance",
+            "--keypair", owner_keypair,
+            "--url", rpc_url,
+        ],
+        check=False,
+        quiet=True,
+    )
+    if result.returncode != 0:
+        return 0.0
+    try:
+        # Output looks like "12.34 SOL"
+        return float(result.stdout.strip().split()[0])
+    except (ValueError, IndexError):
+        return 0.0
+
+
 def wait_for_token_balance(
     mint: str,
     owner_keypair: str,
