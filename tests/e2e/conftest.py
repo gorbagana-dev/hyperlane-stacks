@@ -692,6 +692,7 @@ def deployer_deployment(
         "IGP_ORACLE_PUBKEY":          keypairs.igp_oracle_pubkey,
         "GORCHAIN_VALIDATOR_ADDRESS": keypairs.gorchain_validator_address,
         "SOLANA_VALIDATOR_ADDRESS":   keypairs.solana_validator_address,
+        "SOLANA_RPC_URL":             "http://solana-rpc:18899",
     })
 
     log.info("Starting deployer stack...")
@@ -833,6 +834,7 @@ def warp_deployment(
     os.environ.update({
         "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
         "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
+        "SOLANA_RPC_URL":         "http://solana-rpc:18899",
     })
 
     log.info("Starting warp deployer stack...")
