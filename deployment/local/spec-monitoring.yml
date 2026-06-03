@@ -14,8 +14,10 @@ config:
   MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
   BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "300"
-  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.__DNS_ZONE__:443,solana-primary=validator-solana.__DNS_ZONE__:443"
-  PROMETHEUS_RELAYER_TARGETS: "primary=relayer.__DNS_ZONE__:443"
+  # Rendered per topology: single -> in-cluster names + http; multi -> <zone>:443 + https.
+  PROMETHEUS_VALIDATOR_TARGETS: "__PROM_VALIDATOR_TARGETS__"
+  PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"
+  PROMETHEUS_SCRAPE_SCHEME: "__PROM_SCRAPE_SCHEME__"
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
@@ -50,3 +52,6 @@ secrets:
   hyperlane-monitoring-secrets:
     keys:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
+# Single-host only: Prometheus scrapes validators/relayer cross-NS in-cluster. Rendered
+# to an external-services: block on single-host, removed on multi-host.
+# __SINGLE_HOST_PROM_XS__
