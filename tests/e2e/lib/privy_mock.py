@@ -173,7 +173,11 @@ class _PrivyHandler(BaseHTTPRequestHandler):
             self._error(404, f"unknown wallet: {wallet_id}")
             return
 
-        hash_hex = body.get("params", {}).get("hash", "")
+        params = body.get("params", {})
+        if self._reject_unknown_params(params, {"hash"}):
+            return
+
+        hash_hex = params.get("hash", "")
         if hash_hex.startswith("0x"):
             hash_hex = hash_hex[2:]
 
@@ -193,7 +197,11 @@ class _PrivyHandler(BaseHTTPRequestHandler):
             self._error(404, f"unknown oracle wallet: {wallet_id}")
             return
 
-        tx_base64 = body.get("params", {}).get("transaction", "")
+        params = body.get("params", {})
+        if self._reject_unknown_params(params, {"transaction", "encoding"}):
+            return
+
+        tx_base64 = params.get("transaction", "")
         if not tx_base64:
             self._error(400, "missing params.transaction")
             return
@@ -244,17 +252,39 @@ class _PrivyHandler(BaseHTTPRequestHandler):
 
         self._error(404, "not found")
 
+    def _reject_unknown_params(self, params: dict, allowed: set[str]) -> bool:
+        """Reject params with keys outside `allowed`, mirroring real Privy's
+        strict schema. Returns True (and sends a 400) if extras were found.
+
+        Real Privy rejects unrecognized params keys with invalid_data — e.g.
+        secp256k1_sign accepts only 'hash'. Enforcing this here stops a client
+        from passing schema validation against the mock but failing live Privy.
+        """
+        extra = sorted(k for k in params if k not in allowed)
+        if extra:
+            keys = ", ".join(f"'{k}'" for k in extra)
+            self._error(
+                400,
+                f"[Input error] `params`: Unrecognized key(s) in object: {keys}",
+                code="invalid_data",
+            )
+            return True
+        return False
+
     def _json_response(self, data: dict) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
-    def _error(self, status: int, msg: str) -> None:
+    def _error(self, status: int, msg: str, code: str | None = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"error": msg}).encode())
+        payload: dict[str, str] = {"error": msg}
+        if code:
+            payload["code"] = code
+        self.wfile.write(json.dumps(payload).encode())
 
 
 class PrivyMockServer:
