@@ -352,12 +352,13 @@ MinIO buckets; relayer delivering a test message end-to-end; warp-ui reachable.
 Plus **idempotency**: re-running `setup-all.yml` and `deploy-all.yml` reports no
 changes and breaks nothing (no cred rotation, no duplicate commits, cluster reused).
 
-### Own-chains environment for Layers 1–2 (implemented — see `ops/runbooks/local.md`)
+### Own-chains environment for Layers 1–2 (implemented — see `ops/runbooks/local-single-host.md` + `local-multi-host.md`)
 
 Layers 1–2 run against self-run chains, which need their own committed inputs —
 neither the prod tree (mainnet) nor the staging tree (devnet/Helius) fits. Built as
 the `local` env (`ops/inventories/local/` + `deployment/local/`); the from-scratch
-operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
+operator guides are `ops/runbooks/local-single-host.md` and `local-multi-host.md`.
+Resolved design (networking revised
 2026-06-03):
 
 - **New `local` env, mirroring prod/staging:** `ops/inventories/local/` +

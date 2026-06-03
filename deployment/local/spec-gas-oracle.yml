@@ -45,3 +45,7 @@ image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT
+
+# Single-host only: this stack reaches the host-run chains in-cluster. Rendered to an
+# external-services: block on single-host, removed on multi-host.
+# __SINGLE_HOST_EXTERNAL_SERVICES__

@@ -40,6 +40,58 @@
       loop_control:
         label: "{{ item.key }}"
 
+    # Single-host reaches the host-run chains via external-services ip: -> the kind
+    # network gateway (the e2e get_host_ip pattern). Only chain-consumers need it;
+    # MinIO (first stack, before any cluster exists) is not in the map and is skipped.
+    - name: Detect kind-network gateway IP (single-host chain reachability)
+      when:
+        - topology | default('') == 'single'
+        - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
+      block:
+        - name: Inspect the kind network IPAM config
+          ansible.builtin.command:
+            argv:
+              - docker
+              - network
+              - inspect
+              - kind
+              - -f
+              - '{% raw %}{{json .IPAM.Config}}{% endraw %}'
+          register: _kind_ipam
+          changed_when: false
+
+        - name: Set kind_gateway_ip from the first IPv4 gateway
+          ansible.builtin.set_fact:
+            kind_gateway_ip: >-
+              {{ _kind_ipam.stdout | from_json
+                 | selectattr('Gateway', 'defined')
+                 | map(attribute='Gateway')
+                 | select('match', '^[0-9.]+$') | first }}
+
+    # Single-host chain-consumers: insert this stack's external-services block. The
+    # map is referenced only here, where the detect-block above has set kind_gateway_ip.
+    - name: Render the single-host external-services block (single-host consumers)
+      ansible.builtin.replace:
+        path: "{{ spec_file }}"
+        regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
+        replace: "{{ single_host_external_services[stack_env_map_key | default(stack_name)] }}"
+      when:
+        - spec_token_renders is defined
+        - topology | default('') == 'single'
+        - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
+
+    # Everything else (multi-host, or stacks with no block): strip the marker. No map
+    # reference, so kind_gateway_ip is never needed here.
+    - name: Strip the single-host external-services marker (multi-host / non-consumers)
+      ansible.builtin.replace:
+        path: "{{ spec_file }}"
+        regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
+        replace: ''
+      when:
+        - spec_token_renders is defined
+        - not (topology | default('') == 'single'
+               and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
+
     - name: Run deploy create (committed spec — no init; SO reads it directly)
       ansible.builtin.command:
         argv:

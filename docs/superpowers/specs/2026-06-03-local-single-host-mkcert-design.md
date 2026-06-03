@@ -95,40 +95,76 @@ as a **token** rendered by the *existing* `spec_token_renders` machinery
 | `__PROM_VALIDATOR_TARGETS__` | `gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090` | `gorchain-primary=validator-gorchain.{{ zone }}:443,solana-primary=validator-solana.{{ zone }}:443` |
 | `__PROM_RELAYER_TARGETS__` | `primary=relayer:9091` | `primary=relayer.{{ zone }}:443` |
 
-**Structural-block tokens** — `ansible.builtin.replace` substitutes a comment marker
+**Structural-block token** — `ansible.builtin.replace` substitutes one comment marker
 with a multi-line YAML block. The committed base spec carries the marker as a comment
 (valid YAML, yamllint-clean); single-host renders it to the block, multi-host renders it
 to empty:
 
-- `# __SINGLE_HOST_MINIO_XS__` — in both validator specs. Single → the
-  `external-services: hyperlane-minio:` selector block (namespace
-  `laconic-hyperlane-minio`, port 9000). Multi → empty.
-- `# __SINGLE_HOST_PROM_XS__` — in the monitoring spec. Single → the
-  `external-services:` block with `validator-gorchain`, `validator-solana`, `relayer`
-  selectors. Multi → empty.
+- `# __SINGLE_HOST_EXTERNAL_SERVICES__` — one consolidated marker per server-side chain
+  consumer (a spec may have only one `external-services:` key). `stack_deploy` renders it
+  per stack to the chains-only, chains+MinIO, or chains+Prom block on single-host and to
+  empty on multi-host. It replaced the earlier per-concern `# __SINGLE_HOST_MINIO_XS__` /
+  `# __SINGLE_HOST_PROM_XS__` markers. See "Chain reachability" below for the chain `ip:`
+  legs and the per-stack block ownership.
 
-`spec_token_renders` always includes every marker key; only the value differs by
-topology. Because the markers are plain comments until rendered, the committed specs
-remain valid YAML and parse identically in both topologies before render.
+Because the marker is a plain comment until rendered, the committed specs remain valid
+YAML and parse identically in both topologies before render.
+
+### Chain reachability
+
+How in-cluster pods (single-host) and the operator's browser reach the two host-run SVM
+chains differs by who is calling:
+
+- **Server-side chain consumers (single-host)** reach the host-run chains exactly the way
+  the e2e tests do: an `external-services:` `ip:` block points `gorchain-rpc` /
+  `solana-rpc` at the **kind-network gateway IP** (detected at deploy time, the e2e
+  `get_host_ip()` pattern — `docker network inspect kind` gateway). Pods then use
+  `GORCHAIN_RPC_URL=http://gorchain-rpc:8899` and `SOLANA_RPC_URL=http://solana-rpc:18899`.
+  The chains must bind `0.0.0.0` so the gateway can reach them. The operator sets **no**
+  `gorchain_rpc_url`/`solana_rpc_url` on single-host.
+- **Validators need no RPC env change.** They read chain RPC from the `agent-config`
+  configmap, which the **deployer** builds from `${GORCHAIN_RPC_URL}`. Make the deployer's
+  token in-cluster and validators inherit the in-cluster URL via agent-config — they only
+  need the `gorchain-rpc`/`solana-rpc` Service resolvable in their own namespace, which
+  the chains+MinIO block provides.
+- **warp-ui is browser-facing.** The user's browser (not a pod) talks to the chain RPCs,
+  so warp-ui uses browser-reachable tokens — single-host: `http://localhost:8899` /
+  `http://localhost:18899` over the SSH tunnel; multi-host: the chain domains — and gets
+  **no** in-cluster external-services block.
+- **Multi-host** uses the operator-set `gorchain_rpc_url`/`solana_rpc_url` domains for both
+  the in-cluster agents and warp-ui, and carries **no** chain external-services (the chains
+  live on a separate box reached over the network).
+
+The chain `ip:` block merges into the same consolidated `# __SINGLE_HOST_EXTERNAL_SERVICES__`
+marker as MinIO/Prom (a spec may have only one `external-services:` key). That marker
+**replaced** the earlier per-concern `# __SINGLE_HOST_MINIO_XS__` /
+`# __SINGLE_HOST_PROM_XS__` markers; `stack_deploy` renders it per stack to chains,
+chains+MinIO, or chains+Prom on single-host and to `''` on multi-host.
 
 ### Specs touched (spec-level edits)
 
+Seven server-side specs carry the consolidated `# __SINGLE_HOST_EXTERNAL_SERVICES__`
+marker; warp-ui carries no marker but switches to browser-reachable chain RPC tokens.
+
 - `spec-validator-gorchain.yml`, `spec-validator-solana.yml`, and `spec-relayer.yml`:
-  `AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"` (was `https://s3.__DNS_ZONE__`); append
-  `# __SINGLE_HOST_MINIO_XS__` at column 0 after the `network:` block. The relayer reads
-  validator checkpoints from MinIO over the same anonymous `aws-sdk-rust` S3 client as the
-  validators, so it needs the same in-cluster treatment. The validators' own
-  `network.http-proxy` route and chain RPC access (via `gorchain_rpc_url` /
-  `solana_rpc_url` domains, out-of-band) are unchanged — both topologies keep them;
-  mkcert covers the validator and relayer hostnames in single-host.
+  `AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"` (was `https://s3.__DNS_ZONE__`); the marker
+  renders to the chains+MinIO block. The relayer reads validator checkpoints from MinIO
+  over the same anonymous `aws-sdk-rust` S3 client as the validators, so it needs the same
+  in-cluster treatment. The validators' own `network.http-proxy` route is unchanged in
+  both topologies; mkcert covers the validator and relayer hostnames in single-host.
 - `spec-monitoring.yml`: `PROMETHEUS_VALIDATOR_TARGETS: "__PROM_VALIDATOR_TARGETS__"`,
-  `PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"`, add
-  `PROMETHEUS_SCRAPE_SCHEME: "__PROM_SCRAPE_SCHEME__"` to `config:`, append
-  `# __SINGLE_HOST_PROM_XS__` at column 0.
-- All other specs (`spec-minio.yml`, gas-oracle, warp-ui, deployer,
-  warp-deployer): unchanged. MinIO keeps its `s3.{{ zone }}` / `minio-console.{{ zone }}`
-  Caddy routes in both topologies — in single-host the validators and relayer no longer
-  use the `s3` route, but it stays available for operator browser/CLI access via mkcert.
+  `PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"`,
+  `PROMETHEUS_SCRAPE_SCHEME: "__PROM_SCRAPE_SCHEME__"`; the marker renders to the
+  chains+Prom block.
+- `spec-deployer.yml`, `spec-warp-deployer.yml`, `spec-gas-oracle.yml`: marker renders to
+  the chains-only block (these read chain RPC from `__GORCHAIN_RPC_URL__` /
+  `__SOLANA_RPC_URL__`, now in-cluster on single-host).
+- `spec-warp-ui.yml`: `GORCHAIN_RPC_URL: "__BROWSER_GORCHAIN_RPC_URL__"` /
+  `SOLANA_RPC_URL: "__BROWSER_SOLANA_RPC_URL__"` (browser-reachable), **no** marker.
+- `spec-minio.yml`: unchanged, **no** marker. MinIO keeps its `s3.{{ zone }}` /
+  `minio-console.{{ zone }}` Caddy routes in both topologies — in single-host the
+  validators and relayer no longer use the `s3` route, but it stays available for operator
+  browser/CLI access via mkcert.
 
 ## New role: `local_tls` (single-host only)
 

@@ -8,8 +8,11 @@ deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 config:
-  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
-  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
+  # warp-ui is browser-facing — the user's browser talks to these RPCs, so they must
+  # be browser-reachable (single-host: chains over the SSH tunnel at localhost;
+  # multi-host: the public chain domains), NOT the in-cluster gorchain-rpc names.
+  GORCHAIN_RPC_URL: "__BROWSER_GORCHAIN_RPC_URL__"
+  SOLANA_RPC_URL: "__BROWSER_SOLANA_RPC_URL__"
   GORCHAIN_DOMAIN_ID: "1198486095"
   SOLANA_DOMAIN_ID: "1399811151"
   GORCHAIN_CHAIN_ID: "1198486095"

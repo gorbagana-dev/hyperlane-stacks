@@ -55,25 +55,54 @@ dns_record_map:
 # Operator-supplied values not known until the zone/chains exist are committed as
 # __TOKENS__ in deployment/local/spec-*.yml and substituted into the on-host clone
 # before `deploy create` (stack_deploy). Set only here — a no-op for prod/staging,
-# which commit concrete values. The chains are domain-routed out-of-band; set their
-# full RPC URLs including scheme (http/https as the chain hosts serve them).
+# which commit concrete values.
+#
+# Chain RPCs are topology-dependent (see spec_token_renders):
+#   single-host: chains run on the VM; in-cluster pods reach them as
+#     gorchain-rpc:8899 / solana-rpc:18899 (external-services ip: -> kind gateway),
+#     and warp-ui's browser reaches them over the SSH tunnel at localhost. The two
+#     vars below are UNUSED on single-host — leave them at the placeholder.
+#   multi-host: chains run out-of-band on a separate box; set their full RPC URLs
+#     (scheme + domain) here — used for the in-cluster agents AND warp-ui.
 gorchain_rpc_url: "REPLACE_WITH_GORCHAIN_RPC_URL"
 solana_rpc_url: "REPLACE_WITH_SOLANA_RPC_URL"
 
-# Single-host external-services blocks. Rendered into the validator/monitoring specs in
-# place of a comment marker; multi-host renders the marker to ''. Column-0 top-level keys
-# (the marker comment sits at column 0). MinIO leg: validator dials the MinIO pod
-# cross-NS over plain HTTP (aws-sdk-rust can't trust a non-public CA). Monitoring leg:
-# Prometheus scrapes validators/relayer in-cluster.
-_single_host_minio_xs: |
+# --- Single-host external-services (one block per stack) ---
+# Single-host shares one kind cluster, so cross-stack and chain hops resolve
+# in-cluster. external-services is ONE key per spec, so each stack's full block is
+# defined here and rendered into the spec's `# __SINGLE_HOST_EXTERNAL_SERVICES__`
+# marker by stack_deploy (multi-host renders ''). Chains run on the host, reached via
+# the kind-network gateway IP (kind_gateway_ip, detected at deploy time) — the e2e
+# `ip:` pattern; MinIO and the Prometheus scrape targets are in-cluster pods.
+_xs_chains_only: |
   external-services:
+    gorchain-rpc:
+      ip: {{ kind_gateway_ip }}
+      port: 8899
+    solana-rpc:
+      ip: {{ kind_gateway_ip }}
+      port: 18899
+_xs_chains_minio: |
+  external-services:
+    gorchain-rpc:
+      ip: {{ kind_gateway_ip }}
+      port: 8899
+    solana-rpc:
+      ip: {{ kind_gateway_ip }}
+      port: 18899
     hyperlane-minio:
       selector:
         app.kubernetes.io/stack: hyperlane-minio
       namespace: laconic-hyperlane-minio
       port: 9000
-_single_host_prom_xs: |
+_xs_chains_prom: |
   external-services:
+    gorchain-rpc:
+      ip: {{ kind_gateway_ip }}
+      port: 8899
+    solana-rpc:
+      ip: {{ kind_gateway_ip }}
+      port: 18899
     validator-gorchain:
       selector:
         app.kubernetes.io/stack: hyperlane-validator
@@ -90,11 +119,24 @@ _single_host_prom_xs: |
       namespace: laconic-hyperlane-relayer
       port: 9091
 
+# stack_env_map_key | default(stack_name) -> that stack's external-services block.
+# Stacks absent here (minio, warp-ui) get no block.
+single_host_external_services:
+  hyperlane-svm-deployer: "{{ _xs_chains_only }}"
+  hyperlane-svm-warp-deployer: "{{ _xs_chains_only }}"
+  hyperlane-gas-oracle: "{{ _xs_chains_only }}"
+  hyperlane-validator: "{{ _xs_chains_minio }}"
+  hyperlane-relayer: "{{ _xs_chains_minio }}"
+  hyperlane-monitoring: "{{ _xs_chains_prom }}"
+
 spec_token_renders:
   __DNS_ZONE__: "{{ dns_zone }}"
-  __GORCHAIN_RPC_URL__: "{{ gorchain_rpc_url }}"
-  __SOLANA_RPC_URL__: "{{ solana_rpc_url }}"
-  # single: validator dials MinIO in-cluster; multi: via the Caddy-fronted LE endpoint
+  # single: in-cluster service names (external-services); multi: operator domains
+  __GORCHAIN_RPC_URL__: "{{ 'http://gorchain-rpc:8899' if topology == 'single' else gorchain_rpc_url }}"
+  __SOLANA_RPC_URL__: "{{ 'http://solana-rpc:18899' if topology == 'single' else solana_rpc_url }}"
+  # warp-ui is browser-facing: single -> chains over the SSH tunnel; multi -> domains
+  __BROWSER_GORCHAIN_RPC_URL__: "{{ 'http://localhost:8899' if topology == 'single' else gorchain_rpc_url }}"
+  __BROWSER_SOLANA_RPC_URL__: "{{ 'http://localhost:18899' if topology == 'single' else solana_rpc_url }}"
   __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ dns_zone }}"
   __PROM_SCRAPE_SCHEME__: "{{ 'http' if topology == 'single' else 'https' }}"
   __PROM_VALIDATOR_TARGETS__: >-
@@ -105,8 +147,6 @@ spec_token_renders:
   __PROM_RELAYER_TARGETS__: >-
     {{ 'primary=relayer:9091' if topology == 'single'
        else 'primary=relayer.' ~ dns_zone ~ ':443' }}
-  "# __SINGLE_HOST_MINIO_XS__": "{{ _single_host_minio_xs if topology == 'single' else '' }}"
-  "# __SINGLE_HOST_PROM_XS__": "{{ _single_host_prom_xs if topology == 'single' else '' }}"
 
 # --- Secret-env values ---
 # Local has no Helius (own Solana chain → solana_rpc_url is a plain domain rendered
