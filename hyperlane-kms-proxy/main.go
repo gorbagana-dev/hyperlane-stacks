@@ -52,7 +52,7 @@ func privySign(digest []byte) ([]byte, error) {
 	body, _ := json.Marshal(privyRPCRequest{
 		ChainType: "ethereum",
 		Method:    "secp256k1_sign",
-		Params:    map[string]string{"hash": "0x" + hex.EncodeToString(digest), "encoding": "hex"},
+		Params:    map[string]string{"hash": "0x" + hex.EncodeToString(digest)},
 	})
 
 	url := fmt.Sprintf("%s/v1/wallets/%s/rpc", privyAPIURL, privyWalletID)
