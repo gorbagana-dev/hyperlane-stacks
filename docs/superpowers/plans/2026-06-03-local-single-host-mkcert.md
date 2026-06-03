@@ -1,5 +1,9 @@
 # Local single-host mkcert (no Cloudflare) Implementation Plan
 
+> **Status: Implemented 2026-06-03** (subagent-driven; commits `ff90937..9b9c909` on
+> `local-own-chains-env`; all Layer-0 gates green). A final review added the relayer S3
+> leg (Task 8), which the original 7 tasks missed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the single-host `local` ops topology bring up the whole bridge with self-trusted mkcert certs and in-cluster MinIO/scrape — no Cloudflare, no public DNS — while multi-host keeps Let's Encrypt + Cloudflare, both from one committed spec tree.

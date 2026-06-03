@@ -20,20 +20,21 @@ deploy-side ansible (testing Layers 1-2). Neither prod (mainnet) nor staging
   and reached via the `gorchain_rpc_url`/`solana_rpc_url` domains, so it is **not** an
   ansible target — only `local-services` and `local-agents` are.
 
-**Networking model.** `local` mirrors prod/staging: Caddy + Cloudflare DNS + real
-Let's Encrypt, under an **operator-supplied public zone** (`dns_zone`). That makes
-multi-host "just work" — `https://s3.<zone>`, `https://validator-x.<zone>`, etc.
-resolve via public DNS to the right host's Caddy, and the Rust validator trusts the
-LE-issued MinIO cert. The only own-chains-specific bit is that **the chains are
-reached at their own domains** (set up out-of-band with the nodes), rendered into
-the specs from `group_vars`.
+**Networking model.** Two modes, chosen by the derived `topology` (single vs multi-host —
+from inventory group membership, no flag):
 
-> **Single-host needs no DNS provider.** It uses mkcert: the `local_tls` role generates
-> a self-trusted cert, pre-seeds it into Caddy (no ACME), and the validator→MinIO and
-> Prometheus→validator/relayer legs go in-cluster over HTTP. `dns_zone` is just a label
-> the cert covers (e.g. `hyperlane.local`) — it does not need to be a real Cloudflare
-> zone. Multi-host still uses Cloudflare + Let's Encrypt (cross-host routing needs real
-> DNS + a cert the Rust S3 client trusts).
+- **Single-host:** self-trusted **mkcert** certs — the `local_tls` role generates a cert
+  and pre-seeds it into Caddy (no ACME, **no DNS provider**). The validator→MinIO,
+  relayer→MinIO, and Prometheus→validator/relayer legs go **in-cluster over HTTP**.
+  `dns_zone` is just a label the cert covers (e.g. `hyperlane.local`) — not a real
+  Cloudflare zone.
+- **Multi-host:** mirrors prod/staging — Caddy + Cloudflare DNS + real Let's Encrypt under
+  an **operator-supplied public zone** (`dns_zone`). `https://s3.<zone>`,
+  `https://validator-x.<zone>`, etc. resolve via public DNS to the right host's Caddy, and
+  the Rust S3 client trusts the LE-issued cert (cross-host routing needs both).
+
+The only own-chains-specific bit (both modes): **the chains are reached at their own
+domains** (set up out-of-band with the nodes), rendered into the specs from `group_vars`.
 
 All commands run from `ops/` on the controller (your machine).
 

@@ -1,7 +1,8 @@
 # Local single-host: self-trusted certs (mkcert), no Cloudflare
 
 **Date:** 2026-06-03
-**Status:** Design — approved architecture, pending spec review
+**Status:** Implemented 2026-06-03 (subagent-driven; all Layer-0 gates green). Plan:
+`docs/superpowers/plans/2026-06-03-local-single-host-mkcert.md`.
 **Scope:** The `local` own-chains ops environment only. Staging and prod are untouched.
 
 ## Problem
