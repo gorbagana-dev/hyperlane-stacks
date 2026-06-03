@@ -30,7 +30,7 @@ Reuses the `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` image (same as 
 laconic-so --stack hyperlane-svm-warp-deployer deploy init --output warp-deployer-spec.yml
 ```
 
-Edit `warp-deployer-spec.yml` (see `deployment/spec-warp-deployer.yml` for reference):
+Edit `warp-deployer-spec.yml` (see `deployment/spec-warp-usdc.yml` for reference):
 
 ```yaml
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer

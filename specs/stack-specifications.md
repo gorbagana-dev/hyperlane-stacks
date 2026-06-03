@@ -525,7 +525,7 @@ Tests use the same layout under `/tmp/hyperlane-bridge-e2e/`.
 | Spec File | Stack |
 |-----------|-------|
 | `spec-deployer.yml` | `hyperlane-svm-deployer` |
-| `spec-warp-deployer.yml` | `hyperlane-svm-warp-deployer` |
+| `spec-warp-<route>.yml` (one per route) | `hyperlane-svm-warp-deployer` |
 | `spec-validator-gorchain.yml` | `hyperlane-validator` (gorchain deployment) |
 | `spec-validator-solana.yml` | `hyperlane-validator` (solana deployment) |
 | `spec-relayer.yml` | `hyperlane-relayer` |

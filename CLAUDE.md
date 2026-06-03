@@ -40,7 +40,7 @@ These groups of files must stay consistent. When changing one, update all:
 | Compose file | Deployment spec | Test fixture |
 |---|---|---|
 | `compose-jobs/docker-compose-hyperlane-svm-deployer.yml` | `deployment/spec-deployer.yml` | `tests/e2e/fixtures/test-spec-deployer.yml` |
-| `compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | `deployment/spec-warp-deployer.yml` | `tests/e2e/fixtures/test-spec-warp-deployer-{usdc,native}.yml` |
+| `compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | `deployment/spec-warp-<route>.yml` (one per route) | `tests/e2e/fixtures/test-spec-warp-deployer-{usdc,native}.yml` |
 | `compose/docker-compose-hyperlane-validator.yml` | `deployment/spec-validator-{gorchain,solana}.yml` | — |
 | `compose/docker-compose-hyperlane-relayer.yml` | `deployment/spec-relayer.yml` | — |
 | `compose/docker-compose-hyperlane-gas-oracle.yml` | `deployment/spec-gas-oracle.yml` | — |
