@@ -14,8 +14,7 @@ services:
       SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
       # Key management + SOLANA_RPC_URL — injected via secrets: in spec.yml
-      # (envFrom.secretRef). Don't add SOLANA_RPC_URL here: an explicit env
-      # entry overrides envFrom, and it bakes empty at `deploy create`.
+      # (envFrom.secretRef), so they're not repeated in this environment block.
       # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY
       # GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS, SOLANA_RPC_URL
     volumes:
