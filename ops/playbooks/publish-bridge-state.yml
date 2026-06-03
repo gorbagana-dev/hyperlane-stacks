@@ -52,9 +52,25 @@
         _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
+    # The warp-UI shows one route, fed by the first configured warp route. Its
+    # per-route state lives under warp-routes/<WARP_ROUTE_NAME>/; the route name
+    # is read from that route's spec rather than duplicated here.
+    - name: Read the warp-UI route's spec (first configured route)
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/spec-warp-{{ warp_routes[0] }}.yml"
+      register: _ui_spec_raw
+      when: not ansible_check_mode
+
+    - name: Resolve the warp-UI route's per-route state dir
+      ansible.builtin.set_fact:
+        _warp_rel: "{{ generated_rel }}/warp-routes/{{ _ui_route_name }}"
+      vars:
+        _ui_route_name: "{{ (_ui_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTE_NAME }}"
+      when: not ansible_check_mode
+
     - name: Stat the warp-deployer artifacts (present only after the warp Job)
       ansible.builtin.stat:
-        path: "{{ deployment_root }}/{{ generated_rel }}/{{ item }}"
+        path: "{{ deployment_root }}/{{ _warp_rel }}/{{ item }}"
       register: _warp_stat
       loop:
         - token-config.json
@@ -63,7 +79,7 @@
 
     - name: Read warp artifacts when present
       ansible.builtin.slurp:
-        src: "{{ deployment_root }}/{{ generated_rel }}/{{ item }}"
+        src: "{{ deployment_root }}/{{ _warp_rel }}/{{ item }}"
       register: _warp_raw
       loop:
         - token-config.json
@@ -72,15 +88,20 @@
         - not ansible_check_mode
         - _warp_stat.results | selectattr('stat.exists') | list | length == 2
 
+    # token-config.json is chain-keyed (warpRoute.<chain> with type inside), so
+    # find each side by its declared type rather than by a role key.
     - name: Derive warp-route values when the warp artifacts are present
       ansible.builtin.set_fact:
-        _warp_collateral_addr: "{{ _wpids[_tcfg.warpRoute.collateral.chain].base58 }}"
-        _warp_synthetic_addr: "{{ _wpids[_tcfg.warpRoute.synthetic.chain].base58 }}"
-        _warp_token_mint: "{{ _tcfg.warpRoute.tokenMint }}"
-        _warp_synthetic_mint: "{{ _tcfg.warpRoute.synthetic.mint }}"
+        _warp_collateral_addr: "{{ _wpids[_collateral.key].base58 }}"
+        _warp_synthetic_addr: "{{ _wpids[_synthetic.key].base58 }}"
+        _warp_token_mint: "{{ _collateral.value.token }}"
+        _warp_synthetic_mint: "{{ _synthetic.value.mint }}"
       vars:
         _tcfg: "{{ _warp_raw.results[0].content | b64decode | from_json }}"
         _wpids: "{{ _warp_raw.results[1].content | b64decode | from_json }}"
+        _sides: "{{ _tcfg.warpRoute | dict2items | rejectattr('key', 'equalto', 'name') | list }}"
+        _collateral: "{{ _sides | selectattr('value.type', 'equalto', 'collateral') | list | first }}"
+        _synthetic: "{{ _sides | selectattr('value.type', 'equalto', 'synthetic') | list | first }}"
       when:
         - not ansible_check_mode
         - _warp_stat.results | selectattr('stat.exists') | list | length == 2

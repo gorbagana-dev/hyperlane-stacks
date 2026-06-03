@@ -6,15 +6,19 @@ services:
     command: ["/opt/scripts/deploy.sh"]
     environment:
       # Warp route configuration
-      WARP_TOKEN_MINT: ${WARP_TOKEN_MINT}
-      WARP_ROUTE_NAME: ${WARP_ROUTE_NAME:-USDC-solana-gorchain}
-      COLLATERAL_CHAIN: ${COLLATERAL_CHAIN:-solana}
-      SYNTHETIC_CHAIN: ${SYNTHETIC_CHAIN:-gorchain}
-      # Collateral/synthetic default to solana/gorchain chain vars
-      COLLATERAL_CHAIN_RPC_URL: ${COLLATERAL_CHAIN_RPC_URL:-${SOLANA_RPC_URL}}
-      COLLATERAL_DOMAIN_ID: ${COLLATERAL_DOMAIN_ID:-${SOLANA_DOMAIN_ID}}
-      SYNTHETIC_CHAIN_RPC_URL: ${SYNTHETIC_CHAIN_RPC_URL:-${GORCHAIN_RPC_URL}}
-      SYNTHETIC_DOMAIN_ID: ${SYNTHETIC_DOMAIN_ID:-${GORCHAIN_DOMAIN_ID}}
+      WARP_ROUTE_NAME: ${WARP_ROUTE_NAME}
+      WARP_ORIGIN_CHAIN: ${WARP_ORIGIN_CHAIN}
+      WARP_ORIGIN_TYPE: ${WARP_ORIGIN_TYPE}
+      WARP_ORIGIN_TOKEN: ${WARP_ORIGIN_TOKEN:-}
+      WARP_ORIGIN_NAME: ${WARP_ORIGIN_NAME}
+      WARP_ORIGIN_SYMBOL: ${WARP_ORIGIN_SYMBOL}
+      WARP_ORIGIN_DECIMALS: ${WARP_ORIGIN_DECIMALS}
+      WARP_REMOTE_CHAIN: ${WARP_REMOTE_CHAIN}
+      WARP_REMOTE_TYPE: ${WARP_REMOTE_TYPE}
+      WARP_REMOTE_NAME: ${WARP_REMOTE_NAME}
+      WARP_REMOTE_SYMBOL: ${WARP_REMOTE_SYMBOL}
+      WARP_REMOTE_DECIMALS: ${WARP_REMOTE_DECIMALS}
+      WARP_TOKEN_METADATA_URI: ${WARP_TOKEN_METADATA_URI:-}
       # Chain config (used by envsubst for registry/token templates)
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
@@ -23,21 +27,16 @@ services:
       SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
       GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
       SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
-      # Synthetic token metadata URI (required when isTestnet=false)
-      # Must point to JSON with name, symbol, description, image matching token config
-      WARP_TOKEN_METADATA_URI: ${WARP_TOKEN_METADATA_URI:-}
       # Options
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
     volumes:
       - warp-deployer-scripts-config:/opt/scripts:ro
-      - warp-deployer-token-config:/config/token:ro
       - warp-deployer-registry-config:/config/registry:ro
       - bridge-state:/state
       - bridge-logs:/logs
 
 volumes:
   warp-deployer-scripts-config:
-  warp-deployer-token-config:
   warp-deployer-registry-config:
   bridge-state:
   bridge-logs:

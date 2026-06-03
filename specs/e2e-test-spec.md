@@ -335,7 +335,8 @@ tests/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
 │       ├── test-spec-deployer.yml    # Core deployer test spec
-│       ├── test-spec-warp-deployer.yml  # Warp deployer test spec
+│       ├── test-spec-warp-deployer-usdc.yml    # Warp deployer test spec (USDC collateral route)
+│       ├── test-spec-warp-deployer-native.yml  # Warp deployer test spec (SOL native route)
 │       ├── test-spec-minio.yml       # MinIO test spec
 │       ├── test-spec-validator-gorchain.yml  # Validator (Gorchain) test spec
 │       ├── test-spec-validator-solana.yml    # Validator (Solana) test spec
@@ -1416,14 +1417,25 @@ secrets:
 ```
 
 ```yaml
-# test-spec-warp-deployer.yml
+# test-spec-warp-deployer-usdc.yml  (the native route uses the same shape with
+# WARP_ORIGIN_TYPE: native and no WARP_ORIGIN_TOKEN; see test-spec-warp-deployer-native.yml)
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
+namespace: laconic-warp-usdc-e2e
 config:
-  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
   WARP_ROUTE_NAME: "USDC-solana-gorchain"
-  COLLATERAL_CHAIN: solana
-  SYNTHETIC_CHAIN: gorchain
+  WARP_ORIGIN_CHAIN: solana
+  WARP_ORIGIN_TYPE: collateral
+  WARP_ORIGIN_TOKEN: "REPLACE_AT_RUNTIME"
+  WARP_ORIGIN_NAME: "USD Coin"
+  WARP_ORIGIN_SYMBOL: "USDC"
+  WARP_ORIGIN_DECIMALS: "6"
+  WARP_REMOTE_CHAIN: gorchain
+  WARP_REMOTE_TYPE: synthetic
+  WARP_REMOTE_NAME: "USD Coin"
+  WARP_REMOTE_SYMBOL: "USDC"
+  WARP_REMOTE_DECIMALS: "6"
+  WARP_TOKEN_METADATA_URI: ""
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
   GORCHAIN_DOMAIN_ID: "99999"
@@ -1432,15 +1444,9 @@ config:
   SOLANA_CHAIN_ID: "99998"
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
-  COLLATERAL_CHAIN_RPC_URL: "http://solana-rpc:18899"
-  COLLATERAL_DOMAIN_ID: "99998"
-  SYNTHETIC_CHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SYNTHETIC_DOMAIN_ID: "99999"
-  WARP_TOKEN_METADATA_URI: ""
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
-  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
 secrets:
   hyperlane-warp-deployer-secrets:

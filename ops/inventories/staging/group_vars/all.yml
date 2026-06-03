@@ -46,7 +46,6 @@ dns_records:
 # the Helius DEVNET endpoint; chain RPC/domain IDs (Solana devnet 1399811151,
 # *_IS_TESTNET=true) are committed literals in deployment/staging/spec-*.yml.
 SOLANA_RPC_URL: "https://devnet.helius-rpc.com/?api-key={{ helius_api_key }}"
-COLLATERAL_CHAIN_RPC_URL: "{{ SOLANA_RPC_URL }}"   # warp collateral chain == Solana
 HARDWARE_WALLET_PUBKEY: "REPLACE_WITH_HW_WALLET_PUBKEY"
 IGP_ORACLE_PUBKEY: "REPLACE_WITH_IGP_ORACLE_PUBKEY"
 GORCHAIN_VALIDATOR_ADDRESS: "REPLACE_WITH_GORCHAIN_VALIDATOR_ADDRESS"
@@ -74,7 +73,6 @@ stack_env_vars:
   hyperlane-svm-warp-deployer:
     - HARDWARE_WALLET_PUBKEY
     - SOLANA_RPC_URL
-    - COLLATERAL_CHAIN_RPC_URL
     - GHCR_PAT
   hyperlane-relayer:
     - SOLANA_RPC_URL
@@ -106,7 +104,6 @@ stacks:
     path: stack_orchestrator/data/stacks/hyperlane-svm-deployer
     is_job: true
   hyperlane-svm-warp-deployer:
-    spec: spec-warp-deployer.yml
     path: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
     is_job: true
   hyperlane-relayer:
@@ -127,3 +124,8 @@ stacks:
     path: stack_orchestrator/data/stacks/hyperlane-validator
     configmaps:
       - agent-config
+
+# Warp routes to deploy. Each <label> needs deployment/spec-warp-<label>.yml
+# (its route config); it deploys as laconic-hyperlane-warp-<label>.
+warp_routes:
+  - usdc

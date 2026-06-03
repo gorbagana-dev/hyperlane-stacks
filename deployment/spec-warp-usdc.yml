@@ -6,6 +6,7 @@
 # ${VAR:-${OTHER}} defaults from compose files.
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
+namespace: laconic-hyperlane-warp-usdc
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 network:
@@ -14,10 +15,19 @@ volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
 config:
-  WARP_TOKEN_MINT: "REPLACE_WITH_TOKEN_MINT_ADDRESS"
   WARP_ROUTE_NAME: "USDC-solana-gorchain"
-  COLLATERAL_CHAIN: solana
-  SYNTHETIC_CHAIN: gorchain
+  WARP_ORIGIN_CHAIN: solana
+  WARP_ORIGIN_TYPE: collateral
+  WARP_ORIGIN_TOKEN: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  WARP_ORIGIN_NAME: "USD Coin"
+  WARP_ORIGIN_SYMBOL: "USDC"
+  WARP_ORIGIN_DECIMALS: "6"
+  WARP_REMOTE_CHAIN: gorchain
+  WARP_REMOTE_TYPE: synthetic
+  WARP_REMOTE_NAME: "USD Coin"
+  WARP_REMOTE_SYMBOL: "USDC"
+  WARP_REMOTE_DECIMALS: "6"
+  # Origin (solana) RPC is SOLANA_RPC_URL (Helius, secret) → see secrets:.
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486093"
   GORCHAIN_CHAIN_ID: "1198486093"
@@ -25,11 +35,6 @@ config:
   SOLANA_CHAIN_ID: "1399811149"
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
-  # Derived vars (collateral=solana, synthetic=gorchain by default).
-  # COLLATERAL_CHAIN_RPC_URL == SOLANA_RPC_URL (Helius, secret) → see secrets:.
-  COLLATERAL_DOMAIN_ID: "1399811149"
-  SYNTHETIC_CHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
-  SYNTHETIC_DOMAIN_ID: "1198486093"
   # Synthetic token metadata URI — required when IS_TESTNET=false.
   # Must point to JSON with matching name/symbol, description, and image URL.
   # Example: https://raw.githubusercontent.com/.../metadata.json
@@ -37,7 +42,6 @@ config:
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
-  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
@@ -49,7 +53,6 @@ secrets:
       DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
       HARDWARE_WALLET_PUBKEY:   { env: HARDWARE_WALLET_PUBKEY }
       SOLANA_RPC_URL:           { env: SOLANA_RPC_URL }
-      COLLATERAL_CHAIN_RPC_URL: { env: COLLATERAL_CHAIN_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

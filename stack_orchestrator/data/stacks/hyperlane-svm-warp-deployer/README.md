@@ -30,23 +30,38 @@ Reuses the `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` image (same as 
 laconic-so --stack hyperlane-svm-warp-deployer deploy init --output warp-deployer-spec.yml
 ```
 
-Edit `warp-deployer-spec.yml` (see `deployment/spec-warp-deployer.yml` for reference):
+Edit `warp-deployer-spec.yml` (see `deployment/spec-warp-usdc.yml` for reference):
 
 ```yaml
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
+namespace: laconic-hyperlane-warp-usdc
 config:
-  WARP_TOKEN_MINT: "REPLACE_WITH_TOKEN_MINT_ADDRESS"
-  COLLATERAL_CHAIN: gorchain
-  SYNTHETIC_CHAIN: solana
-  COLLATERAL_CHAIN_RPC_URL: "https://gorchain-rpc.example.com"
-  SYNTHETIC_CHAIN_RPC_URL: "https://solana-rpc.example.com"
-  COLLATERAL_DOMAIN_ID: "99999"
-  SYNTHETIC_DOMAIN_ID: "99998"
+  WARP_ROUTE_NAME: "USDC-solana-gorchain"
+  WARP_ORIGIN_CHAIN: solana
+  WARP_ORIGIN_TYPE: collateral
+  WARP_ORIGIN_TOKEN: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  WARP_ORIGIN_NAME: "USD Coin"
+  WARP_ORIGIN_SYMBOL: "USDC"
+  WARP_ORIGIN_DECIMALS: "6"
+  WARP_REMOTE_CHAIN: gorchain
+  WARP_REMOTE_TYPE: synthetic
+  WARP_REMOTE_NAME: "USD Coin"
+  WARP_REMOTE_SYMBOL: "USDC"
+  WARP_REMOTE_DECIMALS: "6"
+  WARP_TOKEN_METADATA_URI: "REPLACE_WITH_TOKEN_METADATA_URI"
+  GORCHAIN_RPC_URL: "https://gorchain-rpc.example.com"
+  SOLANA_RPC_URL: "https://solana-rpc.example.com"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
+  GORCHAIN_IS_TESTNET: "false"
+  SOLANA_IS_TESTNET: "false"
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
-  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
+  warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
 secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
@@ -66,7 +81,8 @@ Edit the config templates in `warp-deployer-deployment/configmaps/`:
 | ConfigMap directory | Contents |
 |---|---|
 | `warp-deployer-scripts-config/` | `deploy.sh` -- warp route deployment script |
-| `warp-deployer-token-config/` | Token metadata (name, symbol, decimals, mint address) |
+
+The token-config is built at runtime by `deploy.sh` from the route's `config:` fields (no per-token template).
 
 ## 5. Create secrets
 
@@ -89,13 +105,13 @@ laconic-so deployment --dir warp-deployer-deployment start
 
 The pod runs `deploy.sh` which:
 
-1. Checks idempotency — skips if `token-config.json` file already exists at `/state/` (override with `FORCE_REDEPLOY=true`)
+1. Checks idempotency — skips if `token-config.json` already exists at `/state/warp-routes/<route-name>/` (override with `FORCE_REDEPLOY=true`)
 2. Reads core program IDs from the `program-ids.json` state file (mounted at `/state/`)
-3. Renders token config and registry templates via `envsubst`
-4. Deploys warp route programs (collateral + synthetic) via `hyperlane-sealevel-client`
+3. Builds the token config generically from the route's `config:` fields with `jq`, and renders the registry template via `envsubst`
+4. Deploys the warp route programs for both sides via `hyperlane-sealevel-client`
 5. Verifies deployed program hashes against local `.so` files
 6. Transfers warp route program upgrade authority to `HARDWARE_WALLET_PUBKEY`
-7. Writes artifacts to state files at `/state/`: `token-config.json`, `warp-deploy-outputs/`
+7. Writes artifacts to state files at `/state/warp-routes/<route-name>/`: `token-config.json`, `warp-deploy-outputs/`
 8. Shreds and deletes the deployer keypair from the pod
 
 The container exits after completion (`restart: "no"`).

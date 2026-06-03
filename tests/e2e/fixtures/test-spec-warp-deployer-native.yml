@@ -1,5 +1,6 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
+namespace: laconic-warp-native-e2e
 image-overrides:
   warp-deployer: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
@@ -10,10 +11,17 @@ volumes:
   bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
   bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
 config:
-  WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
-  WARP_ROUTE_NAME: "USDC-solana-gorchain"
-  COLLATERAL_CHAIN: solana
-  SYNTHETIC_CHAIN: gorchain
+  WARP_ROUTE_NAME: "SOL-solana-gorchain"
+  WARP_ORIGIN_CHAIN: solana
+  WARP_ORIGIN_TYPE: native
+  WARP_ORIGIN_NAME: "Solana"
+  WARP_ORIGIN_SYMBOL: "SOL"
+  WARP_ORIGIN_DECIMALS: "9"
+  WARP_REMOTE_CHAIN: gorchain
+  WARP_REMOTE_TYPE: synthetic
+  WARP_REMOTE_NAME: "Solana"
+  WARP_REMOTE_SYMBOL: "SOL"
+  WARP_REMOTE_DECIMALS: "9"
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
@@ -21,16 +29,10 @@ config:
   SOLANA_CHAIN_ID: "99998"
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
-  # Derived vars — SO k8s path doesn't support nested ${VAR:-${OTHER}} defaults
-  COLLATERAL_CHAIN_RPC_URL: "http://solana-rpc:18899"
-  COLLATERAL_DOMAIN_ID: "99998"
-  SYNTHETIC_CHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SYNTHETIC_DOMAIN_ID: "99999"
   WARP_TOKEN_METADATA_URI: ""
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
-  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
 resources:
   containers:

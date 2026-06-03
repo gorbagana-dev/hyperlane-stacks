@@ -5,16 +5,18 @@ STATE_DIR="${STATE_OUTPUT_DIR:-/state}"
 LOGS_DIR="${LOGS_OUTPUT_DIR:-/logs}"
 mkdir -p "${STATE_DIR}" "${LOGS_DIR}"
 
+ROUTE_STATE_DIR="${STATE_DIR}/warp-routes/${WARP_ROUTE_NAME}"
+mkdir -p "${ROUTE_STATE_DIR}"
+
 LOG_FILE="${LOGS_DIR}/svm-warp-deployer-$(date -u +%Y%m%dT%H%M%SZ).log"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 echo "Logging to ${LOG_FILE}"
 
 echo "=== Hyperlane SVM Warp Route Deployer ==="
-echo "Token mint: ${WARP_TOKEN_MINT}"
 echo "Warp route name: ${WARP_ROUTE_NAME}"
 
-echo "Collateral chain: ${COLLATERAL_CHAIN} (domain ${COLLATERAL_DOMAIN_ID})"
-echo "Synthetic chain: ${SYNTHETIC_CHAIN} (domain ${SYNTHETIC_DOMAIN_ID})"
+echo "Origin chain: ${WARP_ORIGIN_CHAIN} (${WARP_ORIGIN_TYPE})"
+echo "Remote chain: ${WARP_REMOTE_CHAIN} (${WARP_REMOTE_TYPE})"
 
 # -------------------------------------------------------
 # Prerequisite check: core deployment must exist
@@ -27,38 +29,29 @@ if [ ! -s "${PROGRAM_IDS_FILE}" ]; then
   exit 1
 fi
 
-COLLATERAL_PROGRAMS=$(jq -c --arg chain "${COLLATERAL_CHAIN}" '.[$chain] // {}' "${PROGRAM_IDS_FILE}")
-SYNTHETIC_PROGRAMS=$(jq -c --arg chain "${SYNTHETIC_CHAIN}" '.[$chain] // {}' "${PROGRAM_IDS_FILE}")
+# Resolve a chain's RPC URL and domain id from the global chain config by name,
+# e.g. gorchain -> $GORCHAIN_RPC_URL / $GORCHAIN_DOMAIN_ID.
+chain_var() {  # $1=chain  $2=suffix(RPC_URL|DOMAIN_ID)
+  upper=$(echo "$1" | tr '[:lower:]' '[:upper:]')
+  varname="${upper}_${2}"
+  printf '%s' "${!varname:-}"
+}
 
-if [ "$COLLATERAL_PROGRAMS" = "{}" ]; then
-  echo "ERROR: program-ids.json missing data for ${COLLATERAL_CHAIN}."
-  exit 1
-fi
-if [ "$SYNTHETIC_PROGRAMS" = "{}" ]; then
-  echo "ERROR: program-ids.json missing data for ${SYNTHETIC_CHAIN}."
-  exit 1
-fi
+for side_chain in "${WARP_ORIGIN_CHAIN}" "${WARP_REMOTE_CHAIN}"; do
+  progs=$(jq -c --arg c "$side_chain" '.[$c] // {}' "${PROGRAM_IDS_FILE}")
+  if [ "$progs" = "{}" ]; then
+    echo "ERROR: program-ids.json missing data for ${side_chain} (route ${WARP_ROUTE_NAME})."
+    exit 1
+  fi
+done
 
 echo "Core program IDs found for both chains."
-
-# Extract addresses from core deployment for use by envsubst in templates
-export COLLATERAL_MAILBOX=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.mailbox')
-export SYNTHETIC_MAILBOX=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.mailbox')
-export COLLATERAL_ISM=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.multisig_ism_message_id')
-export COLLATERAL_IGP=$(echo "$COLLATERAL_PROGRAMS" | jq -r '.overhead_igp_account')
-export SYNTHETIC_ISM=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.multisig_ism_message_id')
-export SYNTHETIC_IGP=$(echo "$SYNTHETIC_PROGRAMS" | jq -r '.overhead_igp_account')
-
-echo "Collateral mailbox (${COLLATERAL_CHAIN}): ${COLLATERAL_MAILBOX}"
-echo "Synthetic mailbox (${SYNTHETIC_CHAIN}): ${SYNTHETIC_MAILBOX}"
-echo "Collateral ISM: ${COLLATERAL_ISM}, IGP: ${COLLATERAL_IGP}"
-echo "Synthetic  ISM: ${SYNTHETIC_ISM}, IGP: ${SYNTHETIC_IGP}"
 
 # -------------------------------------------------------
 # Idempotency check: skip if token-config already populated
 # -------------------------------------------------------
 if [ "${FORCE_REDEPLOY:-false}" != "true" ]; then
-  EXISTING_FILE="${STATE_DIR}/token-config.json"
+  EXISTING_FILE="${ROUTE_STATE_DIR}/token-config.json"
   if [ -s "${EXISTING_FILE}" ]; then
     CONTENT=$(cat "${EXISTING_FILE}")
     if [ "$CONTENT" != "{}" ] && [ "$CONTENT" != "null" ]; then
@@ -80,7 +73,7 @@ chmod 600 "${DEPLOYER_KEY_FILE}"
 # Create Solana CLI config (required by hyperlane-sealevel-client even when --keypair is set)
 mkdir -p /root/.config/solana/cli
 cat > /root/.config/solana/cli/config.yml <<SOLCFG
-json_rpc_url: "${COLLATERAL_CHAIN_RPC_URL}"
+json_rpc_url: "$(chain_var "${WARP_ORIGIN_CHAIN}" RPC_URL)"
 websocket_url: ""
 keypair_path: "${DEPLOYER_KEY_FILE}"
 commitment: finalized
@@ -93,10 +86,11 @@ mkdir -p "${ENVIRONMENTS_DIR}" "${WORK_DIR}/output"
 
 # Write core program IDs where the CLI expects them:
 #   {environments_dir}/{environment}/{chain}/core/program-ids.json
-mkdir -p "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${COLLATERAL_CHAIN}/core"
-mkdir -p "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${SYNTHETIC_CHAIN}/core"
-echo "$COLLATERAL_PROGRAMS" > "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${COLLATERAL_CHAIN}/core/program-ids.json"
-echo "$SYNTHETIC_PROGRAMS" > "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${SYNTHETIC_CHAIN}/core/program-ids.json"
+for side_chain in "${WARP_ORIGIN_CHAIN}" "${WARP_REMOTE_CHAIN}"; do
+  mkdir -p "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${side_chain}/core"
+  jq -c --arg c "$side_chain" '.[$c]' "${PROGRAM_IDS_FILE}" \
+    > "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${side_chain}/core/program-ids.json"
+done
 
 # -------------------------------------------------------
 # Render config templates via envsubst
@@ -112,15 +106,34 @@ mkdir -p "${REGISTRY_DIR}/chains"
 envsubst < /config/registry/metadata.yaml.tmpl > "${REGISTRY_DIR}/chains/metadata.yaml"
 echo "Registry rendered at ${REGISTRY_DIR}/chains/metadata.yaml"
 
-# Token config — render template via envsubst (ISM/IGP/mailbox vars exported above),
-# then strip empty "uri" fields (CLI panics on "" — needs null/absent).
-envsubst < /config/token/token-config.json.tmpl > "${WORK_DIR}/token-config.raw.json"
+# Token config — build one side at a time from per-route config + core addresses.
+# name/symbol/decimals are per-side: a route may label or scale the same asset
+# differently on each chain (e.g. USDC on the origin, gUSDC on the synthetic side).
+build_side() {  # $1=chain $2=type $3=name $4=symbol $5=decimals $6=token(optional)
+  chain=$1; type=$2; name=$3; symbol=$4; decimals=$5; token=${6:-}
+  progs=$(jq -c --arg c "$chain" '.[$c]' "${PROGRAM_IDS_FILE}")
+  ism=$(printf '%s' "$progs" | jq -r '.multisig_ism_message_id')
+  igp=$(printf '%s' "$progs" | jq -r '.overhead_igp_account')
+  jq -n \
+    --arg type "$type" --arg name "$name" --arg symbol "$symbol" \
+    --argjson decimals "$decimals" --arg token "$token" \
+    --arg uri "${WARP_TOKEN_METADATA_URI:-}" --arg ism "$ism" --arg igp "$igp" \
+    '{type:$type, name:$name, symbol:$symbol, decimals:$decimals,
+      interchainSecurityModule:$ism, interchainGasPaymaster:$igp}
+     + (if $type=="collateral" then {token:$token} else {} end)
+     + (if $type=="synthetic" and $uri!="" then {uri:$uri} else {} end)'
+}
 
-jq 'walk(if type == "object" and .uri == "" then del(.uri) else . end)' \
-  "${WORK_DIR}/token-config.raw.json" > "${WORK_DIR}/token-config.json"
-echo "Token config rendered at ${WORK_DIR}/token-config.json"
-echo "Token config contents:"
-cat "${WORK_DIR}/token-config.json"
+if [ "${WARP_ORIGIN_TYPE}" = "collateral" ] && [ -z "${WARP_ORIGIN_TOKEN:-}" ]; then
+  echo "ERROR: WARP_ORIGIN_TYPE=collateral but WARP_ORIGIN_TOKEN is empty (route ${WARP_ROUTE_NAME})."
+  exit 1
+fi
+
+jq -n \
+  --arg oc "${WARP_ORIGIN_CHAIN}" --argjson o "$(build_side "${WARP_ORIGIN_CHAIN}" "${WARP_ORIGIN_TYPE}" "${WARP_ORIGIN_NAME}" "${WARP_ORIGIN_SYMBOL}" "${WARP_ORIGIN_DECIMALS}" "${WARP_ORIGIN_TOKEN:-}")" \
+  --arg rc "${WARP_REMOTE_CHAIN}" --argjson r "$(build_side "${WARP_REMOTE_CHAIN}" "${WARP_REMOTE_TYPE}" "${WARP_REMOTE_NAME}" "${WARP_REMOTE_SYMBOL}" "${WARP_REMOTE_DECIMALS}" "")" \
+  '{($oc):$o, ($rc):$r}' > "${WORK_DIR}/token-config.json"
+echo "Token config:"; cat "${WORK_DIR}/token-config.json"
 
 # -------------------------------------------------------
 # Deploy warp routes (single invocation for all chains)
@@ -225,41 +238,43 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
 fi
 
 # -------------------------------------------------------
-# Resolve the synthetic token mint
-# It is a PDA of the synthetic warp program (seeds ["hyperlane_token","-","mint"]).
-# The Hyperlane SDK requires it explicitly in warp config and does not auto-derive
-# it, so query the deployed program and emit it for warp-UI to consume.
+# Resolve the synthetic token mint (only when the remote side is synthetic).
+# It is a PDA of the synthetic warp program; the Hyperlane SDK requires it
+# explicitly in warp config and does not auto-derive it, so query the deployed
+# program and emit it for warp-UI to consume.
 # -------------------------------------------------------
-echo ""
-echo "=== Resolving synthetic token mint ==="
-WARP_PROGRAMS_FILE="${WARP_OUTPUT_DIR}/program-ids.json"
-SYNTHETIC_WARP_PROGRAM=""
-if [ -f "${WARP_PROGRAMS_FILE}" ]; then
-  SYNTHETIC_WARP_PROGRAM=$(jq -r --arg c "${SYNTHETIC_CHAIN}" '.[$c].base58 // empty' "${WARP_PROGRAMS_FILE}")
-fi
 SYNTHETIC_MINT=""
-if [ -n "${SYNTHETIC_WARP_PROGRAM}" ]; then
-  MINT_QUERY_OUT=$(hyperlane-sealevel-client \
-    --keypair "${DEPLOYER_KEY_FILE}" \
-    --url "${SYNTHETIC_CHAIN_RPC_URL}" \
-    token query --program-id "${SYNTHETIC_WARP_PROGRAM}" synthetic 2>&1 || true)
-  SYNTHETIC_MINT=$(echo "${MINT_QUERY_OUT}" \
-    | grep -oE 'Mint / Mint Authority:[[:space:]]*[1-9A-HJ-NP-Za-km-z]{32,44}' \
-    | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
-  if [ -z "${SYNTHETIC_MINT}" ]; then
-    SYNTHETIC_MINT=$(echo "${MINT_QUERY_OUT}" \
-      | grep -oE 'mint:[[:space:]]+[1-9A-HJ-NP-Za-km-z]{32,44}' \
-      | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
+if [ "${WARP_REMOTE_TYPE}" = "synthetic" ]; then
+  echo ""
+  echo "=== Resolving synthetic token mint ==="
+  WARP_PROGRAMS_FILE="${WARP_OUTPUT_DIR}/program-ids.json"
+  SYNTHETIC_WARP_PROGRAM=""
+  if [ -f "${WARP_PROGRAMS_FILE}" ]; then
+    SYNTHETIC_WARP_PROGRAM=$(jq -r --arg c "${WARP_REMOTE_CHAIN}" '.[$c].base58 // empty' "${WARP_PROGRAMS_FILE}")
   fi
+  if [ -n "${SYNTHETIC_WARP_PROGRAM}" ]; then
+    MINT_QUERY_OUT=$(hyperlane-sealevel-client \
+      --keypair "${DEPLOYER_KEY_FILE}" \
+      --url "$(chain_var "${WARP_REMOTE_CHAIN}" RPC_URL)" \
+      token query --program-id "${SYNTHETIC_WARP_PROGRAM}" synthetic 2>&1 || true)
+    SYNTHETIC_MINT=$(echo "${MINT_QUERY_OUT}" \
+      | grep -oE 'Mint / Mint Authority:[[:space:]]*[1-9A-HJ-NP-Za-km-z]{32,44}' \
+      | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
+    if [ -z "${SYNTHETIC_MINT}" ]; then
+      SYNTHETIC_MINT=$(echo "${MINT_QUERY_OUT}" \
+        | grep -oE 'mint:[[:space:]]+[1-9A-HJ-NP-Za-km-z]{32,44}' \
+        | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
+    fi
+  fi
+  if [ -z "${SYNTHETIC_MINT}" ]; then
+    echo "ERROR: could not resolve synthetic mint for ${WARP_REMOTE_CHAIN} (program ${SYNTHETIC_WARP_PROGRAM:-<none>})"
+    echo "Query output:"
+    echo "${MINT_QUERY_OUT:-<no output>}"
+    exit 1
+  fi
+  export SYNTHETIC_MINT
+  echo "Synthetic token mint (${WARP_REMOTE_CHAIN}): ${SYNTHETIC_MINT}"
 fi
-if [ -z "${SYNTHETIC_MINT}" ]; then
-  echo "ERROR: could not resolve synthetic mint for ${SYNTHETIC_CHAIN} (program ${SYNTHETIC_WARP_PROGRAM:-<none>})"
-  echo "Query output:"
-  echo "${MINT_QUERY_OUT:-<no output>}"
-  exit 1
-fi
-export SYNTHETIC_MINT
-echo "Synthetic token mint (${SYNTHETIC_CHAIN}): ${SYNTHETIC_MINT}"
 
 # -------------------------------------------------------
 # Build token-config.json output
@@ -267,45 +282,30 @@ echo "Synthetic token mint (${SYNTHETIC_CHAIN}): ${SYNTHETIC_MINT}"
 echo ""
 echo "=== Building token-config.json ==="
 
-cat > "${WORK_DIR}/output/token-config.json" <<TOKEN_EOF
-{
-  "warpRoute": {
-    "type": "collateral-and-synthetic",
-    "tokenMint": "${WARP_TOKEN_MINT}",
-    "collateral": {
-      "chain": "${COLLATERAL_CHAIN}",
-      "domainId": ${COLLATERAL_DOMAIN_ID},
-      "mailbox": "${COLLATERAL_MAILBOX}",
-      "rpcUrl": "${COLLATERAL_CHAIN_RPC_URL}"
-    },
-    "synthetic": {
-      "chain": "${SYNTHETIC_CHAIN}",
-      "domainId": ${SYNTHETIC_DOMAIN_ID},
-      "mailbox": "${SYNTHETIC_MAILBOX}",
-      "mint": "${SYNTHETIC_MINT}",
-      "rpcUrl": "${SYNTHETIC_CHAIN_RPC_URL}"
-    }
-  }
-}
-TOKEN_EOF
+# Wrap the rendered (chain-keyed) token-config with the route name, and record
+# the synthetic mint under its chain's entry when one was resolved.
+jq --arg name "${WARP_ROUTE_NAME}" --arg rc "${WARP_REMOTE_CHAIN}" --arg mint "${SYNTHETIC_MINT:-}" \
+  '{warpRoute: ({name:$name} + .)}
+   | if $mint != "" then .warpRoute[$rc] += {mint:$mint} else . end' \
+  "${WORK_DIR}/token-config.json" > "${WORK_DIR}/output/token-config.json"
 
 # -------------------------------------------------------
 # Write deployment artifacts to k8s ConfigMaps
 # -------------------------------------------------------
 echo ""
-echo "=== Writing warp route artifacts to ${STATE_DIR} ==="
+echo "=== Writing warp route artifacts to ${ROUTE_STATE_DIR} ==="
 
-cp "${WORK_DIR}/output/token-config.json" "${STATE_DIR}/token-config.json"
+cp "${WORK_DIR}/output/token-config.json" "${ROUTE_STATE_DIR}/token-config.json"
 
 if [ -d "${WARP_OUTPUT_DIR}" ]; then
-  rm -rf "${STATE_DIR}/warp-deploy-outputs"
-  mkdir -p "${STATE_DIR}/warp-deploy-outputs"
-  cp -a "${WARP_OUTPUT_DIR}/." "${STATE_DIR}/warp-deploy-outputs/" 2>/dev/null || true
+  rm -rf "${ROUTE_STATE_DIR}/warp-deploy-outputs"
+  mkdir -p "${ROUTE_STATE_DIR}/warp-deploy-outputs"
+  cp -a "${WARP_OUTPUT_DIR}/." "${ROUTE_STATE_DIR}/warp-deploy-outputs/" 2>/dev/null || true
   # Drop the program-id and buffer keypairs the sealevel-client emits.
   # Buffer keypairs are dead post-deploy; program-id keypairs lock in the
   # deployment identity but no consumer reads them and the upgrade-authority
   # key (Ledger in prod) already covers any real recovery scenario.
-  rm -rf "${STATE_DIR}/warp-deploy-outputs/keys"
+  rm -rf "${ROUTE_STATE_DIR}/warp-deploy-outputs/keys"
 fi
 
 # -------------------------------------------------------
@@ -316,16 +316,16 @@ rm -f "${DEPLOYER_KEY_FILE}"
 # -------------------------------------------------------
 # Preflight: verify expected outputs
 # -------------------------------------------------------
-if [ ! -s "${STATE_DIR}/token-config.json" ]; then
-  echo "ERROR: warp-deployer preflight failed: ${STATE_DIR}/token-config.json missing or empty"
+if [ ! -s "${ROUTE_STATE_DIR}/token-config.json" ]; then
+  echo "ERROR: warp-deployer preflight failed: ${ROUTE_STATE_DIR}/token-config.json missing or empty"
   exit 1
 fi
 
 echo ""
 echo "=== Warp route deployment complete ==="
-echo "Collateral chain: ${COLLATERAL_CHAIN}"
-echo "Synthetic chain: ${SYNTHETIC_CHAIN}"
+echo "Origin chain: ${WARP_ORIGIN_CHAIN}"
+echo "Remote chain: ${WARP_REMOTE_CHAIN}"
 echo ""
-echo "Artifacts written to ${STATE_DIR}:"
+echo "Artifacts written to ${ROUTE_STATE_DIR}:"
 echo "  - token-config.json"
-[ -d "${STATE_DIR}/warp-deploy-outputs" ] && echo "  - warp-deploy-outputs/"
+[ -d "${ROUTE_STATE_DIR}/warp-deploy-outputs" ] && echo "  - warp-deploy-outputs/"
