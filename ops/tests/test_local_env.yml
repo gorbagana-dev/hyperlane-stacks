@@ -18,8 +18,10 @@
         solana_rpc_url: "https://solana-rpc.example"
         topology: "single"
         validators:
-          - { label: gorchain-primary, chain: gorchain }
-          - { label: solana-primary, chain: solana }
+          - label: gorchain-primary
+            chain: gorchain
+          - label: solana-primary
+            chain: solana
 
     - name: Single-host wiring resolves as designed
       ansible.builtin.assert:

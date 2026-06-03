@@ -100,8 +100,11 @@ spec_token_renders:
   __PROM_VALIDATOR_TARGETS__: >-
     {{ 'gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090'
        if topology == 'single'
-       else 'gorchain-primary=validator-gorchain.' ~ dns_zone ~ ':443,solana-primary=validator-solana.' ~ dns_zone ~ ':443' }}
-  __PROM_RELAYER_TARGETS__: "{{ 'primary=relayer:9091' if topology == 'single' else 'primary=relayer.' ~ dns_zone ~ ':443' }}"
+       else 'gorchain-primary=validator-gorchain.' ~ dns_zone ~ ':443,'
+            ~ 'solana-primary=validator-solana.' ~ dns_zone ~ ':443' }}
+  __PROM_RELAYER_TARGETS__: >-
+    {{ 'primary=relayer:9091' if topology == 'single'
+       else 'primary=relayer.' ~ dns_zone ~ ':443' }}
   "# __SINGLE_HOST_MINIO_XS__": "{{ _single_host_minio_xs if topology == 'single' else '' }}"
   "# __SINGLE_HOST_PROM_XS__": "{{ _single_host_prom_xs if topology == 'single' else '' }}"
 
