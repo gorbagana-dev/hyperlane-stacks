@@ -1,4 +1,9 @@
 ---
+- name: This role is single-host (mkcert) only
+  ansible.builtin.assert:
+    that: topology == 'single'
+    fail_msg: "local_tls runs only on the single-host topology (topology=single)."
+
 - name: Load validators (for cert SANs)
   ansible.builtin.include_tasks: ../common/tasks/load_validators.yml
 
@@ -20,16 +25,17 @@
     dest: /usr/local/bin/mkcert
     mode: "0755"
 
+# CAROOT is per-user; the become tasks below read this path with elevated perms.
 - name: Find the mkcert CAROOT
   ansible.builtin.command: mkcert -CAROOT
   register: _caroot
   changed_when: false
 
+# -install both creates rootCA.pem and trusts it; idempotent, so don't guard on the file.
 - name: Generate the mkcert root CA and trust it in the host system store
   become: true
   ansible.builtin.command: mkcert -install
-  args:
-    creates: "{{ _caroot.stdout }}/rootCA.pem"
+  changed_when: false
 
 - name: Ensure the cert dir exists
   ansible.builtin.file:
@@ -37,6 +43,7 @@
     state: directory
     mode: "0755"
 
+# Guarded by creates: delete bridge.crt to force re-issue if dns_zone/validators change.
 - name: Generate the multi-SAN leaf cert
   # Each hostname must be its own argv element — concatenate the list, don't join.
   ansible.builtin.command:
@@ -52,6 +59,7 @@
       - "{{ local_tls_cert_dir }}/bridge.key"
 
 - name: Slurp cert + key (slurp returns base64-encoded content)
+  no_log: true
   ansible.builtin.slurp:
     src: "{{ item }}"
   register: _slurped
@@ -60,6 +68,7 @@
     - "{{ local_tls_cert_dir }}/bridge.key"
 
 - name: Build the Caddy pre-seed backup
+  no_log: true
   become: true
   ansible.builtin.template:
     src: caddy-secrets.yaml.j2
