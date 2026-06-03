@@ -68,18 +68,29 @@
                  | map(attribute='Gateway')
                  | select('match', '^[0-9.]+$') | first }}
 
-    # One consolidated external-services block per spec. Single-host -> the stack's
-    # block (chains / chains+MinIO / chains+Prom); multi-host or non-consumer -> ''.
-    - name: Render the single-host external-services block (local only)
+    # Single-host chain-consumers: insert this stack's external-services block. The
+    # map is referenced only here, where the detect-block above has set kind_gateway_ip.
+    - name: Render the single-host external-services block (single-host consumers)
       ansible.builtin.replace:
         path: "{{ spec_file }}"
         regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
-        replace: >-
-          {{ single_host_external_services[stack_env_map_key | default(stack_name)]
-             if (topology | default('') == 'single'
-                 and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
-             else '' }}
-      when: spec_token_renders is defined
+        replace: "{{ single_host_external_services[stack_env_map_key | default(stack_name)] }}"
+      when:
+        - spec_token_renders is defined
+        - topology | default('') == 'single'
+        - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
+
+    # Everything else (multi-host, or stacks with no block): strip the marker. No map
+    # reference, so kind_gateway_ip is never needed here.
+    - name: Strip the single-host external-services marker (multi-host / non-consumers)
+      ansible.builtin.replace:
+        path: "{{ spec_file }}"
+        regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
+        replace: ''
+      when:
+        - spec_token_renders is defined
+        - not (topology | default('') == 'single'
+               and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
 
     - name: Run deploy create (committed spec — no init; SO reads it directly)
       ansible.builtin.command:
