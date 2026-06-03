@@ -31,19 +31,17 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 # deployment/local/bridges/default/operator/validators.yaml hostnames.
 dns_zone: "REPLACE_WITH_LOCAL_DNS_ZONE"
 dns_record_ttl: 300
-dns_records:
-  - name: s3
-    host: local-1
-  - name: minio-console
-    host: local-1
-  - name: grafana
-    host: local-1
-  - name: prometheus
-    host: local-1
-  - name: warp-ui
-    host: local-1
-  - name: relayer
-    host: local-1
+# Singleton DNS records are DERIVED from inventory group membership (dns_cloudflare
+# role): each subdomain points at whichever host runs that stack. One map serves both
+# topologies — single-host (all groups -> local-1) and multi-host (groups spread) —
+# so switching is a pure -i swap. Validator records come from validators.yaml.
+dns_record_map:
+  s3: minio_hosts
+  minio-console: minio_hosts
+  grafana: monitoring_hosts
+  prometheus: monitoring_hosts
+  warp-ui: warp_ui_hosts
+  relayer: relayer_hosts
 
 # --- On-host spec token rendering ---
 # Operator-supplied values not known until the zone/chains exist are committed as

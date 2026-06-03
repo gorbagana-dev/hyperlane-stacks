@@ -1,0 +1,9 @@
+---
+# Multi-host (Layer 2): the services host — MinIO, monitoring, gas-oracle, warp-ui,
+# deployer. Serves s3/minio-console/grafana/prometheus/warp-ui under dns_zone, so its
+# public_ip backs those A records and inbound 80/443 (Let's Encrypt) + 22 must be open.
+public_ip: "REPLACE_WITH_HOST_PUBLIC_IP"
+privileged_user: ubuntu
+deploy_user: ubuntu
+kind_mount_root: /srv/kind/hyperlane
+ansible_user: ubuntu

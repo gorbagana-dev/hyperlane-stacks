@@ -34,6 +34,11 @@
           - "'SOLANA_RPC_URL' not in all_secret_env"
           - "'COLLATERAL_CHAIN_RPC_URL' not in all_secret_env"
           - "'GORCHAIN_RPC_URL' not in all_secret_env"
+          # dns_records are derived from group membership (dns_cloudflare role), so the
+          # map points each subdomain at the group that runs it — one map, any topology
+          - "dns_record_map.s3 == 'minio_hosts'"
+          - "dns_record_map.grafana == 'monitoring_hosts'"
+          - "dns_record_map.relayer == 'relayer_hosts'"
           # local needs Cloudflare (DNS) but not Helius
           - "'cloudflare_api_token' in required_operator_secrets"
           - "'helius_api_key' not in required_operator_secrets"

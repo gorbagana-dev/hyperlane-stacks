@@ -363,8 +363,27 @@ operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
 - **New `local` env, mirroring prod/staging:** `ops/inventories/local/` +
   `deployment/local/spec-*.yml` (`deployment_subdir: deployment/local`) +
   `deployment/local/bridges/default/operator/validators.yaml`. `hosts.yml` supports
-  **both** topologies — single-host (all groups incl. a `chain_hosts` group on one
-  VM, Layer 1) and the multi-host split (Layer 2).
+  **both** topologies (below).
+- **Topologies.** Both chains are self-run **test validators with RPC enabled** — a
+  single-node gorchain (agave fork) test validator and a `solana-test-validator` —
+  stood up out-of-band; the env only consumes their RPC URLs.
+  - **Layer 1 (single-host):** one VM runs every bridge stack *and* both chain test
+    validators. The default `inventories/local/hosts.yml`.
+  - **Layer 2 (multi-host):** 3 VMs, chosen to **maximize cross-host routing** (not to
+    mirror staging's resource-pragmatic layout, which co-locates the gorchain chain +
+    hyperlane validator):
+
+    | Host | Runs |
+    |---|---|
+    | `local-chains` (beefy) | gorchain test validator (RPC) + `solana-test-validator` (RPC) — out-of-band, heavy, isolated |
+    | `local-services` | MinIO, monitoring, gas-oracle, warp-ui, deployer |
+    | `local-agents` | gorchain hyperlane validator, solana hyperlane validator, relayer |
+
+    Every routing-relevant hop crosses a host boundary (agents→MinIO, agents→chain
+    RPC, monitoring→agents `/metrics`); the chains are isolated on the beefy box and
+    the hyperlane validators sit off the chain test validators (so validator→chain RPC
+    is cross-host). Co-locating the three agents costs no coverage — they never route
+    to each other — and exercises Caddy multi-host-name routing on that one host.
 - **Networking = the prod/staging path.** On the kind path the laconic caddy-ingress
   controller does automatic HTTPS via **ACME → Let's Encrypt** (the `use_tls` flag
   only gates the *cert-manager* path used off-kind; woodburn confirms kind+LE works).
@@ -375,9 +394,9 @@ operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
   MinIO cert (so MinIO stays HTTPS, no `aws-sdk-rust` CA problem). Decision: in
   multi-host you need a hostname-routing layer per host anyway, so reuse Caddy/TLS
   rather than invent NodePort/plain-HTTP routing.
-- **Chains are out-of-band, and domain-routed:** gorchain (via `gorchain-stacks`) and
-  a local `solana-test-validator` are stood up separately *with their own domain
-  endpoints*; the env consumes those RPC URLs.
+- **Chain RPCs are domain-routed:** the out-of-band test validators expose their RPC
+  at their own domain endpoints (set up with the nodes); the env consumes those URLs
+  via the `__GORCHAIN_RPC_URL__` / `__SOLANA_RPC_URL__` tokens.
 - **On-host token render (generalized from the earlier chain-only render):**
   operator-supplied values not known until the zone/chains exist — `__DNS_ZONE__`
   (woven into the specs' `http-proxy` host-names and `AWS_ENDPOINT_URL_S3`) and the

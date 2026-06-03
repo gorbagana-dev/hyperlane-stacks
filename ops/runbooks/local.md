@@ -4,10 +4,21 @@ Bring the whole bridge up against **self-run chains** for end-to-end testing of 
 deploy-side ansible (testing Layers 1-2). Neither prod (mainnet) nor staging
 (devnet/Helius) inputs fit — `local` is its own committed inventory + spec tree.
 
-- **Layer 1 (single-host):** every stack on one VM. This is the default
+- **Layer 1 (single-host):** every stack + both test validators on one VM. Default
   `inventories/local/hosts.yml`.
-- **Layer 2 (multi-host):** the same specs, stacks spread across `local-1..local-N`.
-  Exercises the cross-host fetch/publish/delegate paths.
+- **Layer 2 (multi-host):** `inventories/local/hosts-multihost.yml`, a topology chosen
+  to maximize cross-host routing (every S3 write, chain-RPC call, and metrics scrape
+  crosses a host boundary):
+
+  | Machine | Runs | Managed by |
+  |---|---|---|
+  | chains box (beefy) | gorchain test validator (RPC) + `solana-test-validator` (RPC) | **out-of-band** — not in this inventory |
+  | `local-services` | MinIO, monitoring, gas-oracle, warp-ui, deployer | this ansible |
+  | `local-agents` | gorchain + solana hyperlane validators, relayer | this ansible |
+
+  The chains box is provisioned separately (gorchain-stacks + a solana-test-validator)
+  and reached via the `gorchain_rpc_url`/`solana_rpc_url` domains, so it is **not** an
+  ansible target — only `local-services` and `local-agents` are.
 
 **Networking model.** `local` mirrors prod/staging: Caddy + Cloudflare DNS + real
 Let's Encrypt, under an **operator-supplied public zone** (`dns_zone`). That makes
@@ -48,9 +59,10 @@ Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 
 ## 2. Stand up the chains (out-of-band, with domains)
 
-`local` only *consumes* chain RPCs. On the host(s) in the `chain_hosts` group, bring
-up **gorchain** (via `gorchain-stacks`) and a **solana-test-validator**, and give
-each a **domain endpoint** (its own DNS + TLS, as part of the node setup). Fund the
+`local` only *consumes* chain RPCs. Bring up a single-node **gorchain test validator**
+(via `gorchain-stacks`) and a **`solana-test-validator`**, both with RPC enabled and
+each given a **domain endpoint** (its own DNS + TLS, as part of the node setup) —
+single-host: on the one VM; multi-host: on the beefy chains box. Fund the
 deployer/validator/relayer keypairs on both chains, and create the collateral USDC
 mint on the Solana side (its address → `WARP_TOKEN_MINT`).
 
@@ -73,13 +85,15 @@ solana_rpc_url: "https://<solana-rpc-domain>"
 The chain RPCs and `__DNS_ZONE__` ship as tokens in the committed specs and are
 rendered into the on-host clone before `deploy create` — you don't edit the specs.
 
-For **multi-host**, follow the commented block at the bottom of `hosts.yml` (split
-the groups across `local-1..local-N`, add `host_vars/local-2.yml`) and spread the
-`dns_records` `host:` fields across the hosts that serve each stack.
+For **multi-host**, use the committed `inventories/local/hosts-multihost.yml` and set
+`public_ip` in `host_vars/local-services.yml` and `host_vars/local-agents.yml`.
+Nothing else changes — `dns_records` is derived from group membership, so the same
+`group_vars` serves both topologies.
 
-Edit `deployment/local/bridges/default/operator/validators.yaml`: set each
-validator's `privy_wallet_id` and `host`, and replace `REPLACE_WITH_LOCAL_DNS_ZONE`
-in the hostnames so they match `dns_zone` (e.g. `validator-gorchain.staging.gorbagana.wtf`).
+Edit the validators file — `validators.yaml` (single-host) or `validators-multihost.yaml`
+(multi-host) — set each validator's `privy_wallet_id`, and replace
+`REPLACE_WITH_LOCAL_DNS_ZONE` in the hostnames so they match `dns_zone` (e.g.
+`validator-gorchain.staging.gorbagana.wtf`). The `host:` is already set per topology.
 
 ## 4. Secrets
 
@@ -114,6 +128,8 @@ Also fill the operator pubkeys/addresses in `group_vars/all.yml`
 
 ## 6. Run it
 
+**Single-host:**
+
 ```bash
 # Phase 1 — provision + reconcile Cloudflare DNS + generate creds
 ansible-playbook -i inventories/local/hosts.yml playbooks/setup-all.yml
@@ -122,12 +138,16 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/setup-all.yml
 ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml
 ```
 
-Testing off a branch (the hosts fetch the repo themselves):
+**Multi-host** — swap the inventory and point at the multi-host validators file:
 
 ```bash
-ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml \
-  -e deploy_branch=<your-branch>
+ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/setup-all.yml \
+  -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
+ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/deploy-all.yml \
+  -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
 ```
+
+Testing off a branch (the hosts fetch the repo themselves) — add `-e deploy_branch=<branch>`.
 
 `deploy-all.yml` runs `publish-bridge-state.yml` mid-flight on the deployer host: it
 patches the deployer-derived values (IGP IDs/accounts, mailboxes, warp
@@ -150,6 +170,15 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml -e destro
 
 ## 9. Known limitations / notes
 
+- **Single-host relies on NAT hairpin.** With every stack in one cluster, a pod
+  reaching `https://s3.<zone>` (or any `*.<zone>`) resolves to the host's *own* public
+  IP and must loop back to Caddy's hostPort 80/443 — hairpin/loopback, which
+  Docker/kind don't always do cleanly. This is the same pattern prod's single-host
+  topology uses, and it's **unverified on a real VM**. If a host won't hairpin, the
+  options are an `/etc/hosts`/split-horizon entry, or special-casing single-host MinIO
+  back to the in-cluster service (`http://minio.laconic-hyperlane-minio:9000`) at the
+  cost of a topology-specific spec. The multi-host topology doesn't hit this — its
+  hosts are genuinely separate — so it's the cleaner one to validate first.
 - **Re-running on a dirty clone.** The on-host token render edits the clone's spec
   files in place (uncommitted). It only runs on first `deploy create` (skipped once a
   deployment exists), but if you re-fetch a branch that also touched those specs,
