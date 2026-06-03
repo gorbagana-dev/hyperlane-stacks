@@ -119,18 +119,28 @@ side is your own chain. MinIO/Grafana credentials are generated into `secrets.ym
 
 ## 6. Keyfiles & group_vars
 
-Place the operator signing keys under `~/.credentials/hyperlane/` on `local-1`:
+These are throwaway test keys — generate them with the helper (needs the Solana CLI;
+prints the pubkeys to paste + the addresses to fund, and never overwrites existing
+files):
+
+```bash
+ops/scripts/gen-local-keys.sh        # writes into ~/.credentials/hyperlane/ on local-1
+```
+
+It drops the keyfiles the stack consumes:
 
 ```
 deployer-keypair.json      # Solana keypair JSON array (deployer + warp-deployer)
-validator-gorchain.key     # hex validator signing key
-validator-solana.key       # hex validator signing key
-relayer-gorchain.key       # hex relayer signing key
+hardware-wallet.json       # keypair whose pubkey -> HARDWARE_WALLET_PUBKEY (you hold it)
+validator-gorchain.key     # hex validator announce key (HYP_DEFAULTSIGNER_KEY)
+validator-solana.key       # hex validator announce key
+relayer-gorchain.key       # hex relayer signing key (HYP_CHAINS_GORCHAIN_SIGNER_KEY)
 relayer-solana.key         # hex relayer signing key
 relayer-fee-claim.json     # Solana keypair JSON array (IGP fee claims)
 ```
 
-Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY`, `IGP_ORACLE_PUBKEY`,
+Fund the printed addresses on both chains (step 3). Then fill in `group_vars/all.yml`:
+paste the helper's `HARDWARE_WALLET_PUBKEY`; set `IGP_ORACLE_PUBKEY`,
 `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`; `REPLACE_WITH_GITHUB_USERNAME` in
 the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` from step 3) in
 `spec-warp-deployer.yml`.

@@ -134,20 +134,30 @@ the Solana side is your own chain. MinIO/Grafana credentials are generated into
 
 ## 6. Keyfiles & group_vars
 
-Place the operator signing keys under `~/.credentials/hyperlane/` on each host that runs
-the relevant stack (deployer + fee-claim on `local-services`; validator/relayer keys on
-`local-agents`):
+These are throwaway test keys. Generate them once with the helper (needs the Solana
+CLI; prints the pubkeys to paste + the addresses to fund, never overwrites existing
+files), then place each host's files under `~/.credentials/hyperlane/`:
 
-```
-deployer-keypair.json      # Solana keypair JSON array (deployer + warp-deployer)
-validator-gorchain.key     # hex validator signing key
-validator-solana.key       # hex validator signing key
-relayer-gorchain.key       # hex relayer signing key
-relayer-solana.key         # hex relayer signing key
-relayer-fee-claim.json     # Solana keypair JSON array (IGP fee claims)
+```bash
+ops/scripts/gen-local-keys.sh
 ```
 
-Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY`, `IGP_ORACLE_PUBKEY`,
+Per-host placement (the keys must live where the stack that reads them runs):
+
+```
+local-services (deployer host):
+  deployer-keypair.json    # Solana keypair JSON array (deployer + warp-deployer)
+local-agents (validators + relayer host):
+  validator-gorchain.key   # hex validator announce key (HYP_DEFAULTSIGNER_KEY)
+  validator-solana.key     # hex validator announce key
+  relayer-gorchain.key     # hex relayer signing key (HYP_CHAINS_GORCHAIN_SIGNER_KEY)
+  relayer-solana.key       # hex relayer signing key
+  relayer-fee-claim.json   # Solana keypair JSON array (IGP fee-claim sidecar)
+```
+
+You keep `hardware-wallet.json` (its pubkey → `HARDWARE_WALLET_PUBKEY`; not deployed).
+Fund the printed addresses on both chains. Then fill in `group_vars/all.yml`:
+`HARDWARE_WALLET_PUBKEY`, `IGP_ORACLE_PUBKEY`,
 `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`; `REPLACE_WITH_GITHUB_USERNAME` in
 the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` from step 3) in
 `spec-warp-deployer.yml`.
