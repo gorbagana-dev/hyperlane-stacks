@@ -11,6 +11,7 @@ from lib.common import (
     get_sol_balance,
     get_spl_token_balance,
     run_deployer_cli,
+    wait_for,
     wait_for_token_balance,
 )
 from lib.state_loader import BridgeStateLoader
@@ -31,8 +32,9 @@ FORWARD_STEP = 100_000  # +0.1 USDC per user
 REVERSE_BASE = 500_000  # 0.5 USDC
 REVERSE_STEP = 50_000  # +0.05 USDC per user
 
-# Native forward transfer amount (9 decimals: 1 SOL = 1_000_000_000 lamports).
-NATIVE_AMOUNT = 100_000_000  # 0.1 SOL
+# Native route amounts (9 decimals: 1 SOL = 1_000_000_000 lamports).
+NATIVE_FORWARD_AMOUNT = 100_000_000  # 0.1 SOL
+NATIVE_REVERSE_AMOUNT = 50_000_000  # 0.05 SOL (less, to cover fees)
 
 RELAY_TIMEOUT = 120  # seconds to wait for relayer delivery
 POLL_INTERVAL = 5  # seconds between balance polls
@@ -118,14 +120,18 @@ def _run_transfer_remote(
 
 @pytest.mark.slow
 class TestBridge:
-    """Cross-chain warp route transfer tests with concurrent users.
+    """Cross-chain warp route transfer tests.
 
-    Five bridge users transfer staggered amounts simultaneously:
+    USDC route (collateral ↔ synthetic), five concurrent users each way:
     - Forward: Solana collateral USDC → Gorchain synthetic gUSDC
     - Reverse: Gorchain synthetic gUSDC → Solana collateral USDC
+
+    Native route (native ↔ synthetic), single user each way:
+    - Forward: Solana native SOL → Gorchain synthetic
+    - Reverse: Gorchain synthetic → Solana native SOL
     """
 
-    def test_concurrent_forward_transfers(
+    def test_usdc_forward_transfers(
         self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
     ) -> None:
         """Transfer collateral USDC from Solana to Gorchain for all users concurrently."""
@@ -228,59 +234,7 @@ class TestBridge:
 
         _log_igp_balances("after-forward", bridge_state_loader)
 
-    def test_native_forward_transfer(
-        self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
-    ) -> None:
-        """Bridge native SOL from Solana to synthetic on Gorchain (native route proof)."""
-        route = bridge_setup["routes"]["SOL-solana-gorchain"]
-        user = bridge_setup["users"][0]
-
-        solana_rpc = CHAINS["solana"]["rpc"]
-        gorchain_rpc = CHAINS["gorchain"]["rpc"]
-        gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
-
-        before_syn = get_spl_token_balance(
-            route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
-        )
-        before_sol = get_sol_balance(user["keypair_path"], solana_rpc)
-        log.info(
-            "Native route initial — Solana SOL: %s, Gorchain synthetic: %s",
-            before_sol, before_syn,
-        )
-
-        result = _run_transfer_remote(
-            "/tmp/key.json",
-            str(NATIVE_AMOUNT), gorchain_domain, user["pubkey"],
-            "native",
-            "--program-id", route["warp_solana"],
-            rpc=solana_rpc,
-            keypair_path=user["keypair_path"],
-        )
-        output = result.stdout + result.stderr
-        log.info("Native transfer-remote output:\n%s", output[:1000])
-        assert result.returncode == 0, f"Native forward transfer failed: {output}"
-
-        # Synthetic on Gorchain mirrors the native origin's 9 decimals.
-        expected_syn = round(before_syn + NATIVE_AMOUNT / 1_000_000_000, 9)
-        after_syn = wait_for_token_balance(
-            route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
-            expected_min=expected_syn,
-            timeout=RELAY_TIMEOUT,
-            poll_interval=POLL_INTERVAL,
-            label="Native route Gorchain synthetic",
-        )
-        assert after_syn > before_syn, "native route synthetic balance did not increase"
-
-        after_sol = get_sol_balance(user["keypair_path"], solana_rpc)
-        assert after_sol < before_sol, (
-            f"native route Solana SOL did not decrease: {before_sol} -> {after_sol}"
-        )
-        log.info(
-            "Native route bridge Sol→Gor complete. SOL: %s -> %s, synthetic: %s",
-            before_sol, after_sol, after_syn,
-        )
-
-    def test_concurrent_reverse_transfers(
+    def test_usdc_reverse_transfers(
         self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
     ) -> None:
         """Transfer synthetic gUSDC from Gorchain back to Solana for all users concurrently."""
@@ -315,7 +269,7 @@ class TestBridge:
             expected_gusdc = amounts[i] / 1_000_000
             assert initial_gorchain[i] >= expected_gusdc, (
                 f"User {i} has insufficient gUSDC: {initial_gorchain[i]} < {expected_gusdc}. "
-                f"Did test_concurrent_forward_transfers run first?"
+                f"Did test_usdc_forward_transfers run first?"
             )
 
         # Submit all reverse transfers concurrently
@@ -386,6 +340,125 @@ class TestBridge:
                 )
 
         _log_igp_balances("after-reverse", bridge_state_loader)
+
+    def test_native_forward_transfer(
+        self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Bridge native SOL from Solana to synthetic on Gorchain (native route proof)."""
+        route = bridge_setup["routes"]["SOL-solana-gorchain"]
+        user = bridge_setup["users"][0]
+
+        solana_rpc = CHAINS["solana"]["rpc"]
+        gorchain_rpc = CHAINS["gorchain"]["rpc"]
+        gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
+
+        before_syn = get_spl_token_balance(
+            route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
+        )
+        before_sol = get_sol_balance(user["keypair_path"], solana_rpc)
+        log.info(
+            "Native route initial — Solana SOL: %s, Gorchain synthetic: %s",
+            before_sol, before_syn,
+        )
+
+        result = _run_transfer_remote(
+            "/tmp/key.json",
+            str(NATIVE_FORWARD_AMOUNT), gorchain_domain, user["pubkey"],
+            "native",
+            "--program-id", route["warp_solana"],
+            rpc=solana_rpc,
+            keypair_path=user["keypair_path"],
+        )
+        output = result.stdout + result.stderr
+        log.info("Native transfer-remote output:\n%s", output[:1000])
+        assert result.returncode == 0, f"Native forward transfer failed: {output}"
+
+        # Synthetic on Gorchain mirrors the native origin's 9 decimals.
+        expected_syn = round(before_syn + NATIVE_FORWARD_AMOUNT / 1_000_000_000, 9)
+        after_syn = wait_for_token_balance(
+            route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
+            expected_min=expected_syn,
+            timeout=RELAY_TIMEOUT,
+            poll_interval=POLL_INTERVAL,
+            label="Native route Gorchain synthetic",
+        )
+        assert after_syn > before_syn, "native route synthetic balance did not increase"
+
+        after_sol = get_sol_balance(user["keypair_path"], solana_rpc)
+        assert after_sol < before_sol, (
+            f"native route Solana SOL did not decrease: {before_sol} -> {after_sol}"
+        )
+        log.info(
+            "Native route bridge Sol→Gor complete. SOL: %s -> %s, synthetic: %s",
+            before_sol, after_sol, after_syn,
+        )
+
+    def test_native_reverse_transfer(
+        self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """Bridge synthetic on Gorchain back to native SOL on Solana (native route reverse)."""
+        log.info("Waiting %ds for validator state to settle...", SETTLE_DELAY)
+        time.sleep(SETTLE_DELAY)
+
+        route = bridge_setup["routes"]["SOL-solana-gorchain"]
+        user = bridge_setup["users"][0]
+
+        solana_rpc = CHAINS["solana"]["rpc"]
+        gorchain_rpc = CHAINS["gorchain"]["rpc"]
+        solana_domain = str(CHAINS["solana"]["domain_id"])
+
+        before_syn = get_spl_token_balance(
+            route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
+        )
+        before_sol = get_sol_balance(user["keypair_path"], solana_rpc)
+        log.info(
+            "Native route reverse initial — Gorchain synthetic: %s, Solana SOL: %s",
+            before_syn, before_sol,
+        )
+
+        expected_min_syn = NATIVE_REVERSE_AMOUNT / 1_000_000_000
+        assert before_syn >= expected_min_syn, (
+            f"User has insufficient synthetic balance: {before_syn} < {expected_min_syn}. "
+            f"Did test_native_forward_transfer run first?"
+        )
+
+        result = _run_transfer_remote(
+            "/tmp/key.json",
+            str(NATIVE_REVERSE_AMOUNT), solana_domain, user["pubkey"],
+            "synthetic",
+            "--program-id", route["warp_gorchain"],
+            rpc=gorchain_rpc,
+            keypair_path=user["keypair_path"],
+        )
+        output = result.stdout + result.stderr
+        log.info("Native reverse transfer-remote output:\n%s", output[:1000])
+        assert result.returncode == 0, f"Native reverse transfer failed: {output}"
+
+        # The released native SOL on Solana is the delivery signal — poll for it.
+        expected_sol = round(before_sol + NATIVE_REVERSE_AMOUNT / 1_000_000_000, 9)
+
+        def _native_released() -> float | None:
+            bal = get_sol_balance(user["keypair_path"], solana_rpc)
+            return bal if bal >= expected_sol - 0.0001 else None
+
+        after_sol = wait_for(
+            _native_released,
+            timeout=RELAY_TIMEOUT,
+            interval=POLL_INTERVAL,
+            description="native route Solana SOL release",
+        )
+        assert after_sol > before_sol, "native route Solana SOL did not increase"
+
+        after_syn = get_spl_token_balance(
+            route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
+        )
+        assert after_syn < before_syn, (
+            f"native route Gorchain synthetic did not decrease: {before_syn} -> {after_syn}"
+        )
+        log.info(
+            "Native route bridge Gor→Sol complete. synthetic: %s -> %s, SOL: %s",
+            before_syn, after_syn, after_sol,
+        )
 
     def test_relayer_processed_messages(self, bridge_setup: dict) -> None:
         """Verify relayer metrics show successfully processed messages."""
