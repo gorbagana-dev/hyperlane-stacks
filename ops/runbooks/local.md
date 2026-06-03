@@ -28,9 +28,12 @@ LE-issued MinIO cert. The only own-chains-specific bit is that **the chains are
 reached at their own domains** (set up out-of-band with the nodes), rendered into
 the specs from `group_vars`.
 
-> **No public DNS?** Fall back to a local ACME server (step-ca/Pebble) pointed at by
-> Caddy in place of Let's Encrypt — see "Fallback" at the bottom. Build that only if
-> you can't get a zone provisioned.
+> **Single-host needs no DNS provider.** It uses mkcert: the `local_tls` role generates
+> a self-trusted cert, pre-seeds it into Caddy (no ACME), and the validator→MinIO and
+> Prometheus→validator/relayer legs go in-cluster over HTTP. `dns_zone` is just a label
+> the cert covers (e.g. `hyperlane.local`) — it does not need to be a real Cloudflare
+> zone. Multi-host still uses Cloudflare + Let's Encrypt (cross-host routing needs real
+> DNS + a cert the Rust S3 client trusts).
 
 All commands run from `ops/` on the controller (your machine).
 
@@ -48,8 +51,8 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 
 **Accounts / access:**
-- A **public DNS zone on Cloudflare** (`dns_zone`, e.g. `staging.gorbagana.wtf`) and
-  a **Cloudflare API token** scoped to it.
+- **Multi-host only:** a public DNS zone on Cloudflare (`dns_zone`) and a Cloudflare API
+  token scoped to it. Single-host needs neither — `dns_zone` is any label mkcert signs.
 - A **Privy** project (validator + gas-oracle signing).
 - A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images.
 
@@ -156,9 +159,22 @@ addresses/mints) into the **local** specs and commits/pushes `deploy_branch`. Ad
 
 ## 7. Access the stacks
 
-Public DNS + LE, so just browse the hostnames (after DNS propagates):
+**Multi-host** (public DNS + LE): browse the hostnames directly once DNS propagates —
 `https://warp-ui.<zone>`, `https://grafana.<zone>`, `https://prometheus.<zone>`,
 `https://minio-console.<zone>`.
+
+**Single-host** (mkcert, no public DNS): tunnel and trust the CA from your workstation.
+```bash
+# 1. fetch the published mkcert root CA from the host
+scp <host>:~/.credentials/hyperlane/local-rootCA.pem ./local-rootCA.pem
+# 2. trust it on your workstation (Linux system store shown; macOS: add to Keychain;
+#    Firefox uses its own NSS store — import via Preferences > Certificates)
+sudo cp local-rootCA.pem /usr/local/share/ca-certificates/hyperlane-local.crt && sudo update-ca-certificates
+# 3. point the hostnames at the tunnel and open it
+echo "127.0.0.1 warp-ui.<zone> grafana.<zone> prometheus.<zone> minio-console.<zone>" | sudo tee -a /etc/hosts
+ssh -L 443:localhost:443 <host>
+# now browse https://grafana.<zone> etc. through the tunnel
+```
 
 ## 8. Reset between runs
 
@@ -170,27 +186,16 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml -e destro
 
 ## 9. Known limitations / notes
 
-- **Single-host relies on NAT hairpin.** With every stack in one cluster, a pod
-  reaching `https://s3.<zone>` (or any `*.<zone>`) resolves to the host's *own* public
-  IP and must loop back to Caddy's hostPort 80/443 — hairpin/loopback, which
-  Docker/kind don't always do cleanly. This is the same pattern prod's single-host
-  topology uses, and it's **unverified on a real VM**. If a host won't hairpin, the
-  options are an `/etc/hosts`/split-horizon entry, or special-casing single-host MinIO
-  back to the in-cluster service (`http://minio.laconic-hyperlane-minio:9000`) at the
-  cost of a topology-specific spec. The multi-host topology doesn't hit this — its
-  hosts are genuinely separate — so it's the cleaner one to validate first.
+- **Single-host no longer hairpins.** Because the validator→MinIO and Prometheus scrape
+  legs run in-cluster (pod-to-pod) under mkcert, single-host does not loop traffic out to
+  the host's public IP and back. The earlier NAT-hairpin caveat applied only to the old
+  all-LE single-host model and is gone. Multi-host hosts are genuinely separate, so they
+  don't hairpin either.
+- **Single-host cert is pinned to the hostname list.** The mkcert leaf cert is generated
+  once (guarded by `creates:`). If you change `dns_zone` or the validator set, delete
+  `~/.credentials/hyperlane/local-certs/bridge.crt` on the host and re-run `setup-all.yml`
+  to re-issue a cert covering the new names.
 - **Re-running on a dirty clone.** The on-host token render edits the clone's spec
   files in place (uncommitted). It only runs on first `deploy create` (skipped once a
   deployment exists), but if you re-fetch a branch that also touched those specs,
   `fetch-stack --pull` can conflict. Reset with `stop-all` and re-fetch clean.
-
-## Fallback — no public DNS (local ACME)
-
-If you can't get a public zone, the only thing that changes is the **cert source**:
-stand up a local ACME server (step-ca or Pebble), point the caddy-ingress
-controller's `acmeCA` at it instead of Let's Encrypt, and distribute its root to the
-controller (browser trust) and to Prometheus (`ca_file`). The MinIO/S3 path is the
-catch — `aws-sdk-rust` won't trust a non-public CA, so it would have to drop to a
-plain-HTTP Caddy site for `s3.<zone>`. This needs a small caddy-ingress enhancement
-(non-LE issuer + a per-host HTTP-only site) and is **not built** — use it only if the
-public-DNS path is unavailable.

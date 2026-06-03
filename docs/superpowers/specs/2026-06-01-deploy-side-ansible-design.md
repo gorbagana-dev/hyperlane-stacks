@@ -384,16 +384,25 @@ operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
     the hyperlane validators sit off the chain test validators (so validator→chain RPC
     is cross-host). Co-locating the three agents costs no coverage — they never route
     to each other — and exercises Caddy multi-host-name routing on that one host.
-- **Networking = the prod/staging path.** On the kind path the laconic caddy-ingress
-  controller does automatic HTTPS via **ACME → Let's Encrypt** (the `use_tls` flag
-  only gates the *cert-manager* path used off-kind; woodburn confirms kind+LE works).
-  So `local` uses **Caddy + Cloudflare DNS + real LE** under an **operator-supplied
-  public zone** (`dns_zone`) — not a bespoke plain-HTTP scheme. This makes multi-host
-  routing "just work": `https://s3.<zone>`, `https://validator-x.<zone>` resolve via
-  public DNS to the right host's Caddy, and the Rust validator trusts the LE-issued
-  MinIO cert (so MinIO stays HTTPS, no `aws-sdk-rust` CA problem). Decision: in
-  multi-host you need a hostname-routing layer per host anyway, so reuse Caddy/TLS
-  rather than invent NodePort/plain-HTTP routing.
+
+#### Networking by topology
+
+Single-host and multi-host diverge only in networking, driven by a derived `topology`
+var (`minio_hosts[0] == relayer_hosts[0]`):
+
+- **Single-host:** mkcert self-trusted certs (the `local_tls` role pre-seeds Caddy; SO's
+  `_restore_caddy_certs` loads them, no ACME). The validator→MinIO and Prometheus scrape
+  legs go in-cluster over HTTP via `external-services: selector:` blocks. No Cloudflare,
+  no public DNS. See `docs/superpowers/specs/2026-06-03-local-single-host-mkcert-design.md`.
+- **Multi-host:** Caddy + Cloudflare DNS + real Let's Encrypt, as prod. The MinIO leg
+  crosses a host boundary, so the Rust S3 client needs a publicly-trusted cert.
+
+Both ship from one `deployment/local/` spec tree; the per-topology values and the
+in-cluster `external-services` blocks render via `spec_token_renders`.
+
+- **Networking diverges by topology** (see the `#### Networking by topology` subsection
+  above). Multi-host: Caddy + Cloudflare DNS + real LE; single-host: mkcert + SSH
+  tunnel, in-cluster HTTP for the S3/metrics legs.
 - **Chain RPCs are domain-routed:** the out-of-band test validators expose their RPC
   at their own domain endpoints (set up with the nodes); the env consumes those URLs
   via the `__GORCHAIN_RPC_URL__` / `__SOLANA_RPC_URL__` tokens.
@@ -409,11 +418,8 @@ operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
   host-specific values.
 - **IDs:** reuse the devnet values (`1198486095` gorchain / `1399811151` solana,
   `*_IS_TESTNET=true`).
-- **Fallback if no public DNS:** point the caddy-ingress controller's `acmeCA` at a
-  local ACME server (step-ca/Pebble) instead of LE; MinIO/S3 then has to drop to a
-  plain-HTTP Caddy site (the SDK won't trust a non-public CA), needing a small
-  caddy-ingress enhancement. **Not built** — used only if a public zone can't be
-  provisioned (see `ops/runbooks/local.md` → Fallback).
+- **Single-host uses mkcert, not a public zone.** See `#### Networking by topology` above.
+  The earlier local-ACME fallback note is superseded by the mkcert approach.
 
 ### Layer 3 staging environment requirements
 
