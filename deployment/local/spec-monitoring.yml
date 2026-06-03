@@ -54,4 +54,4 @@ secrets:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
 # Single-host only: Prometheus scrapes validators/relayer cross-NS in-cluster. Rendered
 # to an external-services: block on single-host, removed on multi-host.
-# __SINGLE_HOST_PROM_XS__
+# __SINGLE_HOST_EXTERNAL_SERVICES__

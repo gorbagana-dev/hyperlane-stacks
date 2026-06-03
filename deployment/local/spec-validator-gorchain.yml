@@ -52,4 +52,4 @@ network:
           proxy-to: validator:9090
 # Single-host only: validator reaches the MinIO pod cross-NS in-cluster. Rendered to an
 # external-services: block on single-host, removed on multi-host.
-# __SINGLE_HOST_MINIO_XS__
+# __SINGLE_HOST_EXTERNAL_SERVICES__
