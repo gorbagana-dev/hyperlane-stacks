@@ -130,12 +130,14 @@ remain valid YAML and parse identically in both topologies before render.
 ## New role: `local_tls` (single-host only)
 
 Provisions self-trusted TLS and local name resolution so the operator needs **no DNS
-provider and no public zone** for single-host. Runs only when `topology == 'single'`.
-Two plays:
+provider and no public zone** for single-host. Runs only when `topology == 'single'`,
+**entirely on the single host** (privileged) — it never mutates the controller or the
+operator's workstation:
 
-**On the single host (privileged):**
 1. Install `mkcert`.
-2. Ensure the mkcert root CA exists (`mkcert -CAROOT`).
+2. Ensure the mkcert root CA exists (`mkcert -CAROOT`) and trust it in the **host's**
+   system store (`update-ca-certificates`), so host-side `curl` and the role's own
+   self-check trust the certs.
 3. Generate one multi-SAN leaf cert covering all bridge hostnames. The hostname list is
    **derived** from the same sources the specs use:
    `[ key ~ '.' ~ dns_zone for key in dns_record_map ]` (→ `s3`, `minio-console`,
@@ -147,28 +149,29 @@ Two plays:
    `write_caddy_cert_backup()` (`tests/e2e/lib/cluster.py:103-152`) exactly; the
    implementation reads that function as the source of truth for the name/annotation
    format and the empty-`.json` metadata object.
+5. Add **host** `/etc/hosts` entries mapping every derived hostname to `127.0.0.1` (kind
+   maps Caddy's ingress to the host's loopback), using `ansible.builtin.blockinfile` with
+   a marker so re-runs are idempotent and the block is removable. This serves host-side
+   tools and any browsing done on the host itself.
+6. Copy the mkcert `rootCA.pem` to a known, documented host path (e.g.
+   `{{ credentials_dir }}/local-rootCA.pem`) so the operator can `scp` it down for
+   workstation browser trust.
 
-**On the controller (`localhost`, privileged via `become`):**
-5. Fetch the host's `rootCA.pem` and install it into the controller's system trust store
-   (`update-ca-certificates`), so the operator's `curl`/browser trust the certs. (Note:
-   Firefox/Chrome use their own NSS store; surface a one-line follow-up in the runbook
-   for browsers that don't read the system store.)
-6. Add `/etc/hosts` entries mapping every derived hostname to the single host's
-   `public_ip` (`hostvars[groups['minio_hosts'][0]].public_ip`), using
-   `ansible.builtin.blockinfile` with a marker so re-runs are idempotent and the block
-   is removable.
-
-No in-cluster component resolves `*.{{ zone }}` in single-host (MinIO and the scrape
-targets are in-cluster), so `/etc/hosts` is needed only on whatever machine the operator
-browses from — the controller by default.
+**Browsing is operator-driven and documented in the runbook, not automated.** No
+in-cluster component resolves `*.{{ zone }}` in single-host (MinIO and the scrape targets
+are in-cluster), so the only machine that needs hostname resolution + CA trust beyond the
+host is wherever the operator points a browser. The documented flow:
+`ssh -L 443:localhost:443 <host>`, add `127.0.0.1 <hostnames>` to the **workstation's**
+`/etc/hosts`, and trust the fetched `rootCA.pem` there. The role deliberately does not
+reach into the operator's workstation.
 
 ### Playbook wiring
 
 `playbooks/setup-all.yml` imports a new `playbooks/local-tls.yml` after
 `configure-dns.yml`. `configure-dns.yml` already no-ops when `manage_dns` is false
-(single-host); `local-tls.yml`'s plays are gated on `topology == 'single'`, so multi-host
-skips the role and single-host skips Cloudflare. The two are mutually exclusive by
-construction.
+(single-host); `local-tls.yml` is a single play targeting the single host, gated on
+`topology == 'single'`, so multi-host skips the role and single-host skips Cloudflare.
+The two are mutually exclusive by construction.
 
 ### Secrets
 
@@ -195,8 +198,9 @@ Cloudflare entry but the runbook notes it is multi-host-only.
 - `ops/roles/local_tls/` — new role (tasks + a Jinja template for `caddy-secrets.yaml`).
 - `ops/playbooks/local-tls.yml` — new; imported by `setup-all.yml`.
 - `ops/runbooks/local.md` — single-host now needs no DNS provider; remove the local-ACME
-  fallback; note the hairpin limitation is gone for single-host; document the mkcert
-  root CA / browser-trust follow-up.
+  fallback; note the hairpin limitation is gone for single-host; document the browse-via-
+  tunnel flow (SSH `-L`, workstation `/etc/hosts` → `127.0.0.1`, fetch + trust the
+  published `rootCA.pem`).
 - `ops/tests/test_local_env.yml` — assert both topologies' rendered token values (stub
   `topology=single` and `topology=multi`); assert `cloudflare_api_token` is absent from
   `required_operator_secrets` under single and present under multi.
@@ -226,4 +230,5 @@ compose↔spec↔fixture table is unaffected (no env-var add/remove at the compo
 
 - Multi-host networking (unchanged: LE + Cloudflare).
 - Any SO change — the pre-seed restore already exists.
-- Browser NSS trust automation (documented as a manual one-liner).
+- Workstation-side trust/resolution and the SSH tunnel — operator-driven, documented in
+  the runbook. The role stays host-only.
