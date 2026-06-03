@@ -107,14 +107,16 @@ envsubst < /config/registry/metadata.yaml.tmpl > "${REGISTRY_DIR}/chains/metadat
 echo "Registry rendered at ${REGISTRY_DIR}/chains/metadata.yaml"
 
 # Token config — build one side at a time from per-route config + core addresses.
-build_side() {  # $1=chain  $2=type  $3=token(optional)
-  chain=$1; type=$2; token=${3:-}
+# name/symbol/decimals are per-side: a route may label or scale the same asset
+# differently on each chain (e.g. USDC on the origin, gUSDC on the synthetic side).
+build_side() {  # $1=chain $2=type $3=name $4=symbol $5=decimals $6=token(optional)
+  chain=$1; type=$2; name=$3; symbol=$4; decimals=$5; token=${6:-}
   progs=$(jq -c --arg c "$chain" '.[$c]' "${PROGRAM_IDS_FILE}")
   ism=$(printf '%s' "$progs" | jq -r '.multisig_ism_message_id')
   igp=$(printf '%s' "$progs" | jq -r '.overhead_igp_account')
   jq -n \
-    --arg type "$type" --arg name "${WARP_TOKEN_NAME}" --arg symbol "${WARP_TOKEN_SYMBOL}" \
-    --argjson decimals "${WARP_TOKEN_DECIMALS}" --arg token "$token" \
+    --arg type "$type" --arg name "$name" --arg symbol "$symbol" \
+    --argjson decimals "$decimals" --arg token "$token" \
     --arg uri "${WARP_TOKEN_METADATA_URI:-}" --arg ism "$ism" --arg igp "$igp" \
     '{type:$type, name:$name, symbol:$symbol, decimals:$decimals,
       interchainSecurityModule:$ism, interchainGasPaymaster:$igp}
@@ -128,8 +130,8 @@ if [ "${WARP_ORIGIN_TYPE}" = "collateral" ] && [ -z "${WARP_ORIGIN_TOKEN:-}" ]; 
 fi
 
 jq -n \
-  --arg oc "${WARP_ORIGIN_CHAIN}" --argjson o "$(build_side "${WARP_ORIGIN_CHAIN}" "${WARP_ORIGIN_TYPE}" "${WARP_ORIGIN_TOKEN:-}")" \
-  --arg rc "${WARP_REMOTE_CHAIN}" --argjson r "$(build_side "${WARP_REMOTE_CHAIN}" "${WARP_REMOTE_TYPE}" "")" \
+  --arg oc "${WARP_ORIGIN_CHAIN}" --argjson o "$(build_side "${WARP_ORIGIN_CHAIN}" "${WARP_ORIGIN_TYPE}" "${WARP_ORIGIN_NAME}" "${WARP_ORIGIN_SYMBOL}" "${WARP_ORIGIN_DECIMALS}" "${WARP_ORIGIN_TOKEN:-}")" \
+  --arg rc "${WARP_REMOTE_CHAIN}" --argjson r "$(build_side "${WARP_REMOTE_CHAIN}" "${WARP_REMOTE_TYPE}" "${WARP_REMOTE_NAME}" "${WARP_REMOTE_SYMBOL}" "${WARP_REMOTE_DECIMALS}" "")" \
   '{($oc):$o, ($rc):$r}' > "${WORK_DIR}/token-config.json"
 echo "Token config:"; cat "${WORK_DIR}/token-config.json"
 

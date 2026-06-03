@@ -190,9 +190,11 @@ tests pass even though the prod spec ships placeholders.)
 ### Config (spec.yml)
 Per-route fields: `WARP_ROUTE_NAME`, `WARP_ORIGIN_CHAIN`, `WARP_ORIGIN_TYPE`
 (`native` | `collateral`), `WARP_ORIGIN_TOKEN`, `WARP_REMOTE_CHAIN`,
-`WARP_REMOTE_TYPE` (`synthetic` | `collateral`), `WARP_TOKEN_SYMBOL`,
-`WARP_TOKEN_NAME`, `WARP_TOKEN_DECIMALS`, `WARP_TOKEN_METADATA_URI`; plus RPC
-URLs, domain IDs, and `FORCE_REDEPLOY`.
+`WARP_REMOTE_TYPE` (`synthetic` | `collateral`); per-side token metadata
+`WARP_ORIGIN_NAME`/`WARP_ORIGIN_SYMBOL`/`WARP_ORIGIN_DECIMALS` and
+`WARP_REMOTE_NAME`/`WARP_REMOTE_SYMBOL`/`WARP_REMOTE_DECIMALS` (each side may
+label or scale the asset independently); `WARP_TOKEN_METADATA_URI` (synthetic
+side); plus RPC URLs, domain IDs, and `FORCE_REDEPLOY`.
 
 ### Secrets (injected separately)
 `DEPLOYER_KEYPAIR`, `HARDWARE_WALLET_PUBKEY`
