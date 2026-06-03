@@ -24,17 +24,14 @@
     url: "{{ mkcert_url }}"
     dest: /usr/local/bin/mkcert
     mode: "0755"
+    checksum: "sha256:{{ mkcert_sha256 }}"
 
-# CAROOT is per-user; the become tasks below read this path with elevated perms.
+# All mkcert invocations run as the deploy user so the CAROOT ($HOME/.local/share/mkcert)
+# is consistent; the CA is trusted system-wide by the explicit privileged step below.
+# CAROOT is per-user — keep these tasks unprivileged so they match the leaf-gen user.
 - name: Find the mkcert CAROOT
   ansible.builtin.command: mkcert -CAROOT
   register: _caroot
-  changed_when: false
-
-# -install both creates rootCA.pem and trusts it; idempotent, so don't guard on the file.
-- name: Generate the mkcert root CA and trust it in the host system store
-  become: true
-  ansible.builtin.command: mkcert -install
   changed_when: false
 
 - name: Ensure the cert dir exists
@@ -43,13 +40,11 @@
     state: directory
     mode: "0755"
 
-# Guarded by creates: delete bridge.crt to force re-issue if dns_zone/validators change.
-- name: Generate the multi-SAN leaf cert
-  # Each hostname must be its own argv element — concatenate the list, don't join.
+- name: Generate the multi-SAN leaf cert (lazily creates the local CA in CAROOT)
+  # Each hostname is its own argv element. Guarded by creates: delete bridge.crt to
+  # force re-issue if dns_zone/validators change.
   ansible.builtin.command:
     argv: "{{ _mkcert_base_argv + mkcert_hostnames }}"
-  args:
-    creates: "{{ local_tls_cert_dir }}/bridge.crt"
   vars:
     _mkcert_base_argv:
       - mkcert
@@ -57,30 +52,45 @@
       - "{{ local_tls_cert_dir }}/bridge.crt"
       - -key-file
       - "{{ local_tls_cert_dir }}/bridge.key"
+  args:
+    creates: "{{ local_tls_cert_dir }}/bridge.crt"
+
+- name: Trust the mkcert root CA in the host system store
+  become: true
+  ansible.builtin.copy:
+    src: "{{ _caroot.stdout }}/rootCA.pem"
+    dest: /usr/local/share/ca-certificates/mkcert-hyperlane-local.crt
+    remote_src: true
+    mode: "0644"
+  notify: Refresh system trust store
+
+- name: Ensure the caddy cert-backup dir exists
+  ansible.builtin.file:
+    path: "{{ kind_mount_root }}/caddy-cert-backup"
+    state: directory
+    mode: "0755"
 
 - name: Slurp cert + key (slurp returns base64-encoded content)
-  no_log: true
   ansible.builtin.slurp:
     src: "{{ item }}"
   register: _slurped
+  no_log: true
   loop:
     - "{{ local_tls_cert_dir }}/bridge.crt"
     - "{{ local_tls_cert_dir }}/bridge.key"
 
-- name: Build the Caddy pre-seed backup
-  no_log: true
-  become: true
+- name: Build the Caddy pre-seed backup (holds the private key — owner-only)
   ansible.builtin.template:
     src: caddy-secrets.yaml.j2
     dest: "{{ kind_mount_root }}/caddy-cert-backup/caddy-secrets.yaml"
-    mode: "0644"
+    mode: "0600"
   vars:
     cert_b64: "{{ _slurped.results[0].content }}"
     key_b64: "{{ _slurped.results[1].content }}"
     json_b64: "{{ '{}' | b64encode }}"
+  no_log: true
 
 - name: Publish rootCA.pem for the operator to fetch (workstation browser trust)
-  become: true
   ansible.builtin.copy:
     src: "{{ _caroot.stdout }}/rootCA.pem"
     dest: "{{ local_tls_published_ca }}"
