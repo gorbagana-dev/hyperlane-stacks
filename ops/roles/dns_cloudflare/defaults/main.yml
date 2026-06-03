@@ -1,3 +1,5 @@
 ---
 dns_record_ttl: 300
 dns_proxied: false
+# Envs without public DNS (e.g. local) set this false to skip Cloudflare entirely.
+manage_dns: true

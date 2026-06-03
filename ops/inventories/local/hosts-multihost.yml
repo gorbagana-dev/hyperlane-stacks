@@ -1,0 +1,40 @@
+---
+# Multi-host (Layer 2) local topology — maximizes cross-host routing. Shares
+# group_vars/ and host_vars/ with the single-host hosts.yml in this directory.
+#
+# Run with (note the multi-host validators file, option a):
+#   ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/setup-all.yml
+#   ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/deploy-all.yml \
+#     -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
+#
+# Two ansible-managed hosts. The chain test validators run on a separate beefy box
+# stood up OUT-OF-BAND (gorchain-stacks + solana-test-validator) and reached via the
+# gorchain_rpc_url/solana_rpc_url domains — it is NOT in this inventory (ansible does
+# not manage it; bootstrap-host would otherwise try to provision it).
+all:
+  children:
+    controller:
+      hosts:
+        localhost:
+          ansible_connection: local
+    # local-services: passive services that never route to each other
+    deployer_hosts:
+      hosts:
+        local-services:
+    minio_hosts:
+      hosts:
+        local-services:
+    gas_oracle_hosts:
+      hosts:
+        local-services:
+    monitoring_hosts:
+      hosts:
+        local-services:
+    warp_ui_hosts:
+      hosts:
+        local-services:
+    # local-agents: both hyperlane validators (from validators-multihost.yaml) + relayer.
+    # Every hop from here (-> MinIO, -> chain RPC, <- monitoring scrape) is cross-host.
+    relayer_hosts:
+      hosts:
+        local-agents:

@@ -1,0 +1,12 @@
+---
+# Single-host local only: generate a self-trusted mkcert cert, pre-seed it into Caddy's
+# restore path, trust the CA + write /etc/hosts on the host, and publish rootCA.pem for
+# the operator to fetch. No-op for multi-host (which uses configure-dns.yml + LE).
+- name: Provision self-trusted TLS for single-host local
+  hosts: minio_hosts
+  gather_facts: true
+  vars:
+    kind_mount_root: /srv/kind/hyperlane
+  roles:
+    - role: local_tls
+      when: topology == 'single'

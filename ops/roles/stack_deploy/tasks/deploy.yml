@@ -27,6 +27,19 @@
         state: directory
         mode: "0755"
 
+    # Operator-supplied runtime values (the public DNS zone, the own-chain RPC URLs)
+    # aren't known until the zone/chains exist, so the committed spec ships __TOKENS__
+    # that we substitute into the on-host clone before create. Gated on
+    # spec_token_renders, set only in local/group_vars — a no-op for prod/staging.
+    - name: Render runtime tokens into the spec (local only)
+      ansible.builtin.replace:
+        path: "{{ spec_file }}"
+        regexp: "{{ item.key | regex_escape }}"
+        replace: "{{ item.value }}"
+      loop: "{{ (spec_token_renders | default({})) | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
     - name: Run deploy create (committed spec — no init; SO reads it directly)
       ansible.builtin.command:
         argv:

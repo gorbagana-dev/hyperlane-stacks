@@ -10,13 +10,12 @@ services:
       # Signer mode: "privy" (production) or "keypair" (testing)
       SIGNER_MODE: ${SIGNER_MODE:-privy}
       # Privy API URL (override for mock server in tests)
-      PRIVY_API_URL: ${PRIVY_API_URL:-https://auth.privy.io/api/v1}
+      PRIVY_API_URL: ${PRIVY_API_URL:-https://api.privy.io/v1}
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # Privy mode: PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_ORACLE_WALLET_ID
       # Keypair mode: ORACLE_KEYPAIR
       # Chain config
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
-      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_IGP_PROGRAM_ID: ${GORCHAIN_IGP_PROGRAM_ID}
       SOLANA_IGP_PROGRAM_ID: ${SOLANA_IGP_PROGRAM_ID}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}

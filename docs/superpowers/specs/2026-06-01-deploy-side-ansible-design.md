@@ -352,32 +352,74 @@ MinIO buckets; relayer delivering a test message end-to-end; warp-ui reachable.
 Plus **idempotency**: re-running `setup-all.yml` and `deploy-all.yml` reports no
 changes and breaks nothing (no cred rotation, no duplicate commits, cluster reused).
 
-### Own-chains environment for Layers 1–2 (next piece of work — not in this PR)
+### Own-chains environment for Layers 1–2 (implemented — see `ops/runbooks/local.md`)
 
 Layers 1–2 run against self-run chains, which need their own committed inputs —
-neither the prod tree (mainnet) nor the staging tree (devnet/Helius) fits. Resolved
-design (decided 2026-06-02, to build as a follow-up):
+neither the prod tree (mainnet) nor the staging tree (devnet/Helius) fits. Built as
+the `local` env (`ops/inventories/local/` + `deployment/local/`); the from-scratch
+operator guide is `ops/runbooks/local.md`. Resolved design (networking revised
+2026-06-03):
 
 - **New `local` env, mirroring prod/staging:** `ops/inventories/local/` +
   `deployment/local/spec-*.yml` (`deployment_subdir: deployment/local`) +
   `deployment/local/bridges/default/operator/validators.yaml`. `hosts.yml` supports
-  **both** topologies — single-host (all groups incl. a `chain_hosts` group on one
-  VM, Layer 1) and the multi-host split (Layer 2).
-- **Chains are out-of-band:** gorchain (via `gorchain-stacks`) and a local
-  `solana-test-validator` are stood up separately, as the Kind e2e already does; the
-  env only consumes their RPC endpoints.
-- **Chain endpoints (Option 2 — patch at deploy):** `GORCHAIN_RPC_URL` /
-  `SOLANA_RPC_URL` stay `config:` literals shipped as `REPLACE_AT_RUNTIME`. A
-  `render_chain_endpoints` step in `stack_deploy`, **gated on render vars set only in
-  `local/group_vars`** (no-op for prod/staging), seds them on the host's fetched clone
-  before `deploy create`, using `http://{{ hostvars[<chain host>].public_ip }}:8899`
-  so single- and multi-host both resolve. Local-only render, nothing committed/pushed
-  (like the e2e conftest patch). For `local`, `SOLANA_RPC_URL` therefore moves out of
-  `secrets:` — no Helius key locally.
+  **both** topologies (below).
+- **Topologies.** Both chains are self-run **test validators with RPC enabled** — a
+  single-node gorchain (agave fork) test validator and a `solana-test-validator` —
+  stood up out-of-band; the env only consumes their RPC URLs.
+  - **Layer 1 (single-host):** one VM runs every bridge stack *and* both chain test
+    validators. The default `inventories/local/hosts.yml`.
+  - **Layer 2 (multi-host):** 3 VMs, chosen to **maximize cross-host routing** (not to
+    mirror staging's resource-pragmatic layout, which co-locates the gorchain chain +
+    hyperlane validator):
+
+    | Host | Runs |
+    |---|---|
+    | `local-chains` (beefy) | gorchain test validator (RPC) + `solana-test-validator` (RPC) — out-of-band, heavy, isolated |
+    | `local-services` | MinIO, monitoring, gas-oracle, warp-ui, deployer |
+    | `local-agents` | gorchain hyperlane validator, solana hyperlane validator, relayer |
+
+    Every routing-relevant hop crosses a host boundary (agents→MinIO, agents→chain
+    RPC, monitoring→agents `/metrics`); the chains are isolated on the beefy box and
+    the hyperlane validators sit off the chain test validators (so validator→chain RPC
+    is cross-host). Co-locating the three agents costs no coverage — they never route
+    to each other — and exercises Caddy multi-host-name routing on that one host.
+
+#### Networking by topology
+
+Single-host and multi-host diverge only in networking, driven by a derived `topology`
+var (`minio_hosts[0] == relayer_hosts[0]`):
+
+- **Single-host:** mkcert self-trusted certs (the `local_tls` role pre-seeds Caddy; SO's
+  `_restore_caddy_certs` loads them, no ACME). The validator→MinIO and Prometheus scrape
+  legs go in-cluster over HTTP via `external-services: selector:` blocks. No Cloudflare,
+  no public DNS. See `docs/superpowers/specs/2026-06-03-local-single-host-mkcert-design.md`.
+- **Multi-host:** Caddy + Cloudflare DNS + real Let's Encrypt, as prod. The MinIO leg
+  crosses a host boundary, so the Rust S3 client needs a publicly-trusted cert.
+
+Both ship from one `deployment/local/` spec tree; the per-topology values and the
+in-cluster `external-services` blocks render via `spec_token_renders`.
+
+- **Networking diverges by topology** (see the `#### Networking by topology` subsection
+  above). Multi-host: Caddy + Cloudflare DNS + real LE; single-host: mkcert + SSH
+  tunnel, in-cluster HTTP for the S3/metrics legs.
+- **Chain RPCs are domain-routed:** the out-of-band test validators expose their RPC
+  at their own domain endpoints (set up with the nodes); the env consumes those URLs
+  via the `__GORCHAIN_RPC_URL__` / `__SOLANA_RPC_URL__` tokens.
+- **On-host token render (generalized from the earlier chain-only render):**
+  operator-supplied values not known until the zone/chains exist — `__DNS_ZONE__`
+  (woven into the specs' `http-proxy` host-names and `AWS_ENDPOINT_URL_S3`) and the
+  chain RPC URLs (`__GORCHAIN_RPC_URL__` / `__SOLANA_RPC_URL__`) — ship as committed
+  tokens and are substituted into the host's fetched clone before `deploy create` by
+  `stack_deploy`, gated on `spec_token_renders` (set only in `local/group_vars`;
+  no-op for prod/staging). For `local`, `SOLANA_RPC_URL` is a rendered `config:`
+  literal, not a Helius secret. The render runs before each consumer deploys (after
+  publish), so `publish-bridge-state` commits the un-rendered tokens, never the
+  host-specific values.
 - **IDs:** reuse the devnet values (`1198486095` gorchain / `1399811151` solana,
   `*_IS_TESTNET=true`).
-- **TLS:** skipped — `local` serves plain HTTP (own-chains VMs have no public DNS for
-  LE HTTP-01). Real TLS is exercised at Layer 3 (staging) and prod.
+- **Single-host uses mkcert, not a public zone.** See `#### Networking by topology` above.
+  The earlier local-ACME fallback note is superseded by the mkcert approach.
 
 ### Layer 3 staging environment requirements
 

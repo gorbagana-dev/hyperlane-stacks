@@ -24,7 +24,7 @@ export interface PrivyClient {
 export function createPrivyClient(
   appId: string,
   appSecret: string,
-  apiUrl: string = "https://auth.privy.io/api/v1",
+  apiUrl: string = "https://api.privy.io/v1",
 ): PrivyClient {
   const authHeader =
     "Basic " + Buffer.from(`${appId}:${appSecret}`).toString("base64");

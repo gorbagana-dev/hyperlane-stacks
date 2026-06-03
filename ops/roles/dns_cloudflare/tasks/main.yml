@@ -7,6 +7,19 @@
 - name: Load validator-derived DNS records
   ansible.builtin.include_tasks: ../common/tasks/load_validators.yml
 
+# Envs may declare dns_records statically (prod/staging) OR give a dns_record_map
+# of subdomain -> inventory group; the latter resolves each record to that group's
+# host, so one map serves any topology (local). Skipped when no map is set.
+- name: Derive dns_records from group membership when a map is given
+  ansible.builtin.set_fact:
+    dns_records: >-
+      {{ dns_records | default([])
+         + [{'name': item.key, 'host': groups[item.value] | first}] }}
+  loop: "{{ dns_record_map | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: dns_record_map is defined
+
 - name: Build host -> public_ip map from host_vars
   ansible.builtin.set_fact:
     host_ip_map: "{{ host_ip_map | default({}) | combine({item: hostvars[item].public_ip}) }}"
