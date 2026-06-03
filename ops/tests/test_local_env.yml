@@ -6,6 +6,7 @@
   vars:
     ansible_env:
       HOME: /home/op
+    kind_gateway_ip: 172.18.0.1
   tasks:
     - name: Load local env wiring
       ansible.builtin.include_vars:
@@ -33,15 +34,24 @@
           - "spec_token_renders['__PROM_SCRAPE_SCHEME__'] == 'http'"
           - "'validator-gorchain:9090' in spec_token_renders['__PROM_VALIDATOR_TARGETS__']"
           - "spec_token_renders['__PROM_RELAYER_TARGETS__'] == 'primary=relayer:9091'"
-          # structural blocks expand for single-host
-          - "'laconic-hyperlane-minio' in spec_token_renders['# __SINGLE_HOST_MINIO_XS__']"
-          - "'hyperlane-relayer' in spec_token_renders['# __SINGLE_HOST_PROM_XS__']"
           # single-host needs no Cloudflare token
           - "'cloudflare_api_token' not in required_operator_secrets"
           - "'privy_app_id' in required_operator_secrets"
           - "'ghcr_pat' in required_operator_secrets"
           # chain RPCs are rendered config: literals, never secret-env names
           - "'SOLANA_RPC_URL' not in (stack_env_vars.values() | map('list') | flatten | unique)"
+
+    - name: Single-host chain RPCs are in-cluster service names
+      ansible.builtin.assert:
+        that:
+          - spec_token_renders['__GORCHAIN_RPC_URL__'] == 'http://gorchain-rpc:8899'
+          - spec_token_renders['__SOLANA_RPC_URL__'] == 'http://solana-rpc:18899'
+          - spec_token_renders['__BROWSER_GORCHAIN_RPC_URL__'] == 'http://localhost:8899'
+          - spec_token_renders['__BROWSER_SOLANA_RPC_URL__'] == 'http://localhost:18899'
+          - "'hyperlane-validator' in single_host_external_services"
+          - "'hyperlane-svm-deployer' in single_host_external_services"
+          - "'hyperlane-warp-ui' not in single_host_external_services"
+          - "'hyperlane-minio' not in single_host_external_services"
 
 - name: Local multi-host wiring (Let's Encrypt + Cloudflare, Caddy-fronted MinIO/scrape)
   hosts: localhost
@@ -50,6 +60,7 @@
   vars:
     ansible_env:
       HOME: /home/op
+    kind_gateway_ip: 172.18.0.1
   tasks:
     - name: Load local env wiring
       ansible.builtin.include_vars:
@@ -70,11 +81,16 @@
           - "spec_token_renders['__PROM_SCRAPE_SCHEME__'] == 'https'"
           - "'validator-gorchain.staging.gorbagana.wtf:443' in spec_token_renders['__PROM_VALIDATOR_TARGETS__']"
           - "spec_token_renders['__PROM_RELAYER_TARGETS__'] == 'primary=relayer.staging.gorbagana.wtf:443'"
-          # structural markers render to empty for multi-host
-          - "spec_token_renders['# __SINGLE_HOST_MINIO_XS__'] == ''"
-          - "spec_token_renders['# __SINGLE_HOST_PROM_XS__'] == ''"
           # multi-host needs Cloudflare
           - "'cloudflare_api_token' in required_operator_secrets"
           # derived DNS map unchanged
           - "dns_record_map.s3 == 'minio_hosts'"
           - "dns_record_map.relayer == 'relayer_hosts'"
+
+    - name: Multi-host chain RPCs are the operator domains
+      ansible.builtin.assert:
+        that:
+          - spec_token_renders['__GORCHAIN_RPC_URL__'] == gorchain_rpc_url
+          - spec_token_renders['__SOLANA_RPC_URL__'] == solana_rpc_url
+          - spec_token_renders['__BROWSER_GORCHAIN_RPC_URL__'] == gorchain_rpc_url
+          - spec_token_renders['__BROWSER_SOLANA_RPC_URL__'] == solana_rpc_url
