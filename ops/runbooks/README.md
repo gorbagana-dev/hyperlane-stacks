@@ -7,7 +7,8 @@ DNS/TLS, secrets).
 
 | Runbook | Environment | Chains | DNS / TLS | Status |
 |---|---|---|---|---|
-| [local.md](local.md) | Own-chains (testing Layers 1-2) | self-run gorchain + local solana-test-validator | none (plain HTTP) | available |
+| [local-single-host.md](local-single-host.md) | Own-chains, one VM (Layer 1) | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) | available |
+| [local-multi-host.md](local-multi-host.md) | Own-chains, cross-host (Layer 2) | self-run gorchain + solana-test-validator, separate box | Cloudflare + Let's Encrypt | available |
 | staging.md | Devnet rehearsal (Layer 3) | self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt | _to be added_ |
 | prod.md | Production | mainnet gorchain + Helius mainnet | Cloudflare + Let's Encrypt | _to be added_ |
 
@@ -15,6 +16,11 @@ DNS/TLS, secrets).
 environment/inventory model, the secret-vs-config model, `fetch-stack`, and how a
 stack gets deployed. Each runbook links into it rather than repeating it.
 
-**Adding a new environment runbook:** copy the structure of `local.md`
-(Prerequisites → Chains → Inventory → Secrets → Keyfiles → Run → Access → Reset →
-Limitations) and call out only what that environment changes. Add a row above.
+**Shared:** Privy server-wallet setup is the same for every runbook — see
+[privy-wallets.md](privy-wallets.md). Each runbook links there and then says which vars
+to fill.
+
+**Adding a new environment runbook:** copy the structure of `local-single-host.md`
+(Networking model → Prerequisites → Privy wallets → Chains → Inventory & zone → Secrets →
+Keyfiles & group_vars → Run → Access → Reset → Limitations) and call out only what that
+environment changes. Add a row above.

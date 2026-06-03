@@ -39,8 +39,8 @@ inventory or vars.
   LE) under an operator-supplied zone, so multi-host routing works exactly like prod.
   Local-specific bits: no Helius (`SOLANA_RPC_URL` is the own chain), and the
   operator-supplied `dns_zone` + own-chain RPC URLs ship as `__TOKENS__` in the specs,
-  rendered on the host (`spec_token_renders`). See `runbooks/local.md` (and its
-  no-public-DNS / local-ACME fallback).
+  rendered on the host (`spec_token_renders`). See the `local` runbooks
+  (`runbooks/local-single-host.md`, `runbooks/local-multi-host.md`).
 
 **From-scratch operator guides per environment live in `runbooks/`** (start there
 to bring an environment up; this README is the mechanics reference behind them).
