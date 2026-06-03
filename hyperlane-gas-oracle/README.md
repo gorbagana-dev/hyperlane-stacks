@@ -24,7 +24,7 @@ Supports two signing modes:
 | `PRIVY_APP_ID` | Privy mode | — | Privy application ID |
 | `PRIVY_APP_SECRET` | Privy mode | — | Privy application secret |
 | `PRIVY_ORACLE_WALLET_ID` | Privy mode | — | Privy server wallet ID (Ed25519, IGP account owner) |
-| `PRIVY_API_URL` | No | `https://auth.privy.io/api/v1` | Privy API base URL (override for mock server in tests) |
+| `PRIVY_API_URL` | No | `https://api.privy.io/v1` | Privy API base URL (override for mock server in tests) |
 | `ORACLE_KEYPAIR` | Keypair mode | — | JSON keypair array (e.g. `[1,2,3,...,64]`) |
 | `GORCHAIN_RPC_URL` | Yes | — | Gorchain RPC endpoint |
 | `SOLANA_RPC_URL` | Yes | — | Solana RPC endpoint |

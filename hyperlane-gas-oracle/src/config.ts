@@ -77,7 +77,7 @@ export function loadConfig(): OracleConfig {
       signerMode === "privy" ? requireEnv("PRIVY_APP_SECRET") : "",
     privyOracleWalletId:
       signerMode === "privy" ? requireEnv("PRIVY_ORACLE_WALLET_ID") : "",
-    privyApiUrl: optionalEnv("PRIVY_API_URL", "https://auth.privy.io/api/v1"),
+    privyApiUrl: optionalEnv("PRIVY_API_URL", "https://api.privy.io/v1"),
 
     signerMode,
     oracleKeypair,

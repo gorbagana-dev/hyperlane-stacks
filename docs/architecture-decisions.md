@@ -320,7 +320,7 @@ The gas oracle is a standalone TypeScript service in the `hyperlane-gas-oracle` 
 **No proxy needed** — the oracle is our own service, so it calls Privy directly. Uses the sign-only `signTransaction` endpoint (not `signAndSendTransaction`), so the oracle controls which RPC the tx is submitted to — critical for custom chains like Gorchain that aren't in Privy's CAIP-2 registry.
 
 **Two signer modes:**
-- `SIGNER_MODE=privy` (default): Privy server wallet for production. Uses `PRIVY_API_URL` (default: `https://auth.privy.io/api/v1`, overridable for mock server in E2E tests).
+- `SIGNER_MODE=privy` (default): Privy server wallet for production. Uses `PRIVY_API_URL` (default: `https://api.privy.io/v1`, overridable for mock server in E2E tests).
 - `SIGNER_MODE=keypair`: Local Solana keypair for lightweight testing
 
 **Configuration:**

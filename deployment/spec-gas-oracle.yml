@@ -27,7 +27,7 @@ config:
 
   # --- Privy API URL ---
   # Override for testing (e.g. mock server). Production uses the default.
-  # PRIVY_API_URL: "https://auth.privy.io/api/v1"
+  # PRIVY_API_URL: "https://api.privy.io/v1"
 
   # --- Gas oracle parameters ---
   # Gas price in decimal SOL per gas unit. This is the raw gas price before
