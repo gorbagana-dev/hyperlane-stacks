@@ -59,10 +59,51 @@ dns_record_map:
 # full RPC URLs including scheme (http/https as the chain hosts serve them).
 gorchain_rpc_url: "REPLACE_WITH_GORCHAIN_RPC_URL"
 solana_rpc_url: "REPLACE_WITH_SOLANA_RPC_URL"
+
+# Single-host external-services blocks. Rendered into the validator/monitoring specs in
+# place of a comment marker; multi-host renders the marker to ''. Column-0 top-level keys
+# (the marker comment sits at column 0). MinIO leg: validator dials the MinIO pod
+# cross-NS over plain HTTP (aws-sdk-rust can't trust a non-public CA). Monitoring leg:
+# Prometheus scrapes validators/relayer in-cluster.
+_single_host_minio_xs: |
+  external-services:
+    hyperlane-minio:
+      selector:
+        app.kubernetes.io/stack: hyperlane-minio
+      namespace: laconic-hyperlane-minio
+      port: 9000
+_single_host_prom_xs: |
+  external-services:
+    validator-gorchain:
+      selector:
+        app.kubernetes.io/stack: hyperlane-validator
+      namespace: laconic-hyperlane-validator-gorchain
+      port: 9090
+    validator-solana:
+      selector:
+        app.kubernetes.io/stack: hyperlane-validator
+      namespace: laconic-hyperlane-validator-solana
+      port: 9090
+    relayer:
+      selector:
+        app.kubernetes.io/stack: hyperlane-relayer
+      namespace: laconic-hyperlane-relayer
+      port: 9091
+
 spec_token_renders:
   __DNS_ZONE__: "{{ dns_zone }}"
   __GORCHAIN_RPC_URL__: "{{ gorchain_rpc_url }}"
   __SOLANA_RPC_URL__: "{{ solana_rpc_url }}"
+  # single: validator dials MinIO in-cluster; multi: via the Caddy-fronted LE endpoint
+  __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ dns_zone }}"
+  __PROM_SCRAPE_SCHEME__: "{{ 'http' if topology == 'single' else 'https' }}"
+  __PROM_VALIDATOR_TARGETS__: >-
+    {{ 'gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090'
+       if topology == 'single'
+       else 'gorchain-primary=validator-gorchain.' ~ dns_zone ~ ':443,solana-primary=validator-solana.' ~ dns_zone ~ ':443' }}
+  __PROM_RELAYER_TARGETS__: "{{ 'primary=relayer:9091' if topology == 'single' else 'primary=relayer.' ~ dns_zone ~ ':443' }}"
+  "# __SINGLE_HOST_MINIO_XS__": "{{ _single_host_minio_xs if topology == 'single' else '' }}"
+  "# __SINGLE_HOST_PROM_XS__": "{{ _single_host_prom_xs if topology == 'single' else '' }}"
 
 # --- Secret-env values ---
 # Local has no Helius (own Solana chain → solana_rpc_url is a plain domain rendered
