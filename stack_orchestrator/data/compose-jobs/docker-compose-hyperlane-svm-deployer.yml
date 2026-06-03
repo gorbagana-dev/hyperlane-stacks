@@ -6,7 +6,6 @@ services:
     command: ["/opt/scripts/deploy.sh"]
     environment:
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
-      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
       GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
@@ -14,9 +13,11 @@ services:
       GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
       SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
-      # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
+      # Key management + SOLANA_RPC_URL — injected via secrets: in spec.yml
+      # (envFrom.secretRef). Don't add SOLANA_RPC_URL here: an explicit env
+      # entry overrides envFrom, and it bakes empty at `deploy create`.
       # DEPLOYER_KEYPAIR, HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY
-      # GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
+      # GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS, SOLANA_RPC_URL
     volumes:
       - deployer-scripts-config:/opt/scripts:ro
       - deployer-gas-oracle-config:/config/gas-oracle:ro

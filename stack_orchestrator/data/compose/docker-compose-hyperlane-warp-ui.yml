@@ -6,7 +6,6 @@ services:
     environment:
       # Chain RPC URLs — entrypoint.sh replaces sentinel placeholders in built JS
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
-      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       # Domain IDs
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
