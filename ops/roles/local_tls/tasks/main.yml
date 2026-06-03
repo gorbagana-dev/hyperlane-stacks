@@ -1,0 +1,89 @@
+---
+- name: Load validators (for cert SANs)
+  ansible.builtin.include_tasks: ../common/tasks/load_validators.yml
+
+- name: Derive the cert hostname list from dns_record_map + validators
+  ansible.builtin.set_fact:
+    mkcert_hostnames: "{{ _base_hosts + _validator_hosts }}"
+  vars:
+    # regex_replace on '$' appends, on '^' prepends — no backreferences, no escaping.
+    _base_hosts: "{{ dns_record_map.keys() | map('regex_replace', '$', '.' ~ dns_zone) | list }}"
+    _validator_hosts: >-
+      {{ validators | map(attribute='chain')
+         | map('regex_replace', '^', 'validator-')
+         | map('regex_replace', '$', '.' ~ dns_zone) | list }}
+
+- name: Install mkcert binary
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ mkcert_url }}"
+    dest: /usr/local/bin/mkcert
+    mode: "0755"
+
+- name: Find the mkcert CAROOT
+  ansible.builtin.command: mkcert -CAROOT
+  register: _caroot
+  changed_when: false
+
+- name: Generate the mkcert root CA and trust it in the host system store
+  become: true
+  ansible.builtin.command: mkcert -install
+  args:
+    creates: "{{ _caroot.stdout }}/rootCA.pem"
+
+- name: Ensure the cert dir exists
+  ansible.builtin.file:
+    path: "{{ local_tls_cert_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Generate the multi-SAN leaf cert
+  # Each hostname must be its own argv element — concatenate the list, don't join.
+  ansible.builtin.command:
+    argv: "{{ _mkcert_base_argv + mkcert_hostnames }}"
+  args:
+    creates: "{{ local_tls_cert_dir }}/bridge.crt"
+  vars:
+    _mkcert_base_argv:
+      - mkcert
+      - -cert-file
+      - "{{ local_tls_cert_dir }}/bridge.crt"
+      - -key-file
+      - "{{ local_tls_cert_dir }}/bridge.key"
+
+- name: Slurp cert + key (slurp returns base64-encoded content)
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  register: _slurped
+  loop:
+    - "{{ local_tls_cert_dir }}/bridge.crt"
+    - "{{ local_tls_cert_dir }}/bridge.key"
+
+- name: Build the Caddy pre-seed backup
+  become: true
+  ansible.builtin.template:
+    src: caddy-secrets.yaml.j2
+    dest: "{{ kind_mount_root }}/caddy-cert-backup/caddy-secrets.yaml"
+    mode: "0644"
+  vars:
+    cert_b64: "{{ _slurped.results[0].content }}"
+    key_b64: "{{ _slurped.results[1].content }}"
+    json_b64: "{{ '{}' | b64encode }}"
+
+- name: Publish rootCA.pem for the operator to fetch (workstation browser trust)
+  become: true
+  ansible.builtin.copy:
+    src: "{{ _caroot.stdout }}/rootCA.pem"
+    dest: "{{ local_tls_published_ca }}"
+    remote_src: true
+    mode: "0644"
+
+- name: Point the host /etc/hosts at loopback for every bridge hostname
+  become: true
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} hyperlane local_tls"
+    block: |
+      {% for host in mkcert_hostnames %}
+      127.0.0.1 {{ host }}
+      {% endfor %}

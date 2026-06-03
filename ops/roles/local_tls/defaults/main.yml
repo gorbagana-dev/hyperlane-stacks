@@ -1,0 +1,9 @@
+---
+# Where mkcert writes the leaf cert/key and where we publish rootCA.pem for the operator
+# to scp down for workstation browser trust.
+local_tls_cert_dir: "{{ credentials_dir }}/local-certs"
+local_tls_published_ca: "{{ credentials_dir }}/local-rootCA.pem"
+# mkcert release pinned for reproducibility.
+mkcert_version: "v1.4.4"
+_mkcert_base_url: "https://github.com/FiloSottile/mkcert/releases/download"
+mkcert_url: "{{ _mkcert_base_url }}/{{ mkcert_version }}/mkcert-{{ mkcert_version }}-linux-amd64"
