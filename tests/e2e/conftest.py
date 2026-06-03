@@ -1960,7 +1960,7 @@ def warp_ui_deployment(
 
     # Caddy serves bridge.test via SO's http-proxy emission.
     log.info("Waiting for warp-ui to respond via Caddy ingress...")
-    for _ in range(30):
+    for _ in range(90):
         probe = subprocess.run(
             ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
              f"{WARP_UI_URL}/"],
@@ -1970,7 +1970,7 @@ def warp_ui_deployment(
             break
         time.sleep(2)
     else:
-        log.warning("Warp UI not returning 200 after 60s")
+        log.warning("Warp UI not returning 200 after 180s")
     log.info("Warp UI ingress ready at %s", WARP_UI_URL)
 
     yield {
