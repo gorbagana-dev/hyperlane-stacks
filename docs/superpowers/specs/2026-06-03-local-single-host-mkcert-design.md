@@ -112,20 +112,22 @@ remain valid YAML and parse identically in both topologies before render.
 
 ### Specs touched (spec-level edits)
 
-- `spec-validator-gorchain.yml`, `spec-validator-solana.yml`:
+- `spec-validator-gorchain.yml`, `spec-validator-solana.yml`, and `spec-relayer.yml`:
   `AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"` (was `https://s3.__DNS_ZONE__`); append
-  `# __SINGLE_HOST_MINIO_XS__` at column 0 after the `network:` block. The validators'
-  own `network.http-proxy` route and chain RPC access (via `gorchain_rpc_url` /
+  `# __SINGLE_HOST_MINIO_XS__` at column 0 after the `network:` block. The relayer reads
+  validator checkpoints from MinIO over the same anonymous `aws-sdk-rust` S3 client as the
+  validators, so it needs the same in-cluster treatment. The validators' own
+  `network.http-proxy` route and chain RPC access (via `gorchain_rpc_url` /
   `solana_rpc_url` domains, out-of-band) are unchanged — both topologies keep them;
-  mkcert covers the validator hostnames in single-host.
+  mkcert covers the validator and relayer hostnames in single-host.
 - `spec-monitoring.yml`: `PROMETHEUS_VALIDATOR_TARGETS: "__PROM_VALIDATOR_TARGETS__"`,
   `PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"`, add
   `PROMETHEUS_SCRAPE_SCHEME: "__PROM_SCRAPE_SCHEME__"` to `config:`, append
   `# __SINGLE_HOST_PROM_XS__` at column 0.
-- All other specs (`spec-minio.yml`, relayer, gas-oracle, warp-ui, deployer,
+- All other specs (`spec-minio.yml`, gas-oracle, warp-ui, deployer,
   warp-deployer): unchanged. MinIO keeps its `s3.{{ zone }}` / `minio-console.{{ zone }}`
-  Caddy routes in both topologies — in single-host the validator no longer uses the
-  `s3` route, but it stays available for operator browser/CLI access via mkcert.
+  Caddy routes in both topologies — in single-host the validators and relayer no longer
+  use the `s3` route, but it stays available for operator browser/CLI access via mkcert.
 
 ## New role: `local_tls` (single-host only)
 
@@ -192,7 +194,7 @@ Cloudflare entry but the runbook notes it is multi-host-only.
 ## Files changed
 
 - `deployment/local/spec-validator-gorchain.yml`, `spec-validator-solana.yml`,
-  `spec-monitoring.yml` — tokens + comment markers (above).
+  `spec-relayer.yml`, `spec-monitoring.yml` — tokens + comment markers (above).
 - `ops/inventories/local/group_vars/all.yml` — `topology`, `manage_dns`,
   topology-conditional `spec_token_renders` values and `required_operator_secrets`.
 - `ops/roles/local_tls/` — new role (tasks + a Jinja template for `caddy-secrets.yaml`).

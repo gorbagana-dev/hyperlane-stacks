@@ -56,9 +56,10 @@ Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 - A **Privy** project (validator + gas-oracle signing).
 - A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images.
 
-**Per VM:** public IPv4 with inbound **80 + 443** open (Let's Encrypt HTTP-01) and
-**22** from the controller. Target hosts need nothing else pre-installed —
-`setup-all.yml` provisions Docker/kind/kubectl + laconic-so.
+**Per VM:** inbound **22** from the controller. **Multi-host additionally** needs public
+IPv4 with inbound **80 + 443** open (Let's Encrypt HTTP-01); single-host serves Caddy on
+the host loopback and needs no public inbound 80/443. Target hosts need nothing else
+pre-installed — `setup-all.yml` provisions Docker/kind/kubectl + laconic-so.
 
 ## 2. Stand up the chains (out-of-band, with domains)
 
@@ -106,6 +107,8 @@ cp inventories/local/secrets.example.yml inventories/local/secrets.yml
 #       privy_oracle_wallet_id, ghcr_pat
 ```
 
+(`cloudflare_api_token` is required for multi-host only; omit it for single-host.)
+
 No `helius_api_key` — the Solana side is your own chain. MinIO/Grafana credentials
 are generated into `secrets.yml` by the `credentials` role on first run.
 
@@ -134,7 +137,7 @@ Also fill the operator pubkeys/addresses in `group_vars/all.yml`
 **Single-host:**
 
 ```bash
-# Phase 1 — provision + reconcile Cloudflare DNS + generate creds
+# Phase 1 — provision + (multi-host) reconcile Cloudflare DNS + (single-host) mkcert TLS + generate creds
 ansible-playbook -i inventories/local/hosts.yml playbooks/setup-all.yml
 
 # Phase 2 — deploy MinIO → deployer Job → publish state → consumers + validators

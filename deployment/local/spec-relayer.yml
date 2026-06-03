@@ -1,8 +1,9 @@
 # Hyperlane Relayer - LOCAL (own-chains) deployment spec
 # Delivers cross-chain messages between Gorchain and Solana.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host;
-# everything else mirrors prod (Caddy + LE, MinIO via public s3.<zone>).
+# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host; the S3
+# endpoint renders per topology (single -> in-cluster MinIO over HTTP; multi -> Caddy +
+# LE at s3.<zone>).
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
@@ -14,7 +15,9 @@ config:
   SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
   GORCHAIN_IGP_ACCOUNT: "REPLACE_WITH_GORCHAIN_IGP_ACCOUNT"
   SOLANA_IGP_ACCOUNT: "REPLACE_WITH_SOLANA_IGP_ACCOUNT"
-  AWS_ENDPOINT_URL_S3: "https://s3.__DNS_ZONE__"
+  # Rendered per topology: single -> http://hyperlane-minio:9000 (in-cluster, plain
+  # HTTP); multi -> https://s3.<zone> (Caddy + LE). See ops group_vars spec_token_renders.
+  AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9091"
@@ -52,3 +55,6 @@ network:
       routes:
         - path: /
           proxy-to: relayer:9091
+# Single-host only: relayer reads validator checkpoints from the MinIO pod cross-NS
+# in-cluster. Rendered to an external-services: block on single-host, removed on multi-host.
+# __SINGLE_HOST_MINIO_XS__
