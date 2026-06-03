@@ -1,5 +1,5 @@
 ---
-- name: Local own-chains env wiring (deployment_root, token renders, relaxed secrets)
+- name: Local single-host wiring (mkcert, no Cloudflare, in-cluster MinIO/scrape)
   hosts: localhost
   connection: local
   gather_facts: false
@@ -11,36 +11,68 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
 
-    - name: Stand in operator-supplied values (set_fact > include_vars)
+    - name: Stand in operator-supplied values + single-host topology
+      ansible.builtin.set_fact:
+        dns_zone: "hyperlane.local"
+        gorchain_rpc_url: "https://gorchain-rpc.example"
+        solana_rpc_url: "https://solana-rpc.example"
+        topology: "single"
+        validators:
+          - { label: gorchain-primary, chain: gorchain }
+          - { label: solana-primary, chain: solana }
+
+    - name: Single-host wiring resolves as designed
+      ansible.builtin.assert:
+        that:
+          - "deployment_root == '/home/op/deployments/hyperlane-stacks/deployment/local'"
+          - "manage_dns | bool == false"
+          # in-cluster MinIO + HTTP scrape
+          - "spec_token_renders['__S3_ENDPOINT__'] == 'http://hyperlane-minio:9000'"
+          - "spec_token_renders['__PROM_SCRAPE_SCHEME__'] == 'http'"
+          - "'validator-gorchain:9090' in spec_token_renders['__PROM_VALIDATOR_TARGETS__']"
+          - "spec_token_renders['__PROM_RELAYER_TARGETS__'] == 'primary=relayer:9091'"
+          # structural blocks expand for single-host
+          - "'laconic-hyperlane-minio' in spec_token_renders['# __SINGLE_HOST_MINIO_XS__']"
+          - "'hyperlane-relayer' in spec_token_renders['# __SINGLE_HOST_PROM_XS__']"
+          # single-host needs no Cloudflare token
+          - "'cloudflare_api_token' not in required_operator_secrets"
+          - "'privy_app_id' in required_operator_secrets"
+          - "'ghcr_pat' in required_operator_secrets"
+          # chain RPCs are rendered config: literals, never secret-env names
+          - "'SOLANA_RPC_URL' not in (stack_env_vars.values() | map('list') | flatten | unique)"
+
+- name: Local multi-host wiring (Let's Encrypt + Cloudflare, Caddy-fronted MinIO/scrape)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_env:
+      HOME: /home/op
+  tasks:
+    - name: Load local env wiring
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
+
+    - name: Stand in operator-supplied values + multi-host topology
       ansible.builtin.set_fact:
         dns_zone: "staging.gorbagana.wtf"
         gorchain_rpc_url: "https://gorchain-rpc.example"
         solana_rpc_url: "https://solana-rpc.example"
+        topology: "multi"
 
-    - name: Flatten every secret-env name across all stacks
-      ansible.builtin.set_fact:
-        all_secret_env: "{{ stack_env_vars.values() | map('list') | flatten | unique }}"
-
-    - name: Local wiring resolves as designed
+    - name: Multi-host wiring resolves as designed
       ansible.builtin.assert:
         that:
-          # deployment_root points at the local spec tree on the on-host clone
-          - "deployment_root == '/home/op/deployments/hyperlane-stacks/deployment/local'"
-          # on-host token renders resolve to the operator-supplied values
-          - "spec_token_renders.__DNS_ZONE__ == 'staging.gorbagana.wtf'"
-          - "spec_token_renders.__GORCHAIN_RPC_URL__ == 'https://gorchain-rpc.example'"
-          - "spec_token_renders.__SOLANA_RPC_URL__ == 'https://solana-rpc.example'"
-          # chain RPCs are rendered config: literals, never secret-env names
-          - "'SOLANA_RPC_URL' not in all_secret_env"
-          - "'COLLATERAL_CHAIN_RPC_URL' not in all_secret_env"
-          - "'GORCHAIN_RPC_URL' not in all_secret_env"
-          # dns_records are derived from group membership (dns_cloudflare role), so the
-          # map points each subdomain at the group that runs it — one map, any topology
-          - "dns_record_map.s3 == 'minio_hosts'"
-          - "dns_record_map.grafana == 'monitoring_hosts'"
-          - "dns_record_map.relayer == 'relayer_hosts'"
-          # local needs Cloudflare (DNS) but not Helius
+          - "manage_dns | bool == true"
+          - "spec_token_renders['__S3_ENDPOINT__'] == 'https://s3.staging.gorbagana.wtf'"
+          - "spec_token_renders['__PROM_SCRAPE_SCHEME__'] == 'https'"
+          - "'validator-gorchain.staging.gorbagana.wtf:443' in spec_token_renders['__PROM_VALIDATOR_TARGETS__']"
+          - "spec_token_renders['__PROM_RELAYER_TARGETS__'] == 'primary=relayer.staging.gorbagana.wtf:443'"
+          # structural markers render to empty for multi-host
+          - "spec_token_renders['# __SINGLE_HOST_MINIO_XS__'] == ''"
+          - "spec_token_renders['# __SINGLE_HOST_PROM_XS__'] == ''"
+          # multi-host needs Cloudflare
           - "'cloudflare_api_token' in required_operator_secrets"
-          - "'helius_api_key' not in required_operator_secrets"
-          - "'privy_app_id' in required_operator_secrets"
-          - "'ghcr_pat' in required_operator_secrets"
+          # derived DNS map unchanged
+          - "dns_record_map.s3 == 'minio_hosts'"
+          - "dns_record_map.relayer == 'relayer_hosts'"
