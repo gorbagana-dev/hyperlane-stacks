@@ -50,7 +50,6 @@ secrets:
       DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
       HARDWARE_WALLET_PUBKEY:   { env: HARDWARE_WALLET_PUBKEY }
       SOLANA_RPC_URL:           { env: SOLANA_RPC_URL }
-      COLLATERAL_CHAIN_RPC_URL: { env: COLLATERAL_CHAIN_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
