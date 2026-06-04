@@ -23,10 +23,12 @@
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
     gorchain_rpc: "http://localhost:8899"
     solana_rpc: "http://localhost:18899"
-    # The scripts call laconic-so (~/bin) and the Solana CLIs (the standard
-    # solana-install dir) by name, but ansible's non-login shell sources neither
-    # from .profile — so put both on PATH explicitly for the script tasks.
-    tool_path: "{{ ansible_env.HOME }}/bin:{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin:{{ ansible_env.PATH }}"
+    # The scripts call the Solana CLIs by name from the standard solana-install dir,
+    # which ansible's non-login shell doesn't have on PATH (.profile isn't sourced).
+    # laconic-so is reachable via the /usr/local/bin symlink (prerequisites_user);
+    # ~/bin is kept as a fallback.
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
   pre_tasks:
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:

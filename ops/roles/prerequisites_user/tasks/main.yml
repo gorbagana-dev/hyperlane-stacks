@@ -11,7 +11,17 @@
     dest: "{{ ansible_env.HOME }}/bin/laconic-so"
     mode: "0755"
 
-- name: Ensure ~/bin on PATH for non-interactive shells
+# ~/bin isn't on PATH for ansible's non-login shell (.profile isn't sourced), so
+# every `command: laconic-so ...` task — and the setup scripts that call it by name —
+# would fail to find it. Symlink it into /usr/local/bin, which IS on the default PATH.
+- name: Symlink laconic-so into /usr/local/bin (PATH for non-login shells)
+  ansible.builtin.file:
+    src: "{{ ansible_env.HOME }}/bin/laconic-so"
+    dest: /usr/local/bin/laconic-so
+    state: link
+  become: true
+
+- name: Ensure ~/bin on PATH for interactive operator shells
   ansible.builtin.lineinfile:
     path: "{{ ansible_env.HOME }}/.profile"
     line: 'export PATH="$HOME/bin:$PATH"'
