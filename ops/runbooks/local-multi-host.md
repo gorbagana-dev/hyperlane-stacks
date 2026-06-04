@@ -61,6 +61,9 @@ Stand up both chains **out-of-band** on a separate beefy box (not in this invent
 expose each at a reachable domain/IP with its own DNS + TLS. Fund the deployer and the
 Privy oracle wallet on both, and create the collateral USDC mint on Solana.
 
+> Generate the keypairs first (step 6) and copy `deployer-keypair.json` to this box —
+> funding needs the deployer address and the mint needs it as the signer.
+
 ```bash
 # on the chains box — gorchain single-node RPC (via gorchain-stacks)
 laconic-so fetch-stack --git-ssh --pull github.com/gorbagana-dev/gorchain-stacks@main
@@ -161,7 +164,9 @@ local-agents (validators + relayer host):
 ```
 
 You keep `hardware-wallet.json` (its pubkey → `HARDWARE_WALLET_PUBKEY`; not deployed).
-Fund the printed addresses on both chains. Then fill in `group_vars/all.yml`:
+Funding the printed addresses + creating the USDC mint happen on the chains box in
+step 3 (`fund-test-wallets.sh <addr> <amount> …`, with `GORCHAIN_RPC=`/`SOLANA_RPC=`
+set to the chain domains if not its localhost). Then fill in `group_vars/all.yml`:
 `HARDWARE_WALLET_PUBKEY`, `IGP_ORACLE_PUBKEY`,
 `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`; `REPLACE_WITH_GITHUB_USERNAME` in
 the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` from step 3) in

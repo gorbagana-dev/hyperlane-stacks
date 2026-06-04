@@ -69,22 +69,10 @@ solana-test-validator --ledger ~/.data/test-ledger-solana \
   --rpc-port 18899 --faucet-port 19900 --gossip-port 18001 \
   --dynamic-port-range 19050-19075 --quiet &
 curl -sf http://localhost:18899/health
-
-# fund deployer + the Privy oracle wallet on BOTH chains. The helper airdrops in
-# chunks of 10 (gorchain's faucet caps each request at 10 SOL) and verifies the
-# resulting balance. Run from the repo root on the chains host.
-ops/scripts/fund-test-wallets.sh \
-  <deployer-pubkey>      100 \
-  <oracle-base58-pubkey> 1
-
-# create the collateral USDC SPL mint on Solana (-> WARP_TOKEN_MINT).
-# spl-token needs a default signer for fees + mint authority — point the CLI at
-# the funded deployer keypair (the address you airdropped to above).
-solana config set --keypair ~/.credentials/hyperlane/deployer-keypair.json
-spl-token --url http://localhost:18899 create-token --decimals 6
-spl-token --url http://localhost:18899 create-account <mint>
-spl-token --url http://localhost:18899 mint <mint> 1000000
 ```
+
+Leave the chains running. Funding the signers and creating the USDC mint both need
+the keypairs, so they happen in step 6 once the keys exist.
 
 The in-cluster bridge reaches these via `gorchain-rpc:8899` / `solana-rpc:18899`
 **automatically** — you do **NOT** set `gorchain_rpc_url`/`solana_rpc_url`; leave them at
@@ -121,14 +109,16 @@ cp inventories/local/secrets.example.yml inventories/local/secrets.yml
 side is your own chain. MinIO/Grafana credentials are generated into `secrets.yml` by the
 `credentials` role on first run.
 
-## 6. Keyfiles & group_vars
+## 6. Keyfiles, funding & USDC mint
 
-These are throwaway test keys — generate them with the helper (needs the Solana CLI;
-prints the pubkeys to paste + the addresses to fund, and never overwrites existing
-files):
+These are throwaway test keys. The helper generates them and — with `--fund` —
+funds every signer (deployer 100, the rest 1) plus the Privy oracle on both chains
+in one go (the chains from step 3 must be up; it airdrops in chunks of 10 for
+gorchain's faucet cap and verifies balances; it never overwrites existing keys):
 
 ```bash
-ops/scripts/gen-local-keys.sh        # writes into ~/.credentials/hyperlane/ on local-1
+ops/scripts/gen-local-keys.sh --fund --oracle <IGP_ORACLE_PUBKEY>
+# writes into ~/.credentials/hyperlane/ on local-1
 ```
 
 It drops the keyfiles the stack consumes:
@@ -143,10 +133,21 @@ relayer-solana.key         # hex relayer signing key
 relayer-fee-claim.json     # Solana keypair JSON array (IGP fee claims)
 ```
 
-Fund the printed addresses on both chains (step 3). Then fill in `group_vars/all.yml`:
+Now create the collateral USDC SPL mint on Solana (`-> WARP_TOKEN_MINT`). spl-token
+needs a default signer for fees + mint authority — point the CLI at the now-funded
+deployer keypair:
+
+```bash
+solana config set --keypair ~/.credentials/hyperlane/deployer-keypair.json
+spl-token --url http://localhost:18899 create-token --decimals 6
+spl-token --url http://localhost:18899 create-account <mint>
+spl-token --url http://localhost:18899 mint <mint> 1000000
+```
+
+Then fill in `group_vars/all.yml`:
 paste the helper's `HARDWARE_WALLET_PUBKEY`; set `IGP_ORACLE_PUBKEY`,
 `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`; `REPLACE_WITH_GITHUB_USERNAME` in
-the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` from step 3) in
+the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` above) in
 `spec-warp-deployer.yml`.
 
 ## 7. Run it
