@@ -87,7 +87,10 @@ ops/scripts/fund-test-wallets.sh \
   <deployer-pubkey>      100 \
   <oracle-base58-pubkey> 1
 
-# create the collateral USDC SPL mint on Solana (-> WARP_TOKEN_MINT)
+# create the collateral USDC SPL mint on Solana (-> WARP_TOKEN_MINT).
+# spl-token needs a default signer for fees + mint authority — point the CLI at
+# the funded deployer keypair (the address you airdropped to above).
+solana config set --keypair ~/.credentials/hyperlane/deployer-keypair.json
 spl-token --url http://localhost:18899 create-token --decimals 6
 spl-token --url http://localhost:18899 create-account <mint>
 spl-token --url http://localhost:18899 mint <mint> 1000000
