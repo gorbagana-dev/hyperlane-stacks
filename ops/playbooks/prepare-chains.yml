@@ -42,6 +42,12 @@
         fail_msg: "Set ghcr_pat and ghcr_user in secrets.yml for the private gorchain images."
 
   tasks:
+    - name: Ensure the setup-scripts dir exists on the chain host
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+
     - name: Ship the setup scripts to the chain host
       ansible.builtin.copy:
         src: "../scripts/{{ item }}"
