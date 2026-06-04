@@ -124,17 +124,26 @@ start_solana() {
   else
     echo "  starting (ledger: $ledger) ..."
     # setsid + nohup so it outlives this script (and the ansible SSH session)
+    # No --bind-address: that sets the gossip advertised IP, and agave rejects an
+    # unspecified address (0.0.0.0) with a panic. The RPC binds to all interfaces
+    # by default, which is what in-cluster pods reach via the kind gateway (the
+    # e2e harness launches it with this same flag set).
     setsid nohup solana-test-validator \
       --ledger "$ledger" \
       --rpc-port "$SOLANA_RPC_PORT" \
       --faucet-port "$SOLANA_FAUCET_PORT" \
       --gossip-port "$SOLANA_GOSSIP_PORT" \
       --dynamic-port-range 19050-19075 \
-      --bind-address 0.0.0.0 \
       --quiet >"$CHAINS_DIR/data/solana-validator.log" 2>&1 < /dev/null &
     disown || true
   fi
-  wait_for_chain "$SOLANA_RPC" solana
+  # solana-test-validator writes its real log (and any fatal error) to
+  # <ledger>/validator.log, not to stdout — surface it if startup fails.
+  wait_for_chain "$SOLANA_RPC" solana || {
+    echo "  --- tail of $ledger/validator.log ---" >&2
+    tail -n 30 "$ledger/validator.log" 2>/dev/null >&2 || true
+    return 1
+  }
 }
 
 [ -n "${SKIP_GORCHAIN:-}" ] || start_gorchain
