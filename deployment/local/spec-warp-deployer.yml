@@ -1,10 +1,10 @@
 # Hyperlane SVM Warp Route Deployer - LOCAL (own-chains) deployment spec
-# Deploys warp route contracts for a specific token pair.
+# Deploys the warp routes selected by WARP_ROUTES from the checked-in route menu.
 # Requires core deployer (spec-deployer.yml) to have run first.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host
-# (collateral=solana, synthetic=gorchain); devnet IDs; testnet token model means
-# WARP_TOKEN_METADATA_URI is not required (IS_TESTNET=true).
+# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host;
+# devnet IDs; testnet token model means no metadata URI is required
+# (IS_TESTNET=true).
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
@@ -13,10 +13,7 @@ volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
 config:
-  WARP_TOKEN_MINT: "REPLACE_WITH_TOKEN_MINT_ADDRESS"
-  WARP_ROUTE_NAME: "USDC-solana-gorchain"
-  COLLATERAL_CHAIN: solana
-  SYNTHETIC_CHAIN: gorchain
+  WARP_ROUTES: "usdc sol"
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
   GORCHAIN_DOMAIN_ID: "1198486095"
@@ -25,16 +22,11 @@ config:
   SOLANA_CHAIN_ID: "1399811151"
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
-  # Derived vars (collateral=solana, synthetic=gorchain by default).
-  COLLATERAL_CHAIN_RPC_URL: "__SOLANA_RPC_URL__"
-  COLLATERAL_DOMAIN_ID: "1399811151"
-  SYNTHETIC_CHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
-  SYNTHETIC_DOMAIN_ID: "1198486095"
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
-  warp-deployer-token-config: ./configmaps/warp-deployer-token-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
+  warp-routes-config: ./configmaps/warp-routes-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export this env var in the shell that runs `laconic-so`:
