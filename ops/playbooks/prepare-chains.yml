@@ -1,0 +1,94 @@
+---
+# Pre-deploy setup for the LOCAL own-chains path: stand up gorchain + solana,
+# generate and fund the test signers, and deploy the collateral SPL token — all on
+# the chain_hosts group. Run after the host is bootstrapped (laconic-so/docker) and
+# before deploy-all.yml.
+#
+#   ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
+#
+# Single-host: chain_hosts = local-1, which runs both chains. Multi-host LOCAL:
+# the chains run out-of-band on a box NOT in this inventory (no chain_hosts), so
+# run ops/scripts/{setup-chains,gen-local-keys,deploy-spl-token}.sh on that box by
+# hand instead — same scripts, same order.
+#
+# Requires on the chain host: laconic-so, docker, the Solana CLI + spl-token.
+# Requires set: ghcr_pat + ghcr_user (private gorchain images) and IGP_ORACLE_PUBKEY.
+- name: Prepare local chains, accounts, and SPL token
+  hosts: chain_hosts
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  vars:
+    chains_dir: "{{ ansible_env.HOME }}/chains"
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    gorchain_rpc: "http://localhost:8899"
+    solana_rpc: "http://localhost:18899"
+  pre_tasks:
+    - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
+      ansible.builtin.assert:
+        that:
+          - IGP_ORACLE_PUBKEY is defined
+          - (IGP_ORACLE_PUBKEY | string | length) > 0
+          - not (IGP_ORACLE_PUBKEY is search('REPLACE_WITH'))
+        fail_msg: >-
+          Set IGP_ORACLE_PUBKEY in group_vars/all.yml (the Privy oracle pubkey,
+          see runbooks/privy-wallets.md) before preparing chains.
+
+    - name: GHCR credentials must be set (private gorchain images)
+      ansible.builtin.assert:
+        that:
+          - (ghcr_pat | default('') | length) > 0
+          - (ghcr_user | default('') | length) > 0
+        fail_msg: "Set ghcr_pat and ghcr_user in secrets.yml for the private gorchain images."
+
+  tasks:
+    - name: Ship the setup scripts to the chain host
+      ansible.builtin.copy:
+        src: "../scripts/{{ item }}"
+        dest: "{{ scripts_dst }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - setup-chains.sh
+        - gen-local-keys.sh
+        - fund-test-wallets.sh
+        - deploy-spl-token.sh
+
+    - name: Stand up gorchain + solana (health + slot checks inside)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/setup-chains.sh"
+      environment:
+        CHAINS_DIR: "{{ chains_dir }}"
+        GHCR_USER: "{{ ghcr_user }}"
+        GHCR_PAT: "{{ ghcr_pat }}"
+      register: chains_out
+      changed_when: true
+
+    - name: Generate + fund the test signers on both chains
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/gen-local-keys.sh --yes --fund --oracle {{ IGP_ORACLE_PUBKEY }}"
+      environment:
+        CRED_DIR: "{{ credentials_dir }}"
+        GORCHAIN_RPC: "{{ gorchain_rpc }}"
+        SOLANA_RPC: "{{ solana_rpc }}"
+      register: keys_out
+      changed_when: true
+
+    - name: Deploy the collateral SPL token
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/deploy-spl-token.sh"
+      environment:
+        SOLANA_RPC: "{{ solana_rpc }}"
+        DEPLOYER_KEYPAIR: "{{ credentials_dir }}/deployer-keypair.json"
+      register: spl_out
+      changed_when: true
+
+    - name: Capture WARP_TOKEN_MINT from the SPL deploy
+      ansible.builtin.set_fact:
+        warp_token_mint: "{{ spl_out.stdout | regex_search('WARP_TOKEN_MINT=(\\S+)', '\\1') | first }}"
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Chains, accounts, and SPL token are ready on {{ inventory_hostname }}."
+          - "WARP_TOKEN_MINT = {{ warp_token_mint }}"
+          - "Set it in deployment/local/spec-warp-usdc.yml, then fill the printed pubkeys into group_vars/all.yml."
