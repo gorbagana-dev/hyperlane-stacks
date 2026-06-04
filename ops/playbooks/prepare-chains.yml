@@ -11,8 +11,9 @@
 # run ops/scripts/{setup-chains,gen-local-keys,deploy-spl-token}.sh on that box by
 # hand instead — same scripts, same order.
 #
-# Requires on the chain host: laconic-so, docker, the Solana CLI + spl-token.
-# Requires set: ghcr_pat + ghcr_user (private gorchain images) and IGP_ORACLE_PUBKEY.
+# Requires on the chain host: laconic-so + docker (from bootstrap). The Solana CLI
+# (solana/solana-keygen/solana-test-validator/spl-token) is installed here if missing.
+# Requires set: ghcr_pat (private gorchain images) and IGP_ORACLE_PUBKEY.
 - name: Prepare local chains, accounts, and SPL token
   hosts: chain_hosts
   gather_facts: true
@@ -29,6 +30,7 @@
     # ~/bin is kept as a fallback.
     solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
   pre_tasks:
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:
@@ -40,14 +42,24 @@
           Set IGP_ORACLE_PUBKEY in group_vars/all.yml (the Privy oracle pubkey,
           see runbooks/privy-wallets.md) before preparing chains.
 
-    - name: GHCR credentials must be set (private gorchain images)
+    - name: GHCR PAT must be set (private gorchain images)
       ansible.builtin.assert:
         that:
           - (ghcr_pat | default('') | length) > 0
-          - (ghcr_user | default('') | length) > 0
-        fail_msg: "Set ghcr_pat and ghcr_user in secrets.yml for the private gorchain images."
+        fail_msg: "Set ghcr_pat in secrets.yml for the private gorchain images."
 
   tasks:
+    # Official Anza installer (curl|sh) — ships solana, solana-keygen,
+    # solana-test-validator, spl-token. Pinned + creates-guarded, so it won't
+    # re-install over an existing tree.
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+
     - name: Ensure the setup-scripts dir exists on the chain host
       ansible.builtin.file:
         path: "{{ scripts_dst }}"
@@ -71,7 +83,7 @@
       environment:
         PATH: "{{ tool_path }}"
         CHAINS_DIR: "{{ chains_dir }}"
-        GHCR_USER: "{{ ghcr_user }}"
+        GHCR_USER: "{{ ghcr_user | default('gorbagana-dev') }}"
         GHCR_PAT: "{{ ghcr_pat }}"
       register: chains_out
       changed_when: true

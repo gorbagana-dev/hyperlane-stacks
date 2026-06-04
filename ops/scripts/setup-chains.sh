@@ -65,8 +65,9 @@ wait_for_chain() {  # <rpc> <name>
 start_gorchain() {
   echo "== gorchain =="
   if [ -n "${GHCR_PAT:-}" ]; then
-    echo "  logging in to ghcr.io as ${GHCR_USER:-?} for the private gorchain images"
-    echo "$GHCR_PAT" | docker login ghcr.io -u "${GHCR_USER:?set GHCR_USER with GHCR_PAT}" --password-stdin
+    GHCR_USER="${GHCR_USER:-gorbagana-dev}"   # GHCR auths by the PAT; the user just needs to be non-empty
+    echo "  logging in to ghcr.io as ${GHCR_USER} for the private gorchain images"
+    echo "$GHCR_PAT" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
   else
     echo "  WARNING: GHCR_PAT unset — image pull will fail if not already cached" >&2
   fi
