@@ -84,7 +84,7 @@
 
     - name: Capture WARP_TOKEN_MINT from the SPL deploy
       ansible.builtin.set_fact:
-        warp_token_mint: "{{ spl_out.stdout | regex_search('WARP_TOKEN_MINT=(\\S+)', '\\1') | first }}"
+        warp_token_mint: "{{ (spl_out.stdout_lines | select('match', '^WARP_TOKEN_MINT=') | first).split('=')[1] }}"
 
     - name: Summary
       ansible.builtin.debug:
