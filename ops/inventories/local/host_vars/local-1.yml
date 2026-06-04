@@ -4,8 +4,10 @@
 # public_ip is this host's public IPv4 — the Cloudflare A records for the stacks
 # it serves point here, and the deploy preflight checks the served hostnames
 # resolve to it. Inbound 80/443 (Let's Encrypt) + 22 (controller) must be open.
+# deploy_user = unprivileged account that runs laconic-so, and the SSH/connection user
+# (ansible_user derives from it in group_vars). privileged_user = sudo account used only
+# for the bootstrap host prep.
 public_ip: "REPLACE_WITH_HOST_PUBLIC_IP"
-privileged_user: ubuntu
-deploy_user: ubuntu
+privileged_user: dev
+deploy_user: dev
 kind_mount_root: /srv/kind/hyperlane
-ansible_user: ubuntu

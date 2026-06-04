@@ -31,3 +31,14 @@
         - hyperlane-monitoring
         - hyperlane-warp-ui
         - hyperlane-validator
+
+    - name: Deploy hosts connect as the deploy_user; controller has neither var
+      vars:
+        deploy_host: "{{ groups['deployer_hosts'][0] }}"
+      ansible.builtin.assert:
+        that:
+          - "hostvars[deploy_host].ansible_user == hostvars[deploy_host].deploy_user"
+          - "'deploy_user' not in hostvars['localhost']"
+        fail_msg: >-
+          Connection identity broken: ansible_user must derive from deploy_user on
+          deploy hosts and stay unset on the controller.
