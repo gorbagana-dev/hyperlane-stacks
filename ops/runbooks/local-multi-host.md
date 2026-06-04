@@ -38,11 +38,13 @@ Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 **Accounts / access:**
 - A **public DNS zone on Cloudflare** (`dns_zone`) and a Cloudflare API token scoped to it.
 - A **Privy** project (validator + gas-oracle signing) — see [privy-wallets.md](privy-wallets.md).
-- A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images.
+- A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images (the
+  docker-login user defaults to `gorbagana-dev`).
 
 **Each managed VM:** public IPv4 with inbound **80 + 443** (Let's Encrypt HTTP-01) and
-**22** (controller) open. Nothing else pre-installed — `setup-all.yml` provisions
-Docker/kind/kubectl + laconic-so.
+**22** (controller) open, and the connecting user needs **passwordless sudo** (or run
+the playbooks with `--ask-become-pass`). Nothing else pre-installed — `setup-all.yml`
+provisions Docker/kind/kubectl + laconic-so.
 
 ## 2. Privy wallets
 
@@ -62,9 +64,12 @@ That box runs both chains, so the same setup script the single-host path uses ap
 clone this repo there and run it on the box (it isn't ansible-managed):
 
 ```bash
-# on the chains box — needs laconic-so, docker, the Solana CLI + spl-token.
-# Private gorchain image -> GHCR login.
-GHCR_USER=<gh-user> GHCR_PAT=<pat> ops/scripts/setup-chains.sh
+# on the chains box — needs laconic-so + docker. Install the Solana CLI (provides
+# solana-test-validator + spl-token) if absent; the bridge ansible doesn't reach
+# this out-of-band box:
+command -v solana >/dev/null || sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.9/install)"
+# Private gorchain image -> GHCR login (PAT only; user defaults to gorbagana-dev):
+GHCR_PAT=<pat> ops/scripts/setup-chains.sh
 ```
 
 It brings up gorchain (dev-RPC values in the deploy spec's `config:`, **no** hand-written
@@ -95,6 +100,7 @@ override per-host only if the controller reaches a box at a different address. C
 both hosts answer before going further:
 
 ```bash
+cd ops   # all commands below run from here
 ansible -i inventories/local/hosts-multihost.yml all:!controller -m ping   # expect: SUCCESS each
 ```
 
@@ -114,7 +120,7 @@ topologies.
 ```bash
 cp inventories/local/secrets.example.yml inventories/local/secrets.yml
 # fill: cloudflare_api_token, privy_app_id, privy_app_secret,
-#       privy_oracle_wallet_id, ghcr_user, ghcr_pat
+#       privy_oracle_wallet_id, ghcr_pat
 ```
 
 `cloudflare_api_token` is **required** (Let's Encrypt + A records). No `helius_api_key` —
@@ -158,15 +164,13 @@ Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY` (from the helper),
 Point both playbooks at the multi-host validators file via `-e validators_file=...`:
 
 ```bash
-export PATH=/home/dev/.ops-ansible-venv/bin:$PATH LC_ALL=C.UTF-8 LANG=C.UTF-8
-
 # Phase 1 — provision + reconcile Cloudflare DNS + LE + generate creds
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/setup-all.yml \
-  -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml
 
 # Phase 2 — deploy MinIO -> deployer Job -> publish state -> consumers + validators
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/deploy-all.yml \
-  -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml
 ```
 
 Testing off a branch (the hosts fetch the repo themselves) — add `-e deploy_branch=<branch>`.
@@ -186,10 +190,10 @@ Public DNS + LE — browse the hostnames directly once DNS propagates:
 
 ```bash
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
-  -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml
 # also destroy the per-host kind clusters:
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
-  -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml \
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
   -e destroy_cluster=true
 ```
 

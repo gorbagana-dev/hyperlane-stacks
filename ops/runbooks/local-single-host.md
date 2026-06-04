@@ -4,7 +4,7 @@ Bring the whole bridge up against **self-run chains on one VM** to test the depl
 ansible end to end. Every stack, both hyperlane validators, and both SVM chains run on a
 single box; there is no public DNS and no Let's Encrypt.
 
-All ansible commands run from `ops/` on the controller (your machine).
+All commands run from `ops/` on the controller (your machine).
 
 ## Networking model
 
@@ -30,15 +30,16 @@ Plus `git`, `ssh` with **agent forwarding**, `kubectl`.
 
 **Accounts / access:**
 - A **Privy** project (validator + gas-oracle signing) — see [privy-wallets.md](privy-wallets.md).
-- A **GHCR** PAT (`packages:read`) + the owning GitHub username, for the private
-  `gorbagana-dev/*` images (both the bridge stacks and the gorchain chain image).
+- A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images (bridge stacks
+  + the gorchain chain image). The docker-login user defaults to `gorbagana-dev`.
 - **No Cloudflare**, **no public DNS zone**, **no public 80/443** — single-host serves
   Caddy on the host loopback.
 
-**VM:** inbound **22** from the controller only. `setup-all.yml` provisions
-Docker/kind/kubectl + laconic-so. The chains additionally need the **Solana CLI** and
-**`spl-token`** on the VM (the bridge ansible does not install the chain toolchain) — the
-`prepare-chains.yml` scripts check for them and fail clearly if missing.
+**VM:** inbound **22** from the controller only, and the connecting user needs
+**passwordless sudo** (bootstrap installs packages and writes under `/usr/local`,
+`/srv`) — or run the playbooks with `--ask-become-pass`. `setup-all.yml` provisions
+Docker/kind/kubectl + laconic-so; `prepare-chains.yml` installs the Solana CLI
+(`solana`/`solana-keygen`/`solana-test-validator`/`spl-token`, Anza v3.1.9) if missing.
 
 ## 2. Privy wallets
 
@@ -68,6 +69,7 @@ reaches the box at a different address (bastion/private). Confirm connectivity b
 going further:
 
 ```bash
+cd ops   # all commands below run from here
 ansible -i inventories/local/hosts.yml local-1 -m ping   # expect: SUCCESS / "pong"
 ```
 
@@ -84,7 +86,7 @@ match `dns_zone` (e.g. `validator-gorchain.hyperlane.local`). The `host:` is alr
 
 ```bash
 cp inventories/local/secrets.example.yml inventories/local/secrets.yml
-# fill: privy_app_id, privy_app_secret, privy_oracle_wallet_id, ghcr_user, ghcr_pat
+# fill: privy_app_id, privy_app_secret, privy_oracle_wallet_id, ghcr_pat
 ```
 
 **No `cloudflare_api_token`** (single-host uses mkcert). No `helius_api_key` — the Solana
@@ -94,8 +96,6 @@ side is your own chain. MinIO/Grafana credentials are generated into `secrets.ym
 ## 5. Provision the host
 
 ```bash
-export PATH=/home/dev/.ops-ansible-venv/bin:$PATH LC_ALL=C.UTF-8 LANG=C.UTF-8
-
 # bootstrap (Docker/kind/laconic-so) + mkcert TLS + generate creds
 ansible-playbook -i inventories/local/hosts.yml playbooks/setup-all.yml
 ```
