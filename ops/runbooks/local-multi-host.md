@@ -37,7 +37,7 @@ Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 
 **Accounts / access:**
 - A **public DNS zone on Cloudflare** (`dns_zone`) and a Cloudflare API token scoped to it.
-- A **Privy** project (validator + gas-oracle signing) — see `privy-wallets.md`.
+- A **Privy** project (validator + gas-oracle signing) — see [privy-wallets.md](privy-wallets.md).
 - A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images.
 
 **Each managed VM:** public IPv4 with inbound **80 + 443** (Let's Encrypt HTTP-01) and
@@ -46,7 +46,7 @@ Docker/kind/kubectl + laconic-so.
 
 ## 2. Privy wallets
 
-Mint the three server wallets once per `privy-wallets.md`, then fill the IDs/addresses it
+Mint the three server wallets once per [privy-wallets.md](privy-wallets.md), then fill the IDs/addresses it
 lists:
 
 - `privy_wallet_id` per validator in
@@ -57,47 +57,20 @@ lists:
 
 ## 3. Chains on a separate box
 
-Stand up both chains **out-of-band** on a separate beefy box (not in this inventory) and
-expose each at a reachable domain/IP with its own DNS + TLS. Fund the deployer and the
-Privy oracle wallet on both, and create the collateral USDC mint on Solana.
-
-> Generate the keypairs first (step 6) and copy `deployer-keypair.json` to this box —
-> funding needs the deployer address and the mint needs it as the signer.
+Stand up both chains **out-of-band** on a separate beefy box (not in this inventory).
+That box runs both chains, so the same setup script the single-host path uses applies —
+clone this repo there and run it on the box (it isn't ansible-managed):
 
 ```bash
-# on the chains box — gorchain single-node RPC (via gorchain-stacks)
-laconic-so fetch-stack --git-ssh --pull github.com/gorbagana-dev/gorchain-stacks@main
-laconic-so --stack ~/cerc/gorchain-stacks/stack-orchestrator/stacks/gorchain \
-  deploy init --output gorchain-spec.yml
-laconic-so --stack ~/cerc/gorchain-stacks/stack-orchestrator/stacks/gorchain \
-  deploy create --spec-file gorchain-spec.yml --deployment-dir ./gorchain
-printf 'PUBLIC_GOSSIP_HOST=127.0.0.1\nPUBLIC_RPC_ADDRESS=127.0.0.1:8899\nGORCHAIN_DEV_RPC=true\n' \
-  > ./gorchain/config.env
-laconic-so deployment --dir ./gorchain start
-curl -s http://localhost:8899/health        # {"ok":...} when up
-
-# solana-test-validator
-solana-test-validator --ledger ~/.data/test-ledger-solana \
-  --rpc-port 18899 --faucet-port 19900 --gossip-port 18001 \
-  --dynamic-port-range 19050-19075 --quiet &
-curl -sf http://localhost:18899/health
-
-# fund deployer + the Privy oracle wallet on BOTH chains. The helper airdrops in
-# chunks of 10 (gorchain's faucet caps each request at 10 SOL) and verifies the
-# resulting balance. Run from the repo root on the chains host; if the chains
-# aren't on localhost, set GORCHAIN_RPC=... SOLANA_RPC=... .
-ops/scripts/fund-test-wallets.sh \
-  <deployer-pubkey>      100 \
-  <oracle-base58-pubkey> 1
-
-# create the collateral USDC SPL mint on Solana (-> WARP_TOKEN_MINT).
-# spl-token needs a default signer for fees + mint authority — point the CLI at
-# the funded deployer keypair (the address you airdropped to above).
-solana config set --keypair ~/.credentials/hyperlane/deployer-keypair.json
-spl-token --url http://localhost:18899 create-token --decimals 6
-spl-token --url http://localhost:18899 create-account <mint>
-spl-token --url http://localhost:18899 mint <mint> 1000000
+# on the chains box — needs laconic-so, docker, the Solana CLI + spl-token.
+# Private gorchain image -> GHCR login.
+GHCR_USER=<gh-user> GHCR_PAT=<pat> ops/scripts/setup-chains.sh
 ```
+
+It brings up gorchain (dev-RPC values in the deploy spec's `config:`, **no** hand-written
+`config.env`) and a solana-test-validator (ledger under `./chains/data`), and waits for
+health **and** slot progress on both. Funding + the SPL mint happen in step 6, on this
+same box, once the keys exist.
 
 Front each chain RPC with a reachable domain/TLS (out-of-band DNS + reverse proxy), then
 **set both URLs** in `group_vars/all.yml` — they feed the in-cluster agents *and* warp-ui:
@@ -133,24 +106,27 @@ topologies.
 ```bash
 cp inventories/local/secrets.example.yml inventories/local/secrets.yml
 # fill: cloudflare_api_token, privy_app_id, privy_app_secret,
-#       privy_oracle_wallet_id, ghcr_pat
+#       privy_oracle_wallet_id, ghcr_user, ghcr_pat
 ```
 
 `cloudflare_api_token` is **required** (Let's Encrypt + A records). No `helius_api_key` —
 the Solana side is your own chain. MinIO/Grafana credentials are generated into
 `secrets.yml` by the `credentials` role on first run.
 
-## 6. Keyfiles & group_vars
+## 6. Keyfiles, funding & USDC mint
 
-These are throwaway test keys. Generate them once with the helper (needs the Solana
-CLI; prints the pubkeys to paste + the addresses to fund, never overwrites existing
-files), then place each host's files under `~/.credentials/hyperlane/`:
+These are throwaway test keys. Generate + fund them and deploy the SPL mint **on the
+chains box** (it has the chain toolchain and localhost access to both chains) — the same
+scripts as single-host, run by hand since the box isn't ansible-managed:
 
 ```bash
-ops/scripts/gen-local-keys.sh
+# on the chains box
+ops/scripts/gen-local-keys.sh --fund --oracle <IGP_ORACLE_PUBKEY>   # generate + fund all signers + oracle
+ops/scripts/deploy-spl-token.sh                                     # prints WARP_TOKEN_MINT
 ```
 
-Per-host placement (the keys must live where the stack that reads them runs):
+Then copy each host's keys from the chains box to that host's `~/.credentials/hyperlane/`
+(the keys must live where the stack that reads them runs):
 
 ```
 local-services (deployer host):
@@ -164,13 +140,10 @@ local-agents (validators + relayer host):
 ```
 
 You keep `hardware-wallet.json` (its pubkey → `HARDWARE_WALLET_PUBKEY`; not deployed).
-Funding the printed addresses + creating the USDC mint happen on the chains box in
-step 3 (`fund-test-wallets.sh <addr> <amount> …`, with `GORCHAIN_RPC=`/`SOLANA_RPC=`
-set to the chain domains if not its localhost). Then fill in `group_vars/all.yml`:
-`HARDWARE_WALLET_PUBKEY`, `IGP_ORACLE_PUBKEY`,
-`GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`; `REPLACE_WITH_GITHUB_USERNAME` in
-the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` from step 3) in
-`spec-warp-deployer.yml`.
+Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY` (from the helper),
+`IGP_ORACLE_PUBKEY`, `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`;
+`REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`; and `WARP_TOKEN_MINT`
+(from the SPL deploy) in `deployment/local/spec-warp-deployer.yml`.
 
 ## 7. Run it
 

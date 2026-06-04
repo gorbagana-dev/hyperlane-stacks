@@ -91,4 +91,4 @@
         msg:
           - "Chains, accounts, and SPL token are ready on {{ inventory_hostname }}."
           - "WARP_TOKEN_MINT = {{ warp_token_mint }}"
-          - "Set it in deployment/local/spec-warp-usdc.yml, then fill the printed pubkeys into group_vars/all.yml."
+          - "Set it in deployment/local/spec-warp-deployer.yml, then fill the printed pubkeys into group_vars/all.yml."

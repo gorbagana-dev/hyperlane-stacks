@@ -47,6 +47,6 @@ run mint "$mint" "$SUPPLY"
 echo
 echo "== SPL token deployed =="
 echo "  mint: $mint"
-echo "  -> set WARP_TOKEN_MINT to this in the warp-deployer spec (deployment/<env>/spec-warp-usdc.yml)"
+echo "  -> set WARP_TOKEN_MINT to this in the warp-deployer spec (local: deployment/local/spec-warp-deployer.yml)"
 # machine-readable trailer for the prepare-chains playbook to capture
 echo "WARP_TOKEN_MINT=$mint"
