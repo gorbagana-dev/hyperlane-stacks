@@ -1,0 +1,14 @@
+name: SOL-solana-gorchain
+origin:
+  chain: solana
+  type: native
+  name: "Solana"
+  symbol: "SOL"
+  decimals: 9
+remote:
+  chain: gorchain
+  type: synthetic
+  name: "Solana"
+  symbol: "SOL"
+  decimals: 9
+metadataUri: ""
