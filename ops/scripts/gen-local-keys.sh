@@ -161,3 +161,8 @@ The local stack wires NO dedicated IGP beneficiary key — fees accrue to the
 deployer default. (e2e generates a separate igp-beneficiary key only to observe
 fee-claim balance changes in its tests.)
 NOTE
+
+# Machine-parseable trailer (mirrors deploy-spl-token.sh's WARP_TOKEN_MINT=) so
+# the ansible wrapper can pull the one value the operator must set by hand.
+echo
+echo "HARDWARE_WALLET_PUBKEY=$hw_addr"
