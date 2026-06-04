@@ -70,20 +70,12 @@ solana-test-validator --ledger ~/.data/test-ledger-solana \
   --dynamic-port-range 19050-19075 --quiet &
 curl -sf http://localhost:18899/health
 
-# fund deployer + the Privy oracle wallet on both chains. gorchain's faucet caps
-# each request at 10 SOL, so airdrop in chunks of 10 (mirrors the e2e _airdrop).
-airdrop() {  # airdrop <amount> <pubkey> <rpc>
-  local amt=$1 pk=$2 rpc=$3 chunk
-  while [ "$amt" -gt 0 ]; do
-    chunk=$(( amt < 10 ? amt : 10 ))
-    solana airdrop "$chunk" "$pk" --url "$rpc"
-    amt=$(( amt - chunk ))
-  done
-}
-for rpc in http://localhost:8899 http://localhost:18899; do
-  airdrop 100 <deployer-pubkey>      "$rpc"
-  airdrop 1   <oracle-base58-pubkey> "$rpc"
-done
+# fund deployer + the Privy oracle wallet on BOTH chains. The helper airdrops in
+# chunks of 10 (gorchain's faucet caps each request at 10 SOL) and verifies the
+# resulting balance. Run from the repo root on the chains host.
+ops/scripts/fund-test-wallets.sh \
+  <deployer-pubkey>      100 \
+  <oracle-base58-pubkey> 1
 
 # create the collateral USDC SPL mint on Solana (-> WARP_TOKEN_MINT)
 spl-token --url http://localhost:18899 create-token --decimals 6
