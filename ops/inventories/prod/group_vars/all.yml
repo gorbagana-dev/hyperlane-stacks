@@ -137,7 +137,9 @@ stacks:
     configmaps:
       - agent-config
 
-# Warp routes to deploy. Each <label> needs deployment/spec-warp-<label>.yml
-# (its route config); it deploys as laconic-hyperlane-warp-<label>.
+# Warp routes to deploy. The single hyperlane-warp-deployer Job reads each
+# <label> from the checked-in menu (deployment/bridges/<bridge>/warp-routes/
+# <label>.yml), rendered into its warp-routes-config ConfigMap. Must match
+# WARP_ROUTES in deployment/spec-warp-deployer.yml.
 warp_routes:
   - usdc

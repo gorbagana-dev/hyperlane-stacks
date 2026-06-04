@@ -1,0 +1,21 @@
+---
+# Render the selected route files from the env's checked-in menu into the
+# warp-deployer deployment's configmap dir as JSON, before the Job starts.
+# Inputs: warp_routes (list), deploy_dir, deployment_root, bridge_name.
+- name: Ensure warp-routes-config dir exists
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}/configmaps/warp-routes-config"
+    state: directory
+    mode: "0755"
+
+- name: Render each selected route file to JSON
+  ansible.builtin.copy:
+    dest: "{{ deploy_dir }}/configmaps/warp-routes-config/{{ item }}.json"
+    content: >-
+      {{ lookup('ansible.builtin.file',
+         deployment_root ~ '/bridges/' ~ bridge_name ~ '/warp-routes/' ~ item ~ '.yml')
+         | from_yaml | to_nice_json }}
+    mode: "0644"
+  loop: "{{ warp_routes }}"
+  loop_control:
+    label: "{{ item }}"
