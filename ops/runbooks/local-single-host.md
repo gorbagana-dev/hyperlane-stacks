@@ -62,6 +62,15 @@ Single-host is the default (`inventories/local/hosts.yml` — every group, inclu
 public_ip: "<this host's public IPv4>"
 ```
 
+The controller connects over SSH to `ansible_host`, which defaults to `public_ip` — so
+the line above is enough on a local VM. Override it per-host only if the controller
+reaches the box at a different address (bastion/private). Confirm connectivity before
+going further:
+
+```bash
+ansible -i inventories/local/hosts.yml local-1 -m ping   # expect: SUCCESS / "pong"
+```
+
 ```yaml
 # inventories/local/group_vars/all.yml
 dns_zone: "hyperlane.local"        # any label mkcert signs; not a real zone

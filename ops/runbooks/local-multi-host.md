@@ -90,6 +90,14 @@ Use the committed `inventories/local/hosts-multihost.yml`. Set:
 public_ip: "<that host's public IPv4>"
 ```
 
+The controller connects over SSH to `ansible_host`, which defaults to `public_ip` —
+override per-host only if the controller reaches a box at a different address. Confirm
+both hosts answer before going further:
+
+```bash
+ansible -i inventories/local/hosts-multihost.yml all:!controller -m ping   # expect: SUCCESS each
+```
+
 ```yaml
 # inventories/local/group_vars/all.yml
 dns_zone: "staging.gorbagana.wtf"        # your public Cloudflare zone
