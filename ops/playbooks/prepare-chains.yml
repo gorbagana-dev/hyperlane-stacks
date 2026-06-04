@@ -23,6 +23,10 @@
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
     gorchain_rpc: "http://localhost:8899"
     solana_rpc: "http://localhost:18899"
+    # The scripts call laconic-so (~/bin) and the Solana CLIs (the standard
+    # solana-install dir) by name, but ansible's non-login shell sources neither
+    # from .profile — so put both on PATH explicitly for the script tasks.
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin:{{ ansible_env.PATH }}"
   pre_tasks:
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:
@@ -63,6 +67,7 @@
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/setup-chains.sh"
       environment:
+        PATH: "{{ tool_path }}"
         CHAINS_DIR: "{{ chains_dir }}"
         GHCR_USER: "{{ ghcr_user }}"
         GHCR_PAT: "{{ ghcr_pat }}"
@@ -73,6 +78,7 @@
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/gen-local-keys.sh --yes --fund --oracle {{ IGP_ORACLE_PUBKEY }}"
       environment:
+        PATH: "{{ tool_path }}"
         CRED_DIR: "{{ credentials_dir }}"
         GORCHAIN_RPC: "{{ gorchain_rpc }}"
         SOLANA_RPC: "{{ solana_rpc }}"
@@ -83,6 +89,7 @@
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/deploy-spl-token.sh"
       environment:
+        PATH: "{{ tool_path }}"
         SOLANA_RPC: "{{ solana_rpc }}"
         DEPLOYER_KEYPAIR: "{{ credentials_dir }}/deployer-keypair.json"
       register: spl_out
