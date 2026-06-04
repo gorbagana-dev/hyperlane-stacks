@@ -92,8 +92,12 @@
         - not (topology | default('') == 'single'
                and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
 
+    # The committed specs carry a repo-relative `stack:` path, which laconic-so
+    # resolves against the process CWD (not the --stack arg). Run from repo_root so
+    # it resolves — the same approach SO's own `deployment restart` uses internally.
     - name: Run deploy create (committed spec — no init; SO reads it directly)
       ansible.builtin.command:
+        chdir: "{{ repo_root }}"
         argv:
           - laconic-so
           - --stack
@@ -121,8 +125,11 @@
     - stack_pre_start_tasks is defined
     - not ansible_check_mode
 
+# start re-resolves the deployment's relative stack path too (SO's restart chdirs
+# around both create and up for this reason), so run it from repo_root as well.
 - name: Start deployment (create-or-reuse cluster + Caddy)
   ansible.builtin.command:
+    chdir: "{{ repo_root }}"
     argv:
       - laconic-so
       - deployment

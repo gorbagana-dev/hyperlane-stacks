@@ -19,8 +19,11 @@
         recurse: false
       register: _deployments
 
+    # Run from repo_root so any relative stack path in the deployment resolves
+    # (consistent with deploy create/start; failed_when:false would otherwise mask it).
     - name: Stop each deployment (skip cluster management)
       ansible.builtin.command:
+        chdir: "{{ repo_root }}"
         argv:
           - laconic-so
           - deployment
