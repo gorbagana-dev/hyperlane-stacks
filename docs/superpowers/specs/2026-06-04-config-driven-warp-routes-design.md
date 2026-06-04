@@ -57,7 +57,7 @@ metadataUri: "<optional synthetic metadata URI>"
 
 ### Single deployment + `WARP_ROUTES` selection
 
-One deployment (`namespace: laconic-hyperlane-warp-deployer`) mounts the **whole** menu as a `warp-routes-config` ConfigMap at `/config/warp-routes/`. The spec carries the shared chain config, the secrets, `recreate-jobs: true` (below), and:
+One deployment (`namespace: laconic-hyperlane-warp-deployer`) mounts the **whole** menu as a `warp-routes-config` ConfigMap at `/config/warp-routes/`. The spec carries the shared chain config, the secrets, and:
 
 ```yaml
 config:
@@ -70,22 +70,23 @@ config:
 
 The one-time setup runs once; the per-route body becomes a `deploy_route <cfg.json>` function; the script loops `for r in $WARP_ROUTES` and reads each route's fields from `/config/warp-routes/$r.json` (via `jq`) instead of from `WARP_*` env vars. Everything downstream (`build_side`, the deploy invocation, synthetic-mint resolution, state writes) is unchanged — it reads the now-per-iteration `WARP_*` shell vars. The per-route `token-config.json` skip stays, so the loop is idempotent route-by-route.
 
-### Idempotency: a `recreate-jobs` spec key in stack-orchestrator
+### Idempotency: a `laconic.recreate-job` compose label in stack-orchestrator
 
 Idempotency has two independent levels, and only one is already solved:
 
 - **Work level (solved):** `deploy.sh` skips routes whose `token-config.json` exists (`:53-64`). Re-running does only not-yet-deployed routes.
 - **Job level (the gap):** a completed k8s Job will not re-run. With N deployments this never mattered — a new route was a new deployment, hence a new Job. With **one** deployment the single Job completes once and `_create_jobs` then prints `"already exists, skipping"` (`deploy_k8s.py:869-873`) on every later `deployment start`, so a newly-selected route would never deploy.
 
-**Decision:** add an opt-in spec key `recreate-jobs: true`. When set, `_create_jobs` deletes the existing Job (cascading to its pods) and waits for it to be gone before creating a fresh one; when unset, today's skip-on-409 is preserved. The warp spec sets it, so each `deploy-all` re-runs the warp Job, and the per-route skip keeps that cheap (finished routes are no-ops; only a newly-selected route does on-chain work).
+**Decision:** honor a compose service label `laconic.recreate-job: "true"`. `get_jobs` already has each job file's service labels in hand (`_build_containers` returns the services dict — `cluster_info.py:1106+`), so it stamps the flag as a Job annotation; `_create_jobs` reads that annotation and, when set, deletes the existing Job (cascading to its pods) and waits for it to be gone before creating a fresh one. When the label is absent, today's skip-on-409 is preserved. The warp-deployer compose service carries the label, so every `deploy-all` re-runs the warp Job, and the per-route skip keeps that cheap (finished routes are no-ops; only a newly-selected route does on-chain work).
 
-**Why a spec key, and why opt-in** — the alternatives and why they lose:
+**Why a compose label, and why opt-in** — this follows SO's existing convention; the rejected alternatives:
 
-- *Ops-side delete (no SO change):* the playbook could `kubectl delete job` before `start`. It works, and SO's own comment even says "Delete the Job explicitly to re-run" — but the recreate decision then lives in ansible, invisible to anyone reading the spec or deploying SO directly. The behavior belongs in the orchestrator.
-- *Always recreate Jobs (change the default):* simplest, but it changes behavior for **every** one-shot stack (e.g. the core `svm-deployer`), which would silently start re-running on each `deployment start`. Opt-in confines the change to stacks that ask for it.
-- *CLI `--force-recreate` flag:* the `up()` plumbing already exists, but a flag is imperative and must be remembered on every run; a spec key is declarative and checked in, so `deploy-all` is idempotent with no operator memory. (We can still wire the flag later for ad-hoc use; it is not required here.)
+- *It matches the `laconic.*` label convention.* SO already reads compose service labels to flag per-service behavior — `laconic.init-container: "true"` turns a service into a k8s init container (`cluster_info.py:783-787`). `laconic.recreate-job` is the same mechanism for "this Job is re-runnable," declared where the stack is defined.
+- *Why the compose label, not a spec key:* "this deployer Job is re-runnable" is an intrinsic property of the **stack**, not a per-environment choice. Declaring it once on the compose service applies to every deployment of the stack (local/staging/prod) with no per-spec opt-in to forget; a spec key would scatter the same value across every env's spec.
+- *Why not ops-side delete (no SO change):* the playbook could `kubectl delete job` before `start`, and SO's own comment even says "Delete the Job explicitly to re-run" — but the recreate decision then lives in ansible, invisible to anyone reading the stack or deploying SO directly. The behavior belongs in the orchestrator.
+- *Why not change the default (always recreate):* it would change behavior for **every** one-shot stack (e.g. the core `svm-deployer`), which would silently re-run on each `deployment start`. The opt-in label confines it to stacks that ask for it.
 
-**Why one looping Job rather than one Job per route.** Per-route Jobs would give additive idempotency for free (a new route is a new Job; finished ones are untouched), but laconic-so builds Jobs from a **static** compose file — `${VAR}` substitution can fill values into existing services but cannot vary the *number* of services. Getting N Jobs would mean **generating** the compose from the menu, a new pattern for this repo. The looping Job keeps the compose essentially static (one service) and pays for it with the `recreate-jobs` re-run, which is a contained, reusable SO capability rather than a build-time codegen step.
+**Why one looping Job rather than one Job per route.** Per-route Jobs would give additive idempotency for free (a new route is a new Job; finished ones are untouched), but laconic-so builds Jobs from a **static** compose file — `${VAR}` substitution can fill values into existing services but cannot vary the *number* of services. Getting N Jobs would mean **generating** the compose from the menu, a new pattern for this repo. The looping Job keeps the compose essentially static (one service) and pays for it with the `laconic.recreate-job` re-run, which is a contained, reusable SO capability rather than a build-time codegen step.
 
 ### Scoped artifacts and checked-in logs
 
@@ -113,7 +114,7 @@ The two per-route warp deployments collapse into one: create the test SPL mint, 
 
 ## Files changed
 
-- `../stack-orchestrator/stack_orchestrator/deploy/k8s/deploy_k8s.py` — `recreate-jobs` spec key in `_create_jobs`; a `_delete_job_and_wait` helper.
+- `../stack-orchestrator/stack_orchestrator/deploy/k8s/deploy_k8s.py` — `_create_jobs` honors the `laconic.recreate-job` Job annotation (delete+recreate); a `_delete_job_and_wait` helper. `cluster_info.py` `get_jobs` stamps that annotation from the compose service label.
 - `stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh` — setup/loop split; `deploy_route` reads per-route JSON; per-route scoped `deploy.log` with redaction.
 - `stack_orchestrator/data/compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` — drop the per-route env block, add `WARP_ROUTES`, mount `warp-routes-config`.
 - `deployment/{,(staging|local)/}bridges/default/warp-routes/usdc.yml` (+ `local/.../sol.yml`) — the menu.
@@ -136,6 +137,5 @@ The compose↔spec↔fixture trio in `CLAUDE.md` updates: one `spec-warp-deploye
 ## Out of scope / limitations
 
 - **Bridge UI multi-route** — the UI still shows the first route; runtime multi-route loading is separate.
-- **Partial-failure orphaning** — the skip marker is `token-config.json`; a route interrupted after on-chain deploy but before that file is written is re-deployed on the next run, orphaning the earlier programs.
 - **`FORCE_REDEPLOY` granularity** — it remains a single switch across the selected routes.
-- **No other stack's Job behavior changes** — `recreate-jobs` is opt-in; the default skip-on-409 is preserved everywhere it is not set.
+- **No other stack's Job behavior changes** — the `laconic.recreate-job` label is opt-in; the default skip-on-409 is preserved everywhere the label is absent.
