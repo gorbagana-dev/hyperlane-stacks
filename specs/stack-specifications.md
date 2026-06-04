@@ -126,13 +126,13 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 ## Stack 2: hyperlane-svm-warp-deployer
 
 ### Purpose
-One-time Job that deploys the warp route contracts for a single configurable route. A route is a set of config fields where each side has an explicit token type: an origin side (`native` or `collateral`) and a remote side (`synthetic` or `collateral`).
+One-time Job that deploys the warp route contracts for the routes selected by `WARP_ROUTES`. A route is a set of fields where each side has an explicit token type: an origin side (`native` or `collateral`) and a remote side (`synthetic` or `collateral`). Route definitions are a checked-in menu; a single deployment can deploy several of them.
 
 ### How It Works
 1. Same `jobs:` pattern as core deployer — runs as a k8s Job with ConfigMap-mounted deploy script at `/opt/scripts/`
 2. Reads `hyperlane-program-ids` ConfigMap (created by Stack 1) for mailbox addresses
-3. `deploy.sh` builds the on-chain token-config generically with `jq` from the route's `config:` fields (origin/remote chain, type, token, and metadata) — there is no per-token template
-4. Deploys the warp route programs for both sides and writes the route's addresses to state
+3. `deploy.sh` loops over the space-separated `WARP_ROUTES` selection. For each route it reads `/config/warp-routes/<stem>.json` (from the `warp-routes-config` ConfigMap) and builds the on-chain token-config generically with `jq` from that route's fields (origin/remote chain, type, token, and metadata) — there is no per-token template
+4. Deploys the warp route programs for both sides and writes each route's addresses to state under `/state/warp-routes/<name>/`
 
 ### Warp route token model
 
@@ -188,24 +188,59 @@ tests pass even though the prod spec ships placeholders.)
 - Requires Stack 1 (core deployer) to have run first
 
 ### Config (spec.yml)
-Per-route fields: `WARP_ROUTE_NAME`, `WARP_ORIGIN_CHAIN`, `WARP_ORIGIN_TYPE`
-(`native` | `collateral`), `WARP_ORIGIN_TOKEN`, `WARP_REMOTE_CHAIN`,
-`WARP_REMOTE_TYPE` (`synthetic` | `collateral`); per-side token metadata
-`WARP_ORIGIN_NAME`/`WARP_ORIGIN_SYMBOL`/`WARP_ORIGIN_DECIMALS` and
-`WARP_REMOTE_NAME`/`WARP_REMOTE_SYMBOL`/`WARP_REMOTE_DECIMALS` (each side may
-label or scale the asset independently); `WARP_TOKEN_METADATA_URI` (synthetic
-side); plus RPC URLs, domain IDs, and `FORCE_REDEPLOY`.
+The spec selects routes and carries shared chain/control config; the per-route
+fields live in the menu, not the spec.
+
+- **`WARP_ROUTES`** — space-separated list of route stems to deploy (e.g. `"usdc"`
+  in prod, `"usdc sol"` locally/e2e). Each stem must have a menu file (below) and
+  must match the `warp_routes` selection in
+  `ops/inventories/{prod,local}/group_vars/all.yml`.
+- Shared chain config (`GORCHAIN_RPC_URL`, domain/chain IDs, `*_IS_TESTNET`) and
+  `FORCE_REDEPLOY`. The Solana origin RPC (`SOLANA_RPC_URL`) is a secret.
+- `configmaps:` includes `warp-routes-config`, the runtime-populated ConfigMap
+  that carries the selected routes (see below).
+
+#### Route menu
+Each route is defined once in a checked-in per-env menu file —
+`deployment/bridges/default/warp-routes/<stem>.yml` (prod) /
+`deployment/local/bridges/default/warp-routes/<stem>.yml` (local). A menu file
+describes one route: its `name`, the origin and remote sides
+(`chain`/`type`/`token`/`name`/`symbol`/`decimals`, each side may label or scale
+the asset independently), and the synthetic-side `metadataUri`. Stems currently
+shipped: `usdc`, `sol`.
+
+#### warp-routes-config ConfigMap
+The selected routes are carried into the deployer as the `warp-routes-config`
+ConfigMap (mounted at `/config/warp-routes/`), one `<stem>.json` per selected
+route. Like `agent-config`, it is runtime-populated and has no `data/config/`
+source dir: the ops layer renders the menu YAML→JSON
+(`ops/roles/common/tasks/load_warp_routes.yml`), and e2e does the same in
+conftest's `_write_warp_menu`. `deploy.sh` reads `/config/warp-routes/<stem>.json`
+for each selected route.
 
 ### Secrets (injected separately)
 `DEPLOYER_KEYPAIR`, `HARDWARE_WALLET_PUBKEY`
 
 ### Multiple routes
 
-Each deployment deploys exactly one route. Run additional routes by deploying
-the stack multiple times, each with its own explicit `namespace:` (laconic-so
-enforces one deployment per namespace) and its own per-route config fields.
-Each route keeps its state under `/state/warp-routes/<route-name>/`, so routes
-do not collide and the deploy script's idempotency check is scoped per route.
+A single deployment deploys all routes named in `WARP_ROUTES`. To add a route,
+check a menu file into `bridges/default/warp-routes/`, add its stem to the
+spec's `WARP_ROUTES` (and the matching `warp_routes` ops selection), and re-run
+the deployment. Each route keeps its state under `/state/warp-routes/<name>/`
+(where `<name>` is the menu file's `name:` field), so routes do not collide and
+the deploy script's idempotency check is scoped per route: an already-deployed
+route self-skips (its `token-config.json` exists) unless `FORCE_REDEPLOY=true`.
+
+Each route also gets a scoped, RPC-redacted `deploy.log` under
+`/state/warp-routes/<name>/`, which rides the existing `publish-bridge-state.yml`
+flow into git alongside the other bridge state.
+
+#### Idempotent re-runs
+The warp-deployer compose service carries a `laconic.recreate-job: "true"`
+label. On `deployment start`, stack-orchestrator deletes and recreates the
+completed Job rather than treating it as already-applied, so re-running the
+deployment picks up newly-selected routes while finished routes skip via the
+per-route idempotency check.
 
 The relayer, gas-oracle, validators, and storage are route-agnostic — they
 operate at the mailbox/domain level — so adding a route needs no per-route
@@ -525,7 +560,7 @@ Tests use the same layout under `/tmp/hyperlane-bridge-e2e/`.
 | Spec File | Stack |
 |-----------|-------|
 | `spec-deployer.yml` | `hyperlane-svm-deployer` |
-| `spec-warp-<route>.yml` (one per route) | `hyperlane-svm-warp-deployer` |
+| `spec-warp-deployer.yml` (local: `local/spec-warp-deployer.yml`) | `hyperlane-svm-warp-deployer` |
 | `spec-validator-gorchain.yml` | `hyperlane-validator` (gorchain deployment) |
 | `spec-validator-solana.yml` | `hyperlane-validator` (solana deployment) |
 | `spec-relayer.yml` | `hyperlane-relayer` |

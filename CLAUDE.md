@@ -40,7 +40,7 @@ These groups of files must stay consistent. When changing one, update all:
 | Compose file | Deployment spec | Test fixture |
 |---|---|---|
 | `compose-jobs/docker-compose-hyperlane-svm-deployer.yml` | `deployment/spec-deployer.yml` | `tests/e2e/fixtures/test-spec-deployer.yml` |
-| `compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | `deployment/spec-warp-<route>.yml` (one per route) | `tests/e2e/fixtures/test-spec-warp-deployer-{usdc,native}.yml` |
+| `compose-jobs/docker-compose-hyperlane-svm-warp-deployer.yml` | `deployment/spec-warp-deployer.yml` (local: `deployment/local/spec-warp-deployer.yml`) | `tests/e2e/fixtures/test-spec-warp-deployer.yml` |
 | `compose/docker-compose-hyperlane-validator.yml` | `deployment/spec-validator-{gorchain,solana}.yml` | — |
 | `compose/docker-compose-hyperlane-relayer.yml` | `deployment/spec-relayer.yml` | — |
 | `compose/docker-compose-hyperlane-gas-oracle.yml` | `deployment/spec-gas-oracle.yml` | — |
@@ -111,7 +111,7 @@ When making structural changes, update:
 
 1. `hyperlane-minio` (no deps)
 2. `hyperlane-svm-deployer` (Job — writes state files to `/state` host-path)
-3. `hyperlane-svm-warp-deployer` (Job — reads `program-ids.json` from `/state`, writes `token-config.json`)
+3. `hyperlane-svm-warp-deployer` (Job — deploys the routes selected by `WARP_ROUTES` from the checked-in menu; reads `program-ids.json` from `/state`, writes per-route `token-config.json`)
 4. `hyperlane-validator` × 2 (gorchain + solana, mounts agent-config CM populated by bridge_state_loader)
 5. `hyperlane-relayer` (mounts agent-config CM, needs MinIO via cross-namespace FQDN)
 6. `hyperlane-gas-oracle` (env vars populated from state files via conftest)
@@ -154,6 +154,22 @@ those as k8s ConfigMaps in each consumer's own namespace. See
   At `deploy start`, SO reads files from `{deploy_dir}/configmaps/{name}/`,
   creates k8s ConfigMap objects in the stack's namespace, and mounts them into pods/jobs.
   SO's ConfigMap creation is now idempotent (patches on 409 instead of failing).
+- **Warp routes are config-driven**: a single warp-deployer deployment deploys
+  the routes named in the space-separated `WARP_ROUTES` spec var. Route
+  definitions are a checked-in menu under `bridges/default/warp-routes/<stem>.yml`
+  (prod) / `local/bridges/default/warp-routes/<stem>.yml` (local), one route per
+  file. The selected routes are carried in the `warp-routes-config` ConfigMap
+  (mounted at `/config/warp-routes/`) as `<stem>.json` — runtime-populated like
+  `agent-config` (no `data/config/` source dir): ops renders the menu YAML→JSON
+  (`ops/roles/common/tasks/load_warp_routes.yml`), e2e via conftest's
+  `_write_warp_menu`. `deploy.sh` loops `WARP_ROUTES`, deploys each route, and
+  writes a scoped per-route `deploy.log` under `/state/warp-routes/<name>/`;
+  already-deployed routes self-skip unless `FORCE_REDEPLOY=true`. The warp-deployer
+  compose service carries a `laconic.recreate-job: "true"` label so SO
+  deletes+recreates the completed Job on `deployment start`, making re-runs
+  idempotent (newly-selected routes deploy, finished ones skip). Each spec's
+  `WARP_ROUTES` must match the `warp_routes` selection list in
+  `ops/inventories/{prod,local}/group_vars/all.yml`.
 - **cluster-id lifecycle**: `deploy create` generates `laconic-{id}` in
   `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
   Patch `deployment.yml` (not the spec) after create.

@@ -335,8 +335,7 @@ tests/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
 │       ├── test-spec-deployer.yml    # Core deployer test spec
-│       ├── test-spec-warp-deployer-usdc.yml    # Warp deployer test spec (USDC collateral route)
-│       ├── test-spec-warp-deployer-native.yml  # Warp deployer test spec (SOL native route)
+│       ├── test-spec-warp-deployer.yml    # Warp deployer test spec (routes selected via WARP_ROUTES)
 │       ├── test-spec-minio.yml       # MinIO test spec
 │       ├── test-spec-validator-gorchain.yml  # Validator (Gorchain) test spec
 │       ├── test-spec-validator-solana.yml    # Validator (Solana) test spec
@@ -1417,27 +1416,16 @@ secrets:
 ```
 
 ```yaml
-# test-spec-warp-deployer-usdc.yml  (the native route uses the same shape with
-# WARP_ORIGIN_TYPE: native and no WARP_ORIGIN_TOKEN; see test-spec-warp-deployer-native.yml)
+# test-spec-warp-deployer.yml — single deployment; routes selected via WARP_ROUTES
+# and read from the warp-routes-config ConfigMap (rendered from the checked-in
+# bridges/default/warp-routes/<stem>.yml menu; the e2e USDC mint is injected at
+# runtime into the route JSON, not the spec).
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
-namespace: laconic-warp-usdc-e2e
+namespace: laconic-hyperlane-warp-deployer
 config:
-  WARP_ROUTE_NAME: "USDC-solana-gorchain"
-  WARP_ORIGIN_CHAIN: solana
-  WARP_ORIGIN_TYPE: collateral
-  WARP_ORIGIN_TOKEN: "REPLACE_AT_RUNTIME"
-  WARP_ORIGIN_NAME: "USD Coin"
-  WARP_ORIGIN_SYMBOL: "USDC"
-  WARP_ORIGIN_DECIMALS: "6"
-  WARP_REMOTE_CHAIN: gorchain
-  WARP_REMOTE_TYPE: synthetic
-  WARP_REMOTE_NAME: "USD Coin"
-  WARP_REMOTE_SYMBOL: "USDC"
-  WARP_REMOTE_DECIMALS: "6"
-  WARP_TOKEN_METADATA_URI: ""
+  WARP_ROUTES: "usdc sol"
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SOLANA_RPC_URL: "http://solana-rpc:18899"
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
@@ -1448,10 +1436,12 @@ config:
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
+  warp-routes-config: ./configmaps/warp-routes-config
 secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
     - HARDWARE_WALLET_PUBKEY
+    - SOLANA_RPC_URL
 ```
 
 ```yaml
