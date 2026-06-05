@@ -33,7 +33,6 @@ from lib.cluster import (
 from lib.common import (
     CHAINS,
     E2E_DIR,
-    REPO_ROOT,
     force_rmtree,
     run_deployer_cli,
     save_job_describe,
@@ -105,9 +104,9 @@ WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
 
 # Warp routes deployed by the warp_deployment fixture. A SINGLE config-driven
 # warp-deployer deployment deploys every route here, selected via the spec's
-# `WARP_ROUTES` env var. Each entry's `stem` names the checked-in route menu
-# file (deployment/local/bridges/default/warp-routes/<stem>.yml); `name` is the
-# route name declared inside that menu and the per-route state dir. The fixture
+# `WARP_ROUTES` env var. Each entry's `stem` names the e2e route menu file
+# (fixtures/warp-routes/<stem>.yml); `name` is the route name declared inside
+# that menu and the per-route state dir. The fixture
 # renders the selected menu files into the deployment's warp-routes-config
 # configmap dir, injecting a freshly created+funded test SPL mint into each
 # `needs_spl_mint` (collateral-origin) route. USDC stays first so
@@ -793,7 +792,7 @@ def _create_and_fund_spl_token(keypair_path: str, rpc_url: str = "http://localho
 
 
 def _write_warp_menu(deploy_dir: Path, test_mint: str) -> None:
-    """Render the local route menu into the deployment's warp-routes-config
+    """Render the e2e route menu into the deployment's warp-routes-config
     configmap dir as JSON, injecting the e2e test SPL mint into the USDC route."""
     import json
 
@@ -801,7 +800,7 @@ def _write_warp_menu(deploy_dir: Path, test_mint: str) -> None:
 
     cmdir = deploy_dir / "configmaps" / "warp-routes-config"
     cmdir.mkdir(parents=True, exist_ok=True)
-    menu_dir = REPO_ROOT / "deployment/local/bridges/default/warp-routes"
+    menu_dir = E2E_DIR / "fixtures" / "warp-routes"
     for route in WARP_ROUTES:
         cfg = yaml.safe_load((menu_dir / f"{route['stem']}.yml").read_text())
         if route["needs_spl_mint"]:

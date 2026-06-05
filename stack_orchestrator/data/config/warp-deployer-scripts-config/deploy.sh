@@ -346,9 +346,9 @@ SOLCFG
   [ -d "${ROUTE_STATE_DIR}/warp-deploy-outputs" ] && echo "  - warp-deploy-outputs/"
 }
 
-: "${WARP_ROUTES:?WARP_ROUTES must be set to a space-separated list of route names}"
+: "${WARP_ROUTES:?WARP_ROUTES must be set to a comma-separated list of route names}"
 echo "=== Deploying warp routes: ${WARP_ROUTES} ==="
-for route in ${WARP_ROUTES}; do
+for route in $(echo "${WARP_ROUTES}" | tr ',' ' '); do
   cfg="/config/warp-routes/${route}.json"
   if [ ! -s "$cfg" ]; then
     echo "ERROR: route config $cfg not found for selected route '${route}'"

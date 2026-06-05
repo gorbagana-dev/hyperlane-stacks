@@ -201,21 +201,23 @@ fields live in the menu, not the spec.
   that carries the selected routes (see below).
 
 #### Route menu
-Each route is defined once in a checked-in per-env menu file —
+Each route is defined in a checked-in per-env menu file. The deployment menus —
 `deployment/bridges/default/warp-routes/<stem>.yml` (prod) /
-`deployment/local/bridges/default/warp-routes/<stem>.yml` (local). A menu file
-describes one route: its `name`, the origin and remote sides
-(`chain`/`type`/`token`/`name`/`symbol`/`decimals`, each side may label or scale
-the asset independently), and the synthetic-side `metadataUri`. Stems currently
-shipped: `usdc`, `sol`.
+`deployment/local/bridges/default/warp-routes/<stem>.yml` (local) — ship the
+operator routes; the e2e suite owns a parallel menu under
+`tests/e2e/fixtures/warp-routes/<stem>.yml`. A menu file describes one route: its
+`name`, the origin and remote sides (`chain`/`type`/`token`/`name`/`symbol`/
+`decimals`, each side may label or scale the asset independently), and the
+synthetic-side `metadataUri`. Deployment menus ship `usdc`; the e2e menu adds
+`sol` (a native-route test vehicle).
 
 #### warp-routes-config ConfigMap
 The selected routes are carried into the deployer as the `warp-routes-config`
 ConfigMap (mounted at `/config/warp-routes/`), one `<stem>.json` per selected
 route. Like `agent-config`, it is runtime-populated and has no `data/config/`
-source dir: the ops layer renders the menu YAML→JSON
-(`ops/roles/common/tasks/load_warp_routes.yml`), and e2e does the same in
-conftest's `_write_warp_menu`. `deploy.sh` reads `/config/warp-routes/<stem>.json`
+source dir: the ops layer renders the deployment menu YAML→JSON
+(`ops/roles/common/tasks/load_warp_routes.yml`), and e2e renders its own fixtures
+menu the same way in conftest's `_write_warp_menu`. `deploy.sh` reads `/config/warp-routes/<stem>.json`
 for each selected route.
 
 ### Secrets (injected separately)
@@ -225,8 +227,8 @@ for each selected route.
 
 A single deployment deploys all routes named in `WARP_ROUTES`. To add a route,
 check a menu file into `bridges/default/warp-routes/`, add its stem to the
-spec's `WARP_ROUTES` (and the matching `warp_routes` ops selection), and re-run
-the deployment. Each route keeps its state under `/state/warp-routes/<name>/`
+spec's `WARP_ROUTES`, and re-run the deployment (ops derives its render list from
+`WARP_ROUTES`). Each route keeps its state under `/state/warp-routes/<name>/`
 (where `<name>` is the menu file's `name:` field), so routes do not collide and
 the deploy script's idempotency check is scoped per route: an already-deployed
 route self-skips (its `token-config.json` exists) unless `FORCE_REDEPLOY=true`.

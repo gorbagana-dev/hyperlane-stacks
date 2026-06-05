@@ -1417,8 +1417,8 @@ secrets:
 
 ```yaml
 # test-spec-warp-deployer.yml — single deployment; routes selected via WARP_ROUTES
-# and read from the warp-routes-config ConfigMap (rendered from the checked-in
-# bridges/default/warp-routes/<stem>.yml menu; the e2e USDC mint is injected at
+# and read from the warp-routes-config ConfigMap (rendered from the e2e menu under
+# tests/e2e/fixtures/warp-routes/<stem>.yml; the e2e USDC mint is injected at
 # runtime into the route JSON, not the spec).
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind

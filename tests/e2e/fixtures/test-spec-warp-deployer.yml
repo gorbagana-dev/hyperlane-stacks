@@ -11,7 +11,7 @@ volumes:
   bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
   bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
 config:
-  WARP_ROUTES: "usdc sol"
+  WARP_ROUTES: "usdc,sol"
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   GORCHAIN_DOMAIN_ID: "99999"
   SOLANA_DOMAIN_ID: "99998"

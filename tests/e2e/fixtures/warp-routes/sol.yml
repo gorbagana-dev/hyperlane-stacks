@@ -1,3 +1,4 @@
+# E2E warp route: native SOL (Solana) <-> gorchain synthetic.
 name: SOL-solana-gorchain
 origin:
   chain: solana

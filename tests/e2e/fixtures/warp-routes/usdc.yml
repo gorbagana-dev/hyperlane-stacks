@@ -1,0 +1,17 @@
+# E2E warp route: USDC (Solana collateral) <-> gorchain synthetic.
+# origin.token is replaced at runtime with a freshly created test SPL mint.
+name: USDC-solana-gorchain
+origin:
+  chain: solana
+  type: collateral
+  token: "REPLACE_WITH_USDC_MINT_ADDRESS"
+  name: "USD Coin"
+  symbol: "USDC"
+  decimals: 6
+remote:
+  chain: gorchain
+  type: synthetic
+  name: "USD Coin"
+  symbol: "USDC"
+  decimals: 6
+metadataUri: ""

@@ -160,8 +160,9 @@ those as k8s ConfigMaps in each consumer's own namespace. See
   (prod) / `local/bridges/default/warp-routes/<stem>.yml` (local), one route per
   file. The selected routes are carried in the `warp-routes-config` ConfigMap
   (mounted at `/config/warp-routes/`) as `<stem>.json` — runtime-populated like
-  `agent-config` (no `data/config/` source dir): ops renders the menu YAML→JSON
-  (`ops/roles/common/tasks/load_warp_routes.yml`), e2e via conftest's
+  `agent-config` (no `data/config/` source dir): ops renders the deployment menu
+  YAML→JSON (`ops/roles/common/tasks/load_warp_routes.yml`); e2e renders its own
+  menu under `tests/e2e/fixtures/warp-routes/<stem>.yml` via conftest's
   `_write_warp_menu`. `deploy.sh` loops `WARP_ROUTES`, deploys each route, and
   writes a scoped per-route `deploy.log` under `/state/warp-routes/<name>/`;
   already-deployed routes self-skip unless `FORCE_REDEPLOY=true`. The warp-deployer

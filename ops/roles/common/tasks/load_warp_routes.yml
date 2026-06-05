@@ -4,7 +4,7 @@
 # Inputs: spec_file, deploy_dir, deployment_root, bridge_name.
 - name: Select warp routes from the spec's WARP_ROUTES
   ansible.builtin.set_fact:
-    _warp_routes: "{{ (lookup('ansible.builtin.file', spec_file) | from_yaml).config.WARP_ROUTES.split() }}"
+    _warp_routes: "{{ (lookup('ansible.builtin.file', spec_file) | from_yaml).config.WARP_ROUTES.replace(',', ' ').split() }}"
 
 - name: Ensure warp-routes-config dir exists
   ansible.builtin.file:
