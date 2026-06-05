@@ -46,7 +46,7 @@
     - fetch_stack
     - stack_deploy
 
-- name: Warp route deployer (single Job — routes from the menu)
+- name: Warp route deployer
   hosts: deployer_hosts
   gather_facts: true
   vars_files:
