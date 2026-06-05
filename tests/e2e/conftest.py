@@ -1901,7 +1901,7 @@ def warp_ui_deployment(
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[dict, None, None]:
     """Deploy the warp-ui stack with resolved addresses from state files."""
-    import yaml as _yaml
+    import yaml
 
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
@@ -1954,7 +1954,7 @@ def warp_ui_deployment(
     warp_ui_cfg = _build_warp_ui_config(bridge_state_loader, gorchain_mailbox, solana_mailbox)
     cmdir = deploy_info.deploy_dir / "configmaps" / "warp-ui-config"
     cmdir.mkdir(parents=True, exist_ok=True)
-    (cmdir / "warpRoutes.yaml").write_text(_yaml.safe_dump(warp_ui_cfg))
+    (cmdir / "warpRoutes.yaml").write_text(yaml.safe_dump(warp_ui_cfg))
 
     bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
 
