@@ -111,8 +111,10 @@ oracle, and deploys the collateral USDC SPL mint.
 ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
 ```
 
-It prints, in the final summary, the values you still need to set:
-`HARDWARE_WALLET_PUBKEY` and `WARP_TOKEN_MINT`.
+It prints, in the final summary, the value you still need to set:
+`HARDWARE_WALLET_PUBKEY`. The collateral mint is persisted to
+`~/.credentials/hyperlane/warp-token-mint` and substituted into the warp route
+automatically — no edit needed.
 
 Notes:
 - gorchain's dev-RPC config lives in the deploy spec's `config:` (no hand-written
@@ -132,10 +134,9 @@ Notes:
 ## 7. Fill the remaining vars
 
 From the step-6 summary, set `HARDWARE_WALLET_PUBKEY` in
-`inventories/local/group_vars/all.yml`; and the USDC mint as `origin.token` in
-`deployment/local/bridges/default/warp-routes/usdc.yml` (replace
-`REPLACE_WITH_USDC_MINT_ADDRESS`). (`IGP_ORACLE_PUBKEY` and the validator addresses
-were set in step 2.)
+`inventories/local/group_vars/all.yml`. (The collateral mint was persisted in step 6 and
+is substituted into the warp route automatically; `IGP_ORACLE_PUBKEY` and the validator
+addresses were set in step 2.)
 
 ## 8. Deploy
 

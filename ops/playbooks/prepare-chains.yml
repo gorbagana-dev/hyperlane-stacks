@@ -113,6 +113,15 @@
       ansible.builtin.set_fact:
         warp_token_mint: "{{ (spl_out.stdout_lines | select('match', '^WARP_TOKEN_MINT=') | first).split('=')[1] }}"
 
+    # Persist the runtime mint so deploy-all's load_warp_routes substitutes
+    # __WARP_TOKEN_MINT__ in the route file — no hand-edit of usdc.yml. Single-host:
+    # the chain host IS the deploy host, so this lands where load_warp_routes reads it.
+    - name: Persist the collateral mint for the warp route render
+      ansible.builtin.copy:
+        content: "{{ warp_token_mint }}"
+        dest: "{{ credentials_dir }}/warp-token-mint"
+        mode: "0644"
+
     - name: Capture HARDWARE_WALLET_PUBKEY from the keygen output
       ansible.builtin.set_fact:
         hardware_wallet_pubkey: >-
@@ -128,5 +137,5 @@
         msg:
           - "Chains, accounts, and SPL token are ready on {{ inventory_hostname }}."
           - "group_vars/all.yml -> HARDWARE_WALLET_PUBKEY: {{ hardware_wallet_pubkey }}"
-          - "deployment/local/bridges/default/warp-routes/usdc.yml -> origin.token: {{ warp_token_mint }}"
+          - "mint {{ warp_token_mint }} -> {{ credentials_dir }}/warp-token-mint (auto-substituted into the route)."
           - "(IGP_ORACLE_PUBKEY + validator addresses come from Privy, set earlier.)"

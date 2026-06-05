@@ -156,10 +156,10 @@ local-agents (validators + relayer host):
 You keep `hardware-wallet.json` (its pubkey → `HARDWARE_WALLET_PUBKEY`; not deployed).
 Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY` (from the helper),
 `IGP_ORACLE_PUBKEY`, `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`;
-`REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`. Set the USDC mint
-(from the SPL deploy) as `origin.token` in
-`deployment/local/bridges/default/warp-routes/usdc.yml` (replace
-`REPLACE_WITH_USDC_MINT_ADDRESS`).
+`REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`. The chains box isn't
+ansible-managed, so write the USDC mint (the `WARP_TOKEN_MINT` the SPL deploy printed) to
+`~/.credentials/hyperlane/warp-token-mint` on the deployer host (`local-services`),
+alongside the keys — the warp route picks it up from there.
 
 ## 7. Run it
 
