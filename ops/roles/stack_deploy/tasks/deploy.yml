@@ -16,6 +16,22 @@
          | combine(stack_env_extra | default({})) }}
   no_log: true
 
+# Fail fast with a legible message if a required secret is empty/unset, rather than
+# deep inside SO's _create_user_secrets at `deployment start`. Common cause: the
+# managed creds (minio_root_user, grafana_admin_password, ...) were never generated
+# because distribute-credentials.yml / setup-all didn't complete.
+- name: Required secret env values for this stack are non-empty
+  ansible.builtin.assert:
+    that: "stack_env[item] | default('', true) | string | length > 0"
+    fail_msg: >-
+      Secret env '{{ item }}' for stack '{{ stack_name }}' is empty or unset.
+      Generate the managed creds with playbooks/distribute-credentials.yml, or set it
+      in inventories/<env>/secrets.yml, then re-run.
+    quiet: true
+  loop: "{{ stack_env.keys() | list }}"
+  loop_control:
+    label: "{{ item }}"
+
 - name: Create the deployment from the committed spec (idempotent)
   when:
     - not _dep.stat.exists
