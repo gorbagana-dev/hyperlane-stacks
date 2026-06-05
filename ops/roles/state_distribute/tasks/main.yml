@@ -6,11 +6,13 @@
   ansible.builtin.set_fact:
     _generated_src: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated/"
 
+# Symbolic mode (capital X = dir-only execute): a numeric 0644 on a recursive copy
+# strips execute off the subdirs, leaving them non-traversable for SO/dev.
 - name: Copy generated state into each configmap dir
   ansible.builtin.copy:
     src: "{{ _generated_src }}"
     dest: "{{ deploy_dir }}/configmaps/{{ item }}/"
     remote_src: true
-    mode: "0644"
+    mode: "u=rwX,go=rX"
   loop: "{{ configmap_names }}"
   when: not ansible_check_mode
