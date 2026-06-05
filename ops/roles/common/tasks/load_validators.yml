@@ -24,9 +24,15 @@
   ansible.builtin.set_fact:
     validator_env_prefixes: "{{ validators | map(attribute='label') | map('upper') | map('replace', '-', '_') | list }}"
 
+# Rebuild fresh: load_validators runs in several plays per run and set_fact persists
+# across them, so appending with default([]) would double the records on re-entry.
+- name: Reset the DNS-record accumulator
+  ansible.builtin.set_fact:
+    validator_dns_records: []
+
 - name: Derive validator DNS records
   ansible.builtin.set_fact:
-    validator_dns_records: "{{ validator_dns_records | default([]) + [_record] }}"
+    validator_dns_records: "{{ validator_dns_records + [_record] }}"
   vars:
     _record:
       name: "{{ item.hostname | regex_replace('\\.' ~ dns_zone ~ '$', '') }}"
