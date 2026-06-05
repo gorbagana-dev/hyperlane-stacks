@@ -1,20 +1,22 @@
 ---
 # Render the routes selected by the spec's WARP_ROUTES into the warp-deployer's
-# configmap dir as JSON, before the Job starts.
-# Inputs: spec_file, deploy_dir, deployment_root, bridge_name.
+# configmap dir as JSON, before the Job starts. Runs inside the stack_deploy role
+# context, so it reads the role's resolved _spec_file/_deploy_dir (the caller-override
+# names spec_file/deploy_dir are not both set — the warp play passes no deploy_dir).
+# Inputs: _spec_file, _deploy_dir, deployment_root, bridge_name.
 - name: Select warp routes from the spec's WARP_ROUTES
   ansible.builtin.set_fact:
-    _warp_routes: "{{ (lookup('ansible.builtin.file', spec_file) | from_yaml).config.WARP_ROUTES.replace(',', ' ').split() }}"
+    _warp_routes: "{{ (lookup('ansible.builtin.file', _spec_file) | from_yaml).config.WARP_ROUTES.replace(',', ' ').split() }}"
 
 - name: Ensure warp-routes-config dir exists
   ansible.builtin.file:
-    path: "{{ deploy_dir }}/configmaps/warp-routes-config"
+    path: "{{ _deploy_dir }}/configmaps/warp-routes-config"
     state: directory
     mode: "0755"
 
 - name: Render each selected route file to JSON
   ansible.builtin.copy:
-    dest: "{{ deploy_dir }}/configmaps/warp-routes-config/{{ item }}.json"
+    dest: "{{ _deploy_dir }}/configmaps/warp-routes-config/{{ item }}.json"
     content: >-
       {{ lookup('ansible.builtin.file',
          deployment_root ~ '/bridges/' ~ bridge_name ~ '/warp-routes/' ~ item ~ '.yml')
