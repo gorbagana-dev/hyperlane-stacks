@@ -46,7 +46,7 @@ SETTLE_DELAY = 10  # seconds to let validator settle state after relay delivery
 
 # SOL buffer kept on whichever chain a transfer pays its IGP gas on; topped up
 # before each bridge so a drawn-down balance can't fail the transfer.
-BRIDGE_GAS_SOL = 30
+BRIDGE_GAS_SOL = 20
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +365,10 @@ class TestBridge:
         gorchain_rpc = CHAINS["gorchain"]["rpc"]
         gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
 
+        # Top up before measuring so the before/after SOL delta reflects only
+        # the transfer, not a gas airdrop.
+        ensure_sol_balance(user["pubkey"], solana_rpc, BRIDGE_GAS_SOL, "bridge-user-0")
+
         before_syn = get_spl_token_balance(
             route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
         )
@@ -373,8 +377,6 @@ class TestBridge:
             "Native route initial — Solana SOL: %s, Gorchain synthetic: %s",
             before_sol, before_syn,
         )
-
-        ensure_sol_balance(user["pubkey"], solana_rpc, BRIDGE_GAS_SOL, "bridge-user-0")
 
         result = _run_transfer_remote(
             "/tmp/key.json",

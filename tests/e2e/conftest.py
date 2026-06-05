@@ -1798,8 +1798,8 @@ def bridge_setup(
     log.info("Funding bridge users with SOL...")
     for i, user in enumerate(users):
         label = f"bridge-user-{i}"
-        ensure_sol_balance(user["pubkey"], solana_rpc, 30, f"{label} (Solana)")
-        ensure_sol_balance(user["pubkey"], gorchain_rpc, 30, f"{label} (Gorchain)")
+        ensure_sol_balance(user["pubkey"], solana_rpc, 20, f"{label} (Solana)")
+        ensure_sol_balance(user["pubkey"], gorchain_rpc, 20, f"{label} (Gorchain)")
 
     log.info("Funding bridge users with USDC on Solana...")
     deployer_cfg = _write_solana_config(sender_keypair, solana_rpc)
