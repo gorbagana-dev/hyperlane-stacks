@@ -875,15 +875,32 @@ git commit -m "test(e2e): exercise warp UI across USDC and native SOL routes"
 
 ### Task 17: Full e2e verification
 
-**Files:** none.
+**Files:** none (plus a temporary `stack.yml` edit, see Step 1).
 
-- [ ] **Step 1: Run the warp UI tests against a live two-route deployment**
+**How the image gets into the test:** the warp-ui test spec carries `image-overrides: { warp-ui: REPLACE_WARP_UI_IMAGE }`. conftest's `_resolve_image_refs()` fills that placeholder — published `…/hyperlane-warp-ui:latest` by default, or `gorbagana-dev/hyperlane-warp-ui:local` when `--build-from-source` is passed. `--build-from-source` also makes the `warp_ui_image` fixture run `laconic-so setup-repositories` + `build-containers` to produce that `:local` image, which SO kind-loads. So **`--build-from-source` is the image-override flag** for testing the new build.
 
-On the **test machine** (not this dev host), with a deployment up:
+- [ ] **Step 1: Pre-publish source pin (testing fork changes before the release exists)**
+
+`build-containers` builds from the repo ref pinned in `stack_orchestrator/data/stacks/hyperlane-warp-ui/stack.yml` `repos:`, which Task 9 sets to the tag `v2.0.0-gorbagana.1`. **That tag does not exist until the release is published**, so to test the fork branch first:
+
+1. Push the fork branch: in the fork repo, `git push origin warp-ui-runtime-routes`.
+2. Temporarily change the `stack.yml` pin to the branch:
+
+```yaml
+repos:
+  - github.com/gorbagana-dev/hyperlane-warp-ui-template@warp-ui-runtime-routes
+```
+
+`setup-repositories` clones the **remote** ref (it may reset an existing `~/cerc/hyperlane-warp-ui-template` clone), so the branch must be pushed — a local-only checkout won't be picked up. Revert the pin to the tag once the release is published.
+
+- [ ] **Step 2: Run the warp UI tests against a live two-route deployment**
+
+On the **test machine** (not this dev host), with a deployment up, build the new image and override the deployment to use it via `--build-from-source` (do **not** pass `--skip-warp-ui-deploy` — that skips the build/redeploy; the other `--skip-*-deploy` flags keep the rest of the deployment and ensure only warp-ui rebuilds):
 
 ```bash
 cd tests/e2e
 xvfb-run -a pytest -v -x test_10_warp_ui.py test_12_warp_ui_bridge.py \
+  --build-from-source \
   --skip-cluster-setup --skip-chain-setup --skip-core-deploy --skip-minio-deploy \
   --skip-warp-deploy --skip-validator-deploy --skip-relayer-deploy \
   --skip-gas-oracle-deploy --skip-monitoring-deploy --skip-cleanup
@@ -891,7 +908,7 @@ xvfb-run -a pytest -v -x test_10_warp_ui.py test_12_warp_ui_bridge.py \
 
 Expected: both pass; the UI shows only the USDC and SOL gorbagana routes.
 
-- [ ] **Step 2: Record results.** If `test_10` cannot reach `/warpRoutes.yaml`, confirm the standalone server serves runtime-written `public/` files (spec risk); if the SOL route fails in-browser, fall back to the reduced SOL assertion from Task 16 and note the `SealevelHypNative` follow-up.
+- [ ] **Step 3: Record results.** If `test_10` cannot reach `/warpRoutes.yaml`, confirm the standalone server serves runtime-written `public/` files (spec risk); if the SOL route fails in-browser, fall back to the reduced SOL assertion from Task 16 and note the `SealevelHypNative` follow-up.
 
 ---
 
