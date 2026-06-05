@@ -57,6 +57,11 @@ GORCHAIN_TO_SOLANA_PARAMS = (
     "?origin=gorchain&originToken=gUSDC"
     "&destination=solana&destinationToken=USDC"
 )
+# Native SOL route params
+SOL_SOLANA_TO_GORCHAIN_PARAMS = (
+    "?origin=solana&originToken=SOL"
+    "&destination=gorchain&destinationToken=SOL"
+)
 
 
 def _screenshot(page, name: str) -> None:
@@ -240,12 +245,16 @@ def _submit_transfer(page, context, dest_chain: str, amount: str) -> None:
 class TestWarpUIBridge:
     """Browser-driven bridge transfer tests using Backpack wallet extension."""
 
-    def test_warp_ui_loads_in_browser(self, warp_ui_browser: dict) -> None:
+    @pytest.mark.parametrize("params,label", [
+        (SOLANA_TO_GORCHAIN_PARAMS, "usdc"),
+        (SOL_SOLANA_TO_GORCHAIN_PARAMS, "sol"),
+    ])
+    def test_warp_ui_loads_in_browser(self, warp_ui_browser: dict, params: str, label: str) -> None:
         """Verify the UI loads and shows our chains via URL params."""
         page = warp_ui_browser["context"].new_page()
         try:
             url = warp_ui_browser["url"]
-            page.goto(f"{url}{SOLANA_TO_GORCHAIN_PARAMS}")
+            page.goto(f"{url}{params}")
             page.wait_for_load_state("load")
             page.wait_for_function("() => document.title !== ''", timeout=30_000)
 
@@ -260,19 +269,23 @@ class TestWarpUIBridge:
             assert "fatal error" not in content, (
                 "Fatal error displayed on page"
             )
-            log.info("Warp UI loaded successfully in browser")
+            log.info("Warp UI loaded successfully in browser (%s route)", label)
         except Exception:
-            _screenshot(page, "warp-ui-load-fail")
+            _screenshot(page, f"warp-ui-load-fail-{label}")
             raise
         finally:
             page.close()
 
-    def test_warp_ui_wallet_connects(self, warp_ui_browser: dict) -> None:
+    @pytest.mark.parametrize("params,label", [
+        (SOLANA_TO_GORCHAIN_PARAMS, "usdc"),
+        (SOL_SOLANA_TO_GORCHAIN_PARAMS, "sol"),
+    ])
+    def test_warp_ui_wallet_connects(self, warp_ui_browser: dict, params: str, label: str) -> None:
         """Verify Backpack wallet connects and UI reflects connected state."""
         page = warp_ui_browser["context"].new_page()
         try:
             url = warp_ui_browser["url"]
-            page.goto(f"{url}{SOLANA_TO_GORCHAIN_PARAMS}")
+            page.goto(f"{url}{params}")
             page.wait_for_load_state("load")
             page.wait_for_function("() => document.title !== ''", timeout=30_000)
 
@@ -292,9 +305,39 @@ class TestWarpUIBridge:
                 )
             ), "Wallet did not connect — UI still shows 'Connect wallet'"
 
-            log.info("Backpack wallet connected successfully")
+            log.info("Backpack wallet connected successfully (%s route)", label)
         except Exception:
-            _screenshot(page, "wallet-connect-fail")
+            _screenshot(page, f"wallet-connect-fail-{label}")
+            raise
+        finally:
+            page.close()
+
+    def test_warp_ui_sol_route_selectable(self, warp_ui_browser: dict) -> None:
+        """Verify the native SOL route is selectable and the transfer form renders.
+
+        Full native browser transfer is covered by the USDC route tests;
+        native SOL is verified at minimum to the transfer form rendering —
+        a native send requires the same Backpack approve flow but needs no
+        SPL-token balance probe, so a full round-trip can be added once a
+        SOL-specific bridge_setup fixture (funded native wallet) is available.
+        """
+        page = warp_ui_browser["context"].new_page()
+        try:
+            url = warp_ui_browser["url"]
+            page.goto(f"{url}{SOL_SOLANA_TO_GORCHAIN_PARAMS}")
+            page.wait_for_load_state("load")
+            page.wait_for_function("() => document.title !== ''", timeout=30_000)
+
+            content = page.content().lower()
+            assert "send" in content or "transfer" in content, (
+                "Transfer form not found for SOL route"
+            )
+            assert "fatal error" not in content, (
+                "Fatal error displayed on SOL route page"
+            )
+            log.info("Native SOL route rendered transfer form successfully")
+        except Exception:
+            _screenshot(page, "sol-route-selectable-fail")
             raise
         finally:
             page.close()
