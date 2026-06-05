@@ -119,7 +119,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-warp-ui
-    configmap_names: ["warp-ui-config"]
+    configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
   roles:
     - fetch_stack
     - state_distribute
