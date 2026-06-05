@@ -1,11 +1,14 @@
 ---
-# Resolve per-stack metadata once, before preflight and deploy (caller-set values
-# win — validators pass spec_file/stack_path explicitly; singletons derive from the
-# stacks map in group_vars). Runs first so spec_file/stack_path/stack_is_job are
-# defined for every later task.
-- name: Resolve stack metadata from the stacks map when not provided
-  when: spec_file is not defined
+# Resolve per-stack metadata into private _-prefixed facts every play. Caller-set
+# values win (validators/warp pass spec_file/stack_path/stack_is_job explicitly;
+# singletons derive from the stacks map in group_vars).
+#
+# Derive into _-names, never the caller-override names: set_fact facts persist for
+# the whole run, across plays. Writing spec_file/stack_path/stack_is_job here (or
+# guarding on `is not defined`) freezes the first play's values, and every later
+# singleton play reuses them — the deployer play would run against MinIO's spec/dir.
+- name: Resolve stack metadata (caller override, else the stacks map)
   ansible.builtin.set_fact:
-    spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
-    stack_path: "{{ repo_root }}/{{ stacks[stack_name].path }}"
-    stack_is_job: "{{ stacks[stack_name].is_job | default(false) }}"
+    _spec_file: "{{ spec_file | default(deployment_root ~ '/' ~ stacks[stack_name].spec) }}"
+    _stack_path: "{{ stack_path | default(repo_root ~ '/' ~ stacks[stack_name].path) }}"
+    _stack_is_job: "{{ stack_is_job | default(stacks[stack_name].is_job | default(false)) }}"

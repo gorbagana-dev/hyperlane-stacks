@@ -1,11 +1,14 @@
 ---
+# Into a private _-name, never `deploy_dir` itself: a self-referential set_fact
+# (deploy_dir: "{{ deploy_dir | default(...) }}") persists across plays, so the
+# first play freezes it and every later singleton play reuses that stale dir.
 - name: Resolve deploy dir (honor caller override, else derive)
   ansible.builtin.set_fact:
-    deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"
+    _deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"
 
 - name: Check whether the deployment was already created
   ansible.builtin.stat:
-    path: "{{ deploy_dir }}/deployment.yml"
+    path: "{{ _deploy_dir }}/deployment.yml"
   register: _dep
 
 # Resolve each secret env NAME to its value via the `vars` lookup. NOT
@@ -60,7 +63,7 @@
     # spec_token_renders, set only in local/group_vars — a no-op for prod/staging.
     - name: Render runtime tokens into the spec (local only)
       ansible.builtin.replace:
-        path: "{{ spec_file }}"
+        path: "{{ _spec_file }}"
         regexp: "{{ item.key | regex_escape }}"
         replace: "{{ item.value }}"
       loop: "{{ (spec_token_renders | default({})) | dict2items }}"
@@ -99,7 +102,7 @@
     # map is referenced only here, where the detect-block above has set kind_gateway_ip.
     - name: Render the single-host external-services block (single-host consumers)
       ansible.builtin.replace:
-        path: "{{ spec_file }}"
+        path: "{{ _spec_file }}"
         regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
         replace: "{{ single_host_external_services[stack_env_map_key | default(stack_name)] }}"
       when:
@@ -111,7 +114,7 @@
     # reference, so kind_gateway_ip is never needed here.
     - name: Strip the single-host external-services marker (multi-host / non-consumers)
       ansible.builtin.replace:
-        path: "{{ spec_file }}"
+        path: "{{ _spec_file }}"
         regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
         replace: ''
       when:
@@ -128,19 +131,19 @@
         argv:
           - laconic-so
           - --stack
-          - "{{ stack_path }}"
+          - "{{ _stack_path }}"
           - deploy
           - create
           - --spec-file
-          - "{{ spec_file }}"
+          - "{{ _spec_file }}"
           - --deployment-dir
-          - "{{ deploy_dir }}"
+          - "{{ _deploy_dir }}"
       environment: "{{ stack_env }}"
       changed_when: true
 
     - name: Patch human-readable deployment-id
       ansible.builtin.replace:
-        path: "{{ deploy_dir }}/deployment.yml"
+        path: "{{ _deploy_dir }}/deployment.yml"
         regexp: '^(deployment-id:\s*).*$'
         replace: '\g<1>{{ deployment_id }}'
 
@@ -161,7 +164,7 @@
       - laconic-so
       - deployment
       - --dir
-      - "{{ deploy_dir }}"
+      - "{{ _deploy_dir }}"
       - start
       - --perform-cluster-management
   environment: "{{ stack_env }}"
@@ -183,5 +186,5 @@
       - --timeout=1800s
   changed_when: false
   when:
-    - stack_is_job | default(false) | bool
+    - _stack_is_job | bool
     - not ansible_check_mode

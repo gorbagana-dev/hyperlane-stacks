@@ -18,13 +18,17 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-minio
+    # Accumulated in pre_tasks under a private name, then handed to stack_deploy as a
+    # play-scoped var. set_fact-ing `stack_env_extra` directly would persist it across
+    # plays, leaking MinIO's IAM creds into every later stack's secret env.
+    stack_env_extra: "{{ _minio_env_extra | default({}) }}"
   pre_tasks:
     - name: Derive validator labels + MINIO_USERS
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
     - name: Build MinIO env (MINIO_USERS + per-validator IAM)
       ansible.builtin.set_fact:
-        stack_env_extra: >-
-          {{ stack_env_extra | default({'MINIO_USERS': minio_users}) | combine({
+        _minio_env_extra: >-
+          {{ _minio_env_extra | default({'MINIO_USERS': minio_users}) | combine({
              (item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,
              (item.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[item.label].secret }) }}
       loop: "{{ validators }}"
@@ -76,6 +80,9 @@
   vars:
     stack_name: hyperlane-relayer
     configmap_names: "{{ stacks['hyperlane-relayer'].configmaps }}"
+    # state_distribute runs before stack_deploy and writes into deploy_dir, so set it
+    # here (play-scoped). Without it, state_distribute would fall back to a stale dir.
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-relayer"
   roles:
     - fetch_stack
     - state_distribute
