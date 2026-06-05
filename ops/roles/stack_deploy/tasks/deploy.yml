@@ -8,12 +8,18 @@
     path: "{{ deploy_dir }}/deployment.yml"
   register: _dep
 
+# Resolve each secret env NAME to its value via the `vars` lookup. NOT
+# `map('extract', vars)`: that doesn't reliably re-template a value that is itself a
+# `{{ other_var }}` indirection (e.g. MINIO_ROOT_USER: "{{ minio_root_user }}"), so on
+# some ansible versions the literal template leaked through to SO. ansible itself
+# recommends the vars lookup over extract-on-vars.
 - name: Assemble secret env from the per-stack map
   ansible.builtin.set_fact:
     stack_env: >-
-      {{ dict(stack_env_vars[stack_env_map_key | default(stack_name)]
-         | zip(stack_env_vars[stack_env_map_key | default(stack_name)] | map('extract', vars) | list))
+      {{ dict(_secret_env_names | zip(lookup('vars', *_secret_env_names, wantlist=True)))
          | combine(stack_env_extra | default({})) }}
+  vars:
+    _secret_env_names: "{{ stack_env_vars[stack_env_map_key | default(stack_name)] }}"
   no_log: true
 
 # Fail fast with a legible message if a required secret is empty or an unrendered
