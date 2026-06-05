@@ -100,11 +100,16 @@
 
     # Single-host chain-consumers: insert this stack's external-services block. The
     # map is referenced only here, where the detect-block above has set kind_gateway_ip.
+    # The map values carry a literal __KIND_GATEWAY_IP__ placeholder (NOT a
+    # {{ kind_gateway_ip }} template) so the membership checks above can reference the
+    # map before the gateway is detected; substitute the detected IP here.
     - name: Render the single-host external-services block (single-host consumers)
       ansible.builtin.replace:
         path: "{{ _spec_file }}"
         regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
-        replace: "{{ single_host_external_services[stack_env_map_key | default(stack_name)] }}"
+        replace: >-
+          {{ single_host_external_services[stack_env_map_key | default(stack_name)]
+             | replace('__KIND_GATEWAY_IP__', kind_gateway_ip) }}
       when:
         - spec_token_renders is defined
         - topology | default('') == 'single'
