@@ -113,6 +113,14 @@
         regexp: '^(deployment-id:\s*).*$'
         replace: '\g<1>{{ deployment_id }}'
 
+# Runs on every start (not just first create) so re-runs re-render any
+# deployer-output configmaps the spec mounts but has no data/config source for.
+- name: Pre-start hook (optional per-stack include)
+  ansible.builtin.include_tasks: "{{ stack_pre_start_tasks }}"
+  when:
+    - stack_pre_start_tasks is defined
+    - not ansible_check_mode
+
 - name: Start deployment (create-or-reuse cluster + Caddy)
   ansible.builtin.command:
     argv:

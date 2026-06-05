@@ -4,21 +4,11 @@ services:
     restart: "no"
     entrypoint: ["/bin/bash"]
     command: ["/opt/scripts/deploy.sh"]
+    labels:
+      laconic.recreate-job: "true"
     environment:
-      # Warp route configuration
-      WARP_ROUTE_NAME: ${WARP_ROUTE_NAME}
-      WARP_ORIGIN_CHAIN: ${WARP_ORIGIN_CHAIN}
-      WARP_ORIGIN_TYPE: ${WARP_ORIGIN_TYPE}
-      WARP_ORIGIN_TOKEN: ${WARP_ORIGIN_TOKEN:-}
-      WARP_ORIGIN_NAME: ${WARP_ORIGIN_NAME}
-      WARP_ORIGIN_SYMBOL: ${WARP_ORIGIN_SYMBOL}
-      WARP_ORIGIN_DECIMALS: ${WARP_ORIGIN_DECIMALS}
-      WARP_REMOTE_CHAIN: ${WARP_REMOTE_CHAIN}
-      WARP_REMOTE_TYPE: ${WARP_REMOTE_TYPE}
-      WARP_REMOTE_NAME: ${WARP_REMOTE_NAME}
-      WARP_REMOTE_SYMBOL: ${WARP_REMOTE_SYMBOL}
-      WARP_REMOTE_DECIMALS: ${WARP_REMOTE_DECIMALS}
-      WARP_TOKEN_METADATA_URI: ${WARP_TOKEN_METADATA_URI:-}
+      # Space-separated list of route names to deploy (definitions mounted at /config/warp-routes)
+      WARP_ROUTES: ${WARP_ROUTES}
       # Chain config (used by envsubst for registry/token templates)
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
@@ -32,11 +22,13 @@ services:
     volumes:
       - warp-deployer-scripts-config:/opt/scripts:ro
       - warp-deployer-registry-config:/config/registry:ro
+      - warp-routes-config:/config/warp-routes:ro
       - bridge-state:/state
       - bridge-logs:/logs
 
 volumes:
   warp-deployer-scripts-config:
   warp-deployer-registry-config:
+  warp-routes-config:
   bridge-state:
   bridge-logs:

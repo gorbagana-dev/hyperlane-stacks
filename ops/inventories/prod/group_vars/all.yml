@@ -136,8 +136,3 @@ stacks:
     path: stack_orchestrator/data/stacks/hyperlane-validator
     configmaps:
       - agent-config
-
-# Warp routes to deploy. Each <label> needs deployment/spec-warp-<label>.yml
-# (its route config); it deploys as laconic-hyperlane-warp-<label>.
-warp_routes:
-  - usdc

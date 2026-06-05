@@ -14,6 +14,7 @@ from lib.common import (
     wait_for,
     wait_for_token_balance,
 )
+from lib.keygen import ensure_sol_balance
 from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)
@@ -42,6 +43,10 @@ POLL_INTERVAL = 5  # seconds between balance polls
 TRANSFER_RETRIES = 3  # retries for transfer-remote calls
 TRANSFER_RETRY_DELAY = 5  # seconds between retries
 SETTLE_DELAY = 10  # seconds to let validator settle state after relay delivery
+
+# SOL buffer kept on whichever chain a transfer pays its IGP gas on; topped up
+# before each bridge so a drawn-down balance can't fail the transfer.
+BRIDGE_GAS_SOL = 20
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +170,10 @@ class TestBridge:
                 f"User {i} has insufficient USDC: {initial_solana[i]} < {expected_usdc}"
             )
 
+        # Top up each sender's Solana gas before bridging.
+        for i, user in enumerate(users):
+            ensure_sol_balance(user["pubkey"], solana_rpc, BRIDGE_GAS_SOL, f"bridge-user-{i}")
+
         # Submit all transfers concurrently
         log.info("Submitting %d forward transfers (Sol→Gor)...", len(users))
         _log_igp_balances("before-forward", bridge_state_loader)
@@ -272,6 +281,10 @@ class TestBridge:
                 f"Did test_usdc_forward_transfers run first?"
             )
 
+        # Top up each sender's gorchain gas before bridging.
+        for i, user in enumerate(users):
+            ensure_sol_balance(user["pubkey"], gorchain_rpc, BRIDGE_GAS_SOL, f"bridge-user-{i}")
+
         # Submit all reverse transfers concurrently
         log.info("Submitting %d reverse transfers (Gor→Sol)...", len(users))
         _log_igp_balances("before-reverse", bridge_state_loader)
@@ -352,6 +365,10 @@ class TestBridge:
         gorchain_rpc = CHAINS["gorchain"]["rpc"]
         gorchain_domain = str(CHAINS["gorchain"]["domain_id"])
 
+        # Top up before measuring so the before/after SOL delta reflects only
+        # the transfer, not a gas airdrop.
+        ensure_sol_balance(user["pubkey"], solana_rpc, BRIDGE_GAS_SOL, "bridge-user-0")
+
         before_syn = get_spl_token_balance(
             route["synthetic_mint"], user["keypair_path"], gorchain_rpc,
         )
@@ -421,6 +438,8 @@ class TestBridge:
             f"User has insufficient synthetic balance: {before_syn} < {expected_min_syn}. "
             f"Did test_native_forward_transfer run first?"
         )
+
+        ensure_sol_balance(user["pubkey"], gorchain_rpc, BRIDGE_GAS_SOL, "bridge-user-0")
 
         result = _run_transfer_remote(
             "/tmp/key.json",

@@ -52,20 +52,28 @@
         _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
-    # The warp-UI shows one route, fed by the first configured warp route. Its
-    # per-route state lives under warp-routes/<WARP_ROUTE_NAME>/; the route name
-    # is read from that route's spec rather than duplicated here.
-    - name: Read the warp-UI route's spec (first configured route)
+    # The warp-UI shows the first route in the spec's WARP_ROUTES. Its per-route
+    # state lives under warp-routes/<name>/, where <name> comes from that route's
+    # menu file.
+    - name: Read the warp-deployer spec (for WARP_ROUTES)
       ansible.builtin.slurp:
-        src: "{{ deployment_root }}/spec-warp-{{ warp_routes[0] }}.yml"
-      register: _ui_spec_raw
+        src: "{{ deployment_root }}/spec-warp-deployer.yml"
+      register: _warp_spec_raw
+      when: not ansible_check_mode
+
+    - name: Read the warp-UI route's menu file
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/bridges/{{ bridge_name }}/warp-routes/{{ _first_stem }}.yml"
+      vars:
+        _first_stem: "{{ (_warp_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTES.split()[0] }}"
+      register: _ui_menu_raw
       when: not ansible_check_mode
 
     - name: Resolve the warp-UI route's per-route state dir
       ansible.builtin.set_fact:
         _warp_rel: "{{ generated_rel }}/warp-routes/{{ _ui_route_name }}"
       vars:
-        _ui_route_name: "{{ (_ui_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTE_NAME }}"
+        _ui_route_name: "{{ (_ui_menu_raw.content | b64decode | from_yaml).name }}"
       when: not ansible_check_mode
 
     - name: Stat the warp-deployer artifacts (present only after the warp Job)

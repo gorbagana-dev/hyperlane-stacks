@@ -1,0 +1,17 @@
+# Warp route: USDC (Solana collateral) <-> gorchain synthetic.
+# Chain endpoints live in spec-warp-deployer.yml, not here.
+name: USDC-solana-gorchain
+origin:
+  chain: solana
+  type: collateral
+  token: "REPLACE_WITH_USDC_MINT_ADDRESS"
+  name: "USD Coin"
+  symbol: "USDC"
+  decimals: 6
+remote:
+  chain: gorchain
+  type: synthetic
+  name: "USD Coin"
+  symbol: "USDC"
+  decimals: 6
+metadataUri: ""

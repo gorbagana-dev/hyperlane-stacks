@@ -46,7 +46,7 @@
     - fetch_stack
     - stack_deploy
 
-- name: Warp route deployers (Job — one per configured route)
+- name: Warp route deployer
   hosts: deployer_hosts
   gather_facts: true
   vars_files:
@@ -54,18 +54,16 @@
   roles:
     - fetch_stack
   tasks:
-    - name: Deploy each configured warp route
+    - name: Deploy the warp routes selected by the spec's WARP_ROUTES
       ansible.builtin.include_role:
         name: stack_deploy
       vars:
-        stack_name: "hyperlane-warp-{{ item }}"
-        spec_file: "{{ deployment_root }}/spec-warp-{{ item }}.yml"
+        stack_name: hyperlane-warp-deployer
+        spec_file: "{{ deployment_root }}/spec-warp-deployer.yml"
         stack_path: "{{ repo_root }}/{{ stacks['hyperlane-svm-warp-deployer'].path }}"
         stack_is_job: true
         stack_env_map_key: hyperlane-svm-warp-deployer
-      loop: "{{ warp_routes }}"
-      loop_control:
-        label: "{{ item }}"
+        stack_pre_start_tasks: "{{ playbook_dir }}/../roles/common/tasks/load_warp_routes.yml"
 
 - name: Publish deployer + warp-deployer bridge state
   ansible.builtin.import_playbook: publish-bridge-state.yml

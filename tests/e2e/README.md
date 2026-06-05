@@ -5,7 +5,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 ## What's tested
 
 - **Core deployer** -- deploys Hyperlane core contracts (Mailbox, IGP, ISM, etc.) on both chains, verifies state file outputs (`agent-config.json`, `program-ids.json`, `gas-oracle-config.json`, `multisig-config.json`) via `BridgeStateLoader` reads
-- **Warp deployer** -- deploys warp route contracts for a test SPL token, verifies state file outputs (`token-config.json`, `warp-deploy-outputs/`) via `BridgeStateLoader` reads
+- **Warp deployer** -- one deployment that deploys the routes selected via `WARP_ROUTES` (a test SPL collateral route and a native route), verifies per-route state file outputs (`token-config.json`, `warp-deploy-outputs/`) via `BridgeStateLoader` reads
 - **MinIO** -- deploys the S3-compatible checkpoint storage, verifies pod health, bucket creation, and API accessibility
 - **Validators** -- deploys gorchain and solana validators with a mock Privy server, verifies pod health, KMS proxy connectivity, metrics endpoint, log sanity, and checkpoint writing to MinIO
 - **Relayer** -- deploys the hyperlane relayer, verifies pod health and metrics endpoint
@@ -240,8 +240,7 @@ tests/e2e/
 └── fixtures/
     ├── kind-config.yaml                 # Kind cluster with ingress ports
     ├── test-spec-deployer.yml           # laconic-so spec for core deployer
-    ├── test-spec-warp-deployer-usdc.yml   # laconic-so spec for USDC collateral warp route
-    ├── test-spec-warp-deployer-native.yml # laconic-so spec for SOL native warp route
+    ├── test-spec-warp-deployer.yml      # laconic-so spec for warp deployer (routes via WARP_ROUTES)
     ├── test-spec-minio.yml              # laconic-so spec for MinIO
     ├── test-spec-validator-gorchain.yml # laconic-so spec for gorchain validator
     ├── test-spec-validator-solana.yml   # laconic-so spec for solana validator

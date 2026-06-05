@@ -1,12 +1,12 @@
 # Hyperlane SVM Warp Route Deployer - deployment spec
-# Deploys warp route contracts for a specific token pair.
+# Deploys the warp routes selected by WARP_ROUTES from the checked-in route menu.
 # Requires core deployer (spec-deployer.yml) to have run first.
 #
 # Set all vars explicitly — SO k8s path doesn't support nested
 # ${VAR:-${OTHER}} defaults from compose files.
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
-namespace: laconic-hyperlane-warp-usdc
+namespace: laconic-hyperlane-warp-deployer
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 network:
@@ -15,18 +15,7 @@ volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
 config:
-  WARP_ROUTE_NAME: "USDC-solana-gorchain"
-  WARP_ORIGIN_CHAIN: solana
-  WARP_ORIGIN_TYPE: collateral
-  WARP_ORIGIN_TOKEN: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-  WARP_ORIGIN_NAME: "USD Coin"
-  WARP_ORIGIN_SYMBOL: "USDC"
-  WARP_ORIGIN_DECIMALS: "6"
-  WARP_REMOTE_CHAIN: gorchain
-  WARP_REMOTE_TYPE: synthetic
-  WARP_REMOTE_NAME: "USD Coin"
-  WARP_REMOTE_SYMBOL: "USDC"
-  WARP_REMOTE_DECIMALS: "6"
+  WARP_ROUTES: "usdc"
   # Origin (solana) RPC is SOLANA_RPC_URL (Helius, secret) → see secrets:.
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486093"
@@ -35,14 +24,11 @@ config:
   SOLANA_CHAIN_ID: "1399811149"
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
-  # Synthetic token metadata URI — required when IS_TESTNET=false.
-  # Must point to JSON with matching name/symbol, description, and image URL.
-  # Example: https://raw.githubusercontent.com/.../metadata.json
-  WARP_TOKEN_METADATA_URI: "REPLACE_WITH_TOKEN_METADATA_URI"
   FORCE_REDEPLOY: "false"
 configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
+  warp-routes-config: ./configmaps/warp-routes-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export this env var in the shell that runs `laconic-so`:
