@@ -163,19 +163,28 @@ alongside the keys — the warp route picks it up from there.
 
 ## 7. Run it
 
-Point both playbooks at the multi-host validators file via `-e validators_file=...`:
+`deploy-all.yml` commits + pushes the deployer-derived state mid-flight (see below), so
+deploy off a dedicated branch — **never `main`** (the `deploy_branch` default). The hosts
+fetch the repo on that branch, so create and push it first:
+
+```bash
+git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+```
+
+Point both playbooks at the multi-host validators file via `-e validators_file=...` and
+the same `-e deploy_branch=<deploy-branch>`:
 
 ```bash
 # Phase 1 — provision + reconcile Cloudflare DNS + LE + generate creds
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/setup-all.yml \
-  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
+  -e deploy_branch=<deploy-branch>
 
 # Phase 2 — deploy MinIO -> deployer Job -> publish state -> consumers + validators
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/deploy-all.yml \
-  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
+  -e deploy_branch=<deploy-branch>
 ```
-
-Testing off a branch (the hosts fetch the repo themselves) — add `-e deploy_branch=<branch>`.
 
 `deploy-all.yml` runs `publish-bridge-state.yml` mid-flight: it patches the
 deployer-derived values (IGP IDs/accounts, mailboxes, warp addresses/mints) into the

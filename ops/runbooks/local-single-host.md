@@ -140,12 +140,18 @@ addresses were set in step 2.)
 
 ## 8. Deploy
 
-```bash
-# MinIO -> deployer Job -> publish state -> consumers + validators
-ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml
-```
+`deploy-all.yml` commits + pushes the deployer-derived state mid-flight (see below), so
+deploy off a dedicated branch — **never `main`** (the `deploy_branch` default). The hosts
+fetch the repo on that branch, so create and push it first, then pass it as
+`deploy_branch`:
 
-Testing off a branch (the hosts fetch the repo themselves) — add `-e deploy_branch=<branch>`.
+```bash
+git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+
+# MinIO -> deployer Job -> publish state -> consumers + validators
+ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml \
+  -e deploy_branch=<deploy-branch>
+```
 
 `deploy-all.yml` runs `publish-bridge-state.yml` mid-flight: it patches the
 deployer-derived values (IGP IDs/accounts, mailboxes, warp addresses/mints) into the
