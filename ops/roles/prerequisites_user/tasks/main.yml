@@ -5,11 +5,14 @@
     state: directory
     mode: "0755"
 
-- name: Install laconic-so release binary
+# force: the release ships no checksum, so without this get_url keeps any existing
+# binary and a bumped laconic_so_version would never land. Re-download to replace it.
+- name: Install laconic-so release binary (replace on version bump)
   ansible.builtin.get_url:
     url: "{{ laconic_so_release_base_url }}/{{ laconic_so_version }}/laconic-so"
     dest: "{{ ansible_env.HOME }}/bin/laconic-so"
     mode: "0755"
+    force: true
 
 # ~/bin isn't on PATH for ansible's non-login shell (.profile isn't sourced), so
 # every `command: laconic-so ...` task — and the setup scripts that call it by name —
