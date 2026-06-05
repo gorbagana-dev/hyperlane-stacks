@@ -183,7 +183,7 @@
       - --context
       - kind-hyperlane
       - -n
-      - "laconic-{{ stack_name }}"
+      - "{{ _namespace }}"
       - wait
       - --for=condition=complete
       - job
@@ -192,4 +192,27 @@
   changed_when: false
   when:
     - _stack_is_job | bool
+    - not ansible_check_mode
+
+# `deployment start` only creates the Deployments — it does not wait for pods to be
+# Ready. Block here so the play (and thus any later stack that depends on this one
+# running, e.g. relayer/validators -> MinIO) only proceeds once this stack's pods are
+# serving. Multi-host has no incidental ordering buffer, so the gate is what enforces
+# the runtime dependency; it also fails fast on a bad image instead of a quiet retry loop.
+- name: Wait for the stack's Deployments to become available (long-running stacks)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --context
+      - kind-hyperlane
+      - -n
+      - "{{ _namespace }}"
+      - wait
+      - --for=condition=available
+      - deployment
+      - --all
+      - --timeout=1800s
+  changed_when: false
+  when:
+    - not (_stack_is_job | bool)
     - not ansible_check_mode

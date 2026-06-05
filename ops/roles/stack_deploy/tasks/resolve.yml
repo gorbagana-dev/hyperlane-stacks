@@ -12,3 +12,10 @@
     _spec_file: "{{ spec_file | default(deployment_root ~ '/' ~ stacks[stack_name].spec) }}"
     _stack_path: "{{ stack_path | default(repo_root ~ '/' ~ stacks[stack_name].path) }}"
     _stack_is_job: "{{ stack_is_job | default(stacks[stack_name].is_job | default(false)) }}"
+
+# SO derives the namespace from the stack-dir basename (laconic-{basename}), not the
+# stack_name — they differ for warp routes (stack hyperlane-svm-warp-deployer) and
+# validators (stack hyperlane-validator). No local spec sets a namespace: override.
+- name: Derive the k8s namespace
+  ansible.builtin.set_fact:
+    _namespace: "laconic-{{ _stack_path | basename }}"
