@@ -176,23 +176,51 @@
   changed_when: true
   when: not ansible_check_mode
 
-- name: Wait for Job completion (deployer/warp-deployer specs only)
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - --context
-      - kind-hyperlane
-      - -n
-      - "{{ _namespace }}"
-      - wait
-      - --for=condition=complete
-      - job
-      - --all
-      - --timeout=1800s
+# `wait --for=condition=complete` never returns for a Job that hits backoffLimit
+# (it goes condition=Failed, not Complete) — it just hangs to the timeout. Race the
+# two conditions so a crashed Job is caught at once, and capture status + logs.
+# Logs via `kubectl logs job/<name>` (kubectl resolves the pod from the Job's own
+# selector) — SO labels job pods app={app_name}-job, not {app_name}, so guessing a
+# label selector would miss them.
+- name: Wait for the Job(s) to finish (complete or fail), capturing status + logs
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -uo pipefail
+      ns="{{ _namespace }}"
+      to={{ stack_job_timeout | default(1800) }}
+      k() { kubectl --context kind-hyperlane -n "$ns" "$@"; }
+      k wait --for=condition=complete job --all --timeout="${to}s" >/dev/null 2>&1 & cp=$!
+      k wait --for=condition=failed   job --all --timeout="${to}s" >/dev/null 2>&1 & fp=$!
+      wait -n 2>/dev/null || true
+      if ! kill -0 "$cp" 2>/dev/null && wait "$cp" 2>/dev/null; then
+        kill "$fp" 2>/dev/null || true
+        echo "All Job(s) in ${ns} completed."
+        exit 0
+      fi
+      kill "$cp" "$fp" 2>/dev/null || true
+      echo "Job(s) in ${ns} failed or did not finish within ${to}s."
+      k get job 2>&1 || true
+      k get pods 2>&1 || true
+      for j in $(k get job -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        echo "----- logs job/${j} (last 200 lines, all containers) -----"
+        k logs "job/${j}" --all-containers --tail=200 --prefix 2>&1 || true
+      done
+      exit 1
+  register: _job_wait
   changed_when: false
+  failed_when: false
   when:
     - _stack_is_job | bool
     - not ansible_check_mode
+
+- name: Fail with the Job's status + logs when it did not complete
+  ansible.builtin.fail:
+    msg: "{{ _job_wait.stdout }}"
+  when:
+    - _stack_is_job | bool
+    - not ansible_check_mode
+    - _job_wait.rc | default(0) != 0
 
 # `deployment start` only creates the Deployments — it does not wait for pods to be
 # Ready. Block here so the play (and thus any later stack that depends on this one
