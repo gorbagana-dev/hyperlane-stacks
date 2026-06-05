@@ -72,15 +72,23 @@ The template's initialization is async end-to-end: `assembleWarpCoreConfig()` an
 
 - **Runtime loader.** New `src/utils/runtimeConfig.ts` fetches, parses, and validates `/warpRoutes.yaml` and `/chains.yaml` (reusing the template's YAML/JSON parse and the `WarpCoreConfigSchema` / `ChainMetadataSchema` validators). Merge calls are added to `assembleWarpCoreConfig()` (in `src/features/warpCore/warpCoreConfig.ts`) and `assembleChainMetadata()` (in `src/features/chains/metadata.ts`). The merge is additive and falls back to the bundled (empty) config when a file is absent or invalid.
 - **Gorbagana-only.** `src/consts/warpRouteWhitelist.ts` is set to `[]` (an empty array filters out all published-registry routes, leaving only the injected ones; `null` would allow them all). The mainnet defaults in `src/consts/config.ts` (`defaultOriginToken`, `defaultDestinationToken`, `featuredTokens`) are replaced with gorbagana tokens.
-- **Absorb the overlay.** The customizations currently applied by the stacks build overlay move into the fork: the `SolanaWalletContext.tsx` patch and any branding / `config.ts` defaults.
+- **Absorb the overlay.** The stacks build currently overlays the fork at image-build time via two directories — `configs/` (build overlays: `chains.yaml`, `warpRoutes.yaml`, `.env.sentinel`) and `patches/` (source patches: `warpRouteWhitelist.ts`, `SolanaWalletContext.tsx`). This work eliminates that overlay entirely; every piece lives natively in the fork:
+  - `warpRoutes.yaml` / `chains.yaml` — no longer overlaid; generated at deploy time and loaded at runtime (above).
+  - `warpRouteWhitelist.ts` — committed in the fork as `[]` (above).
+  - `.env.sentinel` `NEXT_PUBLIC_WALLET_CONNECT_ID` — a real build-time value committed in the fork, no sentinel.
+  - `SolanaWalletContext.tsx` — committed in the fork. This file is not a pure move: it currently embeds a `__SOLANA_RPC_URL__` sentinel for the wallet `ConnectionProvider` endpoint (a deliberate fix pinning a fixed solana RPC so wallet autoConnect doesn't fail on the reverse bridge). With `sed` gone, the in-fork version sources that RPC **at runtime from the loaded chain metadata** (e.g. `multiProvider.getRpcUrl('solana')`) instead of a sentinel. The endpoint only needs *a valid* solana RPC, not the origin chain's, so reading it from loaded chains is safe.
+  - Any branding / `config.ts` defaults.
+
+  Note: the fork's own `patches/` directory (pnpm `patchedDependencies`, referenced by `pnpm-lock.yaml`) is unrelated upstream dependency patching and stays as-is.
 
 ### hyperlane-stacks — container build
 
-The sentinel machinery is removed:
+The sentinel machinery and the source overlay are both removed:
 
-- Delete the sentinel `configs/warpRoutes.yaml` and `fix-numeric-types.js`.
+- Delete `fix-numeric-types.js` and the entire `configs/` overlay (`warpRoutes.yaml`, `chains.yaml`, `.env.sentinel`) and source `patches/` overlay (`warpRouteWhitelist.ts`, `SolanaWalletContext.tsx`) — all now live in the fork.
+- `build.sh` drops its overlay-copy and patch-apply/restore logic.
+- `Dockerfile` stops COPYing `configs/*` over `src/consts/` and the source patches; it just builds the fork. `stack.yml`'s repo pin points at the fork at tag `v2.0.0-gorbagana.1`.
 - `entrypoint.sh` no longer `sed`s the compiled bundle. It copies the mounted `warp-ui-config` files (`warpRoutes.yaml`, `chains.yaml`) into `/app/public`, then starts the server.
-- `Dockerfile` / `build.sh` build the fork (no more COPY of overlay route/chain config); `stack.yml`'s repo pin points at the fork at tag `v2.0.0-gorbagana.1`.
 
 Both files are produced by the deployment layer (ops and conftest), not the entrypoint: `chains.yaml` is generated from the spec's chain values (RPC URLs, domain/chain IDs, names, native token) and the core deployer's mailboxes. The only remaining build-time UI env is `NEXT_PUBLIC_WALLET_CONNECT_ID`, a constant project ID baked normally by Next.js — its sentinel is removed.
 
@@ -112,6 +120,7 @@ Both files are produced by the deployment layer (ops and conftest), not the entr
 - **`SealevelHypNative` support.** Confirm the exact `TokenStandard` value and required fields, and that the v2 transfer flow handles a native sealevel origin. Verify standalone before wiring.
 - **Runtime-written `/app/public`.** Confirm the standalone server serves files written at container start (low risk — the current entrypoint already writes there).
 - **Publish path.** Pushing `ghcr.io/gorbagana-dev/hyperlane-warp-ui` at the new tag needs registry credentials; confirm the publish mechanism (the local `build.sh` produces a `:local` tag; production pulls the published tag).
+- **Wallet RPC timing.** `SolanaWalletContext` may mount before chain metadata is loaded; its runtime solana-RPC lookup needs a sane fallback (or to render behind the init gate) so wallet autoConnect still works on first paint.
 
 ## Sequencing
 
