@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -235,6 +236,43 @@ def _airdrop(amount_sol: int, pubkey: str, rpc: str, label: str) -> None:
         run_cmd(["solana", "airdrop", str(this_drop), pubkey, "--url", rpc])
         remaining -= this_drop
     log_info(f"    {label}: funded {amount_sol} SOL")
+
+
+def _sol_balance(pubkey: str, rpc: str) -> float:
+    """Native SOL balance of an address; 0.0 if the query fails."""
+    result = run_cmd(
+        ["solana", "balance", pubkey, "--url", rpc], check=False, quiet=True,
+    )
+    if result.returncode != 0:
+        return 0.0
+    try:
+        return float(result.stdout.strip().split()[0])
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def ensure_sol_balance(pubkey: str, rpc: str, target_sol: int, label: str) -> None:
+    """Top up an address to at least target_sol SOL, 10 at a time (faucet cap),
+    re-checking after each drop so a silently-dropped airdrop is retried.
+
+    No-op if already funded. Raises RuntimeError if it can't reach the target
+    within a bounded number of attempts (so it fails fast with a clear message
+    instead of looping or letting the test fail later on insufficient lamports).
+    """
+    needed_drops = math.ceil(target_sol / 10)
+    max_attempts = needed_drops + 3  # a few spare retries for drops that don't land
+    balance = _sol_balance(pubkey, rpc)
+    attempts = 0
+    while balance < target_sol:
+        if attempts >= max_attempts:
+            raise RuntimeError(
+                f"{label}: only reached {balance}/{target_sol} SOL after "
+                f"{attempts} airdrops (faucet not funding?)"
+            )
+        attempts += 1
+        _airdrop(10, pubkey, rpc, label)
+        balance = _sol_balance(pubkey, rpc)
+    log_info(f"    {label}: balance {balance} SOL (target {target_sol})")
 
 
 def fund_wallets(

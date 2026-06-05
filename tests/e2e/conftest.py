@@ -75,6 +75,7 @@ from lib.keygen import (
     KEYS_DIR,
     KeypairSet,
     _airdrop,
+    ensure_sol_balance,
     fund_wallets,
     generate_chain_signer,
     generate_test_keypairs,
@@ -1797,8 +1798,8 @@ def bridge_setup(
     log.info("Funding bridge users with SOL...")
     for i, user in enumerate(users):
         label = f"bridge-user-{i}"
-        _airdrop(10, user["pubkey"], solana_rpc, f"{label} (Solana)")
-        _airdrop(10, user["pubkey"], gorchain_rpc, f"{label} (Gorchain)")
+        ensure_sol_balance(user["pubkey"], solana_rpc, 30, f"{label} (Solana)")
+        ensure_sol_balance(user["pubkey"], gorchain_rpc, 30, f"{label} (Gorchain)")
 
     log.info("Funding bridge users with USDC on Solana...")
     deployer_cfg = _write_solana_config(sender_keypair, solana_rpc)
