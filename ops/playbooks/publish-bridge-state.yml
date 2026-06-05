@@ -171,17 +171,10 @@
       loop: "{{ range(_route_items | default([]) | length) | list }}"
       when: not ansible_check_mode
 
-    - name: Ensure warp-ui-config generated dir exists
-      ansible.builtin.file:
-        path: "{{ deployment_root }}/{{ generated_rel }}/warp-ui-config"
-        state: directory
-        mode: "0755"
-      when: not ansible_check_mode
-
     - name: Write warpRoutes.yaml into the generated state
       ansible.builtin.copy:
         content: "{{ {'tokens': _warp_tokens | default([]), 'options': {}} | to_nice_yaml }}"
-        dest: "{{ deployment_root }}/{{ generated_rel }}/warp-ui-config/warpRoutes.yaml"
+        dest: "{{ deployment_root }}/{{ generated_rel }}/warpRoutes.yaml"
         mode: "0644"
       when: not ansible_check_mode
 
