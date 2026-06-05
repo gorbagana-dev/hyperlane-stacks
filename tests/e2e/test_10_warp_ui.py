@@ -15,20 +15,6 @@ log = logging.getLogger(__name__)
 # DNS resolution is handled by /etc/hosts (bridge.test -> 127.0.0.1),
 # added by ensure_hosts_entry() during cluster setup.
 
-SENTINELS = [
-    "__GORCHAIN_RPC_URL__",
-    "__SOLANA_RPC_URL__",
-    "__GORCHAIN_MAILBOX__",
-    "__SOLANA_MAILBOX__",
-    "__WARP_COLLATERAL_ADDRESS__",
-    "__WARP_SYNTHETIC_ADDRESS__",
-    "__GORCHAIN_CHAIN_NAME__",
-    "__SOLANA_CHAIN_NAME__",
-    "__WARP_TOKEN_MINT__",
-    "__WARP_SYNTHETIC_MINT__",
-    "__NEXT_PUBLIC_WALLET_CONNECT_ID__",
-]
-
 
 def _curl_warp_ui(url: str, path: str = "/") -> subprocess.CompletedProcess[str]:
     """Fetch a path from the warp-ui via TLS ingress.
@@ -102,26 +88,24 @@ class TestWarpUI:
             "Response does not contain HTML"
         )
 
-    def test_warp_ui_sentinels_replaced(self, warp_ui_deployment: dict) -> None:
-        """Verify no sentinel placeholders remain in served JS bundles."""
+    def test_warp_ui_serves_runtime_config(self, warp_ui_deployment: dict) -> None:
+        """Verify the app serves warpRoutes.yaml and chains.yaml with both routes."""
         url = warp_ui_deployment["url"]
 
-        # Fetch the HTML page
-        result = _curl_warp_ui(url)
-        html = _assert_curl_ok(result)
+        routes_result = _curl_warp_ui(url, "/warpRoutes.yaml")
+        routes_body = _assert_curl_ok(routes_result)
+        # Both token standards must appear (collateral/native → synthetic)
+        assert "SealevelHypCollateral" in routes_body, "USDC collateral standard missing"
+        assert "SealevelHypNative" in routes_body, "SOL native standard missing"
+        # Each of the 2 routes has 2 chain entries → at least 4 chainName occurrences
+        assert routes_body.count("chainName") >= 4, (
+            f"Expected >=4 chainName entries, got {routes_body.count('chainName')}"
+        )
 
-        # Extract JS bundle URLs from <script src="/_next/static/...">
-        js_urls = re.findall(r'src="(/_next/static/[^"]+\.js)"', html)
-        assert js_urls, "No JS bundles found in HTML"
-
-        # Fetch each bundle and check for leftover sentinels
-        for js_url in js_urls[:5]:
-            js_result = _curl_warp_ui(url, js_url)
-            js_body = _assert_curl_ok(js_result)
-            for sentinel in SENTINELS:
-                assert sentinel not in js_body, (
-                    f"Sentinel {sentinel} not replaced in {js_url}"
-                )
+        chains_result = _curl_warp_ui(url, "/chains.yaml")
+        chains_body = _assert_curl_ok(chains_result)
+        assert "gorchain" in chains_body, "gorchain missing from chains.yaml"
+        assert "solana" in chains_body, "solana missing from chains.yaml"
 
     def test_warp_ui_chain_config_present(self, warp_ui_deployment: dict) -> None:
         """Verify served JS bundles contain actual chain config values."""
