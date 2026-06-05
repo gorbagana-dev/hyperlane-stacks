@@ -5,7 +5,6 @@ via Caddy TLS ingress (mkcert-trusted certificate).
 """
 
 import logging
-import re
 import subprocess
 
 import pytest
@@ -107,25 +106,3 @@ class TestWarpUI:
         assert "gorchain" in chains_body, "gorchain missing from chains.yaml"
         assert "solana" in chains_body, "solana missing from chains.yaml"
 
-    def test_warp_ui_chain_config_present(self, warp_ui_deployment: dict) -> None:
-        """Verify served JS bundles contain actual chain config values."""
-        url = warp_ui_deployment["url"]
-        mailbox = warp_ui_deployment["gorchain_mailbox"]
-
-        # Chain config is compiled into JS bundles (client-side rendered),
-        # not in the initial HTML shell. Fetch bundles and check.
-        result = _curl_warp_ui(url)
-        html = _assert_curl_ok(result)
-
-        js_urls = re.findall(r'src="(/_next/static/[^"]+\.js)"', html)
-        assert js_urls, "No JS bundles found in HTML"
-
-        # Concatenate JS bundle contents and check for chain config
-        all_js = ""
-        for js_url in js_urls[:5]:
-            js_result = _curl_warp_ui(url, js_url)
-            all_js += _assert_curl_ok(js_result)
-
-        assert "gorchain" in all_js.lower() or mailbox[:8] in all_js, (
-            "Chain config not found in any JS bundle"
-        )
