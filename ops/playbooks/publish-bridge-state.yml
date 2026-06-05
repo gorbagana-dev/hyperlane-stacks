@@ -55,73 +55,139 @@
         _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
-    # The warp-UI shows the first route in the spec's WARP_ROUTES. Its per-route
-    # state lives under warp-routes/<name>/, where <name> comes from that route's
-    # menu file.
+    # The warp-UI needs a WarpCoreConfig (warpRoutes.yaml) covering ALL routes in
+    # the spec's WARP_ROUTES. Each route's per-route state lives under
+    # warp-routes/<name>/, where <name> comes from that route's menu file.
     - name: Read the warp-deployer spec (for WARP_ROUTES)
       ansible.builtin.slurp:
         src: "{{ deployment_root }}/spec-warp-deployer.yml"
       register: _warp_spec_raw
       when: not ansible_check_mode
 
-    - name: Read the warp-UI route's menu file
-      ansible.builtin.slurp:
-        src: "{{ deployment_root }}/bridges/{{ bridge_name }}/warp-routes/{{ _first_stem }}.yml"
-      vars:
-        _first_stem: "{{ (_warp_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTES.split()[0] }}"
-      register: _ui_menu_raw
-      when: not ansible_check_mode
-
-    - name: Resolve the warp-UI route's per-route state dir
+    - name: Resolve all warp-route stems from WARP_ROUTES
       ansible.builtin.set_fact:
-        _warp_rel: "{{ generated_rel }}/warp-routes/{{ _ui_route_name }}"
-      vars:
-        _ui_route_name: "{{ (_ui_menu_raw.content | b64decode | from_yaml).name }}"
+        _warp_stems: >-
+          {{ ((_warp_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTES
+              | replace(',', ' ') | split) }}
       when: not ansible_check_mode
 
-    - name: Stat the warp-deployer artifacts (present only after the warp Job)
-      ansible.builtin.stat:
-        path: "{{ deployment_root }}/{{ _warp_rel }}/{{ item }}"
-      register: _warp_stat
-      loop:
-        - token-config.json
-        - warp-deploy-outputs/program-ids.json
-      when: not ansible_check_mode
-
-    - name: Read warp artifacts when present
+    - name: Slurp each route's menu file
       ansible.builtin.slurp:
-        src: "{{ deployment_root }}/{{ _warp_rel }}/{{ item }}"
-      register: _warp_raw
-      loop:
-        - token-config.json
-        - warp-deploy-outputs/program-ids.json
-      when:
-        - not ansible_check_mode
-        - _warp_stat.results | selectattr('stat.exists') | list | length == 2
+        src: "{{ deployment_root }}/bridges/{{ bridge_name }}/warp-routes/{{ item }}.yml"
+      register: _menus_raw
+      loop: "{{ _warp_stems | default([]) }}"
+      when: not ansible_check_mode
 
-    # token-config.json is chain-keyed (warpRoute.<chain> with type inside), so
-    # find each side by its declared type rather than by a role key.
-    - name: Derive warp-route values when the warp artifacts are present
+    - name: Build route items list (stem + route name)
       ansible.builtin.set_fact:
-        _warp_collateral_addr: "{{ _wpids[_collateral.key].base58 }}"
-        _warp_synthetic_addr: "{{ _wpids[_synthetic.key].base58 }}"
-        _warp_token_mint: "{{ _collateral.value.token }}"
-        _warp_synthetic_mint: "{{ _synthetic.value.mint }}"
+        _route_items: >-
+          {{ _route_items | default([]) + [
+               {'stem': _warp_stems[item | int],
+                'name': (_menus_raw.results[item | int].content | b64decode | from_yaml).name}
+             ] }}
+      loop: "{{ range(_warp_stems | default([]) | length) | list }}"
+      when: not ansible_check_mode
+
+    - name: Slurp token-config.json for each route
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/{{ generated_rel }}/warp-routes/{{ item.name }}/token-config.json"
+      register: _tcfgs_raw
+      loop: "{{ _route_items | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: not ansible_check_mode
+
+    - name: Slurp warp-deploy-outputs/program-ids.json for each route
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/{{ generated_rel }}/warp-routes/{{ item.name }}/warp-deploy-outputs/program-ids.json"
+      register: _wpids_raw
+      loop: "{{ _route_items | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: not ansible_check_mode
+
+    # Build a per-chain mailbox lookup from the deployer program-ids (same source
+    # the existing code uses for GORCHAIN_MAILBOX / SOLANA_MAILBOX).
+    - name: Build chain mailbox lookup
+      ansible.builtin.set_fact:
+        _mailboxes: "{{ {'gorchain': (_pids | default({})).gorchain.mailbox | default(''),
+                         'solana':   (_pids | default({})).solana.mailbox   | default('') } }}"
+      when: not ansible_check_mode
+
+    # token-config.json is chain-keyed (warpRoute.<chain> with type inside).
+    # For each route, emit two token entries (one per chain side). The type→standard
+    # mapping and collateralAddressOrDenom field follow the side's declared type:
+    #   collateral → SealevelHypCollateral + collateralAddressOrDenom = side.token
+    #   synthetic  → SealevelHypSynthetic  + collateralAddressOrDenom = side.mint
+    #   native     → SealevelHypNative     (no collateralAddressOrDenom)
+    - name: Accumulate warp token entries for all routes
+      ansible.builtin.set_fact:
+        _warp_tokens: >-
+          {{ _warp_tokens | default([]) + [
+               _entry_a | combine(
+                 ({'collateralAddressOrDenom': _side_a.value.token}
+                   if _side_a.value.type == 'collateral' else
+                  {'collateralAddressOrDenom': _side_a.value.mint}
+                   if _side_a.value.type == 'synthetic' else {})
+               ),
+               _entry_b | combine(
+                 ({'collateralAddressOrDenom': _side_b.value.token}
+                   if _side_b.value.type == 'collateral' else
+                  {'collateralAddressOrDenom': _side_b.value.mint}
+                   if _side_b.value.type == 'synthetic' else {})
+               )
+             ] }}
       vars:
-        _tcfg: "{{ _warp_raw.results[0].content | b64decode | from_json }}"
-        _wpids: "{{ _warp_raw.results[1].content | b64decode | from_json }}"
+        _type_to_standard:
+          collateral: SealevelHypCollateral
+          synthetic: SealevelHypSynthetic
+          native: SealevelHypNative
+        _tcfg: "{{ _tcfgs_raw.results[item | int].content | b64decode | from_json }}"
+        _wpids: "{{ _wpids_raw.results[item | int].content | b64decode | from_json }}"
         _sides: "{{ _tcfg.warpRoute | dict2items | rejectattr('key', 'equalto', 'name') | list }}"
-        _collateral: "{{ _sides | selectattr('value.type', 'equalto', 'collateral') | list | first }}"
-        _synthetic: "{{ _sides | selectattr('value.type', 'equalto', 'synthetic') | list | first }}"
-      when:
-        - not ansible_check_mode
-        - _warp_stat.results | selectattr('stat.exists') | list | length == 2
+        _side_a: "{{ _sides[0] }}"
+        _side_b: "{{ _sides[1] }}"
+        _route_name: "{{ _route_items[item | int].name }}"
+        _entry_a:
+          chainName: "{{ _side_a.key }}"
+          standard: "{{ _type_to_standard[_side_a.value.type] }}"
+          name: "{{ _route_name }}"
+          symbol: "{{ _side_a.value.symbol | default(_route_name) }}"
+          decimals: "{{ _side_a.value.decimals | default(9) }}"
+          addressOrDenom: "{{ _wpids[_side_a.key].base58 }}"
+          mailbox: "{{ _mailboxes[_side_a.key] | default('') }}"
+          connections:
+            - token: "sealevel|{{ _side_b.key }}|{{ _wpids[_side_b.key].base58 }}"
+        _entry_b:
+          chainName: "{{ _side_b.key }}"
+          standard: "{{ _type_to_standard[_side_b.value.type] }}"
+          name: "{{ _route_name }}"
+          symbol: "{{ _side_b.value.symbol | default(_route_name) }}"
+          decimals: "{{ _side_b.value.decimals | default(9) }}"
+          addressOrDenom: "{{ _wpids[_side_b.key].base58 }}"
+          mailbox: "{{ _mailboxes[_side_b.key] | default('') }}"
+          connections:
+            - token: "sealevel|{{ _side_a.key }}|{{ _wpids[_side_a.key].base58 }}"
+      loop: "{{ range(_route_items | default([]) | length) | list }}"
+      when: not ansible_check_mode
+
+    - name: Ensure warp-ui-config generated dir exists
+      ansible.builtin.file:
+        path: "{{ deployment_root }}/{{ generated_rel }}/warp-ui-config"
+        state: directory
+        mode: "0755"
+      when: not ansible_check_mode
+
+    - name: Write warpRoutes.yaml into the generated state
+      ansible.builtin.copy:
+        content: "{{ {'tokens': _warp_tokens | default([]), 'options': {}} | to_nice_yaml }}"
+        dest: "{{ deployment_root }}/{{ generated_rel }}/warp-ui-config/warpRoutes.yaml"
+        mode: "0644"
+      when: not ansible_check_mode
 
     # Patch the scalar deployment-derived values into the committed specs. The rich
     # agent-config.json is distributed as a ConfigMap by state_distribute, not here.
-    # Core values (IGP/mailbox) come from program-ids.json; warp-route addresses, the
-    # collateral mint, and the synthetic mint come from the warp-deployer
-    # (token-config.json + warp-deploy-outputs/program-ids.json).
+    # Core values (IGP/mailbox) come from program-ids.json.
     - name: Patch core deployment-derived config keys into committed specs
       ansible.builtin.replace:
         path: "{{ deployment_root }}/{{ item.spec }}"
@@ -155,26 +221,6 @@
       loop_control:
         label: "{{ item.spec }}:{{ item.key }}"
       when: not ansible_check_mode
-
-    - name: Patch warp-route values into spec-warp-ui.yml (after the warp Job)
-      ansible.builtin.replace:
-        path: "{{ deployment_root }}/spec-warp-ui.yml"
-        regexp: '^(\s*{{ item.key }}:\s*).*$'
-        replace: '\g<1>"{{ item.value }}"'
-      loop:
-        - key: WARP_COLLATERAL_ADDRESS
-          value: "{{ _warp_collateral_addr | default('') }}"
-        - key: WARP_SYNTHETIC_ADDRESS
-          value: "{{ _warp_synthetic_addr | default('') }}"
-        - key: WARP_TOKEN_MINT
-          value: "{{ _warp_token_mint | default('') }}"
-        - key: WARP_SYNTHETIC_MINT
-          value: "{{ _warp_synthetic_mint | default('') }}"
-      loop_control:
-        label: "{{ item.key }}"
-      when:
-        - not ansible_check_mode
-        - _warp_collateral_addr is defined
 
     - name: Stage the generated paths and patched specs (scoped)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git add
