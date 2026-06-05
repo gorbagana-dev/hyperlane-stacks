@@ -144,9 +144,13 @@ SOLCFG
       > "${ENVIRONMENTS_DIR}/${ENVIRONMENT}/${side_chain}/core/program-ids.json"
   done
 
-  if [ "${WARP_ORIGIN_TYPE}" = "collateral" ] && [ -z "${WARP_ORIGIN_TOKEN:-}" ]; then
-    echo "ERROR: WARP_ORIGIN_TYPE=collateral but WARP_ORIGIN_TOKEN is empty (route ${WARP_ROUTE_NAME})."
-    exit 1
+  if [ "${WARP_ORIGIN_TYPE}" = "collateral" ]; then
+    case "${WARP_ORIGIN_TOKEN:-}" in
+      "" | REPLACE_WITH_*)
+        echo "ERROR: route ${WARP_ROUTE_NAME} is collateral but origin.token is unset or still a placeholder ('${WARP_ORIGIN_TOKEN:-}'). Set it to the collateral mint in bridges/<bridge>/warp-routes/<route>.yml."
+        exit 1
+        ;;
+    esac
   fi
 
   jq -n \

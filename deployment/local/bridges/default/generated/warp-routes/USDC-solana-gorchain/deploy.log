@@ -1,0 +1,185 @@
+Warp route name: USDC-solana-gorchain
+Origin chain: solana (collateral)
+Remote chain: gorchain (synthetic)
+Core program IDs found for both chains.
+Token config:
+{
+  "solana": {
+    "type": "collateral",
+    "name": "USD Coin",
+    "symbol": "USDC",
+    "decimals": 6,
+    "interchainSecurityModule": "5Wc78YzEJveEQXKJwtKrYx8qDACDE9MJReETeQfx3qEb",
+    "interchainGasPaymaster": "BQXk6vkMsaPQSurhpBGhxET8Fgvu5XA5NfuRYaosokQv",
+    "token": "2c3XNRoBhELekZ6KBHZhseAZxXbg9KYG3M2CoGDokg67"
+  },
+  "gorchain": {
+    "type": "synthetic",
+    "name": "USD Coin",
+    "symbol": "USDC",
+    "decimals": 6,
+    "interchainSecurityModule": "92H4wtjqhUMFKCnz8jvUd9bioX9d9DscNwhh2uC8jwjY",
+    "interchainGasPaymaster": "72c9nZxfPmHrv6QujJmeoPSZrrbU4gFCRSQzvdRNkuat"
+  }
+}
+
+=== Deploying warp routes ===
+Verifying configuration...
+Skipping metadata URI validation for testnet chain: gorchain
+Configuration successfully verified!
+Installing cargo 1.76.0 (required by spl-token-cli)
+Installing the spl token cli
+Attempting deploy hyperlane_sealevel_token on chain: gorchain
+App config: TokenConfig { token_type: Synthetic(TokenMetadata { name: "USD Coin", symbol: "USDC", total_supply: None, uri: None }), decimal_metadata: DecimalMetadata { decimals: 6, remote_decimals: None }, router_config: RouterConfig { foreign_deployment: None, ownable: OptionalOwnableConfig { owner: None }, connection_client: OptionalConnectionClientConfig { mailbox: None, interchain_gas_paymaster: Some(72c9nZxfPmHrv6QujJmeoPSZrrbU4gFCRSQzvdRNkuat), interchain_security_module: Some(92H4wtjqhUMFKCnz8jvUd9bioX9d9DscNwhh2uC8jwjY) } } }
+Wrote keypair 4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr to /tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token-gorchain-keypair.json
+Wrote keypair 3VRAR8ewSKhD2bbGSh6oAyueN68t8NGeRXBDFFmGBfny to /tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token-gorchain-buffer.json
+Attempting program deploy Program ID: 4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr, buffer pubkey: 3VRAR8ewSKhD2bbGSh6oAyueN68t8NGeRXBDFFmGBfny, compute unit price: 0, attempt number 0
+Running command: "solana" "--url" "http://gorchain-rpc:8899" "-k" "/tmp/deployer-keypair.json" "program" "deploy" "/opt/hyperlane/programs/hyperlane_sealevel_token.so" "--upgrade-authority" "/tmp/deployer-keypair.json" "--program-id" "/tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token-gorchain-keypair.json" "--buffer" "/tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token-gorchain-buffer.json" "--use-rpc"
+Program Id: 4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr
+
+Signature: 3J2SUNN6Px99dYfT6MBbNvoF5ibo9gEGhNCsBk7K5G9s7u6mkqpvDAYFSNAGuc9JVZkXKuBTSw2benSPVCYqJvHg
+
+Sleeping for 5 seconds to fully allow program to be deployed
+Initializing Warp Route program: domain_id: 1198486095, mailbox: BFjQ2RcFPyJaqPRZA3TNgs63Fj3XUvWZeMHsBxM2iZhX, ism: Some(92H4wtjqhUMFKCnz8jvUd9bioX9d9DscNwhh2uC8jwjY), owner: Some(2wbDZnwq9Uz3SgtmuZg75jaEbbDaZhwhvYErACwnvm97), igp: Some((6WCZTP3DfUXip27QDEG2nwgHYebvUyLypGLNfvbovPmT, OverheadIgp(72c9nZxfPmHrv6QujJmeoPSZrrbU4gFCRSQzvdRNkuat)))
+	==== Instructions: ====
+	Instruction 0: Set compute unit limit to 1400000
+	Instruction 1: No description provided
+	==== Transaction in base58: ====
+	2CiUTkbE3yc96zpsVXEsTawUj3X9xsk5QeaAXNaUjESNqUk3UymJYfsC1iZtRng2EMFQQ3CpGAijfw5vpLb6DMycmZyh7zywhnmN2nTftjUf9QqBVwEqfbvNwnGqQvKfbz5ozjkfJAGaTtsZi8icaRZxkXrS7QpJezXzkf1hBFEAmoem8BQ75SM5RkmhPmPTFfJ4iTJmC1McbdUiTKSWKBeP5uqozpmTi4dxGdCqAyDHbLwGE9DmpFQZt4oUmeTHRsZjmihrfAcnqzkhAEBjix7GSM5ybZh9RzEH6ER4bQw4RfJ1DEWcbfAAHpfyu2rnNGA3CVupbdCoGZYop3jmXn1JWDhAFmhLY4nCrAttny9vmKm5HLex3B1oScSP4L6Dfubvi3bkWx5bS998kHLBw6Dx3VbyK4tFNkUpfayjJRBasp3pDYJbVy6NYNUe4dBs3MVTvtBtCCZdfuecd5T4tc7BWKCXuGMxVUW8p541gsveemTA7h4zpDWQt4F1c4f3MigFRyQbmGPw9fv9g3RcjzKgUsfgFrejEboyE14oCeZReh2VUZVb5PRnHgEbrpdFxbYPZQdNfrfavyScaPq8DzKj36xGVuyeg6y62D3vPL1taE4riv8Vkc4s7pWVY4kw4tvVGujp79TNKixC5cJ7gbvhtxxFMy78tdL8Gsd22H4LU1djxYxsViaewDpUCn9e2Kf
+	==== Message in base58: ====
+	45zhTLit6ywebuTQVniH57erZR4bcaaQ6db3RjVESHSf7igoxW9Nn3s4i4cKLkjXKzENzYtEPX7gbhALUTDPf95qBVU6hHaKXtHP4EHPKiB2nxNSDB1YRGK8vqeCJJNwa74pyh8DcnNvtdUyrs1u9djERQraKNgwmyNBnkDeVrJEAWFVRH3DEW5T9gngNRmdWDbTfpn82VbNYwpzcoFzrPqnAhDDx78JNCDeqXRdfYDery28eJ8Y4y2sMSbPE5GBiHXVExthYo8Z8weJbH9nJa1atDeu6mvF9Gp7kZknzf1fmFvkgWaALvPYzVW4dqANqYVsHe295uX94WdpwNrmXgcCTiYzZbBtbSXiLpcQZD6tith19mhntghrxgRpGU5oMrpmnEPbzqqF4EANjZJT23DVXexkvX9anQ71UDzNu3bdQP9zpGB32cxkumr51v5aa4BmBR6oYr5sNq8EkmwiDMrm5X2VyVrbMjnAwXv1Up9CJzuJmTVEFaxWqLNa66FoWDyhRyD7v3pDKnUv5eWzBc412aMmH4oKnT7CE28VAQS9xscQkdthfHm7ZJrWxCD5WvqXsicnXLeco53j279vL3XdtdgtKvhWDGDupu9Dim
+running command: "/root/.cargo/bin/spl-token" "create-token" "C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM" "--enable-metadata" "-p" "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" "--url" "http://gorchain-rpc:8899" "--with-compute-unit-limit" "500000" "--mint-authority" "2wbDZnwq9Uz3SgtmuZg75jaEbbDaZhwhvYErACwnvm97" "--fee-payer" "/tmp/deployer-keypair.json"
+Creating token C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM under program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+To initialize metadata inside the mint, please run `spl-token initialize-metadata C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM <YOUR_TOKEN_NAME> <YOUR_TOKEN_SYMBOL> <YOUR_TOKEN_URI>`, and sign with the mint authority.
+
+Address:  C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM
+Decimals:  9
+
+Signature: 7agfGK9vM6WSioCK8Muhr6bgs1Wj5M1QdPf2e3rckFs9yrd8ufwXpqs18PyCYxQghkrnAC5yeJ17JtGdxfSrBz2
+
+initialized metadata pointer. Status: exit status: 0
+	==== Instructions: ====
+	Instruction 0: No description provided
+	==== Transaction in base58: ====
+	4KRFRh2ug8juz9KuJV69kKGUccwx9emPxXRxbBS5NBPXQ99nbkhES2CPeUVa47c6FK4q4VJyQT1wZybqtHYaxPh9PcSC7v2zyKgTCkD8BGtgGcSDSCKNMNxbEKXo5K38zhCTvn1d8XZZkU7C5vBFZo9Yj5uwyqAQgK78fYRQtHeeoGMW3To1cn77nekNSdWeJoYPAs222n9GcUJxK1A5xvaqqHXAKTJCtW9srUeoshB35DQxiYPq79iUJbm3miX8GfqTNmNRxXzg6y1wSQxcWrDjcaNLNgG6A3wJjeDaxk8F2US3cKNDMf7EsaF9v5foZd9
+	==== Message in base58: ====
+	9X2GvvBTauhUNw29cc5PryhMmM3R6UQ4UzqRuPWa9pLxrk93bAv8uE5GejupicRru478hCH97Jg9AY66hjoxg8i2r9HVGwFfPbuH3qcimbowsh3WXmnjA92Rhd3UYKUqGr9ZL8fvYVGNozkwwiy5E6WDXU4zhSA18HV75tddEFeM6CtYXGVpr12LWrG4tdcGeYXN3VSA3S66f92BJRF12N2fDkTBJ3f6TLCBGX4QcX
+running command: "/root/.cargo/bin/spl-token" "initialize-metadata" "C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM" "USD Coin" "USDC" "" "-p" "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" "--url" "http://gorchain-rpc:8899" "--with-compute-unit-limit" "500000" "--mint-authority" "/tmp/deployer-keypair.json" "--fee-payer" "/tmp/deployer-keypair.json" "--update-authority" "2wbDZnwq9Uz3SgtmuZg75jaEbbDaZhwhvYErACwnvm97"
+
+Signature: 3cx4Q59CPD21utfDWjkucE4TM77KcRXNHwYCsCZWZ7HL1pwETacgTDfDYixbFpQhwxdY2QrhEMH29CQus7Zkihph
+
+initialized metadata. Status: exit status: 0
+Transferring authority: mint to the mint account C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM
+Running command: "/root/.cargo/bin/spl-token" "authorize" "C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM" "mint" "C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM" "-p" "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" "--url" "http://gorchain-rpc:8899" "--with-compute-unit-limit" "500000" "--fee-payer" "/tmp/deployer-keypair.json" "--authority" "/tmp/deployer-keypair.json"
+Updating C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM
+  Current mint: 2wbDZnwq9Uz3SgtmuZg75jaEbbDaZhwhvYErACwnvm97
+  New mint: C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM
+
+Signature: 3fduwAjtXm518pRVyzD3y55qymQrM9VB5ZnLchRAqrJPruJQAgD69gK9y8jv8GdcHoHMvcUfyCkKGXE1ARnenU2A
+
+Set the mint authority to the mint account. Status: exit status: 0
+	==== Instructions: ====
+	Instruction 0: Funding ATA payer 4RrtDeM5Us2rtVM4CvDeUzX3owVqBRgPHMtQPHoKhZ6Q with funding_amount 999109120 to reach total balance of 1000000000
+	==== Transaction in base58: ====
+	3md7BBV9wFjYGnMWcMNyAZcjca2HGfXWZkrU8vvho66z2sJMZFcx6HZdBiAddjo2kzgBv3uZoac3domBRjJJSXkbBvokxPrKhNXn1fXpw3cUUANo9BhYwkg7D1JamsNx9BBGG9ueod1rN4hC7oU8ycTsoog2iyujSettw1WKtmGmTMrPBcvdwuTtX9Q8yZGNexhsj8K1PHVWcJ8VYM6VYcA2BjwBnjAkKEgdDA5u8HwCkU37HLENDim9bD78Ku1cL7om65Xw2ehjEot3WKdkLR4zZdYGrhpRdv7yq
+	==== Message in base58: ====
+	87PYrL7g6h6DceodbSnspsY7rp93HwXkEMXkJJxwpnJaCZ48BEoZHFtgLerQCQm4tKCkWeARdE5RnHEaSnjKX7cavVtiVT4ohzSoUbRs3GFh3gCRGx2cMzvjGuCoU8jGJR8C4KM8EFMvRH9CvreD3NQszF5EZF3aXmkJKPrDYsbpJHHgZwToLvqef8nzv9usg1up8AGJoHZZ
+Attempting deploy hyperlane_sealevel_token_collateral on chain: solana
+App config: TokenConfig { token_type: Collateral(CollateralInfo { mint: "2c3XNRoBhELekZ6KBHZhseAZxXbg9KYG3M2CoGDokg67" }), decimal_metadata: DecimalMetadata { decimals: 6, remote_decimals: None }, router_config: RouterConfig { foreign_deployment: None, ownable: OptionalOwnableConfig { owner: None }, connection_client: OptionalConnectionClientConfig { mailbox: None, interchain_gas_paymaster: Some(BQXk6vkMsaPQSurhpBGhxET8Fgvu5XA5NfuRYaosokQv), interchain_security_module: Some(5Wc78YzEJveEQXKJwtKrYx8qDACDE9MJReETeQfx3qEb) } } }
+Wrote keypair FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb to /tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token_collateral-solana-keypair.json
+Wrote keypair 6543DGnqQ3QXXgGxiJgJyGz8vTDqK2t13iQK8E1y5Qa4 to /tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token_collateral-solana-buffer.json
+Attempting program deploy Program ID: FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb, buffer pubkey: 6543DGnqQ3QXXgGxiJgJyGz8vTDqK2t13iQK8E1y5Qa4, compute unit price: 0, attempt number 0
+Running command: "solana" "--url" "<REDACTED>" "-k" "/tmp/deployer-keypair.json" "program" "deploy" "/opt/hyperlane/programs/hyperlane_sealevel_token_collateral.so" "--upgrade-authority" "/tmp/deployer-keypair.json" "--program-id" "/tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token_collateral-solana-keypair.json" "--buffer" "/tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/keys/hyperlane_sealevel_token_collateral-solana-buffer.json" "--use-rpc"
+Program Id: FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb
+
+Signature: 295rv8tFHpXRSBp3zsNpfE8t8cN8U6dxRG7K6apBE3Wnn19eK4yr8Lp7m9ep6DFJqjXPzRaTrapnansP3CXeB8fJ
+
+Sleeping for 5 seconds to fully allow program to be deployed
+Initializing Warp Route program: domain_id: 1399811151, mailbox: FSw6WMPbjp7sn86831fDAr5bSpUuWAxcoQYPHeexnq2G, ism: Some(5Wc78YzEJveEQXKJwtKrYx8qDACDE9MJReETeQfx3qEb), owner: Some(2wbDZnwq9Uz3SgtmuZg75jaEbbDaZhwhvYErACwnvm97), igp: Some((3U4fkoih8WmrpiWj2Lusgu6aSU9Tr9cWT4y6SddFrRBQ, OverheadIgp(BQXk6vkMsaPQSurhpBGhxET8Fgvu5XA5NfuRYaosokQv)))
+	==== Instructions: ====
+	Instruction 0: No description provided
+	==== Transaction in base58: ====
+	DMYmH2MhUPTMBEQWTNbKKTKZvw9WMghDXpkG4B5GVpuMQHQpFuoeqnkfCieTaxDezrd6x5cnxBsoQZ9Q541MsLKMVkqTfj3yTDshvw8iUDFS3X6cRLNcbGdkAQ1XV9hR9ZNsWgwCtTDvHUP5jx4LJTm5qVAJsg6VJXJGxcTfZMPm4QWk1V4osTRPiZfR1jTZ2zMWHtFto1p4AFkQPcvaiQ6sR1FP1TvzBrNaj7CBydev2LzwKjswYyNUXr5e7AtJNNYLqdytN8Y3rK3nkH9tq34y8PhX6NBr7oLNSxySiaa21F2m2DYb76hCpKT6RHRh7yq4gG4RLbysaQvRcsrgeekyG1eMvtu9GV3ToezF8RmTsKkU9u6LfqCCS43XkZByEZZnoYccexWP2mXvVX5TifJuS9UVbror4T2irQKGYb8f8TWbebs2A7fki3V5FzvtvvBonmRnV3WZwo5mhcBfXBNn6fNfxgdiuq3RyoxRVuAW39fzMeAqF7LMjLPuJX1AXwDaHv1TBemLaxpRxsGYiz9otMEHG8dDzFiexxPhcnJGf57CdaozeeQcW7XWHv78ZZiV4oCVbfLc7nxzaiBceiWviwvy59Modqfyz9WBgLweKbVoi5yTR9ddWvkM4vQCymy7Wdn5f8Qai32tUCCTU2exFzJ5wSKNULR2uGmycGmRpJ92GDFDJo14muRu5VM1GaZbKsaAmRVWXyUSf1ZcHjkDZvCCd7jaKKjjpRkANUqi6YomUkXbUFQwYpXQ8JtKkcVTFHbxbVTNKck2mKB
+	==== Message in base58: ====
+	Yion4zonhjDqEBqhoa349Gev56q7k7iGFHfbgkDEtz6vqKpGtpbQXjnjw2i9J9jGfQrvJLCAyXVtu1dCiWLrFudxRXYQzKmfSDbaciBmyPHVPipmHqDDXV6bqgDYibC2JykXE4QWQY7eUq6sSnTxxfCc8KTka1zxo6uEjMTRJjfQXZRs6LprQQ1B2bV7tYKC7kJXdjXCCkwmfHDTFXQ8d4CD9bXJDntPNMkUPwPPxzxE4KKVKKDiiz3BKBJuGCd1xGyf1kbtEfMw2ShSs3gSxkpRxVm3phUjQqi3jFWatWKg71ckZwoALm2hnQj5jtAVGFhAFQNcp7vLiKEN8YKgJY4tQiKZQoWodD2cyqRnqCujFL7N66YuG8Pqv2PnZxmVL3Dzr9VVHfJPZZ4eed3JdiqCKgCjB89ZecpZCKFH8hgAZjafWg9xgBVtx7DMMeeHEMw9Eko1ouip8VHDk1wWek8NLdmR7M9165sAd9Ssee64DKYq9tWEiwcPwMCzWUE9uTqsSi5iLbZjRFDvCj6YkSv9TCMmafd6VuBnfPSY2M3WUWEEKDbkWhSY57U42SDY4s6JErcsKaqJdhodeHTSEjB1hyApfUptxQYcSnGm69esLMoVTqwq9i4WGFXuoH95y4PwA717Pzb23sSpkQA7a22MAb2QinnGs7LxtPpsnQhS1vChXEvNHcaKVF
+	==== Instructions: ====
+	Instruction 0: Funding ATA payer A4gisfb2WtnjUr3HZesKEhCMhG7b28mFG9371kuDRN86 with funding_amount 999109120 to reach total balance of 1000000000
+	==== Transaction in base58: ====
+	3md7BBV9wFjYGnMWcMNyAZcjca2HGfXWZkrU8vvho66z2sJMZFcx6HZdBiAddjo2kzgBv3uZoac3domBRjJJSXkbBvokxPrKhNXn1fXpw3cUUANo9BhYwkg7D1JamsNx9BBGG9ueoiJ65WKqQNgWy4yzfV9P5PUUFwDr4C1Bzy9ABj3jngPKuf3zys5xPkhQJgmWE8nNCjDJNoexBKQeuQ7EsCQ8r7k2KNT7B8tGCmvYkVzuvxEmiTtJF3wp3zpHYwbpeDaME2FdLYPPNuyuC3WhVq2QbErANV2pf
+	==== Message in base58: ====
+	87PYrL7g6h6DceodbSnspsY7rp93HwXkEMXkJJxwpnJaCZ48GX3GitXxusEPevsvZnZ6vCuEuZ2Yxn6gef83tJyByxagF3BGRgGDg2TWmKtC49ZEifpNsXPNFDNAG5wwkt5FStd8N1qtQ5WHQqzD5LDXcFUjJNCENcS2RCXSNffNSKhswVMu5SBXFUwrYbcosW3YfC13NCQP
+	==== Instructions: ====
+	Instruction 0: Enrolling routers for chain: gorchain, program_id 4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr, routers: [RemoteRouterConfig { domain: 1399811151, router: Some(0xd45a4b17d42884ee943d85dc5963e412130326da81d93efccbc0b6ea2c7e6e1e) }]
+	==== Transaction in base58: ====
+	3NWUboaQzgq9A5ThQtLmq9yi51vn3bAtzt8adnuJ9AzeqATxiTN36DaE9nMLucNcv3M1ZpbzJhhx8e7A5BCkL5uuoCnPRx75U1m36HHq6d2e57LsbZFJ9BijctYSLR8jSQqSpGfjMdaJ1XW7QViUuVMq4chaXLZtgYVcQ74j6VAsxxJ1iD71ZjXqkaCy8Rj1GHtqm9jcmMBoNHPWZaRE5qdWHQos5o3VhBUUDC4oL4odYZ43XTzhSfH9eKvLSvNtM1uVH5mfE4GyC281qABAGebsM1niMWzzV18Tkm5pUSipGdkK6vYFf4tU5w8K3gfYue4b3KKQ8QoEjrtDCT67LUfEEBT8Ff9CNsYuY9CjsKCG42bjEXMzJKVJAd8UoFmeASSPCq
+	==== Message in base58: ====
+	763sfMWePkR2t85LGuCAHHMm7Lmi8eRRxP6yRPADe3Q2CYqRkQS3uzrpRDy1i8xDAQghqXuz84pbnBewjT8GFEUFXXpqyxBfjqDynHsnswjGFtXaZWcis8TPuj44pyniPkKeHsk9v7isiwsXKsDQQonqgpQQXbjv5puP2TFFGpXC4jU8NPBuNrDRdkDaD5Gj6eDQMN1zTDZPyMZBPTJcaHJXUF8xHMRa7Whwz6z6nzCnZaB9EZTT2K7zSdAMBtwavd7WjY1VWtmNDFYQ6p7CYL36nNwVzU72qqSjk3RbhBTrD
+	==== Instructions: ====
+	Instruction 0: Enrolling routers for chain: solana, program_id FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb, routers: [RemoteRouterConfig { domain: 1198486095, router: Some(0x2f244832632ec109441b9caf2cb93ecc5a10ba29d613b73540c7a40851cf1fc9) }]
+	==== Transaction in base58: ====
+	3NWUboaQzgq9A5ThQtLmq9yi51vn3bAtzt8adnuJ9AzeqATxiTN36DaE9nMLucNcv3M1ZpbzJhhx8e7A5BCkL5uuoCnPRx75U1m36HHq6d2e57LsbZFJ9BijctYSLR8jSQqSpGfjMSkPTghYtkYDMuteFkbFkkCnKocjPJfafPVoSoe2VifKe6MVBbAx5szDiLyBAMAuhTkxUdR6toY6Ji9qGiHBmW1oPNcoUa1zewCoqJc3c7TenZvU1W7R5LFtVANCv4Fz65Tv7ehWwQvexVGbi3EBhrtSLptrorfSQtqibUmudbZvMktaT73XEe4XjFhsuiY9DuHnrsKX1oHk4ns3bbRdHNLWheEAvgLYh4KQ9phhcUsYepGmcNhsvDFqC5ugcY
+	==== Message in base58: ====
+	763sfMWePkR2t85LGuCAHHMm7Lmi8eRRxP6yRPADe3Q2CYqRZaXW5CJJg3hU8fmQJJMwFAodPBwaynWWdn3k6aV3368vLmq6koCwEZ6Ew24fTKpWg5mqDA3j8qvHhW7hhDeKzr3r7G496u4rCGPhAMnvLHMkSF4HG1z1SLFPRHEq3DnzPa8q1RiXtViG3k1685gkhFTrGyxT4wB7qaCwRJu49GoeyMXwHRv8wVxvQdVexnvEj41a2kRonpo5W6kxLbcYSjKpHa2kkPMDqwFJLS1UjtVrVFaUbQqrhXcdLemFv
+	==== Instructions: ====
+	Instruction 0: Setting destination gas amounts for chain: gorchain, program_id 4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr, destination gas: [GasRouterConfig { domain: 1399811151, gas: Some(68000) }]
+	==== Transaction in base58: ====
+	6tjoXEC1M4Dg7nTxXEAfZznL3JSKcWCdhzSPxoUJEnFBx1CToLE6GMJXf57Dp44NGWnVxQR1R3U7feGqVVCjRFjtu1LoELoNPtDaUXt586c1TXmvcQSTVUjyGhJnfyzc8cd856WandnCk8XW9be2PuztgY6iZbuhegcAt3SGpSRsiCvJnCABJs35gzXVi1TMC2nvgmG2PRuukBm34EbpPsz5cFsC2xpuDzWSyJH4tfrHmMp58JhsvuSw2AuPhAVDCAeMVbdkKhGPGoWFdbeDyTCFgnJ3Ko3YG7xGygKXooNEJiJvN9GKtn9owejga8rVdChbXyUDeP171EyYgDRyd4YMykcoYmCNyCR7m
+	==== Message in base58: ====
+	G8QWZhaDFs8WZz9iSnPrgaqfK7cYVuJjiBPoHbSXLzojK8rPphjN3uzauerLD2Fh4eadhHpHRoAwJtmd3oR1SYDxVbF4SX6memmxHFkudEU5CFmfzwnzHi4ZU65vaQLb7TgtfLZ45qzbJ3VGZozaGFgGG5WgPXVko65NpAwYrxjuRMh3sABZxG8g3HwN9fX2VgepUGYHnWsSKUTbhUbJ57ETMhegJfqCom9hfTWDnMacWGTVwxNDXqN3YJGKh25Dw5vWbhbNeeBq
+	==== Instructions: ====
+	Instruction 0: Setting destination gas amounts for chain: solana, program_id FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb, destination gas: [GasRouterConfig { domain: 1198486095, gas: Some(64000) }]
+	==== Transaction in base58: ====
+	6tjoXEC1M4Dg7nTxXEAfZznL3JSKcWCdhzSPxoUJEnFBx1CToLE6GMJXf57Dp44NGWnVxQR1R3U7feGqVVCjRFjtu1LoELoNPtDaUXt586c1TXmvcQSTVUjyGhJnfyzc8cd856WanAsigd1iqGZmKc7YBze4pWzzXvYjojro6hDjDdPg8N65MQPodULrcQfcXNV2L6KqDkdu1r1EtKaTqQyRZqs2RxThmF14QGJumbXsSPnFJQ6KYgjvZCYtCYwKhW6hCeWV5EgFdzzaNGXwisDS1ix6isAJTBtUovLQmGx6jcocaLHC2ZCinL33PqQjCANL3W4woKi9XvA4WAg4fNTDNKm9tBEVpkgmd
+	==== Message in base58: ====
+	G8QWZhaDFs8WZz9iSnPrgaqfK7cYVuJjiBPoHbSXLzojK8rPMoFJYQDGaabFu8uCXBvtcP7Afjjs1KHuJbGWs1bJfX96yspi8b8rgU2ExvZiXKaWKfnFwxGPZ4jN7PgYhTXHeyMbLLc2G5L9VVaFJDrSMTxJApVHpjZtCd44CR5cUERoQa3w9kTQiBf7ZghMSLiDYPJUrT5GZVLZB4TiybvfYiWp5ik3V4WXN1jnk2K82sBetfQkD1ssVYMMzvvcWEGr1jiECuqh
+Writing to file /tmp/hyperlane-warp-deploy/environments/e2e/warp-routes/USDC-solana-gorchain/program-ids.json contents:
+{
+  "gorchain": {
+    "hex": "0x2f244832632ec109441b9caf2cb93ecc5a10ba29d613b73540c7a40851cf1fc9",
+    "base58": "4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr"
+  },
+  "solana": {
+    "hex": "0xd45a4b17d42884ee943d85dc5963e412130326da81d93efccbc0b6ea2c7e6e1e",
+    "base58": "FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb"
+  }
+}
+Warp routes deployed
+
+=== Checking deployment outputs ===
+Warp route deployment outputs:
+total 16
+drwxr-xr-x 3 root root 4096 Jun  5 08:27 .
+drwxr-xr-x 3 root root 4096 Jun  5 08:26 ..
+drwxr-xr-x 2 root root 4096 Jun  5 08:26 keys
+-rw-r--r-- 1 root root  326 Jun  5 08:27 program-ids.json
+
+=== Verifying deployed warp route program hashes ===
+Local hash for hyperlane_sealevel_token: 5289cc704c066e8287f0bbf3c3b057c09a2d37be5365aac21c8e8032c9e668f1
+Local hash for hyperlane_sealevel_token_native: 9d2e497f83aa6968544d6376bd1448135013d3947313765c6ba8860089e9dea7
+Local hash for hyperlane_sealevel_token_collateral: eee10647aba493c56ad4dc20b5777de7dd59850bfa6f8d1f44bd1a680327e28f
+
+=== Transferring warp route upgrade authority to hardware wallet ===
+Hardware wallet pubkey: kLETR1UYWgyNUQHf6GXswNFJBEnEKfJ9eU53yefibeE
+Transferring warp route upgrade authority on gorchain: 4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr...
+Account Type: Program
+Authority: kLETR1UYWgyNUQHf6GXswNFJBEnEKfJ9eU53yefibeE
+
+Transferring warp route upgrade authority on solana: FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb...
+Account Type: Program
+Authority: kLETR1UYWgyNUQHf6GXswNFJBEnEKfJ9eU53yefibeE
+
+
+=== Resolving synthetic token mint ===
+Synthetic token mint (gorchain): C37ZKUUbbz3GZ9aFCVtDny3GEcB1LraQLatZgPSxLmGM
+
+=== Building token-config.json ===
+
+=== Writing warp route artifacts to /state/warp-routes/USDC-solana-gorchain ===
+
+=== Warp route deployment complete ===
+Origin chain: solana
+Remote chain: gorchain
+
+Artifacts written to /state/warp-routes/USDC-solana-gorchain:
+  - token-config.json
+  - warp-deploy-outputs/

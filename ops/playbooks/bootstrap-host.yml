@@ -1,15 +1,21 @@
 ---
 # Two plays: privileged host setup, then unprivileged deploy_user setup.
 # Target a host/group with: -e target=<host-or-group>  (default: all)
+#
+# The privileged play overrides the connection via `vars: ansible_user`, NOT
+# `remote_user:` — an inventory/group `ansible_user` outranks the `remote_user`
+# keyword, so `remote_user` would be silently ignored when the two users differ.
+# The unprivileged play needs no override: it connects as the default ansible_user
+# (= deploy_user).
 - name: Privileged host prerequisites
   hosts: "{{ target | default('all:!controller') }}"
   become: true
-  remote_user: "{{ privileged_user }}"
+  vars:
+    ansible_user: "{{ privileged_user }}"
   roles:
     - prerequisites_privileged
 
 - name: Unprivileged deploy_user prerequisites
   hosts: "{{ target | default('all:!controller') }}"
-  remote_user: "{{ deploy_user }}"
   roles:
     - prerequisites_user

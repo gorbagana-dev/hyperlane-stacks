@@ -1,20 +1,50 @@
 ---
+# Into a private _-name, never `deploy_dir` itself: a self-referential set_fact
+# (deploy_dir: "{{ deploy_dir | default(...) }}") persists across plays, so the
+# first play freezes it and every later singleton play reuses that stale dir.
 - name: Resolve deploy dir (honor caller override, else derive)
   ansible.builtin.set_fact:
-    deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"
+    _deploy_dir: "{{ deploy_dir | default(deploy_base ~ '/' ~ stack_name) }}"
 
 - name: Check whether the deployment was already created
   ansible.builtin.stat:
-    path: "{{ deploy_dir }}/deployment.yml"
+    path: "{{ _deploy_dir }}/deployment.yml"
   register: _dep
 
+# Resolve each secret env NAME to its value via the `vars` lookup. NOT
+# `map('extract', vars)`: that doesn't reliably re-template a value that is itself a
+# `{{ other_var }}` indirection (e.g. MINIO_ROOT_USER: "{{ minio_root_user }}"), so on
+# some ansible versions the literal template leaked through to SO. ansible itself
+# recommends the vars lookup over extract-on-vars.
 - name: Assemble secret env from the per-stack map
   ansible.builtin.set_fact:
     stack_env: >-
-      {{ dict(stack_env_vars[stack_env_map_key | default(stack_name)]
-         | zip(stack_env_vars[stack_env_map_key | default(stack_name)] | map('extract', vars) | list))
+      {{ dict(_secret_env_names | zip(lookup('vars', *_secret_env_names, wantlist=True)))
          | combine(stack_env_extra | default({})) }}
+  vars:
+    _secret_env_names: "{{ stack_env_vars[stack_env_map_key | default(stack_name)] }}"
   no_log: true
+
+# Fail fast with a legible message if a required secret is empty or an unrendered
+# template, rather than deep inside SO's _create_user_secrets at `deployment start`.
+# Common cause: the managed creds (minio_root_user, grafana_admin_password, ...) were
+# never generated because distribute-credentials.yml / setup-all didn't complete. An
+# undefined source var doesn't always error — older ansible passes the literal
+# "{{ var }}" straight through — so also reject values that still contain `{{`.
+- name: Required secret env values for this stack are set and rendered
+  ansible.builtin.assert:
+    that:
+      - "stack_env[item] | default('', true) | string | length > 0"
+      - "not (stack_env[item] | default('', true) | string is search('\\{\\{'))"
+    fail_msg: >-
+      Secret env '{{ item }}' for stack '{{ stack_name }}' is empty or an unrendered
+      template (its source var is undefined). Generate the managed creds with
+      playbooks/distribute-credentials.yml, or set it in inventories/<env>/secrets.yml,
+      then re-run.
+    quiet: true
+  loop: "{{ stack_env.keys() | list }}"
+  loop_control:
+    label: "{{ item }}"
 
 - name: Create the deployment from the committed spec (idempotent)
   when:
@@ -33,7 +63,7 @@
     # spec_token_renders, set only in local/group_vars — a no-op for prod/staging.
     - name: Render runtime tokens into the spec (local only)
       ansible.builtin.replace:
-        path: "{{ spec_file }}"
+        path: "{{ _spec_file }}"
         regexp: "{{ item.key | regex_escape }}"
         replace: "{{ item.value }}"
       loop: "{{ (spec_token_renders | default({})) | dict2items }}"
@@ -70,11 +100,16 @@
 
     # Single-host chain-consumers: insert this stack's external-services block. The
     # map is referenced only here, where the detect-block above has set kind_gateway_ip.
+    # The map values carry a literal __KIND_GATEWAY_IP__ placeholder (NOT a
+    # {{ kind_gateway_ip }} template) so the membership checks above can reference the
+    # map before the gateway is detected; substitute the detected IP here.
     - name: Render the single-host external-services block (single-host consumers)
       ansible.builtin.replace:
-        path: "{{ spec_file }}"
+        path: "{{ _spec_file }}"
         regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
-        replace: "{{ single_host_external_services[stack_env_map_key | default(stack_name)] }}"
+        replace: >-
+          {{ single_host_external_services[stack_env_map_key | default(stack_name)]
+             | replace('__KIND_GATEWAY_IP__', kind_gateway_ip) }}
       when:
         - spec_token_renders is defined
         - topology | default('') == 'single'
@@ -84,7 +119,7 @@
     # reference, so kind_gateway_ip is never needed here.
     - name: Strip the single-host external-services marker (multi-host / non-consumers)
       ansible.builtin.replace:
-        path: "{{ spec_file }}"
+        path: "{{ _spec_file }}"
         regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
         replace: ''
       when:
@@ -92,62 +127,126 @@
         - not (topology | default('') == 'single'
                and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
 
+    # The committed specs carry a repo-relative `stack:` path, which laconic-so
+    # resolves against the process CWD (not the --stack arg). Run from repo_root so
+    # it resolves — the same approach SO's own `deployment restart` uses internally.
     - name: Run deploy create (committed spec — no init; SO reads it directly)
       ansible.builtin.command:
+        chdir: "{{ repo_root }}"
         argv:
           - laconic-so
           - --stack
-          - "{{ stack_path }}"
+          - "{{ _stack_path }}"
           - deploy
           - create
           - --spec-file
-          - "{{ spec_file }}"
+          - "{{ _spec_file }}"
           - --deployment-dir
-          - "{{ deploy_dir }}"
+          - "{{ _deploy_dir }}"
       environment: "{{ stack_env }}"
       changed_when: true
 
     - name: Patch human-readable deployment-id
       ansible.builtin.replace:
-        path: "{{ deploy_dir }}/deployment.yml"
+        path: "{{ _deploy_dir }}/deployment.yml"
         regexp: '^(deployment-id:\s*).*$'
         replace: '\g<1>{{ deployment_id }}'
 
-# Runs on every start (not just first create) so re-runs re-render any
-# deployer-output configmaps the spec mounts but has no data/config source for.
+# Runs on every start (not just first create) so re-runs re-render any deployer-output
+# configmaps the spec mounts but has no data/config source for. Runs AFTER create (which
+# makes the deploy dir) and BEFORE start (which mounts the configmaps). delegate_to lets a
+# controller-hosted play (validators) run the hook on the stack's host; plays that already
+# target the host leave stack_hook_delegate_to unset (-> omit, runs on the play host).
 - name: Pre-start hook (optional per-stack include)
-  ansible.builtin.include_tasks: "{{ stack_pre_start_tasks }}"
+  ansible.builtin.include_tasks:
+    file: "{{ stack_pre_start_tasks }}"
+    apply:
+      delegate_to: "{{ stack_hook_delegate_to | default(omit) }}"
   when:
     - stack_pre_start_tasks is defined
     - not ansible_check_mode
 
+# start re-resolves the deployment's relative stack path too (SO's restart chdirs
+# around both create and up for this reason), so run it from repo_root as well.
 - name: Start deployment (create-or-reuse cluster + Caddy)
   ansible.builtin.command:
+    chdir: "{{ repo_root }}"
     argv:
       - laconic-so
       - deployment
       - --dir
-      - "{{ deploy_dir }}"
+      - "{{ _deploy_dir }}"
       - start
       - --perform-cluster-management
   environment: "{{ stack_env }}"
   changed_when: true
   when: not ansible_check_mode
 
-- name: Wait for Job completion (deployer/warp-deployer specs only)
+# `wait --for=condition=complete` never returns for a Job that hits backoffLimit
+# (it goes condition=Failed, not Complete) — it just hangs to the timeout. Race the
+# two conditions so a crashed Job is caught at once, and capture status + logs.
+# Logs via `kubectl logs job/<name>` (kubectl resolves the pod from the Job's own
+# selector) — SO labels job pods app={app_name}-job, not {app_name}, so guessing a
+# label selector would miss them.
+- name: Wait for the Job(s) to finish (complete or fail), capturing status + logs
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -uo pipefail
+      ns="{{ _namespace }}"
+      to={{ stack_job_timeout | default(1800) }}
+      k() { kubectl --context kind-hyperlane -n "$ns" "$@"; }
+      k wait --for=condition=complete job --all --timeout="${to}s" >/dev/null 2>&1 & cp=$!
+      k wait --for=condition=failed   job --all --timeout="${to}s" >/dev/null 2>&1 & fp=$!
+      wait -n 2>/dev/null || true
+      if ! kill -0 "$cp" 2>/dev/null && wait "$cp" 2>/dev/null; then
+        kill "$fp" 2>/dev/null || true
+        echo "All Job(s) in ${ns} completed."
+        exit 0
+      fi
+      kill "$cp" "$fp" 2>/dev/null || true
+      echo "Job(s) in ${ns} failed or did not finish within ${to}s."
+      k get job 2>&1 || true
+      k get pods 2>&1 || true
+      for j in $(k get job -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        echo "----- logs job/${j} (last 200 lines, all containers) -----"
+        k logs "job/${j}" --all-containers --tail=200 --prefix 2>&1 || true
+      done
+      exit 1
+  register: _job_wait
+  changed_when: false
+  failed_when: false
+  when:
+    - _stack_is_job | bool
+    - not ansible_check_mode
+
+- name: Fail with the Job's status + logs when it did not complete
+  ansible.builtin.fail:
+    msg: "{{ _job_wait.stdout }}"
+  when:
+    - _stack_is_job | bool
+    - not ansible_check_mode
+    - _job_wait.rc | default(0) != 0
+
+# `deployment start` only creates the Deployments — it does not wait for pods to be
+# Ready. Block here so the play (and thus any later stack that depends on this one
+# running, e.g. relayer/validators -> MinIO) only proceeds once this stack's pods are
+# serving. Multi-host has no incidental ordering buffer, so the gate is what enforces
+# the runtime dependency; it also fails fast on a bad image instead of a quiet retry loop.
+- name: Wait for the stack's Deployments to become available (long-running stacks)
   ansible.builtin.command:
     argv:
       - kubectl
       - --context
       - kind-hyperlane
       - -n
-      - "laconic-{{ stack_name }}"
+      - "{{ _namespace }}"
       - wait
-      - --for=condition=complete
-      - job
+      - --for=condition=available
+      - deployment
       - --all
       - --timeout=1800s
   changed_when: false
   when:
-    - stack_is_job | default(false) | bool
+    - not (_stack_is_job | bool)
     - not ansible_check_mode

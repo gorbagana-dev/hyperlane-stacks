@@ -1,0 +1,10 @@
+{
+  "gorchain": {
+    "hex": "0x2f244832632ec109441b9caf2cb93ecc5a10ba29d613b73540c7a40851cf1fc9",
+    "base58": "4B2FVKET45RGvSsecocHdS1BE94q8Vh177wHme8m5hmr"
+  },
+  "solana": {
+    "hex": "0xd45a4b17d42884ee943d85dc5963e412130326da81d93efccbc0b6ea2c7e6e1e",
+    "base58": "FHwHhBTDFRLa3E9ABtNYs4Ldtjqu5ut2shaHpa3hiqsb"
+  }
+}

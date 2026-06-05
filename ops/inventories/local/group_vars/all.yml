@@ -13,8 +13,18 @@ repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
 deployment_subdir: deployment/local                 # local specs live in deployment/local/
 deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 
+# --- Connection identity ---
+# Ansible connects as the deploy_user for every play except the privileged bootstrap
+# prep, which overrides ansible_user to privileged_user in bootstrap-host.yml.
+ansible_user: "{{ deploy_user | default(omit) }}"
+# On a local test VM the controller reaches the host at its public_ip, so default the
+# SSH target to it (set public_ip in host_vars and connection just works). default(omit)
+# keeps it off the controller, which has no public_ip. Override per-host if SSH lands
+# elsewhere (bastion/private address).
+ansible_host: "{{ public_ip | default(omit) }}"
+
 # --- laconic-so install (prerequisites_user) ---
-laconic_so_version: "v1.1.0-fe77540-202605271117"
+laconic_so_version: "v1.1.0-a181281-202606050713"
 laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"
 
 # --- Credentials dir ---
@@ -72,23 +82,27 @@ solana_rpc_url: "REPLACE_WITH_SOLANA_RPC_URL"
 # in-cluster. external-services is ONE key per spec, so each stack's full block is
 # defined here and rendered into the spec's `# __SINGLE_HOST_EXTERNAL_SERVICES__`
 # marker by stack_deploy (multi-host renders ''). Chains run on the host, reached via
-# the kind-network gateway IP (kind_gateway_ip, detected at deploy time) — the e2e
-# `ip:` pattern; MinIO and the Prometheus scrape targets are in-cluster pods.
+# the kind-network gateway IP — the e2e `ip:` pattern; MinIO and the Prometheus scrape
+# targets are in-cluster pods. The gateway IP is a literal __KIND_GATEWAY_IP__
+# placeholder (NOT a {{ kind_gateway_ip }} template): these values are referenced in the
+# `when:` membership checks before the gateway is detected, and an embedded undefined var
+# makes `map | default({})` collapse to {} on eager-templating ansible (2.18.x), silently
+# dropping the block. stack_deploy substitutes the detected IP at render time.
 _xs_chains_only: |
   external-services:
     gorchain-rpc:
-      ip: {{ kind_gateway_ip }}
+      ip: __KIND_GATEWAY_IP__
       port: 8899
     solana-rpc:
-      ip: {{ kind_gateway_ip }}
+      ip: __KIND_GATEWAY_IP__
       port: 18899
 _xs_chains_minio: |
   external-services:
     gorchain-rpc:
-      ip: {{ kind_gateway_ip }}
+      ip: __KIND_GATEWAY_IP__
       port: 8899
     solana-rpc:
-      ip: {{ kind_gateway_ip }}
+      ip: __KIND_GATEWAY_IP__
       port: 18899
     hyperlane-minio:
       selector:
@@ -98,10 +112,10 @@ _xs_chains_minio: |
 _xs_chains_prom: |
   external-services:
     gorchain-rpc:
-      ip: {{ kind_gateway_ip }}
+      ip: __KIND_GATEWAY_IP__
       port: 8899
     solana-rpc:
-      ip: {{ kind_gateway_ip }}
+      ip: __KIND_GATEWAY_IP__
       port: 18899
     validator-gorchain:
       selector:

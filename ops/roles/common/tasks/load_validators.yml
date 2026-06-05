@@ -2,13 +2,15 @@
 # Loads validators.yaml and sets derived facts (see Task 3 spec).
 # Input var: validators_file (path). Defaults to the env's operator file.
 - name: Resolve the validators file (explicit override, else the env's operator file)
-  # Inline-if so deployment_root (which derives from ansible_env.HOME at runtime) is
-  # only evaluated when no explicit validators_file is given — `| default(expr)` would
-  # evaluate expr eagerly and break callers that pass validators_file without facts.
+  # The file lookup below runs on the CONTROLLER, so the default anchors on the
+  # controller's repo checkout (playbook_dir -> repo root), NOT deployment_root —
+  # deployment_root derives from ansible_env.HOME and points at the ON-HOST clone
+  # (e.g. /home/<deploy_user>/...), which a controller-side lookup can't read.
   ansible.builtin.set_fact:
     _validators_file: >-
       {{ validators_file if validators_file is defined
-         else deployment_root ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}
+         else (playbook_dir | dirname | dirname) ~ '/' ~ deployment_subdir
+              ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}
 
 - name: Read validators.yaml
   ansible.builtin.set_fact:
@@ -22,9 +24,15 @@
   ansible.builtin.set_fact:
     validator_env_prefixes: "{{ validators | map(attribute='label') | map('upper') | map('replace', '-', '_') | list }}"
 
+# Rebuild fresh: load_validators runs in several plays per run and set_fact persists
+# across them, so appending with default([]) would double the records on re-entry.
+- name: Reset the DNS-record accumulator
+  ansible.builtin.set_fact:
+    validator_dns_records: []
+
 - name: Derive validator DNS records
   ansible.builtin.set_fact:
-    validator_dns_records: "{{ validator_dns_records | default([]) + [_record] }}"
+    validator_dns_records: "{{ validator_dns_records + [_record] }}"
   vars:
     _record:
       name: "{{ item.hostname | regex_replace('\\.' ~ dns_zone ~ '$', '') }}"

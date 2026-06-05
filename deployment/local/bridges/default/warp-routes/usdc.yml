@@ -4,7 +4,10 @@ name: USDC-solana-gorchain
 origin:
   chain: solana
   type: collateral
-  token: "REPLACE_WITH_USDC_MINT_ADDRESS"
+  # Runtime-generated SPL mint, substituted by load_warp_routes.yml from
+  # {{ credentials_dir }}/warp-token-mint (single-host: prepare-chains writes it;
+  # multi-host: drop the deploy-spl-token output there alongside the keys).
+  token: "__WARP_TOKEN_MINT__"
   name: "USD Coin"
   symbol: "USDC"
   decimals: 6

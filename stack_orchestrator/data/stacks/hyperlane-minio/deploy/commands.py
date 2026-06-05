@@ -35,6 +35,11 @@ def start(context: DeploymentContext, extra_args=None) -> None:
     cronjob_name = "minio-provision"
     mc_image = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 
+    # SO names the single-pod MinIO Service "{deployment-id}-service" (app_name ==
+    # deployment-id). The provision job runs in this same namespace, so target that
+    # name; hardcoding "minio-service" only matches when deployment-id is "minio".
+    minio_url = f"http://{context.get_deployment_id()}-service:9000"
+
     job_template_spec = client.V1JobSpec(
         template=client.V1PodTemplateSpec(
             spec=client.V1PodSpec(
@@ -45,6 +50,7 @@ def start(context: DeploymentContext, extra_args=None) -> None:
                         image=mc_image,
                         command=["/bin/sh", "-c"],
                         args=[_PROVISION_SCRIPT],
+                        env=[client.V1EnvVar(name="MINIO_URL", value=minio_url)],
                         env_from=[
                             client.V1EnvFromSource(
                                 secret_ref=client.V1SecretEnvSource(

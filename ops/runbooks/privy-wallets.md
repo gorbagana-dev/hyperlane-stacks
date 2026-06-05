@@ -21,7 +21,7 @@ keyfile — which is **not** Privy.)
 
 ## Step 1 — Create the Privy app
 
-1. Sign up at **dashboard.privy.io** and create an app.
+1. Sign up at [dashboard.privy.io](https://dashboard.privy.io) and create an app.
 2. **App settings → Basics**: copy the **App ID** → `privy_app_id`.
 3. **App settings → API keys**: create/copy the **App Secret** → `privy_app_secret`
    (shown once).

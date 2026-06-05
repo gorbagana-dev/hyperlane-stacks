@@ -18,13 +18,17 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-minio
+    # Accumulated in pre_tasks under a private name, then handed to stack_deploy as a
+    # play-scoped var. set_fact-ing `stack_env_extra` directly would persist it across
+    # plays, leaking MinIO's IAM creds into every later stack's secret env.
+    stack_env_extra: "{{ _minio_env_extra | default({}) }}"
   pre_tasks:
     - name: Derive validator labels + MINIO_USERS
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
     - name: Build MinIO env (MINIO_USERS + per-validator IAM)
       ansible.builtin.set_fact:
-        stack_env_extra: >-
-          {{ stack_env_extra | default({'MINIO_USERS': minio_users}) | combine({
+        _minio_env_extra: >-
+          {{ _minio_env_extra | default({'MINIO_USERS': minio_users}) | combine({
              (item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,
              (item.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[item.label].secret }) }}
       loop: "{{ validators }}"
@@ -76,9 +80,14 @@
   vars:
     stack_name: hyperlane-relayer
     configmap_names: "{{ stacks['hyperlane-relayer'].configmaps }}"
+    # state_distribute runs as the pre-start hook (after deploy create makes the dir,
+    # before start mounts the configmaps) — running it as a pre-role would create
+    # deploy_dir first and make `deploy create` fail "already exists". deploy_dir is
+    # set here (play-scoped) so both the hook and stack_deploy resolve the same dir.
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-relayer"
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
   roles:
     - fetch_stack
-    - state_distribute
     - stack_deploy
 
 - name: Gas oracle
@@ -143,21 +152,6 @@
       loop_control:
         label: "{{ item.label }}"
 
-    - name: Distribute state to each validator host
-      ansible.builtin.include_role:
-        name: state_distribute
-        apply:
-          delegate_to: "{{ item.host }}"
-      vars:
-        repo_base_dir: "{{ hostvars[item.host].ansible_env.HOME }}/deployments"
-        repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
-        deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
-        deploy_dir: "{{ repo_base_dir }}/hyperlane-validator-{{ item.label }}"
-        configmap_names: "{{ stacks['hyperlane-validator'].configmaps }}"
-      loop: "{{ validators }}"
-      loop_control:
-        label: "{{ item.label }}"
-
     - name: Deploy each validator on its host
       ansible.builtin.include_role:
         name: stack_deploy
@@ -171,6 +165,11 @@
         spec_file: "{{ deployment_root }}/spec-validator-{{ item.chain }}.yml"
         stack_path: "{{ repo_root }}/{{ stacks['hyperlane-validator'].path }}"
         deploy_dir: "{{ repo_base_dir }}/hyperlane-validator-{{ item.label }}"
+        # state_distribute runs as the pre-start hook (after create, before start),
+        # delegated to the validator's host since this play targets the controller.
+        configmap_names: "{{ stacks['hyperlane-validator'].configmaps }}"
+        stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
+        stack_hook_delegate_to: "{{ item.host }}"
         stack_env_map_key: hyperlane-validator
         stack_env_extra: >-
           {{ {(item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,

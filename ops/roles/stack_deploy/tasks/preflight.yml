@@ -4,11 +4,11 @@
   changed_when: false
   when: not ansible_check_mode
 
-# spec_file lives on the deploy host (fetched clone), so read it there with slurp;
+# The spec lives on the deploy host (fetched clone), so read it there with slurp;
 # lookup('file') would read the controller's filesystem instead.
 - name: Read the spec to derive served hostnames
   ansible.builtin.slurp:
-    src: "{{ spec_file }}"
+    src: "{{ _spec_file }}"
   register: _spec_raw
   when: not ansible_check_mode
 
@@ -19,6 +19,20 @@
          | map(attribute='host-name') | list }}
   when: not ansible_check_mode
 
+# The committed local specs carry the __DNS_ZONE__ token (rendered into the spec
+# file later, in deploy.yml). Render it here too so the resolution check below
+# tests the real hostname. A no-op for prod/staging specs, which bake in real names.
+- name: Render the DNS-zone token in the derived hostnames
+  ansible.builtin.set_fact:
+    stack_hostnames: "{{ stack_hostnames | map('regex_replace', '__DNS_ZONE__', dns_zone) | list }}"
+  when:
+    - not ansible_check_mode
+    - dns_zone is defined
+    - stack_hostnames | default([]) | length > 0
+
+# Single-host serves Caddy over loopback with mkcert — no public DNS, so there is
+# nothing to resolve. The check guards the public-DNS path (multi-host + prod/staging,
+# Cloudflare + Let's Encrypt), where A records must point here before deploy.
 - name: Expected hostnames resolve to this host's public IP
   ansible.builtin.command: "dig +short {{ item }}"
   register: _dig
@@ -27,4 +41,5 @@
   loop: "{{ stack_hostnames | default([]) }}"
   when:
     - not ansible_check_mode
+    - topology | default('') != 'single'
     - stack_hostnames | default([]) | length > 0

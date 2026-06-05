@@ -33,12 +33,15 @@
           git user.name/user.email not configured on the controller; set them so
           the published commit has an author.
 
+    # Symbolic mode (capital X = dir-only execute): a numeric 0644 on a recursive
+    # copy strips the execute bit off the subdirs too, so the deploy user can't
+    # traverse generated/ to read program-ids.json.
     - name: Copy the deployer's generated state into the on-host clone
       ansible.builtin.copy:
         src: "{{ kind_mount_root }}/bridge/generated/"
         dest: "{{ deployment_root }}/{{ generated_rel }}/"
         remote_src: true
-        mode: "0644"
+        mode: "u=rwX,go=rX"
       when: not ansible_check_mode
 
     - name: Load deployer program-ids.json

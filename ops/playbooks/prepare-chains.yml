@@ -1,0 +1,141 @@
+---
+# Pre-deploy setup for the LOCAL own-chains path: stand up gorchain + solana,
+# generate and fund the test signers, and deploy the collateral SPL token — all on
+# the chain_hosts group. Run after the host is bootstrapped (laconic-so/docker) and
+# before deploy-all.yml.
+#
+#   ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
+#
+# Single-host: chain_hosts = local-1, which runs both chains. Multi-host LOCAL:
+# the chains run out-of-band on a box NOT in this inventory (no chain_hosts), so
+# run ops/scripts/{setup-chains,gen-local-keys,deploy-spl-token}.sh on that box by
+# hand instead — same scripts, same order.
+#
+# Requires on the chain host: laconic-so + docker (from bootstrap). The Solana CLI
+# (solana/solana-keygen/solana-test-validator/spl-token) is installed here if missing.
+# Requires set: ghcr_pat (private gorchain images) and IGP_ORACLE_PUBKEY.
+- name: Prepare local chains, accounts, and SPL token
+  hosts: chain_hosts
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  vars:
+    chains_dir: "{{ ansible_env.HOME }}/chains"
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    gorchain_rpc: "http://localhost:8899"
+    solana_rpc: "http://localhost:18899"
+    # The scripts call the Solana CLIs by name from the standard solana-install dir,
+    # which ansible's non-login shell doesn't have on PATH (.profile isn't sourced).
+    # laconic-so is reachable via the /usr/local/bin symlink (prerequisites_user);
+    # ~/bin is kept as a fallback.
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
+  pre_tasks:
+    - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
+      ansible.builtin.assert:
+        that:
+          - IGP_ORACLE_PUBKEY is defined
+          - (IGP_ORACLE_PUBKEY | string | length) > 0
+          - not (IGP_ORACLE_PUBKEY is search('REPLACE_WITH'))
+        fail_msg: >-
+          Set IGP_ORACLE_PUBKEY in group_vars/all.yml (the Privy oracle pubkey,
+          see runbooks/privy-wallets.md) before preparing chains.
+
+    - name: GHCR PAT must be set (private gorchain images)
+      ansible.builtin.assert:
+        that:
+          - (ghcr_pat | default('') | length) > 0
+        fail_msg: "Set ghcr_pat in secrets.yml for the private gorchain images."
+
+  tasks:
+    # Official Anza installer (curl|sh) — ships solana, solana-keygen,
+    # solana-test-validator, spl-token. Pinned + creates-guarded, so it won't
+    # re-install over an existing tree.
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+
+    - name: Ensure the setup-scripts dir exists on the chain host
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ship the setup scripts to the chain host
+      ansible.builtin.copy:
+        src: "../scripts/{{ item }}"
+        dest: "{{ scripts_dst }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - setup-chains.sh
+        - gen-local-keys.sh
+        - fund-test-wallets.sh
+        - deploy-spl-token.sh
+
+    - name: Stand up gorchain + solana (health + slot checks inside)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/setup-chains.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CHAINS_DIR: "{{ chains_dir }}"
+        GHCR_USER: "{{ ghcr_user | default('gorbagana-dev') }}"
+        GHCR_PAT: "{{ ghcr_pat }}"
+      register: chains_out
+      changed_when: true
+
+    - name: Generate + fund the test signers on both chains
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/gen-local-keys.sh --yes --fund --oracle {{ IGP_ORACLE_PUBKEY }}"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+        GORCHAIN_RPC: "{{ gorchain_rpc }}"
+        SOLANA_RPC: "{{ solana_rpc }}"
+      register: keys_out
+      changed_when: true
+
+    - name: Deploy the collateral SPL token
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/deploy-spl-token.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        SOLANA_RPC: "{{ solana_rpc }}"
+        DEPLOYER_KEYPAIR: "{{ credentials_dir }}/deployer-keypair.json"
+      register: spl_out
+      changed_when: true
+
+    - name: Capture WARP_TOKEN_MINT from the SPL deploy
+      ansible.builtin.set_fact:
+        warp_token_mint: "{{ (spl_out.stdout_lines | select('match', '^WARP_TOKEN_MINT=') | first).split('=')[1] }}"
+
+    # Persist the runtime mint so deploy-all's load_warp_routes substitutes
+    # __WARP_TOKEN_MINT__ in the route file — no hand-edit of usdc.yml. Single-host:
+    # the chain host IS the deploy host, so this lands where load_warp_routes reads it.
+    - name: Persist the collateral mint for the warp route render
+      ansible.builtin.copy:
+        content: "{{ warp_token_mint }}"
+        dest: "{{ credentials_dir }}/warp-token-mint"
+        mode: "0644"
+
+    - name: Capture HARDWARE_WALLET_PUBKEY from the keygen output
+      ansible.builtin.set_fact:
+        hardware_wallet_pubkey: >-
+          {{ (keys_out.stdout_lines | select('match', '^HARDWARE_WALLET_PUBKEY=')
+              | first).split('=')[1] }}
+
+    - name: Show the generated key addresses + funding results
+      ansible.builtin.debug:
+        var: keys_out.stdout_lines
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Chains, accounts, and SPL token are ready on {{ inventory_hostname }}."
+          - "group_vars/all.yml -> HARDWARE_WALLET_PUBKEY: {{ hardware_wallet_pubkey }}"
+          - "mint {{ warp_token_mint }} -> {{ credentials_dir }}/warp-token-mint (auto-substituted into the route)."
+          - "(IGP_ORACLE_PUBKEY + validator addresses come from Privy, set earlier.)"

@@ -9,14 +9,38 @@
 # Privy-derived values (GORCHAIN/SOLANA_VALIDATOR_ADDRESS, IGP_ORACLE_PUBKEY) do
 # NOT come from here — see ops/runbooks/privy-wallets.md.
 #
-# Usage:  ops/scripts/gen-local-keys.sh [--yes]
+# Usage:  ops/scripts/gen-local-keys.sh [--yes] [--fund --oracle <IGP_ORACLE_PUBKEY>]
 #         CRED_DIR=/path ops/scripts/gen-local-keys.sh   # override target dir
+#
+# With --fund, after generating it funds every on-chain signer (deployer 100,
+# the rest 1) plus the Privy oracle on BOTH chains via fund-test-wallets.sh —
+# the chains must already be running. Honors GORCHAIN_RPC/SOLANA_RPC overrides.
 set -euo pipefail
 
 CRED_DIR="${CRED_DIR:-$HOME/.credentials/hyperlane}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 command -v solana-keygen >/dev/null || { echo "ERROR: solana-keygen not found (install the Solana/Agave CLI)"; exit 1; }
 command -v python3 >/dev/null || { echo "ERROR: python3 not found"; exit 1; }
+
+ASSUME_YES=false
+FUND=false
+ORACLE=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --yes) ASSUME_YES=true ;;
+    --fund) FUND=true ;;
+    --oracle) ORACLE="${2:-}"; shift ;;
+    --oracle=*) ORACLE="${1#--oracle=}" ;;
+    *) echo "ERROR: unknown argument '$1'" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+if [ "$FUND" = true ] && [ -z "$ORACLE" ]; then
+  echo "ERROR: --fund requires --oracle <IGP_ORACLE_PUBKEY> (the Privy wallet, not a local keyfile)" >&2
+  exit 1
+fi
 
 cat <<BANNER
 ============================================================
@@ -27,7 +51,7 @@ cat <<BANNER
 ============================================================
 BANNER
 
-if [ "${1:-}" != "--yes" ]; then
+if [ "$ASSUME_YES" != true ]; then
   read -r -p "Generate test keys in $CRED_DIR? Type 'yes': " ans
   [ "$ans" = "yes" ] || { echo "Aborted."; exit 1; }
 fi
@@ -54,12 +78,21 @@ gen_keypair_json() {
 }
 
 # Hyperlane HexKey: 0x + 32-byte ed25519 seed. The stack reads only the hex; the
-# fund address is the seed's Solana pubkey, printed at creation time.
+# fund address is the seed's Solana pubkey. We can't cheaply re-derive it from the
+# bare seed, so the address is cached in a sibling .pub at creation — that lets a
+# later --fund run recover it without regenerating the key.
 gen_hex_key() {
   local file="$CRED_DIR/$1" label="$2" tmp addr
   if [ -e "$file" ]; then
-    echo "  exists:  $1  ($label)  [delete + rerun to re-show its address]"
-    SUMMARY+=("$label|$1|(exists)")
+    addr=$(cat "$file.pub" 2>/dev/null || true)
+    if [ -n "$addr" ]; then
+      echo "  exists:  $1  ($label)"
+    else
+      echo "  exists:  $1  ($label)  [no .pub sidecar — delete + rerun to recover its address]"
+      addr="(exists)"
+    fi
+    chmod 600 "$file" 2>/dev/null || true
+    SUMMARY+=("$label|$1|$addr")
     return
   fi
   tmp=$(mktemp)
@@ -68,6 +101,7 @@ gen_hex_key() {
   addr=$(solana-keygen pubkey "$tmp")
   rm -f "$tmp"
   chmod 600 "$file"
+  printf '%s\n' "$addr" > "$file.pub"
   echo "  created: $1  ($label)"
   SUMMARY+=("$label|$1|$addr")
 }
@@ -90,13 +124,32 @@ done
 echo
 echo "== Paste into ops/inventories/local/group_vars/all.yml =="
 echo "  HARDWARE_WALLET_PUBKEY: \"$hw_addr\""
-echo
-echo "== Fund these on BOTH chains, e.g. solana airdrop 100 <deployer> / 1 <rest> =="
+# Assemble <address> <amount> pairs for the funder: deployer 100, everything else 1.
+FUND_PAIRS=()
 for row in "${SUMMARY[@]}"; do
   IFS='|' read -r label file addr <<<"$row"
   [ "$addr" = "(exists)" ] && continue
-  printf "  %-44s # %s\n" "$addr" "$label"
+  if [ "$file" = "deployer-keypair.json" ]; then
+    FUND_PAIRS+=("$addr" 100)
+  else
+    FUND_PAIRS+=("$addr" 1)
+  fi
 done
+[ -n "$ORACLE" ] && FUND_PAIRS+=("$ORACLE" 1)
+
+if [ "$FUND" = true ]; then
+  echo
+  echo "== Funding all on-chain signers + oracle on BOTH chains =="
+  "$SCRIPT_DIR/fund-test-wallets.sh" "${FUND_PAIRS[@]}"
+else
+  echo
+  echo "== Fund these on BOTH chains (run with --fund --oracle <pubkey> to do it now) =="
+  for row in "${SUMMARY[@]}"; do
+    IFS='|' read -r label file addr <<<"$row"
+    [ "$addr" = "(exists)" ] && continue
+    printf "  %-44s # %s\n" "$addr" "$label"
+  done
+fi
 
 cat <<NOTE
 
@@ -108,3 +161,8 @@ The local stack wires NO dedicated IGP beneficiary key — fees accrue to the
 deployer default. (e2e generates a separate igp-beneficiary key only to observe
 fee-claim balance changes in its tests.)
 NOTE
+
+# Machine-parseable trailer (mirrors deploy-spl-token.sh's WARP_TOKEN_MINT=) so
+# the ansible wrapper can pull the one value the operator must set by hand.
+echo
+echo "HARDWARE_WALLET_PUBKEY=$hw_addr"

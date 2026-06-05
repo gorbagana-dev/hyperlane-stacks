@@ -29,18 +29,23 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 Plus `git`, `ssh` with **agent forwarding**, `kubectl`.
 
 **Accounts / access:**
-- A **Privy** project (validator + gas-oracle signing) — see `privy-wallets.md`.
-- A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images.
+- A **Privy** project (validator + gas-oracle signing) — see [privy-wallets.md](privy-wallets.md).
+- A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images (bridge stacks
+  + the gorchain chain image). The docker-login user defaults to `gorbagana-dev`.
 - **No Cloudflare**, **no public DNS zone**, **no public 80/443** — single-host serves
   Caddy on the host loopback.
 
-**VM:** inbound **22** from the controller only. Nothing else pre-installed —
-`setup-all.yml` provisions Docker/kind/kubectl + laconic-so.
+**VM:** inbound **22** from the controller only, and the connecting user needs
+**passwordless sudo** (bootstrap installs packages and writes under `/usr/local`,
+`/srv`) — or run the playbooks with `--ask-become-pass`. `setup-all.yml` provisions
+Docker/kind/kubectl + laconic-so; `prepare-chains.yml` installs the Solana CLI
+(`solana`/`solana-keygen`/`solana-test-validator`/`spl-token`, Anza v3.1.9) if missing.
 
 ## 2. Privy wallets
 
-Mint the three server wallets once per `privy-wallets.md`, then fill the IDs/addresses it
-lists:
+Mint the three server wallets once per [privy-wallets.md](privy-wallets.md), then set the
+IDs/addresses it lists — these must be in place **before** the prepare step (the oracle
+pubkey is funded there):
 
 - `privy_wallet_id` per validator in
   `deployment/local/bridges/default/operator/validators.yaml`
@@ -48,46 +53,7 @@ lists:
 - `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`, `IGP_ORACLE_PUBKEY` in
   `inventories/local/group_vars/all.yml`
 
-## 3. Chains on the VM
-
-Stand up both chains on the box, bound to `0.0.0.0` so the kind gateway can reach them.
-
-```bash
-# gorchain single-node RPC (via gorchain-stacks), binds 0.0.0.0:8899
-laconic-so fetch-stack --git-ssh --pull github.com/gorbagana-dev/gorchain-stacks@main
-laconic-so --stack ~/cerc/gorchain-stacks/stack-orchestrator/stacks/gorchain \
-  deploy init --output gorchain-spec.yml
-laconic-so --stack ~/cerc/gorchain-stacks/stack-orchestrator/stacks/gorchain \
-  deploy create --spec-file gorchain-spec.yml --deployment-dir ./gorchain
-printf 'PUBLIC_GOSSIP_HOST=127.0.0.1\nPUBLIC_RPC_ADDRESS=127.0.0.1:8899\nGORCHAIN_DEV_RPC=true\n' \
-  > ./gorchain/config.env
-laconic-so deployment --dir ./gorchain start
-curl -s http://localhost:8899/health        # {"ok":...} when up
-
-# solana-test-validator, binds 0.0.0.0:18899
-solana-test-validator --ledger ~/.data/test-ledger-solana \
-  --rpc-port 18899 --faucet-port 19900 --gossip-port 18001 \
-  --dynamic-port-range 19050-19075 --quiet &
-curl -sf http://localhost:18899/health
-
-# fund deployer + the Privy oracle wallet on both chains
-for rpc in http://localhost:8899 http://localhost:18899; do
-  solana airdrop 100 <deployer-pubkey> --url "$rpc"
-  solana airdrop 1   <oracle-base58-pubkey> --url "$rpc"
-done
-
-# create the collateral USDC SPL mint on Solana (-> WARP_TOKEN_MINT)
-spl-token --url http://localhost:18899 create-token --decimals 6
-spl-token --url http://localhost:18899 create-account <mint>
-spl-token --url http://localhost:18899 mint <mint> 1000000
-```
-
-The in-cluster bridge reaches these via `gorchain-rpc:8899` / `solana-rpc:18899`
-**automatically** — you do **NOT** set `gorchain_rpc_url`/`solana_rpc_url`; leave them at
-the placeholder in `group_vars/all.yml`. The chains must bind `0.0.0.0` (the commands
-above do) so the kind gateway can reach them.
-
-## 4. Inventory & zone
+## 3. Inventory & zone
 
 Single-host is the default (`inventories/local/hosts.yml` — every group, including
 `chain_hosts`, points at `local-1`). Set:
@@ -97,6 +63,16 @@ Single-host is the default (`inventories/local/hosts.yml` — every group, inclu
 public_ip: "<this host's public IPv4>"
 ```
 
+The controller connects over SSH to `ansible_host`, which defaults to `public_ip` — so
+the line above is enough on a local VM. Override it per-host only if the controller
+reaches the box at a different address (bastion/private). Confirm connectivity before
+going further:
+
+```bash
+cd ops   # all commands below run from here
+ansible -i inventories/local/hosts.yml local-1 -m ping   # expect: SUCCESS / "pong"
+```
+
 ```yaml
 # inventories/local/group_vars/all.yml
 dns_zone: "hyperlane.local"        # any label mkcert signs; not a real zone
@@ -104,9 +80,9 @@ dns_zone: "hyperlane.local"        # any label mkcert signs; not a real zone
 
 In `validators.yaml`, replace `REPLACE_WITH_LOCAL_DNS_ZONE` in both hostnames so they
 match `dns_zone` (e.g. `validator-gorchain.hyperlane.local`). The `host:` is already
-`local-1`.
+`local-1`. Also set `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`.
 
-## 5. Secrets
+## 4. Secrets
 
 ```bash
 cp inventories/local/secrets.example.yml inventories/local/secrets.yml
@@ -117,54 +93,72 @@ cp inventories/local/secrets.example.yml inventories/local/secrets.yml
 side is your own chain. MinIO/Grafana credentials are generated into `secrets.yml` by the
 `credentials` role on first run.
 
-## 6. Keyfiles & group_vars
-
-These are throwaway test keys — generate them with the helper (needs the Solana CLI;
-prints the pubkeys to paste + the addresses to fund, and never overwrites existing
-files):
+## 5. Provision the host
 
 ```bash
-ops/scripts/gen-local-keys.sh        # writes into ~/.credentials/hyperlane/ on local-1
-```
-
-It drops the keyfiles the stack consumes:
-
-```
-deployer-keypair.json      # Solana keypair JSON array (deployer + warp-deployer)
-hardware-wallet.json       # keypair whose pubkey -> HARDWARE_WALLET_PUBKEY (you hold it)
-validator-gorchain.key     # hex validator announce key (HYP_DEFAULTSIGNER_KEY)
-validator-solana.key       # hex validator announce key
-relayer-gorchain.key       # hex relayer signing key (HYP_CHAINS_GORCHAIN_SIGNER_KEY)
-relayer-solana.key         # hex relayer signing key
-relayer-fee-claim.json     # Solana keypair JSON array (IGP fee claims)
-```
-
-Fund the printed addresses on both chains (step 3). Then fill in `group_vars/all.yml`:
-paste the helper's `HARDWARE_WALLET_PUBKEY`; set `IGP_ORACLE_PUBKEY`,
-`GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`; `REPLACE_WITH_GITHUB_USERNAME` in
-the specs' `image-pull-secret`; and `WARP_TOKEN_MINT` (the `<mint>` from step 3) in
-`spec-warp-deployer.yml`.
-
-## 7. Run it
-
-```bash
-export PATH=/home/dev/.ops-ansible-venv/bin:$PATH LC_ALL=C.UTF-8 LANG=C.UTF-8
-
-# Phase 1 — provision + mkcert TLS + generate creds
+# bootstrap (Docker/kind/laconic-so) + mkcert TLS + generate creds
 ansible-playbook -i inventories/local/hosts.yml playbooks/setup-all.yml
-
-# Phase 2 — deploy MinIO -> deployer Job -> publish state -> consumers + validators
-ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml
 ```
 
-Testing off a branch (the hosts fetch the repo themselves) — add `-e deploy_branch=<branch>`.
+## 6. Chains, accounts & SPL token (one playbook)
+
+`prepare-chains.yml` runs on the `chain_hosts` group (here `local-1`) and does the whole
+painful pre-deploy setup in order: stands up gorchain + the solana-test-validator (waiting
+for health **and** slot progress on both), generates and funds every signer plus the Privy
+oracle, and deploys the collateral USDC SPL mint.
+
+```bash
+ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
+```
+
+It prints, in the final summary, the value you still need to set:
+`HARDWARE_WALLET_PUBKEY`. The collateral mint is persisted to
+`~/.credentials/hyperlane/warp-token-mint` and substituted into the warp route
+automatically — no edit needed.
+
+Notes:
+- gorchain's dev-RPC config lives in the deploy spec's `config:` (no hand-written
+  `config.env`); the chain images are pulled with the GHCR creds from `secrets.yml`.
+- The in-cluster bridge reaches the chains via `gorchain-rpc:8899` / `solana-rpc:18899`
+  **automatically** (external-services → kind gateway) — leave `gorchain_rpc_url`/
+  `solana_rpc_url` at their placeholders in `group_vars/all.yml`.
+- It generated these keyfiles under `~/.credentials/hyperlane/` on local-1:
+  `deployer-keypair.json` (deployer + warp-deployer), `hardware-wallet.json`
+  (`HARDWARE_WALLET_PUBKEY`, you hold it), `validator-{gorchain,solana}.key` (announce
+  keys), `relayer-{gorchain,solana}.key` (relayer signers), `relayer-fee-claim.json`
+  (IGP fee claims).
+- Re-running is safe: existing keys are never overwritten, and a healthy solana validator
+  is left as-is. To run it by hand instead of via ansible, the same scripts live at
+  `ops/scripts/{setup-chains,gen-local-keys,deploy-spl-token}.sh`.
+
+## 7. Fill the remaining vars
+
+From the step-6 summary, set `HARDWARE_WALLET_PUBKEY` in
+`inventories/local/group_vars/all.yml`. (The collateral mint was persisted in step 6 and
+is substituted into the warp route automatically; `IGP_ORACLE_PUBKEY` and the validator
+addresses were set in step 2.)
+
+## 8. Deploy
+
+`deploy-all.yml` commits + pushes the deployer-derived state mid-flight (see below), so
+deploy off a dedicated branch — **never `main`** (the `deploy_branch` default). The hosts
+fetch the repo on that branch, so create and push it first, then pass it as
+`deploy_branch`:
+
+```bash
+git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+
+# MinIO -> deployer Job -> publish state -> consumers + validators
+ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml \
+  -e deploy_branch=<deploy-branch>
+```
 
 `deploy-all.yml` runs `publish-bridge-state.yml` mid-flight: it patches the
 deployer-derived values (IGP IDs/accounts, mailboxes, warp addresses/mints) into the
 **local** specs and commits/pushes `deploy_branch`. Add `-e state_review=true` to review
 the diff before it commits.
 
-## 8. Access the stacks
+## 9. Access the stacks
 
 No public DNS — tunnel and trust the mkcert CA from your workstation.
 
@@ -187,15 +181,23 @@ ports to the tunnel:
 ssh -L 443:localhost:443 -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
 ```
 
-## 9. Reset between runs
+## 10. Reset between runs
 
 ```bash
 ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml
 # also destroy the shared kind cluster:
 ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml -e destroy_cluster=true
+# clean slate — also remove the deployment dirs and persisted host-path data under
+# kind_mount_root (keeps the mkcert caddy-cert-backup; chains under ~/chains untouched):
+ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml \
+  -e destroy_cluster=true -e wipe_data=true
 ```
 
-## 10. Limitations / notes
+The chains are separate from the bridge stacks: stop them with
+`laconic-so deployment --dir ~/chains/gorchain stop --delete-volumes` and by killing the
+`solana-test-validator` (its ledger is under `~/chains/data/`).
+
+## 11. Limitations / notes
 
 - **No hairpin.** The validator→MinIO and Prometheus scrape legs run in-cluster, so
   single-host never loops traffic out to the host's public IP and back.

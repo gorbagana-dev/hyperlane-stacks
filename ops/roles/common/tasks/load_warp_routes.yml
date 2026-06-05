@@ -1,25 +1,72 @@
 ---
 # Render the routes selected by the spec's WARP_ROUTES into the warp-deployer's
-# configmap dir as JSON, before the Job starts.
-# Inputs: spec_file, deploy_dir, deployment_root, bridge_name.
+# configmap dir as JSON, before the Job starts. Runs inside the stack_deploy role
+# context, so it reads the role's resolved _spec_file/_deploy_dir.
+#
+# The spec + route files live on the DEPLOY HOST (fetched clone), so read them with
+# slurp — lookup('file') runs on the CONTROLLER and can't see the host's clone (it
+# only works when controller == host, e.g. the e2e harness).
+# Inputs: _spec_file, _deploy_dir, deployment_root, bridge_name.
+- name: Read the warp-deployer spec from the host
+  ansible.builtin.slurp:
+    src: "{{ _spec_file }}"
+  register: _warp_spec_raw
+
 - name: Select warp routes from the spec's WARP_ROUTES
   ansible.builtin.set_fact:
-    _warp_routes: "{{ (lookup('ansible.builtin.file', spec_file) | from_yaml).config.WARP_ROUTES.replace(',', ' ').split() }}"
+    _warp_routes: >-
+      {{ (_warp_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTES.replace(',', ' ').split() }}
 
 - name: Ensure warp-routes-config dir exists
   ansible.builtin.file:
-    path: "{{ deploy_dir }}/configmaps/warp-routes-config"
+    path: "{{ _deploy_dir }}/configmaps/warp-routes-config"
     state: directory
     mode: "0755"
 
-- name: Render each selected route file to JSON
-  ansible.builtin.copy:
-    dest: "{{ deploy_dir }}/configmaps/warp-routes-config/{{ item }}.json"
-    content: >-
-      {{ lookup('ansible.builtin.file',
-         deployment_root ~ '/bridges/' ~ bridge_name ~ '/warp-routes/' ~ item ~ '.yml')
-         | from_yaml | to_nice_json }}
-    mode: "0644"
+- name: Read each selected route file from the host
+  ansible.builtin.slurp:
+    src: "{{ deployment_root }}/bridges/{{ bridge_name }}/warp-routes/{{ item }}.yml"
+  register: _warp_route_files
   loop: "{{ _warp_routes }}"
   loop_control:
     label: "{{ item }}"
+
+# Routes carrying a runtime-generated collateral mint ship token: __WARP_TOKEN_MINT__
+# and resolve it from this file on the deploy host. Single-host: prepare-chains.yml
+# writes it (chain host == deploy host). Multi-host: the operator drops the
+# deploy-spl-token output here next to the keys. Routes with a committed mint
+# (prod/staging) carry no placeholder and never touch this file (failed_when: false).
+- name: Read the persisted collateral mint, if any
+  ansible.builtin.slurp:
+    src: "{{ credentials_dir }}/warp-token-mint"
+  register: _warp_mint_raw
+  failed_when: false
+
+- name: Resolve the collateral mint
+  ansible.builtin.set_fact:
+    _warp_token_mint: "{{ (_warp_mint_raw.content | b64decode | trim) if (_warp_mint_raw.content is defined) else '' }}"
+
+- name: A collateral mint must be available for routes using __WARP_TOKEN_MINT__
+  ansible.builtin.assert:
+    that:
+      - "not ((item.content | b64decode | string) is search('__WARP_TOKEN_MINT__')) or (_warp_token_mint | length > 0)"
+    fail_msg: >-
+      Route '{{ item.item }}' uses __WARP_TOKEN_MINT__ but no mint is available at
+      {{ credentials_dir }}/warp-token-mint. Single-host: run prepare-chains.yml (it
+      persists the mint). Multi-host: write the deploy-spl-token mint to that file on
+      this host, alongside the keys.
+    quiet: true
+  loop: "{{ _warp_route_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Render each selected route file to JSON (substituting the runtime mint)
+  ansible.builtin.copy:
+    dest: "{{ _deploy_dir }}/configmaps/warp-routes-config/{{ item.item }}.json"
+    content: >-
+      {{ (item.content | b64decode | from_yaml | to_nice_json)
+         | replace('__WARP_TOKEN_MINT__', _warp_token_mint) }}
+    mode: "0644"
+  loop: "{{ _warp_route_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
