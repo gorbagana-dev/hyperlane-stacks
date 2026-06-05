@@ -1,0 +1,18 @@
+{
+  "gorchain": {
+    "igp_account": "HkqzX3LP7hDHW7wK98i4zWJEpHsudL9ioRiEkWnTVaL9",
+    "igp_program_id": "6WCZTP3DfUXip27QDEG2nwgHYebvUyLypGLNfvbovPmT",
+    "mailbox": "BFjQ2RcFPyJaqPRZA3TNgs63Fj3XUvWZeMHsBxM2iZhX",
+    "multisig_ism_message_id": "92H4wtjqhUMFKCnz8jvUd9bioX9d9DscNwhh2uC8jwjY",
+    "overhead_igp_account": "72c9nZxfPmHrv6QujJmeoPSZrrbU4gFCRSQzvdRNkuat",
+    "validator_announce": "FKs6RaTRaep5LsDWfBNjYzpReRBmE9HmXtUtALg5Z6Gx"
+  },
+  "solana": {
+    "igp_account": "48AVoTZ6j5AXeioMsSrSC9goqjKGfwZ8FRiNcA2eEqwB",
+    "igp_program_id": "3U4fkoih8WmrpiWj2Lusgu6aSU9Tr9cWT4y6SddFrRBQ",
+    "mailbox": "FSw6WMPbjp7sn86831fDAr5bSpUuWAxcoQYPHeexnq2G",
+    "multisig_ism_message_id": "5Wc78YzEJveEQXKJwtKrYx8qDACDE9MJReETeQfx3qEb",
+    "overhead_igp_account": "BQXk6vkMsaPQSurhpBGhxET8Fgvu5XA5NfuRYaosokQv",
+    "validator_announce": "ANmDv1ZuQ5BEjUdMCJ7HZW6QeMpEgPw3hS4YJgGRrj9y"
+  }
+}
