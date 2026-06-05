@@ -119,8 +119,10 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-warp-ui
+    configmap_names: ["warp-ui-config"]
   roles:
     - fetch_stack
+    - state_distribute
     - stack_deploy
 
 # Validators come from validators.yaml (not inventory), so loop + delegate per host.
