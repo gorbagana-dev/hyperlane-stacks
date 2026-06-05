@@ -807,6 +807,60 @@ vars). Full layout rationale: `docs/superpowers/specs/2026-05-29-ops-layer-redes
 
 ---
 
+## Ops-Layer Deploy Mechanics
+
+Two non-obvious invariants govern how `deploy-all.yml` and laconic-so interact.
+Both surfaced during the 2026-06-05 single-host bring-up and cost real debugging
+time, so they are recorded here as hard rules.
+
+### Per-stack facts must not collide with caller-override names
+
+**Invariant (2026-06-05):** In the `stack_deploy` role, `set_fact` writes only
+private `_`-prefixed names (`_spec_file`, `_stack_path`, `_stack_is_job`,
+`_deploy_dir`), and reads any caller override via `{{ override | default(derived) }}`.
+It never `set_fact`s a name that a caller also passes as a role/play var.
+
+**Why:** `deploy-all.yml` runs each stack as its own **play**, but `set_fact` facts
+persist for the whole playbook run, across every play, per host. An earlier version
+wrote the override names directly — `deploy_dir` via a self-referential default, and
+`spec_file`/`stack_path`/`stack_is_job` behind a `when: ... is not defined` guard. The
+first play (MinIO) froze those values as facts; every later singleton play then saw the
+stale fact and reused it. The Deployer play skipped its own `create` (MinIO's dir
+already existed) and ran `deployment start` against MinIO's dir with the deployer's
+secret env, which SO rejected as `MINIO_ROOT_USER` unset. The same trap hit MinIO's IAM
+env accumulator (`stack_env_extra`, leaking MinIO creds into later stacks) and the
+`validator_dns_records` list in `load_validators.yml` (which is included from several
+plays and appended with `default([]) +`). The rule: derive into private names, build
+loop accumulators fresh each invocation, and hand per-stack extras to the role as
+play-scoped vars rather than persisted facts.
+
+### MinIO Service name and hooks are deployment-id-bound
+
+**Invariant (2026-06-05):** Anything that targets a stack's k8s Service by name must
+use `{deployment-id}-service`, not a guessed compose-derived name. Anything in a stack's
+`deploy/` hook directory is baked into the deployment at `create`, not at `start`.
+
+**Why (Service name):** SO names a single-pod Service `{app_name}-service`, where
+`app_name == deployment-id` (`cluster_info.py`). The `stack_deploy` role patches
+`deployment-id` to the stack name, so MinIO's Service is `hyperlane-minio-service`. The
+`minio-provision` job had hardcoded `minio-service:9000` (which only resolves when the
+deployment-id is `minio`, as in e2e) and spun forever on "MinIO not ready". Fixed by
+having `commands.py` inject `MINIO_URL=http://{deployment-id}-service:9000`. Note the
+bridge **consumers** (validators, relayer) are unaffected: they reach MinIO through the
+selector-based `hyperlane-minio` external-service alias (rendered into `__S3_ENDPOINT__`
+for single-host), not the Service name.
+
+**Why (hooks baked at create):** `_copy_hooks` copies the stack's whole `deploy/`
+directory (`commands.py` and siblings like `provision.sh`) into `{deploy_dir}/hooks/`
+at `deploy create`. `call_stack_deploy_start` runs the hook from that copy on every
+`start`, reading sibling files via `Path(__file__).parent`. Editing the host's stack
+clone does **not** update a deployment created before the edit — a plain restart re-runs
+the stale baked hook. To pick up a `commands.py`/`provision.sh` fix, recreate the deploy
+dir (`stop-all -e wipe_data=true` then `deploy-all`) or `cp` the updated files into
+`{deploy_dir}/hooks/` before restarting.
+
+---
+
 ## DNS Prerequisites
 
 **Decision:** Cloudflare-backed DNS, hardcoded records list in `group_vars/all.yml`, indirect host mapping, additive reconciliation. Standalone playbook; preflight check in `stack_deploy`.
