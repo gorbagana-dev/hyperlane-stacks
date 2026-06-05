@@ -312,36 +312,9 @@ class TestWarpUIBridge:
         finally:
             page.close()
 
-    def test_warp_ui_sol_route_selectable(self, warp_ui_browser: dict) -> None:
-        """Verify the native SOL route is selectable and the transfer form renders.
-
-        Full native browser transfer is covered by the USDC route tests;
-        native SOL is verified at minimum to the transfer form rendering —
-        a native send requires the same Backpack approve flow but needs no
-        SPL-token balance probe, so a full round-trip can be added once a
-        SOL-specific bridge_setup fixture (funded native wallet) is available.
-        """
-        page = warp_ui_browser["context"].new_page()
-        try:
-            url = warp_ui_browser["url"]
-            page.goto(f"{url}{SOL_SOLANA_TO_GORCHAIN_PARAMS}")
-            page.wait_for_load_state("load")
-            page.wait_for_function("() => document.title !== ''", timeout=30_000)
-
-            content = page.content().lower()
-            assert "send" in content or "transfer" in content, (
-                "Transfer form not found for SOL route"
-            )
-            assert "fatal error" not in content, (
-                "Fatal error displayed on SOL route page"
-            )
-            log.info("Native SOL route rendered transfer form successfully")
-        except Exception:
-            _screenshot(page, "sol-route-selectable-fail")
-            raise
-        finally:
-            page.close()
-
+    # Full round-trip transfers are USDC-only: bridge_setup provides SPL mint
+    # addresses and balance probes for the collateral/synthetic token pair.
+    # Native SOL selectability is already covered by test_warp_ui_loads_in_browser[sol].
     def test_warp_ui_bridge_solana_to_gorchain(self, warp_ui_browser: dict, bridge_setup: dict) -> None:
         """Transfer collateral USDC from Solana to synthetic gUSDC on Gorchain."""
         context = warp_ui_browser["context"]

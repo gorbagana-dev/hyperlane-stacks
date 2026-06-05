@@ -12,7 +12,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - **Gas oracle** -- deploys the gas oracle service with mock Privy signing, waits for first price update, verifies on-chain IGP gas oracle configs match oracle output
 - **Bridge transfers** -- executes cross-chain warp route transfers (Solana→Gorchain and reverse) via CLI, verifies on-chain balance changes
 - **Fee claims** -- claims accumulated IGP fees on both chains, verifies beneficiary balance increases (skips with warning if no fees to claim)
-- **Warp UI (Tier 1)** -- deploys the warp-ui stack, verifies pod health, HTML serving, sentinel replacement, and chain config presence via HTTP
+- **Warp UI (Tier 1)** -- deploys the warp-ui stack, verifies pod health, HTML serving, runtime route/chain config serving, and chain config presence via HTTP
 - **Warp UI (Tier 2)** -- drives the warp-ui in a Playwright browser with a mock Solana wallet, executes real bridge transfers through the UI
 
 ## Prerequisites
