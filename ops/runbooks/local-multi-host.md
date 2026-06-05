@@ -195,6 +195,11 @@ ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
   -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
   -e destroy_cluster=true
+# clean slate — also remove the deployment dirs and persisted host-path data under
+# each host's kind_mount_root (keeps caddy-cert-backup; the out-of-band chains box untouched):
+ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
+  -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
+  -e destroy_cluster=true -e wipe_data=true
 ```
 
 ## 10. Limitations / notes

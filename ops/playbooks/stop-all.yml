@@ -4,11 +4,17 @@
 # discovered under ~/deployments (excluding the fetched hyperlane-stacks clone),
 # so this covers every stack — deployers, validators, consumers — without a list
 # to keep in sync.
+#
+# For a clean slate, add -e wipe_data=true: removes the deployment dirs and the
+# persisted host-path volumes under kind_mount_root (keeping caddy-cert-backup so
+# setup-all needn't re-run). Combine with destroy_cluster. The chains under
+# ~/chains are never touched.
 - name: Stop stacks
   hosts: all:!controller
   gather_facts: true
   vars:
     destroy_cluster: false
+    wipe_data: false
   tasks:
     - name: Find laconic deployments on this host
       ansible.builtin.find:
@@ -47,3 +53,35 @@
           - hyperlane
       changed_when: true
       when: destroy_cluster | bool
+
+    # Wipe persisted state on request. Runs last, after the deployments are stopped
+    # (and the cluster optionally destroyed), so nothing is writing to these paths.
+    - name: Wipe persisted data + deployment dirs on request
+      when: wipe_data | bool
+      become: true
+      block:
+        - name: Remove the discovered deployment dirs
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ _deployments.files }}"
+          loop_control:
+            label: "{{ item.path | basename }}"
+
+        # Single mkcert cert backup lives here too — keep it so local_tls/setup-all
+        # needn't re-run. Everything else under the mount root is regenerable data.
+        - name: Find persisted host-path data under kind_mount_root
+          ansible.builtin.find:
+            paths: "{{ kind_mount_root }}"
+            file_type: any
+            excludes: "caddy-cert-backup"
+            recurse: false
+          register: _persisted
+
+        - name: Remove the persisted host-path data (keep caddy-cert-backup)
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ _persisted.files }}"
+          loop_control:
+            label: "{{ item.path | basename }}"

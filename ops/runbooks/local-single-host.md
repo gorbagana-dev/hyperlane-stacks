@@ -178,6 +178,10 @@ ssh -L 443:localhost:443 -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
 ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml
 # also destroy the shared kind cluster:
 ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml -e destroy_cluster=true
+# clean slate — also remove the deployment dirs and persisted host-path data under
+# kind_mount_root (keeps the mkcert caddy-cert-backup; chains under ~/chains untouched):
+ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml \
+  -e destroy_cluster=true -e wipe_data=true
 ```
 
 The chains are separate from the bridge stacks: stop them with
