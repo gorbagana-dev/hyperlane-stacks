@@ -128,5 +128,5 @@
         msg:
           - "Chains, accounts, and SPL token are ready on {{ inventory_hostname }}."
           - "group_vars/all.yml -> HARDWARE_WALLET_PUBKEY: {{ hardware_wallet_pubkey }}"
-          - "deployment/local/spec-warp-deployer.yml -> WARP_TOKEN_MINT: {{ warp_token_mint }}"
+          - "deployment/local/bridges/default/warp-routes/usdc.yml -> origin.token: {{ warp_token_mint }}"
           - "(IGP_ORACLE_PUBKEY + validator addresses come from Privy, set earlier.)"

@@ -131,9 +131,11 @@ Notes:
 
 ## 7. Fill the remaining vars
 
-From the step-6 summary, set in `inventories/local/group_vars/all.yml`:
-`HARDWARE_WALLET_PUBKEY`; and `WARP_TOKEN_MINT` in `deployment/local/spec-warp-deployer.yml`.
-(`IGP_ORACLE_PUBKEY` and the validator addresses were set in step 2.)
+From the step-6 summary, set `HARDWARE_WALLET_PUBKEY` in
+`inventories/local/group_vars/all.yml`; and the USDC mint as `origin.token` in
+`deployment/local/bridges/default/warp-routes/usdc.yml` (replace
+`REPLACE_WITH_USDC_MINT_ADDRESS`). (`IGP_ORACLE_PUBKEY` and the validator addresses
+were set in step 2.)
 
 ## 8. Deploy
 
