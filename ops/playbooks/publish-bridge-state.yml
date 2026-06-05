@@ -78,12 +78,16 @@
       loop: "{{ _warp_stems | default([]) }}"
       when: not ansible_check_mode
 
-    - name: Build route items list (stem + route name)
+    - name: Init route items accumulator
+      ansible.builtin.set_fact:
+        _route_items: []
+      when: not ansible_check_mode
+
+    - name: Build route items list (route name)
       ansible.builtin.set_fact:
         _route_items: >-
           {{ _route_items | default([]) + [
-               {'stem': _warp_stems[item | int],
-                'name': (_menus_raw.results[item | int].content | b64decode | from_yaml).name}
+               {'name': (_menus_raw.results[item | int].content | b64decode | from_yaml).name}
              ] }}
       loop: "{{ range(_warp_stems | default([]) | length) | list }}"
       when: not ansible_check_mode
@@ -106,12 +110,9 @@
         label: "{{ item.name }}"
       when: not ansible_check_mode
 
-    # Build a per-chain mailbox lookup from the deployer program-ids (same source
-    # the existing code uses for GORCHAIN_MAILBOX / SOLANA_MAILBOX).
-    - name: Build chain mailbox lookup
+    - name: Init warp tokens accumulator
       ansible.builtin.set_fact:
-        _mailboxes: "{{ {'gorchain': (_pids | default({})).gorchain.mailbox | default(''),
-                         'solana':   (_pids | default({})).solana.mailbox   | default('') } }}"
+        _warp_tokens: []
       when: not ansible_check_mode
 
     # token-config.json is chain-keyed (warpRoute.<chain> with type inside).
@@ -153,9 +154,9 @@
           standard: "{{ _type_to_standard[_side_a.value.type] }}"
           name: "{{ _route_name }}"
           symbol: "{{ _side_a.value.symbol | default(_route_name) }}"
-          decimals: "{{ _side_a.value.decimals | default(9) }}"
+          decimals: "{{ _side_a.value.decimals | default(9) | int }}"
           addressOrDenom: "{{ _wpids[_side_a.key].base58 }}"
-          mailbox: "{{ _mailboxes[_side_a.key] | default('') }}"
+          mailbox: "{{ (_pids | default({}))[_side_a.key].mailbox | default('') }}"
           connections:
             - token: "sealevel|{{ _side_b.key }}|{{ _wpids[_side_b.key].base58 }}"
         _entry_b:
@@ -163,9 +164,9 @@
           standard: "{{ _type_to_standard[_side_b.value.type] }}"
           name: "{{ _route_name }}"
           symbol: "{{ _side_b.value.symbol | default(_route_name) }}"
-          decimals: "{{ _side_b.value.decimals | default(9) }}"
+          decimals: "{{ _side_b.value.decimals | default(9) | int }}"
           addressOrDenom: "{{ _wpids[_side_b.key].base58 }}"
-          mailbox: "{{ _mailboxes[_side_b.key] | default('') }}"
+          mailbox: "{{ (_pids | default({}))[_side_b.key].mailbox | default('') }}"
           connections:
             - token: "sealevel|{{ _side_a.key }}|{{ _wpids[_side_a.key].base58 }}"
       loop: "{{ range(_route_items | default([]) | length) | list }}"
