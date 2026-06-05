@@ -238,11 +238,3 @@ stacks:
     path: stack_orchestrator/data/stacks/hyperlane-validator
     configmaps:
       - agent-config
-
-# Warp routes to deploy. The single hyperlane-warp-deployer Job reads each
-# <label> from the checked-in menu (deployment/local/bridges/<bridge>/warp-routes/
-# <label>.yml), rendered into its warp-routes-config ConfigMap. Must match
-# WARP_ROUTES in deployment/local/spec-warp-deployer.yml.
-warp_routes:
-  - usdc
-  - sol

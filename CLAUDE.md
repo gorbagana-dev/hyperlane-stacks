@@ -167,9 +167,9 @@ those as k8s ConfigMaps in each consumer's own namespace. See
   already-deployed routes self-skip unless `FORCE_REDEPLOY=true`. The warp-deployer
   compose service carries a `laconic.recreate-job: "true"` label so SO
   deletes+recreates the completed Job on `deployment start`, making re-runs
-  idempotent (newly-selected routes deploy, finished ones skip). Each spec's
-  `WARP_ROUTES` must match the `warp_routes` selection list in
-  `ops/inventories/{prod,local}/group_vars/all.yml`.
+  idempotent (newly-selected routes deploy, finished ones skip). The spec's
+  `WARP_ROUTES` is the single source of truth for route selection — ops derives
+  the list from it (no separate `warp_routes` ansible var).
 - **cluster-id lifecycle**: `deploy create` generates `laconic-{id}` in
   `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
   Patch `deployment.yml` (not the spec) after create.

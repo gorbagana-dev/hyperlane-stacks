@@ -54,7 +54,7 @@
   roles:
     - fetch_stack
   tasks:
-    - name: Deploy the warp routes selected by warp_routes
+    - name: Deploy the warp routes selected by the spec's WARP_ROUTES
       ansible.builtin.include_role:
         name: stack_deploy
       vars:
