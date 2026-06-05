@@ -18,7 +18,9 @@
 
 set -e
 
-MINIO_URL="http://minio-service:9000"
+# Injected by commands.py as http://{deployment-id}-service:9000 (the real Service
+# name varies with the deployment-id). Fallback covers a hand-run without the env.
+MINIO_URL="${MINIO_URL:-http://minio-service:9000}"
 
 echo "Waiting for MinIO at ${MINIO_URL}..."
 retries=0
