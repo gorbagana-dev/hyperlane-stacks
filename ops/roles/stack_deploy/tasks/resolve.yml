@@ -4,14 +4,27 @@
 # singletons derive from the stacks map in group_vars).
 #
 # Derive into _-names, never the caller-override names: set_fact facts persist for
-# the whole run, across plays. Writing spec_file/stack_path/stack_is_job here (or
-# guarding on `is not defined`) freezes the first play's values, and every later
-# singleton play reuses them — the deployer play would run against MinIO's spec/dir.
-- name: Resolve stack metadata (caller override, else the stacks map)
+# the whole run, across plays. Writing spec_file/stack_path/stack_is_job here would
+# freeze the first play's values, and every later singleton play would reuse them —
+# the deployer play would run against MinIO's spec/dir.
+#
+# Two mutually-exclusive tasks (NOT one task with `| default(stacks[stack_name]...)`):
+# the default arg is templated eagerly even when the override is set, and warp/validator
+# stack_names (hyperlane-warp-deployer, hyperlane-validator-<label>) are not keys in the
+# stacks map, so the lookup would raise. A skipped task's args are never templated.
+- name: Resolve stack metadata from the stacks map (singletons; no caller override)
+  when: spec_file is not defined
   ansible.builtin.set_fact:
-    _spec_file: "{{ spec_file | default(deployment_root ~ '/' ~ stacks[stack_name].spec) }}"
-    _stack_path: "{{ stack_path | default(repo_root ~ '/' ~ stacks[stack_name].path) }}"
-    _stack_is_job: "{{ stack_is_job | default(stacks[stack_name].is_job | default(false)) }}"
+    _spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
+    _stack_path: "{{ repo_root }}/{{ stacks[stack_name].path }}"
+    _stack_is_job: "{{ stacks[stack_name].is_job | default(false) }}"
+
+- name: Honor caller-provided stack metadata (warp/validators pass these)
+  when: spec_file is defined
+  ansible.builtin.set_fact:
+    _spec_file: "{{ spec_file }}"
+    _stack_path: "{{ stack_path }}"
+    _stack_is_job: "{{ stack_is_job | default(false) }}"
 
 # SO derives the namespace from the stack-dir basename (laconic-{basename}), not the
 # stack_name — they differ for warp routes (stack hyperlane-svm-warp-deployer) and
