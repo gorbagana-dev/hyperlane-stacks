@@ -53,7 +53,7 @@
   block:
     - name: Ensure deploy base exists
       ansible.builtin.file:
-        path: "{{ deploy_base }}"
+        path: "{{ _deploy_dir | dirname }}"
         state: directory
         mode: "0755"
 
