@@ -5,6 +5,10 @@ stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
+# Per-chain namespace: both validators deploy from the hyperlane-validator stack,
+# which would otherwise share one namespace on the cluster and collide. Matches the
+# Prometheus scrape targets in ops group_vars.
+namespace: laconic-hyperlane-validator-solana
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
