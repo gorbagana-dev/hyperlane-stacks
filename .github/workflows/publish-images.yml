@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 env:
-  LACONIC_SO_VERSION: v1.1.0-0bf1ea7-202604021227
+  LACONIC_SO_VERSION: v1.1.0-a181281-202606050713
 
 jobs:
   # Detect which trigger files changed — works reliably with squash merges,

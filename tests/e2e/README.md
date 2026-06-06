@@ -24,7 +24,7 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - Python 3.10+
 - [kind](https://kind.sigs.k8s.io/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [laconic-so](https://github.com/cerc-io/stack-orchestrator) `v1.1.0-b3e9366-202605111309`
+- [laconic-so](https://github.com/cerc-io/stack-orchestrator) `v1.1.0-a181281-202606050713`
 - [Solana CLI](https://docs.anza.xyz/cli/install) (`solana`, `solana-keygen`, `spl-token`)
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) (`cast`)
 - Docker — logged in to ghcr.io for pulling published images (see below)

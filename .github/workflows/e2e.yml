@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  LACONIC_SO_VERSION: v1.1.0-b3e9366-202605111309
+  LACONIC_SO_VERSION: v1.1.0-a181281-202606050713
 
 jobs:
   e2e:

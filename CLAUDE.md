@@ -155,7 +155,7 @@ those as k8s ConfigMaps in each consumer's own namespace. See
   creates k8s ConfigMap objects in the stack's namespace, and mounts them into pods/jobs.
   SO's ConfigMap creation is now idempotent (patches on 409 instead of failing).
 - **Warp routes are config-driven**: a single warp-deployer deployment deploys
-  the routes named in the space-separated `WARP_ROUTES` spec var. Route
+  the routes named in the comma- or space-separated `WARP_ROUTES` spec var. Route
   definitions are a checked-in menu under `bridges/default/warp-routes/<stem>.yml`
   (prod) / `local/bridges/default/warp-routes/<stem>.yml` (local), one route per
   file. The selected routes are carried in the `warp-routes-config` ConfigMap
