@@ -1178,17 +1178,29 @@ Connection flow: "Connect wallet" button → protocol modal ("Solana") →
 wallet list → "Backpack" → approve popup (if it opens). The test detects
 already-connected state by scanning buttons for truncated base58 address patterns.
 
-**`test_warp_ui_bridge_solana_to_gorchain`**
+**`test_warp_ui_bridge_usdc_solana_to_gorchain`**
 
-Execute a real collateral→synthetic transfer through the UI. Self-transfer mode
-(recipient auto-filled from connected wallet). Verifies on-chain gUSDC balance
-increase on Gorchain after relay delivery.
+Execute a real collateral→synthetic USDC transfer through the UI. Self-transfer
+mode (recipient auto-filled from connected wallet). Verifies on-chain synthetic
+USDC balance increase on Gorchain after relay delivery.
 
-**`test_warp_ui_bridge_gorchain_to_solana`**
+**`test_warp_ui_bridge_usdc_gorchain_to_solana`**
 
-Execute the reverse synthetic→collateral transfer. Switches Backpack RPC to
-Gorchain before navigating, reloads page to let autoConnect settle. Uses a
-smaller amount (0.05 vs 0.1) to account for bridge fees.
+Execute the reverse synthetic→collateral USDC transfer. Switches Backpack RPC to
+Gorchain before navigating. Uses a smaller amount (0.05 vs 0.1) to account for
+bridge fees.
+
+**`test_warp_ui_bridge_sol_solana_to_gorchain`**
+
+Execute a real native SOL → synthetic SOL transfer through the UI (native route).
+Switches Backpack RPC to Solana for the origin, then verifies the on-chain
+synthetic SOL balance increase on Gorchain after relay delivery.
+
+**`test_warp_ui_bridge_sol_gorchain_to_solana`**
+
+Execute the reverse synthetic SOL → native SOL transfer. Switches Backpack RPC to
+Gorchain, then polls the released native SOL on Solana (destination is native, not
+an SPL token). Requires the SOL forward test to have run first.
 
 #### Helper Functions
 
