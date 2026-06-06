@@ -51,10 +51,10 @@ TX_MAX_RETRIES = 5  # retry submit on "Plugin Closed" / wallet errors
 # URL params to pre-select our chains and tokens
 SOLANA_TO_GORCHAIN_PARAMS = (
     "?origin=solana&originToken=USDC"
-    "&destination=gorchain&destinationToken=gUSDC"
+    "&destination=gorchain&destinationToken=USDC"
 )
 GORCHAIN_TO_SOLANA_PARAMS = (
-    "?origin=gorchain&originToken=gUSDC"
+    "?origin=gorchain&originToken=USDC"
     "&destination=solana&destinationToken=USDC"
 )
 # Native SOL route params
