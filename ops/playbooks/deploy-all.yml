@@ -185,6 +185,11 @@
         stack_env_extra: >-
           {{ {(validator.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[validator.label].key_id,
               (validator.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[validator.label].secret} }}
+        # The committed spec ships PRIVY_WALLET_ID: REPLACE_WITH_WALLET_ID; render this
+        # validator's id (from validators.yaml) into it. HYP_VALIDATOR_ID derives from
+        # PRIVY_WALLET_ID in the compose, so this one render covers both containers.
+        spec_token_renders_extra:
+          REPLACE_WITH_WALLET_ID: "{{ validator.privy_wallet_id }}"
       loop: "{{ validators }}"
       loop_control:
         loop_var: validator

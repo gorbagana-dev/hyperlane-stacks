@@ -61,12 +61,14 @@
     # aren't known until the zone/chains exist, so the committed spec ships __TOKENS__
     # that we substitute into the on-host clone before create. Gated on
     # spec_token_renders, set only in local/group_vars — a no-op for prod/staging.
+    # spec_token_renders_extra carries per-invocation tokens (e.g. each validator's
+    # privy_wallet_id), merged in like stack_env_extra does for the secret env.
     - name: Render runtime tokens into the spec (local only)
       ansible.builtin.replace:
         path: "{{ _spec_file }}"
         regexp: "{{ item.key | regex_escape }}"
         replace: "{{ item.value }}"
-      loop: "{{ (spec_token_renders | default({})) | dict2items }}"
+      loop: "{{ ((spec_token_renders | default({})) | combine(spec_token_renders_extra | default({}))) | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
 
