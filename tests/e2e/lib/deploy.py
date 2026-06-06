@@ -32,6 +32,9 @@ AGENT_IMAGE_LOCAL = "gorbagana-dev/hyperlane-agent:local"
 KMS_PROXY_IMAGE_LOCAL = "gorbagana-dev/hyperlane-kms-proxy:local"
 WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
 
+# Baked into the warp-ui bundle at build time (NEXT_PUBLIC_*); only needs to be non-empty.
+WARP_UI_WALLET_CONNECT_ID = "abb082e6cb1a18b07229ed1158a7b2eb"
+
 
 def ensure_ghcr_pat() -> None:
     """Set GHCR_PAT env var from ~/.docker/config.json if not already set.
@@ -193,7 +196,10 @@ def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui") -> None:
     run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories", "--git-ssh"])
 
     log_info("Building warp-ui container image...")
-    run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
+    run_cmd([
+        "laconic-so", "--stack", str(stack_path), "build-containers",
+        "--extra-build-args", f"--build-arg NEXT_PUBLIC_WALLET_CONNECT_ID={WARP_UI_WALLET_CONNECT_ID}",
+    ])
 
     log_info("Warp UI image built into host Docker")
 
