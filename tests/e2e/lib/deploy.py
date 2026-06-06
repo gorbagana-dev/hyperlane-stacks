@@ -190,7 +190,7 @@ def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui") -> None:
     stack_path = resolve_stack_path(stack_name)
 
     log_info("Setting up repositories for warp-ui build...")
-    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories"])
+    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories", "--git-ssh"])
 
     log_info("Building warp-ui container image...")
     run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
