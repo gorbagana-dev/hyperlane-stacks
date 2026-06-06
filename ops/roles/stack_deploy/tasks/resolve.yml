@@ -31,7 +31,7 @@
 # validators (stack hyperlane-validator). A spec may override with a namespace: key
 # (both validators do, so the two hyperlane-validator deployments don't collide in one
 # shared namespace); read it so the wait/job tasks target the namespace SO deploys into.
-- name: Read the spec to honor any namespace: override
+- name: "Read the spec to honor any namespace: override"
   ansible.builtin.slurp:
     src: "{{ _spec_file }}"
   register: _spec_raw
