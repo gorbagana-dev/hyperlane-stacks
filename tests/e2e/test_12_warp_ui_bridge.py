@@ -327,15 +327,18 @@ class TestWarpUIBridge:
         """Transfer collateral USDC from Solana to synthetic USDC on Gorchain."""
         context = warp_ui_browser["context"]
         sender = bridge_setup["sender_keypair"]
+        token_mint = bridge_setup["token_mint"]
         synthetic_mint = bridge_setup["synthetic_mint"]
+        solana_rpc = CHAINS["solana"]["rpc"]
         gorchain_rpc = CHAINS["gorchain"]["rpc"]
 
         # Backpack is already on Solana RPC (localhost:18899) from setup —
         # correct for this direction (Solana → Gorchain).
 
         page = context.new_page()
+        initial_solana = get_spl_token_balance(token_mint, sender, solana_rpc)
         initial_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
-        log.info("Initial Gorchain gUSDC balance: %s", initial_gorchain)
+        log.info("Initial balances — Solana USDC: %s, Gorchain USDC: %s", initial_solana, initial_gorchain)
 
         try:
             url = warp_ui_browser["url"]
@@ -359,9 +362,16 @@ class TestWarpUIBridge:
             expected_min=expected,
             timeout=RELAY_TIMEOUT,
             poll_interval=POLL_INTERVAL,
-            label="Gorchain gUSDC (UI bridge)",
+            label="Gorchain USDC (UI bridge)",
         )
-        log.info("UI bridge Solana→Gorchain complete. gUSDC: %s", final_balance)
+        final_solana = get_spl_token_balance(token_mint, sender, solana_rpc)
+        assert final_solana < initial_solana, (
+            f"origin USDC not debited on Solana: {initial_solana} -> {final_solana}"
+        )
+        log.info(
+            "UI bridge USDC Solana→Gorchain complete. Solana: %s -> %s, Gorchain: %s",
+            initial_solana, final_solana, final_balance,
+        )
 
     def test_warp_ui_bridge_usdc_gorchain_to_solana(self, warp_ui_browser: dict, bridge_setup: dict) -> None:
         """Transfer synthetic USDC from Gorchain back to collateral USDC on Solana."""
@@ -379,10 +389,17 @@ class TestWarpUIBridge:
 
         page = context.new_page()
         token_mint = bridge_setup["token_mint"]
+        synthetic_mint = bridge_setup["synthetic_mint"]
         solana_rpc = CHAINS["solana"]["rpc"]
+        gorchain_rpc = CHAINS["gorchain"]["rpc"]
 
         initial_solana = get_spl_token_balance(token_mint, sender, solana_rpc)
-        log.info("Initial Solana USDC balance: %s", initial_solana)
+        initial_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
+        log.info("Initial balances — Gorchain USDC: %s, Solana USDC: %s", initial_gorchain, initial_solana)
+        assert initial_gorchain >= float(REVERSE_AMOUNT), (
+            f"insufficient synthetic USDC to bridge back: {initial_gorchain} < {REVERSE_AMOUNT}. "
+            "Did the USDC forward test run first?"
+        )
 
         try:
             url = warp_ui_browser["url"]
@@ -411,18 +428,27 @@ class TestWarpUIBridge:
             poll_interval=POLL_INTERVAL,
             label="Solana USDC (UI bridge)",
         )
-        log.info("UI bridge Gorchain→Solana complete. USDC: %s", final_balance)
+        final_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
+        assert final_gorchain < initial_gorchain, (
+            f"origin synthetic USDC not debited on Gorchain: {initial_gorchain} -> {final_gorchain}"
+        )
+        log.info(
+            "UI bridge USDC Gorchain→Solana complete. Gorchain: %s -> %s, Solana: %s",
+            initial_gorchain, final_gorchain, final_balance,
+        )
 
     def test_warp_ui_bridge_sol_solana_to_gorchain(self, warp_ui_browser: dict, bridge_setup: dict) -> None:
         """Transfer native SOL from Solana to synthetic SOL on Gorchain (native route, UI)."""
         context = warp_ui_browser["context"]
         sender = bridge_setup["sender_keypair"]
         synthetic_mint = bridge_setup["routes"]["SOL-solana-gorchain"]["synthetic_mint"]
+        solana_rpc = CHAINS["solana"]["rpc"]
         gorchain_rpc = CHAINS["gorchain"]["rpc"]
 
         page = context.new_page()
+        initial_solana = get_sol_balance(sender, solana_rpc)
         initial_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
-        log.info("Initial Gorchain synthetic SOL balance: %s", initial_gorchain)
+        log.info("Initial balances — Solana SOL: %s, Gorchain synthetic SOL: %s", initial_solana, initial_gorchain)
 
         try:
             url = warp_ui_browser["url"]
@@ -451,7 +477,14 @@ class TestWarpUIBridge:
             poll_interval=POLL_INTERVAL,
             label="Gorchain synthetic SOL (UI bridge)",
         )
-        log.info("UI native bridge Solana→Gorchain complete. synthetic SOL: %s", final_balance)
+        final_solana = get_sol_balance(sender, solana_rpc)
+        assert final_solana < initial_solana, (
+            f"origin native SOL not debited on Solana: {initial_solana} -> {final_solana}"
+        )
+        log.info(
+            "UI native bridge SOL Solana→Gorchain complete. Solana SOL: %s -> %s, synthetic: %s",
+            initial_solana, final_solana, final_balance,
+        )
 
     def test_warp_ui_bridge_sol_gorchain_to_solana(self, warp_ui_browser: dict, bridge_setup: dict) -> None:
         """Transfer synthetic SOL from Gorchain back to native SOL on Solana (native route, UI).
@@ -464,11 +497,18 @@ class TestWarpUIBridge:
 
         context = warp_ui_browser["context"]
         sender = bridge_setup["sender_keypair"]
+        synthetic_mint = bridge_setup["routes"]["SOL-solana-gorchain"]["synthetic_mint"]
         solana_rpc = CHAINS["solana"]["rpc"]
+        gorchain_rpc = CHAINS["gorchain"]["rpc"]
 
         page = context.new_page()
         initial_solana = get_sol_balance(sender, solana_rpc)
-        log.info("Initial Solana native SOL balance: %s", initial_solana)
+        initial_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
+        log.info("Initial balances — Gorchain synthetic SOL: %s, Solana SOL: %s", initial_gorchain, initial_solana)
+        assert initial_gorchain >= float(NATIVE_REVERSE_AMOUNT), (
+            f"insufficient synthetic SOL to bridge back: {initial_gorchain} < {NATIVE_REVERSE_AMOUNT}. "
+            "Did the SOL forward test run first?"
+        )
 
         try:
             url = warp_ui_browser["url"]
@@ -501,4 +541,11 @@ class TestWarpUIBridge:
             interval=POLL_INTERVAL,
             description="Solana native SOL release (UI bridge)",
         )
-        log.info("UI native bridge Gorchain→Solana complete. SOL: %s", final_balance)
+        final_gorchain = get_spl_token_balance(synthetic_mint, sender, gorchain_rpc)
+        assert final_gorchain < initial_gorchain, (
+            f"origin synthetic SOL not debited on Gorchain: {initial_gorchain} -> {final_gorchain}"
+        )
+        log.info(
+            "UI native bridge SOL Gorchain→Solana complete. Gorchain: %s -> %s, Solana SOL: %s",
+            initial_gorchain, final_gorchain, final_balance,
+        )
