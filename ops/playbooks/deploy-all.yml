@@ -120,9 +120,14 @@
   vars:
     stack_name: hyperlane-warp-ui
     configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
+    # state_distribute runs as the pre-start hook (after deploy create makes the dir,
+    # before start mounts the configmaps) — as a pre-role it would create deploy_dir
+    # first and make `deploy create` fail "already exists". deploy_dir is set here
+    # (play-scoped) so both the hook and stack_deploy resolve the same dir.
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
   roles:
     - fetch_stack
-    - state_distribute
     - stack_deploy
 
 # Validators come from validators.yaml (not inventory), so loop + delegate per host.
