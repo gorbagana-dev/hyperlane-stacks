@@ -33,7 +33,10 @@ SO builds a ConfigMap from a single directory level
 subdirectories are silently skipped, and ConfigMap keys cannot contain `/`.
 
 The deployer's `generated/` tree (== its `/state`; `publish` copies it verbatim to git and
-`state_distribute` copies it into a consumer's `configmaps/<name>/`):
+`state_distribute` copies it into a consumer's `configmaps/<name>/`). The
+`[reaches pod]`/`[dropped]` notes below assume a consumer sourcing the *whole* `generated/`
+(the relayer/agent-config case); the warp-UI instead sources `generated/warp-routes/` — see
+"ConfigMap scoping":
 
 ```
 generated/
@@ -123,8 +126,9 @@ each stem in `WARP_ROUTES`:
 5. Emit two token entries (one per side):
    - `chainName` = chain key; `standard` = `{collateral:SealevelHypCollateral,
      synthetic:SealevelHypSynthetic, native:SealevelHypNative}[side.type]`
-   - `name`, `symbol`, `decimals` (a JSON **number**) from the side; `addressOrDenom`
-     = that side's warp-program base58; `mailbox` from core `program-ids.json`
+   - `name`, `symbol`, `decimals` (a JSON **number**) read from that side's entry in
+     `token-config.json` (the per-side `name`, e.g. `"USD Coin"` — not the route name);
+     `addressOrDenom` = that side's warp-program base58; `mailbox` from core `program-ids.json`
    - `collateralAddressOrDenom` = `side.token` (collateral) / `side.mint` (synthetic);
      omitted for native
    - `connections: [ { token: "sealevel|<other chain>|<other warp program>" } ]`
@@ -218,7 +222,8 @@ native SOL), so it validates the deployer-built config directly:
 - **Route-name resolution parity** — the aggregation must resolve stem → name via
   `jq -r .name` on the menu, exactly as `deploy_route`, or the dir lookup misses.
 - **Scoped-source trailing slash** — `state_distribute` must copy the *contents* of
-  `generated/warp-routes/` (trailing slash) so `warpRoutes.yaml` lands at the ConfigMap root,
-  not under a `warp-ui/` subdir (which SO would drop).
+  `generated/warp-routes/` (trailing slash) so `warpRoutes.yaml` lands at the ConfigMap root;
+  without it, ansible copies the `warp-routes/` directory itself and `warpRoutes.yaml` ends up
+  nested one level down, which SO then drops.
 - **e2e ordering** — `test_02` reads `<state>/warp-routes/warpRoutes.yaml` only after the
   warp-deployer fixture has produced it (the existing fixture dependency enforces this).
