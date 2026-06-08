@@ -29,6 +29,9 @@
         # generated/; warp-ui passes generated_subdir: warp-routes to scope its ConfigMap.
         src_dir_default: "{{ _gen_base }}{{ _empty_subdir + '/' if _empty_subdir else '' }}"
         src_dir_warp_ui: "{{ _gen_base }}{{ _warp_subdir + '/' if _warp_subdir else '' }}"
+        # Mirror state_distribute's exact _subdir_suffix expression with generated_subdir
+        # left genuinely undefined (not an empty string), to pin the default short-circuit.
+        src_dir_undefined: "{{ _gen_base }}{{ generated_subdir + '/' if generated_subdir | default('') else '' }}"
         cm_targets: >-
           {{ configmap_names
           | map('regex_replace', '^(.*)$', deploy_dir ~ '/configmaps/\1')
@@ -49,4 +52,5 @@
           - >-
             src_dir_warp_ui ==
             '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated/warp-routes/'
+          - "src_dir_undefined == '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated/'"
           - "cm_targets == ['/home/op/deployments/hyperlane-relayer/configmaps/agent-config']"

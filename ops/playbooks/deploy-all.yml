@@ -120,10 +120,7 @@
   vars:
     stack_name: hyperlane-warp-ui
     configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
-    # state_distribute runs as the pre-start hook (after deploy create makes the dir,
-    # before start mounts the configmaps) — as a pre-role it would create deploy_dir
-    # first and make `deploy create` fail "already exists". deploy_dir is set here
-    # (play-scoped) so both the hook and stack_deploy resolve the same dir.
+    # state_distribute runs as the pre-start hook (see the Relayer play for the rationale).
     deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
     # Source only generated/warp-routes/ so the ConfigMap holds just warpRoutes.yaml.
     generated_subdir: warp-routes
