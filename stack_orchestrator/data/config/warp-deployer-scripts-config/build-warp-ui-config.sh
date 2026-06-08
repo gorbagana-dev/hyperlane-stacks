@@ -44,8 +44,10 @@ for route in $(echo "${WARP_ROUTES}" | tr ',' ' '); do
     self="${pair%%|*}"; other="${pair##*|}"
     side=$(jq -c --arg c "$self" '.warpRoute[$c]' "$tcfg")
     standard=$(warp_ui_standard "$(printf '%s' "$side" | jq -r '.type')")
-    self_prog=$(jq -r --arg c "$self" '.[$c].base58' "$wpids")
-    other_prog=$(jq -r --arg c "$other" '.[$c].base58' "$wpids")
+    self_prog=$(jq -r --arg c "$self" '.[$c].base58 // ""' "$wpids")
+    [ -n "$self_prog" ] || { echo "ERROR: warp-UI config: no warp program for ${self} in ${wpids}" >&2; exit 1; }
+    other_prog=$(jq -r --arg c "$other" '.[$c].base58 // ""' "$wpids")
+    [ -n "$other_prog" ] || { echo "ERROR: warp-UI config: no warp program for ${other} in ${wpids}" >&2; exit 1; }
     mailbox=$(jq -r --arg c "$self" '.[$c].mailbox // ""' "${PROGRAM_IDS_FILE}")
     [ -n "$mailbox" ] || { echo "ERROR: warp-UI config: no mailbox for ${self} in ${PROGRAM_IDS_FILE}" >&2; exit 1; }
 

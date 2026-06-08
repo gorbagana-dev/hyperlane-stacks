@@ -1,5 +1,5 @@
 #!/bin/sh
-set -e
+set -eu
 
 # Required env (chain config, secret solana RPC, WalletConnect id). Routes arrive as
 # a mounted file. NEXT_PUBLIC_WALLET_CONNECT_ID must be non-empty (RainbowKit fatals
@@ -8,7 +8,7 @@ missing=""
 for var in GORCHAIN_RPC_URL SOLANA_RPC_URL GORCHAIN_MAILBOX SOLANA_MAILBOX \
            GORCHAIN_DOMAIN_ID SOLANA_DOMAIN_ID GORCHAIN_CHAIN_ID SOLANA_CHAIN_ID \
            NEXT_PUBLIC_WALLET_CONNECT_ID; do
-  eval val=\$$var
+  eval "val=\${$var:-}"
   [ -z "$val" ] && missing="$missing $var"
 done
 if [ -n "$missing" ]; then
