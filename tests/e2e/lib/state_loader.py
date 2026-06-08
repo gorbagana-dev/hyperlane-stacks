@@ -87,8 +87,8 @@ class BridgeStateLoader:
 
     def read_json(self, file_rel: str) -> dict:
         """Read a state JSON file. Used by conftest to patch test-spec
-        env vars (REPLACE_AT_RUNTIME) for env-var consumers that don't
-        mount a CM (gas-oracle, warp-ui, monitoring's balance-monitor).
+        env vars (REPLACE_AT_RUNTIME) from scalar state values
+        (gas-oracle, warp-ui mailboxes, monitoring's balance-monitor).
         """
         path = self.state_dir / file_rel
         if not path.exists():
