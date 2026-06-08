@@ -271,6 +271,11 @@ jobs:
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
           sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
 
+      # The warp-ui stack clones the private gorbagana-dev fork; authenticate
+      # clones to that org with the CI token (mirrors the e2e workflow).
+      - name: Authenticate clones to private gorbagana-dev repos
+        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
+
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui setup-repositories
 
