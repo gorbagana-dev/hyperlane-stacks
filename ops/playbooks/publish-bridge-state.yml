@@ -55,13 +55,10 @@
         _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
-    # warpRoutes.yaml is built by the warp-deployer (build-warp-ui-config.sh) under
-    # generated/warp-routes/; publish only copies it. Here we patch the core scalar values
-    # (IGP/mailbox) into the committed specs from program-ids.json.
-
-    # Patch the scalar deployment-derived values into the committed specs. The rich
-    # agent-config.json is distributed as a ConfigMap by state_distribute, not here.
-    # Core values (IGP/mailbox) come from program-ids.json.
+    # Patch the scalar deployment-derived values (IGP/mailbox, from program-ids.json)
+    # into the committed specs. The rich agent-config.json is distributed as a ConfigMap
+    # by state_distribute, not here; warpRoutes.yaml is built by the warp-deployer
+    # (build-warp-ui-config.sh, under generated/warp-routes/) and only copied by publish.
     - name: Patch core deployment-derived config keys into committed specs
       ansible.builtin.replace:
         path: "{{ deployment_root }}/{{ item.spec }}"
