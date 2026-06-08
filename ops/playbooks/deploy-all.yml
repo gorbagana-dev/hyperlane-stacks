@@ -125,6 +125,8 @@
     # first and make `deploy create` fail "already exists". deploy_dir is set here
     # (play-scoped) so both the hook and stack_deploy resolve the same dir.
     deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
+    # Source only generated/warp-routes/ so the ConfigMap holds just warpRoutes.yaml.
+    generated_subdir: warp-routes
     stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
   roles:
     - fetch_stack
