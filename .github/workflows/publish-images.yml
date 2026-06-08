@@ -273,8 +273,10 @@ jobs:
 
       # The warp-ui stack clones the private gorbagana-dev fork; authenticate
       # clones to that org with the CI token (mirrors the e2e workflow).
+      # TODO: revert to CICD_REPO_TOKEN once its access to the fork is approved;
+      # using CICD_REPO_TOKEN_TEMP meanwhile (CICD_REPO_TOKEN lacks fork access).
       - name: Authenticate clones to private gorbagana-dev repos
-        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
+        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN_TEMP }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
 
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-warp-ui setup-repositories
