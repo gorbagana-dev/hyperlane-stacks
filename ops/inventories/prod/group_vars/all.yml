@@ -137,6 +137,8 @@ stacks:
   hyperlane-warp-ui:
     spec: spec-warp-ui.yml
     path: stack_orchestrator/data/stacks/hyperlane-warp-ui
+    configmaps:
+      - warp-ui-config
   hyperlane-validator:
     path: stack_orchestrator/data/stacks/hyperlane-validator
     configmaps:

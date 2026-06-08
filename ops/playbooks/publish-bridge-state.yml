@@ -55,73 +55,10 @@
         _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
-    # The warp-UI shows the first route in the spec's WARP_ROUTES. Its per-route
-    # state lives under warp-routes/<name>/, where <name> comes from that route's
-    # menu file.
-    - name: Read the warp-deployer spec (for WARP_ROUTES)
-      ansible.builtin.slurp:
-        src: "{{ deployment_root }}/spec-warp-deployer.yml"
-      register: _warp_spec_raw
-      when: not ansible_check_mode
-
-    - name: Read the warp-UI route's menu file
-      ansible.builtin.slurp:
-        src: "{{ deployment_root }}/bridges/{{ bridge_name }}/warp-routes/{{ _first_stem }}.yml"
-      vars:
-        _first_stem: "{{ (_warp_spec_raw.content | b64decode | from_yaml).config.WARP_ROUTES.split()[0] }}"
-      register: _ui_menu_raw
-      when: not ansible_check_mode
-
-    - name: Resolve the warp-UI route's per-route state dir
-      ansible.builtin.set_fact:
-        _warp_rel: "{{ generated_rel }}/warp-routes/{{ _ui_route_name }}"
-      vars:
-        _ui_route_name: "{{ (_ui_menu_raw.content | b64decode | from_yaml).name }}"
-      when: not ansible_check_mode
-
-    - name: Stat the warp-deployer artifacts (present only after the warp Job)
-      ansible.builtin.stat:
-        path: "{{ deployment_root }}/{{ _warp_rel }}/{{ item }}"
-      register: _warp_stat
-      loop:
-        - token-config.json
-        - warp-deploy-outputs/program-ids.json
-      when: not ansible_check_mode
-
-    - name: Read warp artifacts when present
-      ansible.builtin.slurp:
-        src: "{{ deployment_root }}/{{ _warp_rel }}/{{ item }}"
-      register: _warp_raw
-      loop:
-        - token-config.json
-        - warp-deploy-outputs/program-ids.json
-      when:
-        - not ansible_check_mode
-        - _warp_stat.results | selectattr('stat.exists') | list | length == 2
-
-    # token-config.json is chain-keyed (warpRoute.<chain> with type inside), so
-    # find each side by its declared type rather than by a role key.
-    - name: Derive warp-route values when the warp artifacts are present
-      ansible.builtin.set_fact:
-        _warp_collateral_addr: "{{ _wpids[_collateral.key].base58 }}"
-        _warp_synthetic_addr: "{{ _wpids[_synthetic.key].base58 }}"
-        _warp_token_mint: "{{ _collateral.value.token }}"
-        _warp_synthetic_mint: "{{ _synthetic.value.mint }}"
-      vars:
-        _tcfg: "{{ _warp_raw.results[0].content | b64decode | from_json }}"
-        _wpids: "{{ _warp_raw.results[1].content | b64decode | from_json }}"
-        _sides: "{{ _tcfg.warpRoute | dict2items | rejectattr('key', 'equalto', 'name') | list }}"
-        _collateral: "{{ _sides | selectattr('value.type', 'equalto', 'collateral') | list | first }}"
-        _synthetic: "{{ _sides | selectattr('value.type', 'equalto', 'synthetic') | list | first }}"
-      when:
-        - not ansible_check_mode
-        - _warp_stat.results | selectattr('stat.exists') | list | length == 2
-
-    # Patch the scalar deployment-derived values into the committed specs. The rich
-    # agent-config.json is distributed as a ConfigMap by state_distribute, not here.
-    # Core values (IGP/mailbox) come from program-ids.json; warp-route addresses, the
-    # collateral mint, and the synthetic mint come from the warp-deployer
-    # (token-config.json + warp-deploy-outputs/program-ids.json).
+    # Patch the scalar deployment-derived values (IGP/mailbox, from program-ids.json)
+    # into the committed specs. The rich agent-config.json is distributed as a ConfigMap
+    # by state_distribute, not here; warpRoutes.yaml is built by the warp-deployer
+    # (build-warp-ui-config.sh, under generated/warp-routes/) and only copied by publish.
     - name: Patch core deployment-derived config keys into committed specs
       ansible.builtin.replace:
         path: "{{ deployment_root }}/{{ item.spec }}"
@@ -155,26 +92,6 @@
       loop_control:
         label: "{{ item.spec }}:{{ item.key }}"
       when: not ansible_check_mode
-
-    - name: Patch warp-route values into spec-warp-ui.yml (after the warp Job)
-      ansible.builtin.replace:
-        path: "{{ deployment_root }}/spec-warp-ui.yml"
-        regexp: '^(\s*{{ item.key }}:\s*).*$'
-        replace: '\g<1>"{{ item.value }}"'
-      loop:
-        - key: WARP_COLLATERAL_ADDRESS
-          value: "{{ _warp_collateral_addr | default('') }}"
-        - key: WARP_SYNTHETIC_ADDRESS
-          value: "{{ _warp_synthetic_addr | default('') }}"
-        - key: WARP_TOKEN_MINT
-          value: "{{ _warp_token_mint | default('') }}"
-        - key: WARP_SYNTHETIC_MINT
-          value: "{{ _warp_synthetic_mint | default('') }}"
-      loop_control:
-        label: "{{ item.key }}"
-      when:
-        - not ansible_check_mode
-        - _warp_collateral_addr is defined
 
     - name: Stage the generated paths and patched specs (scoped)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git add

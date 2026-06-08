@@ -2,9 +2,17 @@
 # The fetch_stack role already cloned/pulled the stack repo on this host (on
 # deploy_branch, which publish-bridge-state pushed the generated state to), so the
 # generated artifacts are right here in the clone — no separate state-repo needed.
-- name: Resolve the generated dir in the on-host clone
+# generated_subdir scopes the source to a single consumer's slice (e.g. warp-routes),
+# so only that slice's files become the consumer's ConfigMap. Default: whole generated/.
+# The trailing slash makes copy take the dir's *contents*, so files land at the
+# ConfigMap root (SO drops nested subdirs).
+- name: Resolve optional subdir suffix (empty string when generated_subdir is unset)
   ansible.builtin.set_fact:
-    _generated_src: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated/"
+    _subdir_suffix: "{{ generated_subdir + '/' if generated_subdir | default('') else '' }}"
+
+- name: Resolve the generated dir in the on-host clone (optionally a scoped subdir)
+  ansible.builtin.set_fact:
+    _generated_src: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated/{{ _subdir_suffix }}"
 
 # Symbolic mode (capital X = dir-only execute): a numeric 0644 on a recursive copy
 # strips execute off the subdirs, leaving them non-traversable for SO/dev.

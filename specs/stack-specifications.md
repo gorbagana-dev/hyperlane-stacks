@@ -174,10 +174,12 @@ for balance/ATA lookups — an empty value throws and the gorchain side of the U
 fails to construct. So the deployer resolves it explicitly: after deploy it runs
 `hyperlane-sealevel-client token query --program-id <synthetic-program> synthetic`,
 parses the `Mint / Mint Authority:` line, and writes it to `token-config.json` →
-`warpRoute.synthetic.mint`. `publish-bridge-state.yml` then patches all four
-variables into `spec-warp-ui.yml`. (The e2e suite does the equivalent query in
-`conftest.py` and patches `test-spec-warp-ui.yml` at runtime, which is why bridging
-tests pass even though the prod spec ships placeholders.)
+`warpRoute.synthetic.mint`. The deployer then aggregates all route configs into
+`/state/warp-routes/warpRoutes.yaml` (a Hyperlane `WarpCoreConfig`), which the ops
+layer distributes into the `warp-ui-config` ConfigMap for the warp-UI to serve
+directly. (The e2e suite reads this file from state via `bridge_state_loader` and
+asserts it in `test_02_warp_deployer.py`, and `test_10_warp_ui.py` verifies it is
+served by the warp-UI container.)
 
 ### Services
 | Service | Image | Notes |
@@ -236,6 +238,13 @@ route self-skips (its `token-config.json` exists) unless `FORCE_REDEPLOY=true`.
 Each route also gets a scoped, RPC-redacted `deploy.log` under
 `/state/warp-routes/<name>/`, which rides the existing `publish-bridge-state.yml`
 flow into git alongside the other bridge state.
+
+After all selected routes are deployed, `deploy.sh` invokes
+`build-warp-ui-config.sh`, which aggregates every route's `token-config.json` into
+a single Hyperlane `WarpCoreConfig` and writes it to
+`/state/warp-routes/warpRoutes.yaml`. The ops layer distributes this file into the
+`warp-ui-config` ConfigMap (via `state_distribute`) so the warp-UI container can
+serve it directly at startup — no separate build step is needed.
 
 #### Idempotent re-runs
 The warp-deployer compose service carries a `laconic.recreate-job: "true"`

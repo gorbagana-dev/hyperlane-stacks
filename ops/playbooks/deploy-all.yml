@@ -119,6 +119,12 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-warp-ui
+    configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
+    # state_distribute runs as the pre-start hook (see the Relayer play for the rationale).
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
+    # Source only generated/warp-routes/ so the ConfigMap holds just warpRoutes.yaml.
+    generated_subdir: warp-routes
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
   roles:
     - fetch_stack
     - stack_deploy

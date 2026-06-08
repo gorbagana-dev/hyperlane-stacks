@@ -190,9 +190,11 @@ def build_warp_ui_image(stack_name: str = "hyperlane-warp-ui") -> None:
     stack_path = resolve_stack_path(stack_name)
 
     log_info("Setting up repositories for warp-ui build...")
-    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories"])
+    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories", "--git-ssh"])
 
     log_info("Building warp-ui container image...")
+    # The WalletConnect id is set on the spec and substituted into the bundle by the
+    # entrypoint at start, so it's not passed as a build arg.
     run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
 
     log_info("Warp UI image built into host Docker")

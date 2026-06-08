@@ -1871,25 +1871,13 @@ def warp_ui_deployment(
     skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
     namespace = "laconic-hyperlane-warp-ui"
 
-    # Resolve config values from deployer state files
+    # Resolve mailbox addresses from deployer state files
     log.info("Resolving mailbox addresses from program-ids state files...")
     gorchain_programs = bridge_state_loader.read_program_ids("gorchain")
     solana_programs = bridge_state_loader.read_program_ids("solana")
     gorchain_mailbox = gorchain_programs["mailbox"]
     solana_mailbox = solana_programs["mailbox"]
     log.info("Mailboxes — gorchain: %s, solana: %s", gorchain_mailbox, solana_mailbox)
-
-    usdc_route = WARP_ROUTES[0]["name"]
-    warp_programs = bridge_state_loader.read_route_program_addresses(usdc_route)
-    warp_collateral = warp_programs["solana"]
-    warp_synthetic = warp_programs["gorchain"]
-    log.info("Warp addresses — collateral: %s, synthetic: %s", warp_collateral, warp_synthetic)
-
-    token_mint = warp_deployment["routes"][usdc_route]["origin_token"]
-    log.info("Token mint: %s", token_mint)
-
-    synthetic_mint = _read_route_synthetic_mint(bridge_state_loader, usdc_route)
-    log.info("Synthetic mint: %s", synthetic_mint)
 
     if skip_warp_ui:
         deploy_dir = DEPLOY_DIR / "hyperlane-warp-ui"
@@ -1902,15 +1890,11 @@ def warp_ui_deployment(
                 "url": WARP_UI_URL,
                 "gorchain_mailbox": gorchain_mailbox,
                 "solana_mailbox": solana_mailbox,
-                "warp_collateral": warp_collateral,
-                "warp_synthetic": warp_synthetic,
-                "token_mint": token_mint,
-                "synthetic_mint": synthetic_mint,
             }
             return
         log.info("--skip-warp-ui-deploy set but %s missing — deploying fresh", deploy_dir)
 
-    # Patch the spec with runtime values
+    # Patch the spec with runtime mailbox values
     content = WARP_UI_SPEC.read_text()
     content = content.replace(
         'GORCHAIN_MAILBOX: "REPLACE_AT_RUNTIME"',
@@ -1919,22 +1903,6 @@ def warp_ui_deployment(
     content = content.replace(
         'SOLANA_MAILBOX: "REPLACE_AT_RUNTIME"',
         f'SOLANA_MAILBOX: "{solana_mailbox}"',
-    )
-    content = content.replace(
-        'WARP_COLLATERAL_ADDRESS: "REPLACE_AT_RUNTIME"',
-        f'WARP_COLLATERAL_ADDRESS: "{warp_collateral}"',
-    )
-    content = content.replace(
-        'WARP_SYNTHETIC_ADDRESS: "REPLACE_AT_RUNTIME"',
-        f'WARP_SYNTHETIC_ADDRESS: "{warp_synthetic}"',
-    )
-    content = content.replace(
-        'WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"',
-        f'WARP_TOKEN_MINT: "{token_mint}"',
-    )
-    content = content.replace(
-        'WARP_SYNTHETIC_MINT: "REPLACE_AT_RUNTIME"',
-        f'WARP_SYNTHETIC_MINT: "{synthetic_mint}"',
     )
     patched_path = E2E_DIR / ".warp-ui-spec-patched.yml"
     patched_path.write_text(content)
@@ -1946,6 +1914,8 @@ def warp_ui_deployment(
         deployment_id="warp-ui",
     )
 
+    # warpRoutes.yaml is built by the warp-deployer (under warp-routes/); populate copies it
+    # into the warp-ui-config ConfigMap dir.
     bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
 
     log.info("Starting warp-ui stack...")
@@ -1975,10 +1945,6 @@ def warp_ui_deployment(
         "url": WARP_UI_URL,
         "gorchain_mailbox": gorchain_mailbox,
         "solana_mailbox": solana_mailbox,
-        "warp_collateral": warp_collateral,
-        "warp_synthetic": warp_synthetic,
-        "token_mint": token_mint,
-        "synthetic_mint": synthetic_mint,
     }
 
     save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "warp-ui")

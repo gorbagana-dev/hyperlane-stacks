@@ -18,9 +18,9 @@ import shutil
 from pathlib import Path
 
 # Only stacks whose compose actually mounts a CM appear here. Stacks that
-# consume deployer state via env-var injection (gas-oracle, warp-ui,
-# monitoring) read individual values through BridgeStateLoader.read_json
-# in conftest spec-patching — they don't need populate() to copy files.
+# consume deployer state via env-var injection (gas-oracle, monitoring)
+# read individual values through BridgeStateLoader.read_json in conftest
+# spec-patching — they don't need populate() to copy files.
 CONSUMER_STATE_FILES: dict[str, list[tuple[str, str]]] = {
     "hyperlane-validator": [
         ("agent-config.json", "agent-config"),
@@ -34,7 +34,10 @@ CONSUMER_STATE_FILES: dict[str, list[tuple[str, str]]] = {
     "hyperlane-minio": [],
     "hyperlane-gas-oracle": [],          # env-var injection via read_json
     "hyperlane-monitoring": [],          # env-var injection via read_json
-    "hyperlane-warp-ui": [],             # env-var injection via read_json
+    # warp-ui mounts the deployer-built warpRoutes.yaml as the warp-ui-config CM:
+    "hyperlane-warp-ui": [
+        ("warp-routes/warpRoutes.yaml", "warp-ui-config"),
+    ],
 }
 
 
@@ -84,8 +87,8 @@ class BridgeStateLoader:
 
     def read_json(self, file_rel: str) -> dict:
         """Read a state JSON file. Used by conftest to patch test-spec
-        env vars (REPLACE_AT_RUNTIME) for env-var consumers that don't
-        mount a CM (gas-oracle, warp-ui, monitoring's balance-monitor).
+        env vars (REPLACE_AT_RUNTIME) from scalar state values
+        (gas-oracle, warp-ui mailboxes, monitoring's balance-monitor).
         """
         path = self.state_dir / file_rel
         if not path.exists():

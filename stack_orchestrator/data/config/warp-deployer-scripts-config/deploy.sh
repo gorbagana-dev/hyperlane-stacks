@@ -362,6 +362,12 @@ for route in $(echo "${WARP_ROUTES}" | tr ',' ' '); do
 done
 echo "=== All selected warp routes processed ==="
 
+# Build the warp-UI route config from the per-route artifacts written above (single
+# source of the WarpCoreConfig transform; publish/conftest only distribute the result).
+echo ""
+echo "=== Building warp-UI route config ==="
+STATE_DIR="${STATE_DIR}" bash /opt/scripts/build-warp-ui-config.sh
+
 # -------------------------------------------------------
 # Clean up deployer keypair
 # -------------------------------------------------------

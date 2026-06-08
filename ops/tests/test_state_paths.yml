@@ -22,13 +22,24 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../roles/stack_deploy/defaults/main.yml"
 
-    - name: Compute the generated src + configmap targets (as state_distribute does)
+    - name: Compute the generated src (default + warp-ui scoped) + configmap targets
       ansible.builtin.set_fact:
-        src_dir: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated"
+        # Mirror state_distribute's _generated_src: generated/<subdir>/ with a trailing
+        # slash so copy takes the dir contents. Default (no generated_subdir) -> whole
+        # generated/; warp-ui passes generated_subdir: warp-routes to scope its ConfigMap.
+        src_dir_default: "{{ _gen_base }}{{ _empty_subdir + '/' if _empty_subdir else '' }}"
+        src_dir_warp_ui: "{{ _gen_base }}{{ _warp_subdir + '/' if _warp_subdir else '' }}"
+        # Mirror state_distribute's exact _subdir_suffix expression with generated_subdir
+        # left genuinely undefined (not an empty string), to pin the default short-circuit.
+        src_dir_undefined: "{{ _gen_base }}{{ generated_subdir + '/' if generated_subdir | default('') else '' }}"
         cm_targets: >-
           {{ configmap_names
           | map('regex_replace', '^(.*)$', deploy_dir ~ '/configmaps/\1')
           | list }}
+      vars:
+        _gen_base: "{{ deployment_root }}/bridges/{{ bridge_name }}/generated/"
+        _empty_subdir: ""
+        _warp_subdir: warp-routes
 
     - name: Roots resolve to the on-host clone and paths map correctly
       ansible.builtin.assert:
@@ -37,5 +48,9 @@
           - "deploy_base == '/home/op/deployments'"
           - "repo_root == '/home/op/deployments/hyperlane-stacks'"
           - "deployment_root == '/home/op/deployments/hyperlane-stacks/deployment'"
-          - "src_dir == '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated'"
+          - "src_dir_default == '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated/'"
+          - >-
+            src_dir_warp_ui ==
+            '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated/warp-routes/'
+          - "src_dir_undefined == '/home/op/deployments/hyperlane-stacks/deployment/bridges/default/generated/'"
           - "cm_targets == ['/home/op/deployments/hyperlane-relayer/configmaps/agent-config']"

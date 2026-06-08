@@ -338,3 +338,23 @@ class TestWarpDeployer:
                     "%s/%s: warp route upgrade authority verified (%s)",
                     route, chain_name, actual_authority,
                 )
+
+    def test_warp_deployer_builds_warp_ui_config(
+        self,
+        warp_deployment: dict,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """The warp-deployer emits a WarpCoreConfig covering every deployed route."""
+        cfg = bridge_state_loader.read_json("warp-routes/warpRoutes.yaml")
+
+        assert cfg["options"] == {}
+        # Two deployed routes (USDC, SOL) x two chain sides = four token entries.
+        assert len(cfg["tokens"]) == 4
+        standards = {t["standard"] for t in cfg["tokens"]}
+        assert "SealevelHypCollateral" in standards   # USDC solana side
+        assert "SealevelHypNative" in standards        # SOL solana side
+        assert "SealevelHypSynthetic" in standards     # gorchain sides
+        for t in cfg["tokens"]:
+            assert isinstance(t["decimals"], int), f"decimals must be int: {t}"
+            assert t["addressOrDenom"]
+            assert t["connections"][0]["token"].startswith("sealevel|")

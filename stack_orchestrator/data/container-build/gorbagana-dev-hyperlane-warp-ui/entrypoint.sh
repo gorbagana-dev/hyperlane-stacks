@@ -1,72 +1,75 @@
 #!/bin/sh
-set -e
+set -eu
 
-# Validate required environment variables
+# Required env (chain config, secret solana RPC, WalletConnect id). Routes arrive as
+# a mounted file. NEXT_PUBLIC_WALLET_CONNECT_ID must be non-empty (RainbowKit fatals
+# on an empty id).
 missing=""
 for var in GORCHAIN_RPC_URL SOLANA_RPC_URL GORCHAIN_MAILBOX SOLANA_MAILBOX \
-           WARP_COLLATERAL_ADDRESS WARP_SYNTHETIC_ADDRESS; do
-  eval val=\$$var
-  if [ -z "$val" ]; then
-    missing="$missing $var"
-  fi
+           GORCHAIN_DOMAIN_ID SOLANA_DOMAIN_ID GORCHAIN_CHAIN_ID SOLANA_CHAIN_ID \
+           NEXT_PUBLIC_WALLET_CONNECT_ID; do
+  eval "val=\${$var:-}"
+  [ -z "$val" ] && missing="$missing $var"
 done
 if [ -n "$missing" ]; then
   echo "ERROR: Required environment variables not set:$missing" >&2
   exit 1
 fi
 
-echo "Substituting sentinel placeholders with environment values..."
+WARP_CFG_SRC="/config/warp-ui-config/warpRoutes.yaml"
+PUBLIC_DIR="/app/public"
 
-# Replace sentinels in all JS/JSON bundles under .next/
-find /app/.next -type f \( -name '*.js' -o -name '*.json' \) -exec sed -i \
-  -e "s|__GORCHAIN_RPC_URL__|${GORCHAIN_RPC_URL:-http://localhost:8899}|g" \
-  -e "s|__SOLANA_RPC_URL__|${SOLANA_RPC_URL:-http://localhost:18899}|g" \
-  -e "s|__GORCHAIN_DOMAIN_ID__|${GORCHAIN_DOMAIN_ID:-0}|g" \
-  -e "s|__SOLANA_DOMAIN_ID__|${SOLANA_DOMAIN_ID:-0}|g" \
-  -e "s|__GORCHAIN_CHAIN_NAME__|${GORCHAIN_CHAIN_NAME:-gorchain}|g" \
-  -e "s|__SOLANA_CHAIN_NAME__|${SOLANA_CHAIN_NAME:-solana}|g" \
-  -e "s|__GORCHAIN_CHAIN_ID__|${GORCHAIN_CHAIN_ID:-0}|g" \
-  -e "s|__SOLANA_CHAIN_ID__|${SOLANA_CHAIN_ID:-0}|g" \
-  -e "s|__WARP_COLLATERAL_ADDRESS__|${WARP_COLLATERAL_ADDRESS:-}|g" \
-  -e "s|__WARP_SYNTHETIC_ADDRESS__|${WARP_SYNTHETIC_ADDRESS:-}|g" \
-  -e "s|__WARP_TOKEN_MINT__|${WARP_TOKEN_MINT:-}|g" \
-  -e "s|__WARP_SYNTHETIC_MINT__|${WARP_SYNTHETIC_MINT:-}|g" \
-  -e "s|__GORCHAIN_MAILBOX__|${GORCHAIN_MAILBOX:-}|g" \
-  -e "s|__SOLANA_MAILBOX__|${SOLANA_MAILBOX:-}|g" \
-  -e "s|__WARP_TOKEN_NAME__|${WARP_TOKEN_NAME:-USD Coin}|g" \
-  -e "s|__WARP_TOKEN_SYMBOL__|${WARP_TOKEN_SYMBOL:-USDC}|g" \
-  -e "s|__WARP_TOKEN_DECIMALS__|${WARP_TOKEN_DECIMALS:-6}|g" \
-  -e "s|__WARP_SYNTHETIC_NAME__|${WARP_SYNTHETIC_NAME:-Synthetic USD Coin}|g" \
-  -e "s|__WARP_SYNTHETIC_SYMBOL__|${WARP_SYNTHETIC_SYMBOL:-gUSDC}|g" \
-  -e "s|__NEXT_PUBLIC_WALLET_CONNECT_ID__|${NEXT_PUBLIC_WALLET_CONNECT_ID:-}|g" \
-  -e "s|__GORCHAIN_NATIVE_TOKEN_NAME__|${GORCHAIN_NATIVE_TOKEN_NAME:-GOR}|g" \
-  -e "s|__GORCHAIN_NATIVE_TOKEN_SYMBOL__|${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}|g" \
-  -e "s|__GORCHAIN_NATIVE_TOKEN_DECIMALS__|${GORCHAIN_NATIVE_TOKEN_DECIMALS:-9}|g" \
-  -e "s|__SOLANA_NATIVE_TOKEN_NAME__|${SOLANA_NATIVE_TOKEN_NAME:-SOL}|g" \
-  -e "s|__SOLANA_NATIVE_TOKEN_SYMBOL__|${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}|g" \
-  -e "s|__SOLANA_NATIVE_TOKEN_DECIMALS__|${SOLANA_NATIVE_TOKEN_DECIMALS:-9}|g" \
-  {} +
+# 1) Route config: copy the deploy-time-generated file the deployment layer mounted.
+if [ -f "$WARP_CFG_SRC" ]; then
+  cp "$WARP_CFG_SRC" "$PUBLIC_DIR/warpRoutes.yaml"
+  echo "Installed warpRoutes.yaml from $WARP_CFG_SRC"
+else
+  echo "ERROR: $WARP_CFG_SRC not found (warp-ui-config configmap not mounted?)" >&2
+  exit 1
+fi
 
-# Also replace in static assets if configs are served from public/
-find /app/public -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.json' \) -exec sed -i \
-  -e "s|__GORCHAIN_RPC_URL__|${GORCHAIN_RPC_URL:-http://localhost:8899}|g" \
-  -e "s|__SOLANA_RPC_URL__|${SOLANA_RPC_URL:-http://localhost:18899}|g" \
-  -e "s|__GORCHAIN_DOMAIN_ID__|${GORCHAIN_DOMAIN_ID:-0}|g" \
-  -e "s|__SOLANA_DOMAIN_ID__|${SOLANA_DOMAIN_ID:-0}|g" \
-  -e "s|__GORCHAIN_MAILBOX__|${GORCHAIN_MAILBOX:-}|g" \
-  -e "s|__SOLANA_MAILBOX__|${SOLANA_MAILBOX:-}|g" \
-  -e "s|__WARP_COLLATERAL_ADDRESS__|${WARP_COLLATERAL_ADDRESS:-}|g" \
-  -e "s|__WARP_SYNTHETIC_ADDRESS__|${WARP_SYNTHETIC_ADDRESS:-}|g" \
-  -e "s|__WARP_TOKEN_MINT__|${WARP_TOKEN_MINT:-}|g" \
-  -e "s|__WARP_SYNTHETIC_MINT__|${WARP_SYNTHETIC_MINT:-}|g" \
-  {} + 2>/dev/null || true
+# 2) Chain config: render from env so the secret solana RPC never lands in git.
+cat > "$PUBLIC_DIR/chains.yaml" <<EOF
+gorchain:
+  protocol: sealevel
+  chainId: ${GORCHAIN_CHAIN_ID}
+  domainId: ${GORCHAIN_DOMAIN_ID}
+  name: ${GORCHAIN_CHAIN_NAME:-gorchain}
+  mailbox: ${GORCHAIN_MAILBOX}
+  rpcUrls:
+    - http: ${GORCHAIN_RPC_URL}
+  nativeToken:
+    name: ${GORCHAIN_NATIVE_TOKEN_NAME:-GOR}
+    symbol: ${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}
+    decimals: ${GORCHAIN_NATIVE_TOKEN_DECIMALS:-9}
+  blocks:
+    confirmations: 1
+    estimateBlockTime: 0.4
+    reorgPeriod: 0
+solana:
+  protocol: sealevel
+  chainId: ${SOLANA_CHAIN_ID}
+  domainId: ${SOLANA_DOMAIN_ID}
+  name: ${SOLANA_CHAIN_NAME:-solana}
+  mailbox: ${SOLANA_MAILBOX}
+  rpcUrls:
+    - http: ${SOLANA_RPC_URL}
+  nativeToken:
+    name: ${SOLANA_NATIVE_TOKEN_NAME:-SOL}
+    symbol: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
+    decimals: ${SOLANA_NATIVE_TOKEN_DECIMALS:-9}
+  blocks:
+    confirmations: 1
+    estimateBlockTime: 0.4
+    reorgPeriod: 0
+EOF
+echo "Rendered chains.yaml"
 
-# Fix numeric types: sentinel-based values compile as strings ("99999")
-# but the SDK expects numbers (99999). This script converts them back,
-# only in chunks containing our chain config (not SDK registry entries).
-echo "Fixing numeric types in compiled bundles..."
-node /app/fix-numeric-types.js \
-  --chain-names "${GORCHAIN_CHAIN_NAME:-gorchain},${SOLANA_CHAIN_NAME:-solana}"
+# 3) WalletConnect id: NEXT_PUBLIC_* is inlined at build, so the bundle ships with a
+# sentinel placeholder; replace it here with the real id from pod env.
+find /app/.next -name '*.js' -exec sed -i \
+  "s|__NEXT_PUBLIC_WALLET_CONNECT_ID__|${NEXT_PUBLIC_WALLET_CONNECT_ID}|g" {} +
+echo "Substituted WalletConnect id"
 
 echo "Starting Next.js standalone server..."
 exec node server.js

@@ -424,6 +424,8 @@ This avoids needing `solana` CLI inside the cluster.
 - `hyperlane-token-config` ConfigMap exists with correct token mint and warp route metadata
 - `hyperlane-warp-deploy-outputs` ConfigMap exists with deployment artifacts
 - Warp route direction: USDC collateral on Solana (domain 99998) → synthetic USDC on Gorchain (domain 99999)
+- `warp-routes/warpRoutes.yaml` exists in state (deployer-produced `WarpCoreConfig`);
+  asserted by `test_02_warp_deployer.py::test_warp_deployer_builds_warp_ui_config`
 
 **hyperlane-minio** (`test_03_minio.py`):
 
@@ -979,10 +981,14 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
 
 1. **Build and load warp-ui image** into kind cluster (or skip if already loaded,
    following the `--skip-warp-ui-deploy` pattern)
-2. **Resolve config values** from existing ConfigMaps:
-   - Mailbox addresses from `hyperlane-program-ids` ConfigMap (gorchain + solana)
-   - Warp route addresses from `hyperlane-warp-deploy-outputs` ConfigMap
-   - Token mint from `hyperlane-token-config` ConfigMap or warp deployer output
+2. **Resolve config values**:
+   - Mailbox addresses (gorchain + solana) from deployer state, patched into the spec
+     for the container to render into `chains.yaml`
+   - `warpRoutes.yaml` is **deployer-produced** (written to `/state/warp-routes/warpRoutes.yaml`
+     by `build-warp-ui-config.sh` at the end of `deploy.sh`) and distributed into the
+     `warp-ui-config` ConfigMap by `state_distribute`; conftest no longer builds it.
+     Its content is asserted by `test_02_warp_deployer.py::test_warp_deployer_builds_warp_ui_config`
+     (artifact check) and by `test_10_warp_ui.py` (served by the warp-UI container).
 3. **Prepare test spec** from `test-spec-warp-ui.yml`, replacing placeholders:
    ```yaml
    # test-spec-warp-ui.yml
@@ -1178,17 +1184,29 @@ Connection flow: "Connect wallet" button → protocol modal ("Solana") →
 wallet list → "Backpack" → approve popup (if it opens). The test detects
 already-connected state by scanning buttons for truncated base58 address patterns.
 
-**`test_warp_ui_bridge_solana_to_gorchain`**
+**`test_warp_ui_bridge_usdc_solana_to_gorchain`**
 
-Execute a real collateral→synthetic transfer through the UI. Self-transfer mode
-(recipient auto-filled from connected wallet). Verifies on-chain gUSDC balance
-increase on Gorchain after relay delivery.
+Execute a real collateral→synthetic USDC transfer through the UI. Self-transfer
+mode (recipient auto-filled from connected wallet). Verifies on-chain synthetic
+USDC balance increase on Gorchain after relay delivery.
 
-**`test_warp_ui_bridge_gorchain_to_solana`**
+**`test_warp_ui_bridge_usdc_gorchain_to_solana`**
 
-Execute the reverse synthetic→collateral transfer. Switches Backpack RPC to
-Gorchain before navigating, reloads page to let autoConnect settle. Uses a
-smaller amount (0.05 vs 0.1) to account for bridge fees.
+Execute the reverse synthetic→collateral USDC transfer. Switches Backpack RPC to
+Gorchain before navigating. Uses a smaller amount (0.05 vs 0.1) to account for
+bridge fees.
+
+**`test_warp_ui_bridge_sol_solana_to_gorchain`**
+
+Execute a real native SOL → synthetic SOL transfer through the UI (native route).
+Switches Backpack RPC to Solana for the origin, then verifies the on-chain
+synthetic SOL balance increase on Gorchain after relay delivery.
+
+**`test_warp_ui_bridge_sol_gorchain_to_solana`**
+
+Execute the reverse synthetic SOL → native SOL transfer. Switches Backpack RPC to
+Gorchain, then polls the released native SOL on Solana (destination is native, not
+an SPL token). Requires the SOL forward test to have run first.
 
 #### Helper Functions
 

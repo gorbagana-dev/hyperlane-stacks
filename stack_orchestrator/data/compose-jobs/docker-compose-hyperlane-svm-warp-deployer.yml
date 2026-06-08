@@ -7,7 +7,7 @@ services:
     labels:
       laconic.recreate-job: "true"
     environment:
-      # Space-separated list of route names to deploy (definitions mounted at /config/warp-routes)
+      # Comma- or space-separated list of route names to deploy (definitions mounted at /config/warp-routes)
       WARP_ROUTES: ${WARP_ROUTES}
       # Chain config (used by envsubst for registry/token templates)
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
