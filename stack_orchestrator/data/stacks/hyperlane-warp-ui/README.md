@@ -2,7 +2,7 @@
 
 Browser-based bridge UI for cross-chain token transfers using Hyperlane warp routes. Serves a Next.js app with runtime-injected chain and token configuration.
 
-Built from [hyperlane-warp-ui-template](https://github.com/hyperlane-xyz/hyperlane-warp-ui-template) at tag `v2.0.0`.
+Built from the fork [gorbagana-dev/hyperlane-warp-ui-template](https://github.com/gorbagana-dev/hyperlane-warp-ui-template) at tag `v2.0.0-gorbagana.1`, which adds runtime route/chain config support.
 
 ## Prerequisites
 
@@ -38,11 +38,11 @@ config:
   SOLANA_DOMAIN_ID: "99998"
   GORCHAIN_CHAIN_ID: "99999"
   SOLANA_CHAIN_ID: "99998"
-  WARP_COLLATERAL_ADDRESS: "<collateral-address>"
-  WARP_SYNTHETIC_ADDRESS: "<synthetic-address>"
   GORCHAIN_MAILBOX: "<gorchain-mailbox-program-id>"
   SOLANA_MAILBOX: "<solana-mailbox-program-id>"
   NEXT_PUBLIC_WALLET_CONNECT_ID: "<walletconnect-project-id>"
+configmaps:
+  warp-ui-config: ./configmaps/warp-ui-config
 network:
   http-proxy:
     - host-name: bridge.example.com
@@ -56,6 +56,8 @@ laconic-so --stack hyperlane-warp-ui deploy create --spec-file warp-ui-spec.yml 
 ```
 
 The `http-proxy` section configures ingress routing. Update `host-name` to your domain.
+
+The `warp-ui-config` ConfigMap carries `warpRoutes.yaml` (the runtime route/token config built by the `hyperlane-svm-warp-deployer`); the container renders `chains.yaml` from the chain env vars at startup. Routes are not baked into the image.
 
 ## 3. Start
 

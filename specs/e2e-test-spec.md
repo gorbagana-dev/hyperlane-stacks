@@ -981,10 +981,9 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
 
 1. **Build and load warp-ui image** into kind cluster (or skip if already loaded,
    following the `--skip-warp-ui-deploy` pattern)
-2. **Resolve config values** from existing ConfigMaps:
-   - Mailbox addresses from `hyperlane-program-ids` ConfigMap (gorchain + solana)
-   - Warp route addresses from `hyperlane-warp-deploy-outputs` ConfigMap
-   - Token mint from `hyperlane-token-config` ConfigMap or warp deployer output
+2. **Resolve config values**:
+   - Mailbox addresses (gorchain + solana) from deployer state, patched into the spec
+     for the container to render into `chains.yaml`
    - `warpRoutes.yaml` is **deployer-produced** (written to `/state/warp-routes/warpRoutes.yaml`
      by `build-warp-ui-config.sh` at the end of `deploy.sh`) and distributed into the
      `warp-ui-config` ConfigMap by `state_distribute`; conftest no longer builds it.
