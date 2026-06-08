@@ -424,6 +424,8 @@ This avoids needing `solana` CLI inside the cluster.
 - `hyperlane-token-config` ConfigMap exists with correct token mint and warp route metadata
 - `hyperlane-warp-deploy-outputs` ConfigMap exists with deployment artifacts
 - Warp route direction: USDC collateral on Solana (domain 99998) → synthetic USDC on Gorchain (domain 99999)
+- `warp-routes/warpRoutes.yaml` exists in state (deployer-produced `WarpCoreConfig`);
+  asserted by `test_02_warp_deployer.py::test_warp_deployer_builds_warp_ui_config`
 
 **hyperlane-minio** (`test_03_minio.py`):
 
@@ -983,6 +985,11 @@ Deploys the warp-ui stack with addresses resolved from ConfigMaps.
    - Mailbox addresses from `hyperlane-program-ids` ConfigMap (gorchain + solana)
    - Warp route addresses from `hyperlane-warp-deploy-outputs` ConfigMap
    - Token mint from `hyperlane-token-config` ConfigMap or warp deployer output
+   - `warpRoutes.yaml` is **deployer-produced** (written to `/state/warp-routes/warpRoutes.yaml`
+     by `build-warp-ui-config.sh` at the end of `deploy.sh`) and distributed into the
+     `warp-ui-config` ConfigMap by `state_distribute`; conftest no longer builds it.
+     Its content is asserted by `test_02_warp_deployer.py::test_warp_deployer_builds_warp_ui_config`
+     (artifact check) and by `test_10_warp_ui.py` (served by the warp-UI container).
 3. **Prepare test spec** from `test-spec-warp-ui.yml`, replacing placeholders:
    ```yaml
    # test-spec-warp-ui.yml
