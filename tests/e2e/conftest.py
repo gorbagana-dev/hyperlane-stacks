@@ -808,40 +808,6 @@ def _write_warp_menu(deploy_dir: Path, test_mint: str) -> None:
         (cmdir / f"{route['stem']}.json").write_text(json.dumps(cfg))
 
 
-def _build_warp_ui_config(bridge_state_loader: BridgeStateLoader, gorchain_mailbox: str, solana_mailbox: str) -> dict:
-    """WarpCoreConfig (tokens+options) for every deployed route, for the warp-ui."""
-    _STANDARD = {
-        "collateral": "SealevelHypCollateral",
-        "synthetic": "SealevelHypSynthetic",
-        "native": "SealevelHypNative",
-    }
-    _MAILBOX = {"gorchain": gorchain_mailbox, "solana": solana_mailbox}
-    tokens = []
-    for route in WARP_ROUTES:
-        name = route["name"]
-        token_cfg = bridge_state_loader.read_route_token_config(name).get("warpRoute", {})
-        programs = bridge_state_loader.read_route_program_addresses(name)  # {chain: base58str}
-        sides = {c: s for c, s in token_cfg.items() if c != "name"}
-        for chain, side in sides.items():
-            other = next(c for c in sides if c != chain)
-            entry = {
-                "chainName": chain,
-                "standard": _STANDARD[side["type"]],
-                "name": name,
-                "symbol": side.get("symbol", route["stem"].upper()),
-                "decimals": side.get("decimals", 9),
-                "addressOrDenom": programs[chain],
-                "mailbox": _MAILBOX[chain],
-                "connections": [{"token": f"sealevel|{other}|{programs[other]}"}],
-            }
-            if side["type"] == "collateral" and side.get("token"):
-                entry["collateralAddressOrDenom"] = side["token"]
-            if side["type"] == "synthetic" and side.get("mint"):
-                entry["collateralAddressOrDenom"] = side["mint"]
-            tokens.append(entry)
-    return {"tokens": tokens, "options": {}}
-
-
 @pytest.fixture(scope="session")
 def warp_deployment(
     deployer_deployment: DeploymentInfo,
@@ -1901,8 +1867,6 @@ def warp_ui_deployment(
     bridge_state_loader: BridgeStateLoader,
 ) -> Generator[dict, None, None]:
     """Deploy the warp-ui stack with resolved addresses from state files."""
-    import yaml
-
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_warp_ui = request.config.getoption("--skip-warp-ui-deploy", default=False)
     namespace = "laconic-hyperlane-warp-ui"
@@ -1950,12 +1914,8 @@ def warp_ui_deployment(
         deployment_id="warp-ui",
     )
 
-    log.info("Generating warp-ui-config configmap (warpRoutes.yaml)...")
-    warp_ui_cfg = _build_warp_ui_config(bridge_state_loader, gorchain_mailbox, solana_mailbox)
-    cmdir = deploy_info.deploy_dir / "configmaps" / "warp-ui-config"
-    cmdir.mkdir(parents=True, exist_ok=True)
-    (cmdir / "warpRoutes.yaml").write_text(yaml.safe_dump(warp_ui_cfg))
-
+    # warpRoutes.yaml is built by the warp-deployer (under warp-routes/); populate copies it
+    # into the warp-ui-config ConfigMap dir.
     bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
 
     log.info("Starting warp-ui stack...")
