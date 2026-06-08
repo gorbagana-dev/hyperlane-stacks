@@ -1,10 +1,13 @@
 #!/bin/sh
 set -e
 
-# Required env (chain config + secret solana RPC). Routes arrive as a mounted file.
+# Required env (chain config, secret solana RPC, WalletConnect id). Routes arrive as
+# a mounted file. NEXT_PUBLIC_WALLET_CONNECT_ID must be non-empty (RainbowKit fatals
+# on an empty id).
 missing=""
 for var in GORCHAIN_RPC_URL SOLANA_RPC_URL GORCHAIN_MAILBOX SOLANA_MAILBOX \
-           GORCHAIN_DOMAIN_ID SOLANA_DOMAIN_ID GORCHAIN_CHAIN_ID SOLANA_CHAIN_ID; do
+           GORCHAIN_DOMAIN_ID SOLANA_DOMAIN_ID GORCHAIN_CHAIN_ID SOLANA_CHAIN_ID \
+           NEXT_PUBLIC_WALLET_CONNECT_ID; do
   eval val=\$$var
   [ -z "$val" ] && missing="$missing $var"
 done
@@ -61,6 +64,12 @@ solana:
     reorgPeriod: 0
 EOF
 echo "Rendered chains.yaml"
+
+# 3) WalletConnect id: NEXT_PUBLIC_* is inlined at build, so the bundle ships with a
+# sentinel placeholder; replace it here with the real id from pod env.
+find /app/.next -name '*.js' -exec sed -i \
+  "s|__NEXT_PUBLIC_WALLET_CONNECT_ID__|${NEXT_PUBLIC_WALLET_CONNECT_ID}|g" {} +
+echo "Substituted WalletConnect id"
 
 echo "Starting Next.js standalone server..."
 exec node server.js

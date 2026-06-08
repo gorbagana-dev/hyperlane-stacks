@@ -29,12 +29,10 @@ COPY . .
 RUN sed -i 's/reactStrictMode: true,/reactStrictMode: true,\n  output: "standalone",/' next.config.js && \
     sed -i '/outputFileTracingExcludes/,/^  },/d' next.config.js
 
-# NEXT_PUBLIC_* is baked into the JS bundle at build time, so the WalletConnect ID
-# must be passed as a build arg (not a runtime env). With laconic-so, set:
-#   CERC_CONTAINER_EXTRA_BUILD_ARGS='--build-arg NEXT_PUBLIC_WALLET_CONNECT_ID=<id>'
-# Empty is fine for e2e/local; the published prod image must pass the real id.
-ARG NEXT_PUBLIC_WALLET_CONNECT_ID=""
-ENV NEXT_PUBLIC_WALLET_CONNECT_ID=${NEXT_PUBLIC_WALLET_CONNECT_ID}
+# Next.js inlines NEXT_PUBLIC_* into the bundle at build, so it won't read this from the
+# container env at runtime. Build with a sentinel that entrypoint.sh substitutes with the
+# real id (from pod env) at container start — so one image works across deployments.
+ENV NEXT_PUBLIC_WALLET_CONNECT_ID=__NEXT_PUBLIC_WALLET_CONNECT_ID__
 
 RUN pnpm build
 
