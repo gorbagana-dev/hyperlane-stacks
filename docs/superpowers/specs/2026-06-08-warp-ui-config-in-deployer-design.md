@@ -42,9 +42,8 @@ generated/
   gas-oracle-config.json                                                   [top-level → reaches pod]
   multisig-config.json                                                     [top-level → reaches pod]
   registry/metadata.yaml                                                   [subdir → dropped]
-  warp-ui/
-    warpRoutes.yaml      ★ the UI's WarpCoreConfig (its own scoped subdir; see below)
   warp-routes/                                                             [subdir → dropped]
+    warpRoutes.yaml      ★ the UI's WarpCoreConfig (root of warp-routes/; see below)
     <route-name>/
       token-config.json   { warpRoute: { name,
                               <origin chain>: { type, symbol, decimals, token? },
@@ -64,23 +63,28 @@ plus the core `program-ids.json` mailboxes. So the entrypoint cannot see those i
 The first such actor is the **warp-deployer** — it *writes* that tree, before `publish`
 copies it and before SO flattens it away.
 
-## ConfigMap scoping (why a dedicated `warp-ui/` subdir)
+## ConfigMap scoping (why source `generated/warp-routes/`)
 
 `state_distribute` copies the *contents* of a source directory into the consumer's
-`configmaps/<name>/`, and SO turns the top-level files there into the ConfigMap. The role
-currently sources the whole `generated/` directory, so a consumer's ConfigMap ends up
-holding **every** top-level `generated/` file — for the warp-UI that means
-`agent-config.json`, `program-ids.json`, `gas-oracle-config.json`, `multisig-config.json`,
-none of which the UI reads.
+`configmaps/<name>/`, and SO turns only the top-level files there into the ConfigMap (it
+drops subdirectories — the behavior this whole design rests on). The role currently sources
+the whole `generated/` directory, so a consumer's ConfigMap would hold **every** top-level
+`generated/` file — for the warp-UI that means `agent-config.json`, `program-ids.json`,
+`gas-oracle-config.json`, `multisig-config.json`, none of which the UI reads.
 
-To keep the warp-UI ConfigMap to just what it needs, the deployer writes `warpRoutes.yaml`
-into its **own** subdir, `generated/warp-ui/warpRoutes.yaml`, and `state_distribute` sources
-that subdir for this stack (`generated/warp-ui/` → `configmaps/warp-ui-config/`). Because
-`state_distribute` copies the subdir's *contents*, `warpRoutes.yaml` lands at the ConfigMap
-root (top-level → reaches the pod), and nothing else comes with it.
+To keep the warp-UI ConfigMap to just `warpRoutes.yaml`, the deployer writes it at the
+**root of the existing** `generated/warp-routes/` tree (beside the per-route `<name>/`
+dirs), and the warp-UI play points `state_distribute` at `generated/warp-routes/`. SO then
+takes the top-level `warpRoutes.yaml` into the ConfigMap and drops the per-route `<name>/`
+subdirs — the ConfigMap ends up holding only `warpRoutes.yaml`. This reuses the existing
+`warp-routes/` tree rather than adding a `generated/` subdir, and keeps the warp-UI on the
+same distribution mechanism as the relayer/validators (`state_distribute`), just pointed at
+a scoped source.
 
-This keeps the warp-UI on the same distribution mechanism as the relayer/validators
-(`state_distribute`), just pointed at a scoped source.
+Trade-off: `state_distribute`'s copy is recursive, so on the ops path it duplicates the
+per-route `<name>/` subdirs into the warp-UI deploy dir on disk. SO ignores them, so it is a
+small, harmless local copy — not a ConfigMap or correctness concern. (e2e's `populate` is
+file-based and copies only `warpRoutes.yaml`, so it has no such dup.)
 
 ## Goals
 
@@ -109,7 +113,7 @@ This keeps the warp-UI on the same distribution mechanism as the relayer/validat
 ### Producer — aggregation step in `deploy.sh`
 
 `deploy.sh` ends with a loop over `WARP_ROUTES` (`for route in …; do deploy_route …`).
-Add one step **after** the loop that writes `${STATE_DIR}/warp-ui/warpRoutes.yaml`. For
+Add one step **after** the loop that writes `${STATE_DIR}/warp-routes/warpRoutes.yaml`. For
 each stem in `WARP_ROUTES`:
 
 1. Resolve the route name the same way `deploy_route` does: `jq -r .name /config/warp-routes/<stem>.json`.
@@ -125,7 +129,7 @@ each stem in `WARP_ROUTES`:
      omitted for native
    - `connections: [ { token: "sealevel|<other chain>|<other warp program>" } ]`
 
-Write `{ tokens: [<all>], options: {} }` to `${STATE_DIR}/warp-ui/warpRoutes.yaml`.
+Write `{ tokens: [<all>], options: {} }` to `${STATE_DIR}/warp-routes/warpRoutes.yaml`.
 
 Properties:
 - Runs **unconditionally** — it reads each route's persistent artifacts, not in-loop
@@ -160,16 +164,16 @@ stringifying.
   becomes `…/generated/<generated_subdir>/` (default `…/generated/`). No behaviour change
   for existing callers (relayer/validators omit it).
 - **`deploy-all.yml` warp-UI play** — keep the existing `state_distribute` pre-start hook
-  (from the runtime-routes branch); add `generated_subdir: warp-ui` so the hook sources
-  `generated/warp-ui/` and the ConfigMap holds only `warpRoutes.yaml`.
+  (from the runtime-routes branch); add `generated_subdir: warp-routes` so the hook sources
+  `generated/warp-routes/` and the ConfigMap holds only `warpRoutes.yaml`.
 - **`publish-bridge-state.yml`** — delete the `warpRoutes.yaml`-building block
   (`_warp_stems`, the per-route slurps, the `_warp_tokens` accumulator, "Write
   warpRoutes.yaml into the generated state"). Keep: copy `generated/` (now containing
-  `warp-ui/warpRoutes.yaml`), patch `GORCHAIN_MAILBOX`/`SOLANA_MAILBOX` into
+  `warp-routes/warpRoutes.yaml`), patch `GORCHAIN_MAILBOX`/`SOLANA_MAILBOX` into
   `spec-warp-ui.yml` (the entrypoint needs them as env for `chains.yaml`), the existing
   core IGP/mailbox spec patches, and git add/commit/push.
 - **`conftest.py` + `state_loader.py`** — delete `_build_warp_ui_config`. Add
-  `("warp-ui/warpRoutes.yaml", "warp-ui-config")` to
+  `("warp-routes/warpRoutes.yaml", "warp-ui-config")` to
   `CONSUMER_STATE_FILES["hyperlane-warp-ui"]` so the existing `BridgeStateLoader.populate`
   copies the deployer-produced file into the ConfigMap dir — same scoped result as ops.
 - **`entrypoint.sh`, specs, compose** — unchanged. `warpRoutes.yaml` arrives in the
@@ -180,7 +184,7 @@ stringifying.
 1. Add the stem to `WARP_ROUTES` in `spec-warp-deployer.yml` (menu file checked in, or add one).
 2. Re-run `deploy-all` (or the warp-deployer → publish → warp-ui plays): the deployer
    deploys only the new route (others self-skip), the aggregation rebuilds the full
-   `warp-ui/warpRoutes.yaml`, publish pushes the updated `generated/`, the warp-UI play
+   `warp-routes/warpRoutes.yaml`, publish pushes the updated `generated/`, the warp-UI play
    redeploys and the entrypoint re-installs the file. No transform runs outside the
    deployer; nothing is hand-edited.
 
@@ -189,9 +193,9 @@ stringifying.
 A deployment whose routes predate this change has the per-route artifacts but a
 publish-built `warpRoutes.yaml` at the `generated/` root. Because the aggregation reads
 persistent artifacts rather than depending on the in-loop deploy, the next deployer run
-rebuilds it under `generated/warp-ui/` without redeploying routes (no `FORCE_REDEPLOY`).
+rebuilds it under `generated/warp-routes/` without redeploying routes (no `FORCE_REDEPLOY`).
 The stale root-level `warpRoutes.yaml`, if present from a prior deploy, is unused once the
-warp-UI ConfigMap sources `generated/warp-ui/`; publish's `git add generated/` will carry
+warp-UI ConfigMap sources `generated/warp-routes/`; publish's `git add generated/` will carry
 the new subdir, and the old file can be deleted in the same cleanup that drops committed
 state.
 
@@ -201,7 +205,7 @@ No bespoke unit tests. The e2e already deploys both routes (USDC collateral/synt
 native SOL), so it validates the deployer-built config directly:
 
 - **`test_02_warp_deployer.py`** — assert the warp-deployer produced
-  `<state>/warp-ui/warpRoutes.yaml`, that it parses as a `WarpCoreConfig`, has four token
+  `<state>/warp-routes/warpRoutes.yaml`, that it parses as a `WarpCoreConfig`, has four token
   entries, the expected `SealevelHyp*` standards, and integer `decimals`.
 - **`test_10_warp_ui.py::test_warp_ui_serves_runtime_config`** — unchanged; already asserts
   the *served* `warpRoutes.yaml` carries both routes.
@@ -214,7 +218,7 @@ native SOL), so it validates the deployer-built config directly:
 - **Route-name resolution parity** — the aggregation must resolve stem → name via
   `jq -r .name` on the menu, exactly as `deploy_route`, or the dir lookup misses.
 - **Scoped-source trailing slash** — `state_distribute` must copy the *contents* of
-  `generated/warp-ui/` (trailing slash) so `warpRoutes.yaml` lands at the ConfigMap root,
+  `generated/warp-routes/` (trailing slash) so `warpRoutes.yaml` lands at the ConfigMap root,
   not under a `warp-ui/` subdir (which SO would drop).
-- **e2e ordering** — `test_02` reads `<state>/warp-ui/warpRoutes.yaml` only after the
+- **e2e ordering** — `test_02` reads `<state>/warp-routes/warpRoutes.yaml` only after the
   warp-deployer fixture has produced it (the existing fixture dependency enforces this).

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Generate the warp-UI `warpRoutes.yaml` inside the warp-deployer (single tested transform), distribute it via the existing `state_distribute`/`populate` mechanism scoped to a dedicated `generated/warp-ui/` subdir, and verify it through the existing two-route e2e.
+**Goal:** Generate the warp-UI `warpRoutes.yaml` inside the warp-deployer (single tested transform), distribute it via the existing `state_distribute`/`populate` mechanism scoped to the existing `generated/warp-routes/` tree, and verify it through the existing two-route e2e.
 
-**Architecture:** A new `build-warp-ui-config.sh` (bash + jq) reads each selected route's artifacts + core mailboxes and writes `${STATE_DIR}/warp-ui/warpRoutes.yaml`. `deploy.sh` calls it after its route loop. `state_distribute` gains an optional `generated_subdir` so the warp-UI play sources `generated/warp-ui/` — the ConfigMap then holds only `warpRoutes.yaml`. `publish-bridge-state` and `conftest` stop building the file.
+**Architecture:** A new `build-warp-ui-config.sh` (bash + jq) reads each selected route's artifacts + core mailboxes and writes `${STATE_DIR}/warp-routes/warpRoutes.yaml`. `deploy.sh` calls it after its route loop. `state_distribute` gains an optional `generated_subdir` so the warp-UI play sources `generated/warp-routes/` — the ConfigMap then holds only `warpRoutes.yaml`. `publish-bridge-state` and `conftest` stop building the file.
 
 **Tech Stack:** bash, jq, Ansible, Python/pytest (e2e).
 
@@ -23,7 +23,7 @@ Create `stack_orchestrator/data/config/warp-deployer-scripts-config/build-warp-u
 
 ```bash
 #!/bin/bash
-# Build the warp-UI route config (warp-ui/warpRoutes.yaml) from the per-route artifacts
+# Build the warp-UI route config (warp-routes/warpRoutes.yaml) from the per-route artifacts
 # the warp-deployer already wrote under ${STATE_DIR}/warp-routes/<name>/. Emits a Hyperlane
 # WarpCoreConfig ({tokens, options}) covering exactly the routes named in WARP_ROUTES —
 # one token entry per chain side. The warp-UI loads this file at runtime.
@@ -87,9 +87,9 @@ done
 
 # JSON is valid YAML and the warp-UI loader parses either (tryParseJsonOrYaml); emitting
 # JSON keeps decimals numeric without needing a YAML emitter in the image.
-mkdir -p "${STATE_DIR}/warp-ui"
-jq -n --argjson tokens "$tokens" '{tokens:$tokens, options:{}}' > "${STATE_DIR}/warp-ui/warpRoutes.yaml"
-echo "Wrote ${STATE_DIR}/warp-ui/warpRoutes.yaml ($(jq '.tokens | length' "${STATE_DIR}/warp-ui/warpRoutes.yaml") token entries)"
+mkdir -p "${STATE_DIR}/warp-routes"
+jq -n --argjson tokens "$tokens" '{tokens:$tokens, options:{}}' > "${STATE_DIR}/warp-routes/warpRoutes.yaml"
+echo "Wrote ${STATE_DIR}/warp-routes/warpRoutes.yaml ($(jq '.tokens | length' "${STATE_DIR}/warp-routes/warpRoutes.yaml") token entries)"
 ```
 
 - [ ] **Step 2: Syntax-check**
@@ -110,7 +110,7 @@ echo '{"warpRoute":{"name":"USDC-solana-gorchain","solana":{"type":"collateral",
 echo '{"solana":{"base58":"WARP_SOL"},"gorchain":{"base58":"WARP_GOR"}}' > "$S/warp-routes/USDC-solana-gorchain/warp-deploy-outputs/program-ids.json"
 STATE_DIR="$S" WARP_ROUTES_DIR="$C" WARP_ROUTES="usdc" \
   bash stack_orchestrator/data/config/warp-deployer-scripts-config/build-warp-ui-config.sh
-jq . "$S/warp-ui/warpRoutes.yaml"
+jq . "$S/warp-routes/warpRoutes.yaml"
 ```
 
 Expected: 2 token entries; `solana/USDC` has `standard:"SealevelHypCollateral"`,
@@ -122,7 +122,7 @@ mirror. Then `rm -rf "$S"`.
 
 ```bash
 git add stack_orchestrator/data/config/warp-deployer-scripts-config/build-warp-ui-config.sh
-git commit -m "feat(warp-deployer): build warp-ui/warpRoutes.yaml from per-route artifacts"
+git commit -m "feat(warp-deployer): build warp-routes/warpRoutes.yaml from per-route artifacts"
 ```
 
 ---
@@ -171,7 +171,7 @@ Task 6.)
 
 ```bash
 git add stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh
-git commit -m "feat(warp-deployer): emit warp-ui/warpRoutes.yaml after deploying routes"
+git commit -m "feat(warp-deployer): emit warp-routes/warpRoutes.yaml after deploying routes"
 ```
 
 ---
@@ -224,8 +224,8 @@ runtime-routes branch):
 Add one line to its `vars:` (after `deploy_dir`):
 
 ```yaml
-    # Source only generated/warp-ui/ so the ConfigMap holds just warpRoutes.yaml.
-    generated_subdir: warp-ui
+    # Source only generated/warp-routes/ so the ConfigMap holds just warpRoutes.yaml.
+    generated_subdir: warp-routes
 ```
 
 - [ ] **Step 3: Lint**
@@ -243,7 +243,7 @@ so `_generated_src` stays `…/generated/` for them.
 
 ```bash
 git add ops/roles/state_distribute/tasks/main.yml ops/playbooks/deploy-all.yml
-git commit -m "feat(ops): scope warp-ui state_distribute to generated/warp-ui"
+git commit -m "feat(ops): scope warp-ui state_distribute to generated/warp-routes"
 ```
 
 ---
@@ -272,7 +272,7 @@ Leave intact above: `Parse program-ids.json` (sets `_pids`). Leave intact below:
 `Patch core deployment-derived config keys into committed specs` task (it patches
 `spec-warp-ui.yml`'s `GORCHAIN_MAILBOX`/`SOLANA_MAILBOX` from `_pids` for `chains.yaml`) and
 the `Stage the generated paths and patched specs` git-add (still adds `generated/`, now
-containing `warp-ui/warpRoutes.yaml`). After the edit, the task after `Parse program-ids.json`
+containing `warp-routes/warpRoutes.yaml`). After the edit, the task after `Parse program-ids.json`
 is `Patch core deployment-derived config keys into committed specs`.
 
 - [ ] **Step 2: Update the explanatory comment**
@@ -283,7 +283,7 @@ with:
 
 ```yaml
     # warpRoutes.yaml is built by the warp-deployer (build-warp-ui-config.sh) under
-    # generated/warp-ui/; publish only copies it. Here we patch the core scalar values
+    # generated/warp-routes/; publish only copies it. Here we patch the core scalar values
     # (IGP/mailbox) into the committed specs from program-ids.json.
 ```
 
@@ -325,7 +325,7 @@ Replace with:
 ```python
     # warp-ui mounts the deployer-built warpRoutes.yaml as the warp-ui-config CM:
     "hyperlane-warp-ui": [
-        ("warp-ui/warpRoutes.yaml", "warp-ui-config"),
+        ("warp-routes/warpRoutes.yaml", "warp-ui-config"),
     ],
 ```
 
@@ -356,7 +356,7 @@ locals, the loop, and the trailing blank line).
 with just:
 
 ```python
-    # warpRoutes.yaml is built by the warp-deployer (under warp-ui/); populate copies it
+    # warpRoutes.yaml is built by the warp-deployer (under warp-routes/); populate copies it
     # into the warp-ui-config ConfigMap dir.
     bridge_state_loader.populate("hyperlane-warp-ui", deploy_info.deploy_dir)
 ```
@@ -398,7 +398,7 @@ Append to `tests/e2e/test_02_warp_deployer.py` (uses the existing `warp_deployme
 ```python
 def test_warp_deployer_builds_warp_ui_config(warp_deployment, bridge_state_loader):
     """The warp-deployer emits a WarpCoreConfig covering every deployed route."""
-    cfg = bridge_state_loader.read_json("warp-ui/warpRoutes.yaml")
+    cfg = bridge_state_loader.read_json("warp-routes/warpRoutes.yaml")
 
     assert cfg["options"] == {}
     # Two deployed routes (USDC, SOL) x two chain sides = four token entries.
@@ -422,7 +422,7 @@ this is covered by the full gate in Step 4.
 
 - [ ] **Step 3: Update the docs**
 
-In `specs/stack-specifications.md` (search `grep -n "warpRoutes\|warp-ui\|publish-bridge-state" specs/stack-specifications.md`): add `warp-ui/warpRoutes.yaml` to the warp-deployer's emitted outputs, and change any warp-ui text that says the route config is built by `publish-bridge-state`/conftest to say it is produced by the warp-deployer and distributed via the `warp-ui-config` ConfigMap.
+In `specs/stack-specifications.md` (search `grep -n "warpRoutes\|warp-ui\|publish-bridge-state" specs/stack-specifications.md`): add `warp-routes/warpRoutes.yaml` to the warp-deployer's emitted outputs, and change any warp-ui text that says the route config is built by `publish-bridge-state`/conftest to say it is produced by the warp-deployer and distributed via the `warp-ui-config` ConfigMap.
 
 In `specs/e2e-test-spec.md` (search `grep -n "warpRoutes\|warp_ui\|warp-ui" specs/e2e-test-spec.md`): note that `warpRoutes.yaml` is deployer-produced and asserted by `test_02_warp_deployer.py` (artifact) and `test_10_warp_ui.py` (served), and that conftest no longer builds it.
 
@@ -453,7 +453,7 @@ git commit -m "test(e2e): assert deployer-built warpRoutes.yaml; docs sync"
 ## Self-Review
 
 **1. Spec coverage:**
-- "Producer — aggregation step" → Tasks 1 (script, writes `warp-ui/warpRoutes.yaml`) + 2 (wiring). ✓
+- "Producer — aggregation step" → Tasks 1 (script, writes `warp-routes/warpRoutes.yaml`) + 2 (wiring). ✓
 - "ConfigMap scoping (dedicated warp-ui/ subdir)" → Task 1 writes the subdir; Task 3 scopes `state_distribute` via `generated_subdir`. ✓
 - "Contract (token schema)" → Task 1 dev smoke run + Task 6 e2e assertion check standards, integer decimals, connections, collateral/synthetic mint, native-has-none. ✓
 - "Consumers — distribution only": publish → Task 4; conftest/state_loader → Task 5; entrypoint/specs/compose unchanged (no task — correct). ✓
@@ -464,4 +464,4 @@ git commit -m "test(e2e): assert deployer-built warpRoutes.yaml; docs sync"
 
 **2. Placeholder scan:** No TBD/TODO; every code step has complete code; commands have expected results.
 
-**3. Type/name consistency:** `build-warp-ui-config.sh` path, env vars (`STATE_DIR`, `WARP_ROUTES`, `WARP_ROUTES_DIR`, `PROGRAM_IDS_FILE`), the output path `warp-ui/warpRoutes.yaml`, the `generated_subdir: warp-ui` var, the `("warp-ui/warpRoutes.yaml", "warp-ui-config")` tuple, and the emitted field names are identical across the script, `deploy.sh`, `state_distribute`, the warp-UI play, `state_loader`, and the e2e assertion. ✓
+**3. Type/name consistency:** `build-warp-ui-config.sh` path, env vars (`STATE_DIR`, `WARP_ROUTES`, `WARP_ROUTES_DIR`, `PROGRAM_IDS_FILE`), the output path `warp-routes/warpRoutes.yaml`, the `generated_subdir: warp-routes` var, the `("warp-routes/warpRoutes.yaml", "warp-ui-config")` tuple, and the emitted field names are identical across the script, `deploy.sh`, `state_distribute`, the warp-UI play, `state_loader`, and the e2e assertion. ✓
