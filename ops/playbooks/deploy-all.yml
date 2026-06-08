@@ -101,17 +101,6 @@
     - fetch_stack
     - stack_deploy
 
-- name: Monitoring
-  hosts: monitoring_hosts
-  gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
-  vars:
-    stack_name: hyperlane-monitoring
-  roles:
-    - fetch_stack
-    - stack_deploy
-
 - name: Warp UI
   hosts: warp_ui_hosts
   gather_facts: true
@@ -194,3 +183,14 @@
       loop_control:
         loop_var: validator
         label: "{{ validator.label }}"
+
+- name: Monitoring
+  hosts: monitoring_hosts
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  vars:
+    stack_name: hyperlane-monitoring
+  roles:
+    - fetch_stack
+    - stack_deploy
