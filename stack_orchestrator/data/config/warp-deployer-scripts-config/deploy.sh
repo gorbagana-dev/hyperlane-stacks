@@ -378,6 +378,10 @@ echo ""
 echo "=== Building warp-UI route config ==="
 STATE_DIR="${STATE_DIR}" bash /opt/scripts/build-warp-ui-config.sh
 
+echo ""
+echo "=== Building relayer whitelist ==="
+STATE_DIR="${STATE_DIR}" bash /opt/scripts/build-relayer-whitelist.sh
+
 # -------------------------------------------------------
 # Clean up deployer keypair
 # -------------------------------------------------------
