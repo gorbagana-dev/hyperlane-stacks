@@ -13,7 +13,7 @@ volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
 config:
-  WARP_ROUTES: "usdc,sol"
+  WARP_ROUTES: "usdc"
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
   GORCHAIN_DOMAIN_ID: "1198486095"

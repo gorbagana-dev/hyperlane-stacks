@@ -17,7 +17,7 @@
 # Mailbox/IGP addresses come from the deployer's published program-ids.json (in the
 # on-host clone next to the spec), rendered in by consumers at deploy time.
 - name: Render published program-id tokens into the spec (consumers only)
-  when: spec_render_program_ids | default(false)
+  when: spec_render_generated | default(false)
   block:
     - name: Read the published program-ids.json
       ansible.builtin.slurp:
@@ -46,7 +46,7 @@
 # spec keeps HYP_WHITELIST single-quoted so the substituted JSON (double quotes) is valid YAML.
 - name: Render the relayer whitelist token (relayer only)
   when:
-    - spec_render_program_ids | default(false)
+    - spec_render_generated | default(false)
     - (stack_env_map_key | default(stack_name)) == 'hyperlane-relayer'
   block:
     - name: Read the published relayer-whitelist.json

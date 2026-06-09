@@ -79,7 +79,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-relayer
-    spec_render_program_ids: true
+    spec_render_generated: true
     configmap_names: "{{ stacks['hyperlane-relayer'].configmaps }}"
     # state_distribute runs as the pre-start hook (after deploy create makes the dir,
     # before start mounts the configmaps) — running it as a pre-role would create
@@ -98,7 +98,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-gas-oracle
-    spec_render_program_ids: true
+    spec_render_generated: true
   roles:
     - fetch_stack
     - stack_deploy
@@ -110,7 +110,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-warp-ui
-    spec_render_program_ids: true
+    spec_render_generated: true
     configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
     # state_distribute runs as the pre-start hook (see the Relayer play for the rationale).
     deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
