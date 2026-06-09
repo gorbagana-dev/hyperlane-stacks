@@ -698,6 +698,17 @@ def run_native_client(
     verbatim as ``--keypair`` (e.g. ``usb://ledger?key=0/0``).
     """
     bin_path = os.environ["HYPERLANE_SEALEVEL_CLIENT_BIN"]
+    # The client unconditionally loads ~/.config/solana/cli/config.yml at startup
+    # (even with --keypair/--url set) and panics if it is absent. The CLI does not
+    # create it, and nothing in the suite writes the host-default copy. Seed a
+    # minimal one if missing; never overwrite an operator's existing config.
+    cfg = Path.home() / ".config" / "solana" / "cli" / "config.yml"
+    if not cfg.exists():
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(
+            f'json_rpc_url: "{rpc}"\nwebsocket_url: ""\n'
+            f'keypair_path: "{keypair}"\ncommitment: finalized\n'
+        )
     return run_cmd(
         [bin_path, "--keypair", keypair, "--url", rpc, *args],
         check=False,
