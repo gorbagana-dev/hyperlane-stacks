@@ -1,5 +1,6 @@
 import base64
 import dataclasses
+import json
 import logging
 import os
 import re
@@ -1210,6 +1211,13 @@ def relayer_deployment(
     content = content.replace(
         'SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"',
         f'SOLANA_IGP_ACCOUNT: "{solana_igp_account}"',
+    )
+    # Relayer whitelist: built by the warp-deployer (build-relayer-whitelist.sh).
+    # Single-quote the JSON so the embedded double quotes stay valid YAML.
+    whitelist = bridge_state_loader.read_json("relayer-whitelist.json")
+    content = content.replace(
+        'HYP_WHITELIST: "REPLACE_AT_RUNTIME"',
+        "HYP_WHITELIST: '" + json.dumps(whitelist, separators=(",", ":")) + "'",
     )
     patched_path = E2E_DIR / ".relayer-spec-patched.yml"
     patched_path.write_text(content)
