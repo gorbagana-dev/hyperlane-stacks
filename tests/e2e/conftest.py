@@ -1140,6 +1140,7 @@ def validator_solana(
 @pytest.fixture(scope="session")
 def relayer_deployment(
     deployer_deployment: DeploymentInfo,
+    warp_deployment: dict,
     minio_deployment: MinioInfo,
     validator_images: None,
     host_prep: None,
