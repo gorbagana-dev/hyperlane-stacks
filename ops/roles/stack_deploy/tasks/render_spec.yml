@@ -41,6 +41,25 @@
       loop_control:
         label: "{{ item.key }}"
 
+# The relayer's message whitelist comes from the warp-deployer's relayer-whitelist.json
+# (same on-host clone), rendered in at deploy time like the program-id tokens above. The
+# spec keeps HYP_WHITELIST single-quoted so the substituted JSON (double quotes) is valid YAML.
+- name: Render the relayer whitelist token (relayer only)
+  when:
+    - spec_render_program_ids | default(false)
+    - (stack_env_map_key | default(stack_name)) == 'hyperlane-relayer'
+  block:
+    - name: Read the published relayer-whitelist.json
+      ansible.builtin.slurp:
+        src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/relayer-whitelist.json"
+      register: _whitelist_render_raw
+
+    - name: Substitute the relayer whitelist token into the on-host spec
+      ansible.builtin.replace:
+        path: "{{ _spec_file }}"
+        regexp: "{{ '__RELAYER_WHITELIST__' | regex_escape }}"
+        replace: "{{ _whitelist_render_raw.content | b64decode | from_json | to_json }}"
+
 # Single-host reaches host-run chains via external-services ip: -> the kind gateway.
 # Only chain-consumers need it; stacks not in the map are skipped.
 - name: Detect kind-network gateway IP (single-host chain reachability)

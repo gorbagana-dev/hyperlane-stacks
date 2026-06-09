@@ -43,28 +43,9 @@
         mode: "u=rwX,go=rX"
       when: not ansible_check_mode
 
-    - name: Load relayer whitelist
-      ansible.builtin.slurp:
-        src: "{{ deployment_root }}/{{ generated_rel }}/relayer-whitelist.json"
-      register: _whitelist_raw
-      when: not ansible_check_mode
-
-    - name: Render relayer whitelist as compact JSON
-      ansible.builtin.set_fact:
-        _whitelist: "{{ _whitelist_raw.content | b64decode | from_json | to_json }}"
-      when: not ansible_check_mode
-
-    # IGP/mailbox are no longer patched here — consumers render them from program-ids.json
-    # at deploy time (stack_deploy render_spec). Only the relayer whitelist is patched +
-    # committed, so spec-relayer.yml is the one spec this stages.
-    - name: Patch HYP_WHITELIST into spec-relayer.yml (single-quoted JSON scalar)
-      ansible.builtin.replace:
-        path: "{{ deployment_root }}/spec-relayer.yml"
-        regexp: '^(\s*HYP_WHITELIST:\s*).*$'
-        replace: "\\g<1>'{{ _whitelist }}'"
-      when: not ansible_check_mode
-
-    - name: Stage the generated paths and the patched relayer spec (scoped)
+    # All deployment-derived spec values (IGP/mailbox, relayer whitelist) render at deploy
+    # time from generated/ (stack_deploy render_spec), so publish only commits generated/.
+    - name: Stage the generated paths (scoped)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git add
         argv:
           - git
@@ -72,7 +53,6 @@
           - "{{ repo_root }}"
           - add
           - "{{ deployment_root }}/{{ generated_rel }}"
-          - "{{ deployment_root }}/spec-relayer.yml"
       changed_when: true
       when: not ansible_check_mode
 
