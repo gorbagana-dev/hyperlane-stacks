@@ -14,6 +14,13 @@ RPC = {"gorchain": GORCHAIN_RPC, "solana": SOLANA_RPC}
 OWNER_RE = re.compile(r"owner:\s*Some\(\s*([1-9A-HJ-NP-Za-km-z]{32,44})")
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _require_warp_deployment(warp_deployment):
+    """Gate these assertions on the warp deploy (which transitively runs the core
+    deploy) so the ownership handoffs and relayer-whitelist.json exist regardless
+    of run order."""
+
+
 @pytest.fixture(scope="module")
 def hw_pubkey():
     pk = os.environ.get("HARDWARE_WALLET_PUBKEY")

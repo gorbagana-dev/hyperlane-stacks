@@ -10,8 +10,8 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - **Warp deployer** -- one deployment that deploys the routes selected via `WARP_ROUTES` (a test SPL collateral route and a native route), verifies per-route state file outputs (`token-config.json`, `warp-deploy-outputs/`) via `BridgeStateLoader` reads
 - **MinIO** -- deploys the S3-compatible checkpoint storage, verifies pod health, bucket creation, and API accessibility
 - **Validators** -- deploys gorchain and solana validators with a mock Privy server, verifies pod health, KMS proxy connectivity, metrics endpoint, log sanity, and checkpoint writing to MinIO
+- **Ownership & relay authorization** -- right after the warp deploy, asserts the multisig-ISM and each warp route's app-level owner were transferred to the hardware wallet, and that the relayer's `HYP_WHITELIST` covers exactly the deployed warp programs (`test_03_ownership_whitelist.py`)
 - **Relayer** -- deploys the hyperlane relayer, verifies pod health and metrics endpoint
-- **Ownership & relay authorization** -- asserts the multisig-ISM and each warp route's app-level owner were transferred to the hardware wallet, and that the relayer's `HYP_WHITELIST` covers exactly the deployed warp programs (`test_13_ownership_whitelist.py`)
 - **Gas oracle** -- deploys the gas oracle service with mock Privy signing, waits for first price update, verifies on-chain IGP gas oracle configs match oracle output
 - **Bridge transfers** -- executes cross-chain warp route transfers (Solana→Gorchain and reverse) via CLI, verifies on-chain balance changes
 - **Fee claims** -- claims accumulated IGP fees on both chains, verifies beneficiary balance increases (skips with warning if no fees to claim)
@@ -120,14 +120,14 @@ pytest -v -x --skip-cleanup
 # Run only a specific test file
 pytest -v -x test_01_deployer.py
 pytest -v -x test_02_warp_deployer.py
-pytest -v -x test_04_validator.py
-pytest -v -x test_10_warp_ui.py
+pytest -v -x test_05_validator.py
+pytest -v -x test_11_warp_ui.py
 
 # Run only warp UI browser tests (headless via xvfb-run)
-xvfb-run pytest -v -x test_12_warp_ui_bridge.py
+xvfb-run pytest -v -x test_13_warp_ui_bridge.py
 
 # Run with visible browser window (on a desktop with $DISPLAY)
-pytest -v -x test_12_warp_ui_bridge.py
+pytest -v -x test_13_warp_ui_bridge.py
 
 # Exclude slow tests (validator checkpoint tests, bridge transfers, UI tests)
 pytest -v -x -m "not slow"
@@ -221,17 +221,17 @@ tests/e2e/
 ├── test_00_cluster_helpers.py           # Unit tests for cluster utility functions
 ├── test_01_deployer.py                  # Core deployer verification tests
 ├── test_02_warp_deployer.py             # Warp deployer verification tests
-├── test_03_minio.py                     # MinIO stack tests
-├── test_04_validator.py                 # Validator stack tests (gorchain + solana)
-├── test_05_relayer.py                   # Relayer stack tests
-├── test_06_gas_oracle.py                # Gas oracle stack tests
-├── test_07_monitoring.py                # Monitoring stack tests (Prometheus, Grafana, balance monitor)
-├── test_08_bridge.py                    # Cross-chain bridge transfer tests
-├── test_09_fee_claim.py                 # IGP fee claim tests
-├── test_10_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
-├── test_11_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
-├── test_12_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
-├── test_13_ownership_whitelist.py       # On-chain ownership handoff + relayer whitelist assertions
+├── test_03_ownership_whitelist.py       # On-chain ownership handoff + relayer whitelist assertions
+├── test_04_minio.py                     # MinIO stack tests
+├── test_05_validator.py                 # Validator stack tests (gorchain + solana)
+├── test_06_relayer.py                   # Relayer stack tests
+├── test_07_gas_oracle.py                # Gas oracle stack tests
+├── test_08_monitoring.py                # Monitoring stack tests (Prometheus, Grafana, balance monitor)
+├── test_09_bridge.py                    # Cross-chain bridge transfer tests
+├── test_10_fee_claim.py                 # IGP fee claim tests
+├── test_11_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
+├── test_12_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
+├── test_13_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture
