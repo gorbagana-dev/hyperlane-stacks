@@ -1,8 +1,8 @@
 """hyp-d9c: assert ownership moved to the hardware wallet and the relayer
 whitelist covers exactly the deployed warp programs."""
-import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 
@@ -61,15 +61,14 @@ def test_whitelist_matches_deployed_programs(bridge_state_loader):
     actual = {e["recipientaddress"] for e in whitelist}
 
     expected = set()
-    state_dir = bridge_state_loader.state_dir
     for route in bridge_state_loader.discover_routes():
-        outputs = state_dir / "warp-routes" / route / "warp-deploy-outputs"
-        for f in outputs.iterdir():
-            if f.is_file():
-                for _chain, entry in json.loads(f.read_text()).items():
-                    if isinstance(entry, dict) and entry.get("hex"):
-                        h = entry["hex"]
-                        expected.add(h if h.startswith("0x") else "0x" + h)
+        wpids = bridge_state_loader.read_json(
+            str(Path("warp-routes") / route / "warp-deploy-outputs" / "program-ids.json")
+        )
+        for _chain, entry in wpids.items():
+            if isinstance(entry, dict) and entry.get("hex"):
+                h = entry["hex"]
+                expected.add(h if h.startswith("0x") else "0x" + h)
 
     assert expected, "no warp program hexes found in state"
     assert actual == expected, f"whitelist {actual} != deployed programs {expected}"
