@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -674,6 +675,42 @@ def run_deployer_cli(
             DEPLOYER_IMAGE,
             "-c", shell_cmd,
         ],
+        check=False,
+    )
+
+
+def ledger_available() -> bool:
+    """True when a Ledger-backed e2e run is requested and a native client binary is configured."""
+    return os.environ.get("E2E_LEDGER") == "1" and bool(
+        os.environ.get("HYPERLANE_SEALEVEL_CLIENT_BIN")
+    )
+
+
+def run_native_client(
+    *args: str,
+    keypair: str,
+    rpc: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run the NATIVE ``hyperlane-sealevel-client`` binary (not the Docker image).
+
+    A Ledger is USB-HID on the host, so the binary must run natively. The binary
+    path comes from ``HYPERLANE_SEALEVEL_CLIENT_BIN``. ``keypair`` is passed
+    verbatim as ``--keypair`` (e.g. ``usb://ledger?key=0/0``).
+    """
+    bin_path = os.environ["HYPERLANE_SEALEVEL_CLIENT_BIN"]
+    # The client unconditionally loads ~/.config/solana/cli/config.yml at startup
+    # (even with --keypair/--url set) and panics if it is absent. The CLI does not
+    # create it, and nothing in the suite writes the host-default copy. Seed a
+    # minimal one if missing; never overwrite an operator's existing config.
+    cfg = Path.home() / ".config" / "solana" / "cli" / "config.yml"
+    if not cfg.exists():
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(
+            f'json_rpc_url: "{rpc}"\nwebsocket_url: ""\n'
+            f'keypair_path: "{keypair}"\ncommitment: finalized\n'
+        )
+    return run_cmd(
+        [bin_path, "--keypair", keypair, "--url", rpc, *args],
         check=False,
     )
 
