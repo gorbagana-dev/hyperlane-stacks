@@ -72,6 +72,33 @@
       loop_control:
         label: "{{ item.key }}"
 
+    # Mailbox/IGP addresses come from the deployer's published program-ids.json (in the
+    # on-host clone next to the spec), rendered in by consumers at deploy time.
+    - name: Render published program-id tokens into the spec (consumers only)
+      when: spec_render_program_ids | default(false)
+      block:
+        - name: Read the published program-ids.json
+          ansible.builtin.slurp:
+            src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/program-ids.json"
+          register: _pids_render_raw
+
+        - name: Substitute program-id tokens into the on-host spec
+          ansible.builtin.replace:
+            path: "{{ _spec_file }}"
+            regexp: "{{ item.key | regex_escape }}"
+            replace: "{{ item.value }}"
+          vars:
+            _p: "{{ _pids_render_raw.content | b64decode | from_json }}"
+          loop:
+            - { key: __GORCHAIN_MAILBOX__, value: "{{ _p.gorchain.mailbox }}" }
+            - { key: __SOLANA_MAILBOX__, value: "{{ _p.solana.mailbox }}" }
+            - { key: __GORCHAIN_IGP_PROGRAM_ID__, value: "{{ _p.gorchain.igp_program_id }}" }
+            - { key: __SOLANA_IGP_PROGRAM_ID__, value: "{{ _p.solana.igp_program_id }}" }
+            - { key: __GORCHAIN_IGP_ACCOUNT__, value: "{{ _p.gorchain.igp_account }}" }
+            - { key: __SOLANA_IGP_ACCOUNT__, value: "{{ _p.solana.igp_account }}" }
+          loop_control:
+            label: "{{ item.key }}"
+
     # Single-host reaches the host-run chains via external-services ip: -> the kind
     # network gateway (the e2e get_host_ip pattern). Only chain-consumers need it;
     # MinIO (first stack, before any cluster exists) is not in the map and is skipped.

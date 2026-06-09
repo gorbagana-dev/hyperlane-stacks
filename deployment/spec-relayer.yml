@@ -6,10 +6,10 @@ kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
-  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
-  SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
-  GORCHAIN_IGP_ACCOUNT: "REPLACE_WITH_GORCHAIN_IGP_ACCOUNT"
-  SOLANA_IGP_ACCOUNT: "REPLACE_WITH_SOLANA_IGP_ACCOUNT"
+  GORCHAIN_IGP_PROGRAM_ID: "__GORCHAIN_IGP_PROGRAM_ID__"
+  SOLANA_IGP_PROGRAM_ID: "__SOLANA_IGP_PROGRAM_ID__"
+  GORCHAIN_IGP_ACCOUNT: "__GORCHAIN_IGP_ACCOUNT__"
+  SOLANA_IGP_ACCOUNT: "__SOLANA_IGP_ACCOUNT__"
   # Relayer message whitelist (Hyperlane MatchingList). Default deny-all
   # (recipient = 32 zero bytes); publish-bridge-state.yml patches this from the
   # warp-deployer's relayer-whitelist.json. An empty [] would relay everything.

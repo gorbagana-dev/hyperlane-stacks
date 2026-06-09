@@ -1,9 +1,8 @@
 ---
 # Publish bridge state from the DEPLOYER HOST, where the artifacts already live.
 # fetch_stack put the stack repo clone on this host (on deploy_branch); we copy the
-# deployer's generated/ from its host-path volume into that clone, patch the
-# deployment-derived config: keys into the committed specs, then commit + push over
-# the forwarded SSH agent using the operator's git identity. No controller round-trip.
+# deployer's generated/ from its host-path volume into that clone, then commit + push
+# over the forwarded SSH agent using the operator's git identity. No controller round-trip.
 # Default: hands-off (auto commit + push). -e state_review=true to gate.
 - name: Publish bridge state to git
   hosts: deployer_hosts
@@ -44,17 +43,6 @@
         mode: "u=rwX,go=rX"
       when: not ansible_check_mode
 
-    - name: Load deployer program-ids.json
-      ansible.builtin.slurp:
-        src: "{{ deployment_root }}/{{ generated_rel }}/program-ids.json"
-      register: _pids_raw
-      when: not ansible_check_mode
-
-    - name: Parse program-ids.json
-      ansible.builtin.set_fact:
-        _pids: "{{ _pids_raw.content | b64decode | from_json }}"
-      when: not ansible_check_mode
-
     - name: Load relayer whitelist
       ansible.builtin.slurp:
         src: "{{ deployment_root }}/{{ generated_rel }}/relayer-whitelist.json"
@@ -66,44 +54,9 @@
         _whitelist: "{{ _whitelist_raw.content | b64decode | from_json | to_json }}"
       when: not ansible_check_mode
 
-    # Patch the scalar deployment-derived values (IGP/mailbox, from program-ids.json)
-    # into the committed specs. The rich agent-config.json is distributed as a ConfigMap
-    # by state_distribute, not here; warpRoutes.yaml is built by the warp-deployer
-    # (build-warp-ui-config.sh, under generated/warp-routes/) and only copied by publish.
-    - name: Patch core deployment-derived config keys into committed specs
-      ansible.builtin.replace:
-        path: "{{ deployment_root }}/{{ item.spec }}"
-        regexp: '^(\s*{{ item.key }}:\s*).*$'
-        replace: '\g<1>"{{ item.value }}"'
-      loop:
-        - spec: spec-relayer.yml
-          key: GORCHAIN_IGP_PROGRAM_ID
-          value: "{{ (_pids | default({})).gorchain.igp_program_id | default('') }}"
-        - spec: spec-relayer.yml
-          key: SOLANA_IGP_PROGRAM_ID
-          value: "{{ (_pids | default({})).solana.igp_program_id | default('') }}"
-        - spec: spec-relayer.yml
-          key: GORCHAIN_IGP_ACCOUNT
-          value: "{{ (_pids | default({})).gorchain.igp_account | default('') }}"
-        - spec: spec-relayer.yml
-          key: SOLANA_IGP_ACCOUNT
-          value: "{{ (_pids | default({})).solana.igp_account | default('') }}"
-        - spec: spec-gas-oracle.yml
-          key: GORCHAIN_IGP_PROGRAM_ID
-          value: "{{ (_pids | default({})).gorchain.igp_program_id | default('') }}"
-        - spec: spec-gas-oracle.yml
-          key: SOLANA_IGP_PROGRAM_ID
-          value: "{{ (_pids | default({})).solana.igp_program_id | default('') }}"
-        - spec: spec-warp-ui.yml
-          key: GORCHAIN_MAILBOX
-          value: "{{ (_pids | default({})).gorchain.mailbox | default('') }}"
-        - spec: spec-warp-ui.yml
-          key: SOLANA_MAILBOX
-          value: "{{ (_pids | default({})).solana.mailbox | default('') }}"
-      loop_control:
-        label: "{{ item.spec }}:{{ item.key }}"
-      when: not ansible_check_mode
-
+    # IGP/mailbox are no longer patched here — consumers render them from program-ids.json
+    # at deploy time (stack_deploy render_spec). Only the relayer whitelist is patched +
+    # committed, so spec-relayer.yml is the one spec this stages.
     - name: Patch HYP_WHITELIST into spec-relayer.yml (single-quoted JSON scalar)
       ansible.builtin.replace:
         path: "{{ deployment_root }}/spec-relayer.yml"
@@ -111,7 +64,7 @@
         replace: "\\g<1>'{{ _whitelist }}'"
       when: not ansible_check_mode
 
-    - name: Stage the generated paths and patched specs (scoped)
+    - name: Stage the generated paths and the patched relayer spec (scoped)
       ansible.builtin.command:  # noqa: command-instead-of-module no module for scoped git add
         argv:
           - git
@@ -120,8 +73,6 @@
           - add
           - "{{ deployment_root }}/{{ generated_rel }}"
           - "{{ deployment_root }}/spec-relayer.yml"
-          - "{{ deployment_root }}/spec-gas-oracle.yml"
-          - "{{ deployment_root }}/spec-warp-ui.yml"
       changed_when: true
       when: not ansible_check_mode
 
