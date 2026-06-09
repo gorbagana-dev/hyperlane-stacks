@@ -12,7 +12,7 @@
       changed_when: false
 
 - name: MinIO
-  hosts: minio_hosts
+  hosts: "{{ stacks['hyperlane-minio'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
@@ -40,7 +40,7 @@
     - stack_deploy
 
 - name: Deployer (Job)
-  hosts: deployer_hosts
+  hosts: "{{ stacks['hyperlane-svm-deployer'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
@@ -51,7 +51,7 @@
     - stack_deploy
 
 - name: Warp route deployer
-  hosts: deployer_hosts
+  hosts: "{{ stacks['hyperlane-svm-warp-deployer'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
@@ -73,7 +73,7 @@
   ansible.builtin.import_playbook: publish-bridge-state.yml
 
 - name: Relayer
-  hosts: relayer_hosts
+  hosts: "{{ stacks['hyperlane-relayer'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
@@ -92,7 +92,7 @@
     - stack_deploy
 
 - name: Gas oracle
-  hosts: gas_oracle_hosts
+  hosts: "{{ stacks['hyperlane-gas-oracle'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
@@ -104,7 +104,7 @@
     - stack_deploy
 
 - name: Warp UI
-  hosts: warp_ui_hosts
+  hosts: "{{ stacks['hyperlane-warp-ui'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"
@@ -188,7 +188,7 @@
         label: "{{ validator.label }}"
 
 - name: Monitoring
-  hosts: monitoring_hosts
+  hosts: "{{ stacks['hyperlane-monitoring'].hosts }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"

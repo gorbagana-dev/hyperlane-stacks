@@ -1,0 +1,109 @@
+---
+# Restart one already-deployed stack to pick up committed spec changes (resources,
+# config values, image) without the rm -rf + full redeploy. Drives `laconic-so
+# deployment restart`, which re-renders the on-host spec, syncs the deployment dir from
+# it, and rolling-restarts — preserving the cluster and data volumes. The target host
+# is resolved from the stacks map (singletons) or validators.yaml (validators), so only
+# the host that actually runs the stack is touched.
+#
+# Usage:
+#   singleton:  ansible-playbook -i inventories/<env>/hosts.yml playbooks/restart-stack.yml -e stack_name=hyperlane-warp-ui
+#   all validators:  ... -e stack_name=hyperlane-validator
+#   one validator:   ... -e stack_name=hyperlane-validator -e validator_label=gorchain-primary
+
+- name: Validate restart target
+  hosts: controller
+  gather_facts: false
+  tasks:
+    - name: A known stack_name is required
+      ansible.builtin.assert:
+        that:
+          - stack_name is defined
+          - stack_name in stacks
+        fail_msg: "Provide -e stack_name=<name>; one of: {{ stacks.keys() | list }}"
+
+# Singletons carry a host group in the stacks map; the validator entry does not, so this
+# play resolves to no hosts (and is skipped) when restarting validators.
+- name: Restart a singleton stack
+  hosts: "{{ stacks[stack_name].hosts | default([]) }}"
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  vars:
+    stack_action: restart
+    # Safe everywhere: a no-op for specs without program-id tokens (minio/monitoring).
+    spec_render_program_ids: true
+  roles:
+    - fetch_stack
+    - stack_deploy
+
+# Validators deploy per-entry from validators.yaml on their own hosts, so restart them
+# the same way: loop + delegate. -e validator_label=<label> restarts one; omit for all.
+- name: Restart validators
+  hosts: "{{ ['controller'] if (stack_name | default('')) == 'hyperlane-validator' else [] }}"
+  gather_facts: false
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  tasks:
+    - name: Load validators
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Select the validators to restart
+      ansible.builtin.set_fact:
+        _restart_validators: >-
+          {{ validators if validator_label is not defined
+             else (validators | selectattr('label', 'equalto', validator_label) | list) }}
+
+    - name: A matching validator must exist
+      ansible.builtin.assert:
+        that: _restart_validators | length > 0
+        fail_msg: "No validator labelled '{{ validator_label | default('') }}' in validators.yaml"
+
+    - name: Gather facts for each validator host (for ansible_env under delegation)
+      ansible.builtin.setup:
+      delegate_to: "{{ validator.host }}"
+      delegate_facts: true
+      loop: "{{ _restart_validators }}"
+      loop_control:
+        loop_var: validator
+        label: "{{ validator.host }}"
+
+    - name: Fetch the stack repo on each validator host
+      ansible.builtin.include_role:
+        name: fetch_stack
+        apply:
+          delegate_to: "{{ validator.host }}"
+      vars:
+        repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
+      loop: "{{ _restart_validators }}"
+      loop_control:
+        loop_var: validator
+        label: "{{ validator.label }}"
+
+    # loop_var: validator (not item) — stack_deploy has its own item loops; sharing item
+    # rebinds it to a string and breaks validator.label.
+    - name: Restart each validator on its host
+      ansible.builtin.include_role:
+        name: stack_deploy
+        apply:
+          delegate_to: "{{ validator.host }}"
+      vars:
+        stack_action: restart
+        spec_render_program_ids: true
+        stack_name: "hyperlane-validator-{{ validator.label }}"
+        repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
+        repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
+        deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
+        spec_file: "{{ deployment_root }}/spec-validator-{{ validator.chain }}.yml"
+        stack_path: "{{ repo_root }}/{{ stacks['hyperlane-validator'].path }}"
+        deploy_dir: "{{ repo_base_dir }}/hyperlane-validator-{{ validator.label }}"
+        stack_env_map_key: hyperlane-validator
+        stack_env_extra: >-
+          {{ {(validator.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[validator.label].key_id,
+              (validator.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[validator.label].secret} }}
+        spec_token_renders_extra:
+          REPLACE_WITH_WALLET_ID: "{{ validator.privy_wallet_id }}"
+      loop: "{{ _restart_validators }}"
+      loop_control:
+        loop_var: validator
+        label: "{{ validator.label }}"

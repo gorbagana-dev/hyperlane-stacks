@@ -57,104 +57,10 @@
         state: directory
         mode: "0755"
 
-    # Operator-supplied runtime values (the public DNS zone, the own-chain RPC URLs)
-    # aren't known until the zone/chains exist, so the committed spec ships __TOKENS__
-    # that we substitute into the on-host clone before create. Gated on
-    # spec_token_renders, set only in local/group_vars — a no-op for prod/staging.
-    # spec_token_renders_extra carries per-invocation tokens (e.g. each validator's
-    # privy_wallet_id), merged in like stack_env_extra does for the secret env.
-    - name: Render runtime tokens into the spec (local only)
-      ansible.builtin.replace:
-        path: "{{ _spec_file }}"
-        regexp: "{{ item.key | regex_escape }}"
-        replace: "{{ item.value }}"
-      loop: "{{ ((spec_token_renders | default({})) | combine(spec_token_renders_extra | default({}))) | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-
-    # Mailbox/IGP addresses come from the deployer's published program-ids.json (in the
-    # on-host clone next to the spec), rendered in by consumers at deploy time.
-    - name: Render published program-id tokens into the spec (consumers only)
-      when: spec_render_program_ids | default(false)
-      block:
-        - name: Read the published program-ids.json
-          ansible.builtin.slurp:
-            src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/program-ids.json"
-          register: _pids_render_raw
-
-        - name: Substitute program-id tokens into the on-host spec
-          ansible.builtin.replace:
-            path: "{{ _spec_file }}"
-            regexp: "{{ item.key | regex_escape }}"
-            replace: "{{ item.value }}"
-          vars:
-            _p: "{{ _pids_render_raw.content | b64decode | from_json }}"
-          loop:
-            - { key: __GORCHAIN_MAILBOX__, value: "{{ _p.gorchain.mailbox }}" }
-            - { key: __SOLANA_MAILBOX__, value: "{{ _p.solana.mailbox }}" }
-            - { key: __GORCHAIN_IGP_PROGRAM_ID__, value: "{{ _p.gorchain.igp_program_id }}" }
-            - { key: __SOLANA_IGP_PROGRAM_ID__, value: "{{ _p.solana.igp_program_id }}" }
-            - { key: __GORCHAIN_IGP_ACCOUNT__, value: "{{ _p.gorchain.igp_account }}" }
-            - { key: __SOLANA_IGP_ACCOUNT__, value: "{{ _p.solana.igp_account }}" }
-          loop_control:
-            label: "{{ item.key }}"
-
-    # Single-host reaches the host-run chains via external-services ip: -> the kind
-    # network gateway (the e2e get_host_ip pattern). Only chain-consumers need it;
-    # MinIO (first stack, before any cluster exists) is not in the map and is skipped.
-    - name: Detect kind-network gateway IP (single-host chain reachability)
-      when:
-        - topology | default('') == 'single'
-        - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
-      block:
-        - name: Inspect the kind network IPAM config
-          ansible.builtin.command:
-            argv:
-              - docker
-              - network
-              - inspect
-              - kind
-              - -f
-              - '{% raw %}{{json .IPAM.Config}}{% endraw %}'
-          register: _kind_ipam
-          changed_when: false
-
-        - name: Set kind_gateway_ip from the first IPv4 gateway
-          ansible.builtin.set_fact:
-            kind_gateway_ip: >-
-              {{ _kind_ipam.stdout | from_json
-                 | selectattr('Gateway', 'defined')
-                 | map(attribute='Gateway')
-                 | select('match', '^[0-9.]+$') | first }}
-
-    # Single-host chain-consumers: insert this stack's external-services block. The
-    # map is referenced only here, where the detect-block above has set kind_gateway_ip.
-    # The map values carry a literal __KIND_GATEWAY_IP__ placeholder (NOT a
-    # {{ kind_gateway_ip }} template) so the membership checks above can reference the
-    # map before the gateway is detected; substitute the detected IP here.
-    - name: Render the single-host external-services block (single-host consumers)
-      ansible.builtin.replace:
-        path: "{{ _spec_file }}"
-        regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
-        replace: >-
-          {{ single_host_external_services[stack_env_map_key | default(stack_name)]
-             | replace('__KIND_GATEWAY_IP__', kind_gateway_ip) }}
-      when:
-        - spec_token_renders is defined
-        - topology | default('') == 'single'
-        - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
-
-    # Everything else (multi-host, or stacks with no block): strip the marker. No map
-    # reference, so kind_gateway_ip is never needed here.
-    - name: Strip the single-host external-services marker (multi-host / non-consumers)
-      ansible.builtin.replace:
-        path: "{{ _spec_file }}"
-        regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
-        replace: ''
-      when:
-        - spec_token_renders is defined
-        - not (topology | default('') == 'single'
-               and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
+    # Substitute deploy-time values (tokens, program-ids, external-services) into the
+    # on-host spec. Shared with stack_restart so create and restart render identically.
+    - name: Render deploy-time values into the on-host spec
+      ansible.builtin.import_tasks: render_spec.yml
 
     # The committed specs carry a repo-relative `stack:` path, which laconic-so
     # resolves against the process CWD (not the --stack arg). Run from repo_root so
@@ -180,6 +86,20 @@
         path: "{{ _deploy_dir }}/deployment.yml"
         regexp: '^(deployment-id:\s*).*$'
         replace: '\g<1>{{ deployment_id }}'
+
+# Restart path: the create block above is skipped because the deploy dir already
+# exists, so render the spec here and let `laconic-so restart` (below) sync from it.
+- name: Restart requires an existing deployment
+  ansible.builtin.assert:
+    that: _dep.stat.exists
+    fail_msg: >-
+      No deployment at {{ _deploy_dir }} — run deploy-all first; restart only
+      updates an existing deployment.
+  when: stack_action | default('deploy') == 'restart'
+
+- name: Render deploy-time values into the on-host spec (restart)
+  ansible.builtin.import_tasks: render_spec.yml
+  when: stack_action | default('deploy') == 'restart'
 
 # Runs on every start (not just first create) so re-runs re-render any deployer-output
 # configmaps the spec mounts but has no data/config source for. Runs AFTER create (which
@@ -209,7 +129,32 @@
       - --perform-cluster-management
   environment: "{{ stack_env }}"
   changed_when: true
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - stack_action | default('deploy') != 'restart'
+
+# Restart syncs the deploy dir from the (re-rendered) spec and rolling-restarts,
+# preserving the cluster + data volumes. --spec-file is repo-relative (SO resolves it
+# from the repo root); --force skips the DNS probe (the hostname is unchanged here).
+- name: Restart deployment (sync from spec, preserve cluster + volumes)
+  ansible.builtin.command:
+    chdir: "{{ repo_root }}"
+    argv:
+      - laconic-so
+      - deployment
+      - --dir
+      - "{{ _deploy_dir }}"
+      - restart
+      - --stack-path
+      - "{{ _stack_path }}"
+      - --spec-file
+      - "{{ _spec_file | relpath(repo_root) }}"
+      - --force
+  environment: "{{ stack_env }}"
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - stack_action | default('deploy') == 'restart'
 
 # `wait --for=condition=complete` never returns for a Job that hits backoffLimit
 # (it goes condition=Failed, not Complete) — it just hangs to the timeout. Race the
