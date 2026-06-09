@@ -279,6 +279,16 @@ Gas oracle updates are handled by the Privy oracle wallet (see `architecture-dec
 
 Operator-attended on-chain operations are signed directly on the Ledger by the forked client (see below) — no unsigned-tx artifacts.
 
+**Current implementation status — gaps tracked in pebbles `hyp-d9c`:**
+
+The deploy scripts do **not** yet realize this decision in full:
+
+- **ISM ownership is not transferred.** `deployer-scripts-config/deploy.sh` transfers the mailbox (and IGP, to the oracle wallet) plus program upgrade authority, but skips the multisig ISM on a stale assumption ("core transfer-ownership does not exist in the CLI … Skipping"). The command **does** exist — `multisig-ism-message-id transfer-ownership` (verified present at the pinned monorepo sha `16c056a`). Until it is wired, the ISM access-control owner stays on the hot deployer key, and that owner can `SetValidatorsAndThreshold` — i.e. swap in attacker validators and forge messages on **every** route. Tracked: `hyp-d9c.1`. (Validator-Announce has no owner and nothing owner-gated — nothing to transfer; drop its warning.)
+- **Warp-route app-level ownership is never transferred.** `warp-deployer-scripts-config/deploy.sh` transfers only the route programs' BPF upgrade authority; the Hyperlane owner defaults to (and stays) the deployer key, which gates `enroll_remote_routers` / `set_interchain_security_module` / `set_destination_gas`. Wire `token transfer-ownership` as the last step. Tracked: `hyp-d9c.2`.
+- **The hot deployer key is not actually ephemeral.** It is a long-lived keypair in cluster secrets (`spec-warp-deployer.yml` → `~/.credentials/hyperlane/deployer-keypair.json`), re-injected each run; `verify-ownership.yml` does not exist yet. Minimizing it (JIT/ephemeral or Ledger-attended) is tracked: `hyp-d9c.4`.
+
+**Route relay authorization:** the relayer currently relays every message between the two mailboxes (no `HYP_WHITELIST`; `HYP_GASPAYMENTENFORCEMENT: none`), and the mailbox is permissionless, so a newly deployed route is operational with **no operator action** — the warp-UI listing is not a security gate. The intended gate is a curated relayer `HYP_WHITELIST` derived from the git route menu (a git-reviewed config change, not Ledger-signed). Tracked: `hyp-d9c.3`.
+
 ### Operator-Attended Signing UX
 
 **Decision (2026-05-29):** The forked `hyperlane-sealevel-client` has **built-in

@@ -144,6 +144,8 @@ The **program owner key** is held on a hardware wallet and controls all post-dep
 
 **Note:** The Solana program upgrade authority for ALL programs (including IGP) is transferred to the hardware wallet. The IGP account-level `owner` field (which controls `SetGasOracleConfigs`, `SetIgpBeneficiary`, `TransferIgpOwnership`) is separate from the program upgrade authority. If the oracle key is compromised, the hardware wallet can upgrade the IGP program to forcibly reset the account owner.
 
+**Current implementation status (gap):** The deploy scripts do not yet fully realize the flow above. The **ISM** and **warp-route** app-level ownerships remain on the hot deployer key (only mailbox + IGP ownership and program upgrade authority are transferred), the hot key is a long-lived cluster secret rather than ephemeral, `verify-ownership.yml` does not exist, and the relayer relays all routes (no `HYP_WHITELIST`). Until these are closed, the "Tier 3 ephemeral / CRITICAL-but-ephemeral" characterization below is aspirational, and a leaked deployer key can re-ISM existing routes and drain collateral. Tracked in pebbles `hyp-d9c` (`.1` ISM ownership, `.2` warp-route ownership, `.3` relayer whitelist, `.4` deployer-key custody); see `ops-decisions.md` → Ownership Transfer for specifics.
+
 ### Tier 2: Privy Server Wallets — Validator & Oracle Keys (medium security)
 
 **Validator keys** and the **IGP oracle key** are managed by [Privy server wallets](https://docs.privy.io/guide/server-wallets/usage/solana).
