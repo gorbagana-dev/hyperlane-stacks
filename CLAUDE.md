@@ -171,6 +171,10 @@ those as k8s ConfigMaps in each consumer's own namespace. See
   idempotent (newly-selected routes deploy, finished ones skip). The spec's
   `WARP_ROUTES` is the single source of truth for route selection — ops derives
   the list from it (no separate `warp_routes` ansible var).
+  The relayer's `HYP_WHITELIST` is built by `warp-deployer-scripts-config/build-relayer-whitelist.sh`
+  from the deployed routes' program addresses (written to `relayer-whitelist.json` in state,
+  like `warpRoutes.yaml`), injected by conftest (e2e) and `publish-bridge-state.yml` (prod);
+  an empty `[]` would relay everything, so the default is a deny-all sentinel.
 - **cluster-id lifecycle**: `deploy create` generates `laconic-{id}` in
   `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
   Patch `deployment.yml` (not the spec) after create.
@@ -197,3 +201,20 @@ those as k8s ConfigMaps in each consumer's own namespace. See
 
 - Never amend pushed commits — create new commits instead
 - Separate commits by concern (spec updates, stack fixes, tests, docs)
+
+## Issue tracking (pebbles)
+
+This repo tracks work as **pebbles** via the `pb` CLI (github.com/Martian-Engineering/pebbles).
+Use it as part of the normal workflow — file pebbles for follow-ups, deferred fixes,
+and findings instead of leaving them only in prose or memory.
+
+- **Data:** `.pebbles/events.jsonl` (append-only source of truth, committed) +
+  `.pebbles/pebbles.db` (SQLite cache, gitignored). Issue id prefix is **`hyp-`**.
+- **Read before starting work:** `pb list`, `pb show <id>`, `pb dep tree <id>`
+  (use `NO_COLOR=1` for clean output). Check for an existing pebble before filing a new one.
+- **File / update:** `pb create --title … --type task|bug|epic --priority P0-P4 --description …`;
+  `pb update <id> --status in_progress|closed`; `pb dep add <child> <parent> --type parent-child`.
+  Keep descriptions self-contained (file:line evidence, fix direction) — they are the context
+  a future agent picks the work up from.
+- **Commit** `.pebbles/` changes by concern like any other change (pebbles.db stays ignored).
+  Don't `pb sync` (it makes its own commits); stage `.pebbles/` into a normal commit instead.

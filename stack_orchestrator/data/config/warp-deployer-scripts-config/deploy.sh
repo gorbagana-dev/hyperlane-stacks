@@ -255,8 +255,18 @@ SOLCFG
           --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
           --skip-new-upgrade-authority-signer-check \
           --keypair "${DEPLOYER_KEY_FILE}" \
+          --url "$RPC_URL"
+
+        # Transfer the Hyperlane app-level route owner (gates enroll/set-ISM/
+        # set-destination-gas). Runs after warp-route deploy did its owner-gated
+        # setup; only read-only queries follow. Fail closed.
+        echo "Transferring warp route app-level ownership on ${CHAIN_NAME}: ${PROGRAM_ID}..."
+        hyperlane-sealevel-client \
           --url "$RPC_URL" \
-          || echo "WARNING: Failed to transfer upgrade authority for warp route on ${CHAIN_NAME}"
+          --keypair "${DEPLOYER_KEY_FILE}" \
+          token transfer-ownership \
+          --program-id "$PROGRAM_ID" \
+          "${HARDWARE_WALLET_PUBKEY}"
       done
     fi
   fi
@@ -367,6 +377,10 @@ echo "=== All selected warp routes processed ==="
 echo ""
 echo "=== Building warp-UI route config ==="
 STATE_DIR="${STATE_DIR}" bash /opt/scripts/build-warp-ui-config.sh
+
+echo ""
+echo "=== Building relayer whitelist ==="
+STATE_DIR="${STATE_DIR}" bash /opt/scripts/build-relayer-whitelist.sh
 
 # -------------------------------------------------------
 # Clean up deployer keypair

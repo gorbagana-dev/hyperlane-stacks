@@ -2,12 +2,15 @@
 
 End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via `laconic-so` on a local kind cluster with real Solana and Gorchain nodes, then verify the deployment artifacts.
 
+> Pure unit tests that need no cluster, chains, or `laconic-so` live in `tests/unit/` (see `tests/unit/README.md`) and run with a plain `pytest tests/unit/`.
+
 ## What's tested
 
 - **Core deployer** -- deploys Hyperlane core contracts (Mailbox, IGP, ISM, etc.) on both chains, verifies state file outputs (`agent-config.json`, `program-ids.json`, `gas-oracle-config.json`, `multisig-config.json`) via `BridgeStateLoader` reads
 - **Warp deployer** -- one deployment that deploys the routes selected via `WARP_ROUTES` (a test SPL collateral route and a native route), verifies per-route state file outputs (`token-config.json`, `warp-deploy-outputs/`) via `BridgeStateLoader` reads
 - **MinIO** -- deploys the S3-compatible checkpoint storage, verifies pod health, bucket creation, and API accessibility
 - **Validators** -- deploys gorchain and solana validators with a mock Privy server, verifies pod health, KMS proxy connectivity, metrics endpoint, log sanity, and checkpoint writing to MinIO
+- **Ownership & relay authorization** -- right after the warp deploy, asserts the multisig-ISM and each warp route's app-level owner were transferred to the hardware wallet, and that the relayer's `HYP_WHITELIST` covers exactly the deployed warp programs (`test_03_ownership_whitelist.py`)
 - **Relayer** -- deploys the hyperlane relayer, verifies pod health and metrics endpoint
 - **Gas oracle** -- deploys the gas oracle service with mock Privy signing, waits for first price update, verifies on-chain IGP gas oracle configs match oracle output
 - **Bridge transfers** -- executes cross-chain warp route transfers (Solana→Gorchain and reverse) via CLI, verifies on-chain balance changes
@@ -117,14 +120,14 @@ pytest -v -x --skip-cleanup
 # Run only a specific test file
 pytest -v -x test_01_deployer.py
 pytest -v -x test_02_warp_deployer.py
-pytest -v -x test_04_validator.py
-pytest -v -x test_10_warp_ui.py
+pytest -v -x test_05_validator.py
+pytest -v -x test_11_warp_ui.py
 
 # Run only warp UI browser tests (headless via xvfb-run)
-xvfb-run pytest -v -x test_12_warp_ui_bridge.py
+xvfb-run pytest -v -x test_13_warp_ui_bridge.py
 
 # Run with visible browser window (on a desktop with $DISPLAY)
-pytest -v -x test_12_warp_ui_bridge.py
+pytest -v -x test_13_warp_ui_bridge.py
 
 # Exclude slow tests (validator checkpoint tests, bridge transfers, UI tests)
 pytest -v -x -m "not slow"
@@ -218,16 +221,17 @@ tests/e2e/
 ├── test_00_cluster_helpers.py           # Unit tests for cluster utility functions
 ├── test_01_deployer.py                  # Core deployer verification tests
 ├── test_02_warp_deployer.py             # Warp deployer verification tests
-├── test_03_minio.py                     # MinIO stack tests
-├── test_04_validator.py                 # Validator stack tests (gorchain + solana)
-├── test_05_relayer.py                   # Relayer stack tests
-├── test_06_gas_oracle.py                # Gas oracle stack tests
-├── test_07_monitoring.py                # Monitoring stack tests (Prometheus, Grafana, balance monitor)
-├── test_08_bridge.py                    # Cross-chain bridge transfer tests
-├── test_09_fee_claim.py                 # IGP fee claim tests
-├── test_10_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
-├── test_11_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
-├── test_12_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
+├── test_03_ownership_whitelist.py       # On-chain ownership handoff + relayer whitelist assertions
+├── test_04_minio.py                     # MinIO stack tests
+├── test_05_validator.py                 # Validator stack tests (gorchain + solana)
+├── test_06_relayer.py                   # Relayer stack tests
+├── test_07_gas_oracle.py                # Gas oracle stack tests
+├── test_08_monitoring.py                # Monitoring stack tests (Prometheus, Grafana, balance monitor)
+├── test_09_bridge.py                    # Cross-chain bridge transfer tests
+├── test_10_fee_claim.py                 # IGP fee claim tests
+├── test_11_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
+├── test_12_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
+├── test_13_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture
@@ -281,7 +285,7 @@ Let's Encrypt in prod).
 7. **Mock Privy server** starts a local HTTP server that implements the Privy wallet signing API, used by the KMS proxy sidecar in validator pods (`privy_mock` fixture)
 8. **Deployer deployment** exposes host chain nodes to the cluster via k8s Service+Endpoints, funds wallets, creates secrets, and starts the deployer stack (`deployer_deployment` fixture). Deployer writes state files to `/state` (host-path mount).
 9. **Validator deployment** deploys gorchain and solana validators with per-chain namespaces, populates `agent-config` ConfigMap from deployer state files via `BridgeStateLoader`, creates per-chain secrets (`validator_gorchain`, `validator_solana` fixtures)
-10. **Relayer deployment** deploys the hyperlane relayer with chain signer keys and IGP configuration, populates `agent-config` ConfigMap from deployer state files via `BridgeStateLoader` (`relayer_deployment` fixture)
+10. **Relayer deployment** deploys the hyperlane relayer with chain signer keys and IGP configuration, populates `agent-config` ConfigMap from deployer state files via `BridgeStateLoader`, and patches `HYP_WHITELIST` from the warp-deployer's `relayer-whitelist.json` (`relayer_deployment` fixture)
 11. **Gas oracle deployment** deploys the gas oracle with mock Privy signing, waits for first price update, captures computed exchange rates and gas prices (`gas_oracle_deployment` fixture)
 12. **Bridge transfers** executes cross-chain warp route transfers via CLI (`bridge_setup` fixture)
 13. **Warp UI deployment** builds and deploys the warp-ui stack with resolved mailbox/warp addresses (`warp_ui_deployment` fixture)

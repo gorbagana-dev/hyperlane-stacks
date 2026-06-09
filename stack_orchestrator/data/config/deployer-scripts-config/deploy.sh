@@ -266,7 +266,8 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
       PROGRAMS_FILE="${SOLANA_PROGRAMS}"
     fi
 
-    # Transfer upgrade authority for all programs (uses solana CLI, not hyperlane)
+    # Transfer upgrade authority for all programs (uses solana CLI, not hyperlane).
+    # Fail closed: a failed handoff must abort, never leave the hot key in control.
     # JSON keys differ from binary names for IGP (igp_program_id) and ISM (multisig_ism_message_id)
     for ENTRY in mailbox:mailbox validator_announce:validator_announce interchain_gas_paymaster:igp_program_id multisig_ism_message_id:multisig_ism_message_id; do
       PROGRAM="${ENTRY%%:*}"
@@ -278,11 +279,11 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
           --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
           --skip-new-upgrade-authority-signer-check \
           --keypair "${DEPLOYER_KEY_FILE}" \
-          --url "$RPC_URL" || echo "WARNING: Failed to transfer upgrade authority for ${PROGRAM} on ${CHAIN_OUTPUT}"
+          --url "$RPC_URL"
       fi
     done
 
-    # Transfer mailbox account ownership (the only transfer-ownership we know works)
+    # Transfer mailbox account ownership to the hardware wallet.
     MAILBOX_ID=$(jq -r '.mailbox // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
     if [ -n "$MAILBOX_ID" ]; then
       echo "Transferring mailbox account ownership on ${CHAIN_OUTPUT}..."
@@ -291,19 +292,21 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
         --keypair "${DEPLOYER_KEY_FILE}" \
         mailbox transfer-ownership \
         --program-id "$MAILBOX_ID" \
-        "${HARDWARE_WALLET_PUBKEY}" \
-        || echo "WARNING: mailbox transfer-ownership on ${CHAIN_OUTPUT} failed or not supported"
+        "${HARDWARE_WALLET_PUBKEY}"
     fi
 
-    # Note: core transfer-ownership does not exist in the CLI.
-    # validator_announce and multisig_ism account ownership transfer commands
-    # are not yet known. Skipping with a warning.
-    for PROGRAM in multisig_ism_message_id validator_announce; do
-      PROGRAM_ID=$(jq -r ".${PROGRAM} // empty" "${PROGRAMS_FILE}" 2>/dev/null || true)
-      if [ -n "$PROGRAM_ID" ]; then
-        echo "WARNING: No known account ownership transfer command for ${PROGRAM} on ${CHAIN_OUTPUT} (program-id: ${PROGRAM_ID}). Skipping."
-      fi
-    done
+    # Transfer multisig-ISM account ownership to the hardware wallet.
+    # validator-announce has no owner concept (Init/Announce only) — nothing to transfer.
+    ISM_ID=$(jq -r '.multisig_ism_message_id // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
+    if [ -n "$ISM_ID" ]; then
+      echo "Transferring multisig-ISM account ownership on ${CHAIN_OUTPUT}..."
+      hyperlane-sealevel-client \
+        --url "$RPC_URL" \
+        --keypair "${DEPLOYER_KEY_FILE}" \
+        multisig-ism-message-id transfer-ownership \
+        --program-id "$ISM_ID" \
+        "${HARDWARE_WALLET_PUBKEY}"
+    fi
 
     # Transfer IGP ownership to oracle wallet (if configured)
     if [ -n "${IGP_ORACLE_PUBKEY:-}" ]; then
