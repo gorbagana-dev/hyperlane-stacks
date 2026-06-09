@@ -3,8 +3,6 @@ import json
 import subprocess
 from pathlib import Path
 
-import pytest
-
 SCRIPT = (
     Path(__file__).resolve().parents[2]
     / "stack_orchestrator/data/config/warp-deployer-scripts-config/build-relayer-whitelist.sh"
@@ -58,3 +56,10 @@ def test_prefixes_bare_hex_with_0x(tmp_path):
     programs = {"USDC": {"gorchain": {"hex": "44" * 32}, "solana": {"hex": "0x" + "55" * 32}}}
     wl = _run(tmp_path, "usdc", menu, programs)
     assert {"recipientaddress": "0x" + "44" * 32} in wl
+
+
+def test_empty_program_ids_yields_deny_all_sentinel(tmp_path):
+    menu = {"empty": {"name": "EMPTY"}}
+    programs = {"EMPTY": {}}  # no chains -> no rules -> deny-all sentinel
+    wl = _run(tmp_path, "empty", menu, programs)
+    assert wl == [{"recipientaddress": "0x" + "00" * 32}]
