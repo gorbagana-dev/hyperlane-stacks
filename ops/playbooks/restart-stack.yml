@@ -1,13 +1,15 @@
 ---
-# Restart one already-deployed stack to pick up committed spec changes (resources,
-# config values, image) without the rm -rf + full redeploy. Drives `laconic-so
-# deployment restart`, which re-renders the on-host spec, syncs the deployment dir from
-# it, and rolling-restarts — preserving the cluster and data volumes. The target host
-# is resolved from the stacks map (singletons) or validators.yaml (validators), so only
-# the host that actually runs the stack is touched.
+# Restart one already-deployed stack to apply committed changes (spec, mounted
+# source/scripts, image) or just roll its pods, without the rm -rf + full redeploy.
+# Drives `laconic-so deployment restart`, which re-renders the on-host spec, syncs the
+# deployment dir from it, and rolling-restarts — preserving the cluster and data volumes.
+#
+# Targeting follows bootstrap-host.yml: pass the inventory host group as an extra-var
+# (a play's hosts: can't read the stacks map / group_vars, only extra-vars). Validators
+# run per-entry from validators.yaml on their own hosts, so they don't need target_hosts.
 #
 # Usage:
-#   singleton:  ansible-playbook -i inventories/<env>/hosts.yml playbooks/restart-stack.yml -e stack_name=hyperlane-warp-ui
+#   singleton:       ansible-playbook -i inventories/<env>/hosts.yml playbooks/restart-stack.yml -e stack_name=hyperlane-warp-ui -e target_hosts=warp_ui_hosts
 #   all validators:  ... -e stack_name=hyperlane-validator
 #   one validator:   ... -e stack_name=hyperlane-validator -e validator_label=gorchain-primary
 
@@ -22,10 +24,17 @@
           - stack_name in stacks
         fail_msg: "Provide -e stack_name=<name>; one of: {{ stacks.keys() | list }}"
 
-# Singletons carry a host group in the stacks map; the validator entry does not, so this
-# play resolves to no hosts (and is skipped) when restarting validators.
+    - name: Singleton restarts need a target host group
+      ansible.builtin.assert:
+        that: target_hosts is defined
+        fail_msg: >-
+          Provide -e target_hosts=<inventory group> (e.g. relayer_hosts) for {{ stack_name }}.
+      when: stack_name != 'hyperlane-validator'
+
+# Singletons: the operator names the inventory group (target_hosts). Skipped for
+# validators, which carry no target_hosts.
 - name: Restart a singleton stack
-  hosts: "{{ stacks[stack_name].hosts | default([]) }}"
+  hosts: "{{ target_hosts | default([]) }}"
   gather_facts: true
   vars_files:
     - "{{ inventory_dir }}/secrets.yml"

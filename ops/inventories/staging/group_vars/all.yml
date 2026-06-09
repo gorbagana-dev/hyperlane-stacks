@@ -104,34 +104,27 @@ stacks:
   hyperlane-minio:
     spec: spec-minio.yml
     path: stack_orchestrator/data/stacks/hyperlane-minio
-    hosts: minio_hosts
   hyperlane-svm-deployer:
     spec: spec-deployer.yml
     path: stack_orchestrator/data/stacks/hyperlane-svm-deployer
-    hosts: deployer_hosts
     is_job: true
   hyperlane-svm-warp-deployer:
     path: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
-    hosts: deployer_hosts
     is_job: true
   hyperlane-relayer:
     spec: spec-relayer.yml
     path: stack_orchestrator/data/stacks/hyperlane-relayer
-    hosts: relayer_hosts
     configmaps:
       - agent-config
   hyperlane-gas-oracle:
     spec: spec-gas-oracle.yml
     path: stack_orchestrator/data/stacks/hyperlane-gas-oracle
-    hosts: gas_oracle_hosts
   hyperlane-monitoring:
     spec: spec-monitoring.yml
     path: stack_orchestrator/data/stacks/hyperlane-monitoring
-    hosts: monitoring_hosts
   hyperlane-warp-ui:
     spec: spec-warp-ui.yml
     path: stack_orchestrator/data/stacks/hyperlane-warp-ui
-    hosts: warp_ui_hosts
     configmaps:
       - warp-ui-config
   hyperlane-validator:
