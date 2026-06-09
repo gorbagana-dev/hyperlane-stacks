@@ -55,6 +55,17 @@
         _pids: "{{ _pids_raw.content | b64decode | from_json }}"
       when: not ansible_check_mode
 
+    - name: Load relayer whitelist
+      ansible.builtin.slurp:
+        src: "{{ deployment_root }}/{{ generated_rel }}/relayer-whitelist.json"
+      register: _whitelist_raw
+      when: not ansible_check_mode
+
+    - name: Render relayer whitelist as compact JSON
+      ansible.builtin.set_fact:
+        _whitelist: "{{ _whitelist_raw.content | b64decode | from_json | to_json }}"
+      when: not ansible_check_mode
+
     # Patch the scalar deployment-derived values (IGP/mailbox, from program-ids.json)
     # into the committed specs. The rich agent-config.json is distributed as a ConfigMap
     # by state_distribute, not here; warpRoutes.yaml is built by the warp-deployer
@@ -91,6 +102,13 @@
           value: "{{ (_pids | default({})).solana.mailbox | default('') }}"
       loop_control:
         label: "{{ item.spec }}:{{ item.key }}"
+      when: not ansible_check_mode
+
+    - name: Patch HYP_WHITELIST into spec-relayer.yml (single-quoted JSON scalar)
+      ansible.builtin.replace:
+        path: "{{ deployment_root }}/spec-relayer.yml"
+        regexp: '^(\s*HYP_WHITELIST:\s*).*$'
+        replace: "\\g<1>'{{ _whitelist }}'"
       when: not ansible_check_mode
 
     - name: Stage the generated paths and patched specs (scoped)
