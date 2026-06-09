@@ -9,7 +9,9 @@
 # run per-entry from validators.yaml on their own hosts, so they don't need target_hosts.
 #
 # Usage:
-#   singleton:       ansible-playbook -i inventories/<env>/hosts.yml playbooks/restart-stack.yml -e stack_name=hyperlane-warp-ui -e target_hosts=warp_ui_hosts
+#   singleton:
+#     ansible-playbook -i inventories/<env>/hosts.yml playbooks/restart-stack.yml \
+#       -e stack_name=hyperlane-warp-ui -e target_hosts=warp_ui_hosts
 #   all validators:  ... -e stack_name=hyperlane-validator
 #   one validator:   ... -e stack_name=hyperlane-validator -e validator_label=gorchain-primary
 

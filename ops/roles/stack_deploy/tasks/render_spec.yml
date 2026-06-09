@@ -32,12 +32,12 @@
       vars:
         _p: "{{ _pids_render_raw.content | b64decode | from_json }}"
       loop:
-        - { key: __GORCHAIN_MAILBOX__, value: "{{ _p.gorchain.mailbox }}" }
-        - { key: __SOLANA_MAILBOX__, value: "{{ _p.solana.mailbox }}" }
-        - { key: __GORCHAIN_IGP_PROGRAM_ID__, value: "{{ _p.gorchain.igp_program_id }}" }
-        - { key: __SOLANA_IGP_PROGRAM_ID__, value: "{{ _p.solana.igp_program_id }}" }
-        - { key: __GORCHAIN_IGP_ACCOUNT__, value: "{{ _p.gorchain.igp_account }}" }
-        - { key: __SOLANA_IGP_ACCOUNT__, value: "{{ _p.solana.igp_account }}" }
+        - {key: __GORCHAIN_MAILBOX__, value: "{{ _p.gorchain.mailbox }}"}
+        - {key: __SOLANA_MAILBOX__, value: "{{ _p.solana.mailbox }}"}
+        - {key: __GORCHAIN_IGP_PROGRAM_ID__, value: "{{ _p.gorchain.igp_program_id }}"}
+        - {key: __SOLANA_IGP_PROGRAM_ID__, value: "{{ _p.solana.igp_program_id }}"}
+        - {key: __GORCHAIN_IGP_ACCOUNT__, value: "{{ _p.gorchain.igp_account }}"}
+        - {key: __SOLANA_IGP_ACCOUNT__, value: "{{ _p.solana.igp_account }}"}
       loop_control:
         label: "{{ item.key }}"
 
