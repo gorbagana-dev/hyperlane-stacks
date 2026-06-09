@@ -19,6 +19,11 @@ services:
       # Gas enforcement: None — Sealevel process_estimate_costs returns
       # hardcoded zeros, making OnChainFeeQuoting non-functional
       HYP_GASPAYMENTENFORCEMENT: '[{"type": "none"}]'
+      # Relay endorsement: only messages delivered to a known warp program.
+      # Built by the warp-deployer; populated into config: by conftest (e2e) /
+      # publish-bridge-state (prod). Default below is deny-all (an empty []
+      # would mean relay-everything).
+      HYP_WHITELIST: ${HYP_WHITELIST}
       # Key management — injected via secrets: in spec.yml (envFrom.secretRef)
       # HYP_CHAINS_GORCHAIN_SIGNER_KEY, HYP_CHAINS_SOLANA_SIGNER_KEY
       # No MinIO credentials needed — relayer uses anonymous S3 client (.no_credentials()).

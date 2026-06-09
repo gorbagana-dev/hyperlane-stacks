@@ -12,6 +12,7 @@ config:
   SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
   GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
   SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
+  HYP_WHITELIST: "REPLACE_AT_RUNTIME"
   CLAIM_INTERVAL_SECONDS: "600"
   # Dev only — direct cross-NS to the MinIO pod via external-services
   # selector mode below. No Caddy in this path.
