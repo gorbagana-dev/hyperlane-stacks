@@ -30,8 +30,18 @@ assumes are incomplete:
   the curated route menu (`WARP_ROUTES` + the per-route artifacts the deployer
   wrote for exactly those routes), not on-chain discovery — so a rogue route
   from a leaked key cannot auto-whitelist itself.
-- **Fail closed.** Every ownership handoff aborts the deploy on failure; an
-  empty whitelist denies all relaying.
+- **Fail closed.** Every ownership handoff aborts the deploy on failure; the
+  relayer defaults to a deny-all whitelist when no routes are configured.
+
+> **Relayer whitelist semantics (verified in `matching_list.rs`):** an *empty*
+> `HYP_WHITELIST='[]'` deserializes to `MatchingList(None)`, which `msg_matches`
+> treats as the wildcard default — i.e. **relay everything** (fail-open). There
+> is no empty-list "deny-all". To deny all relaying we must emit a *non-empty*
+> rule that can never match a real message — a recipient of 32 zero bytes
+> (`0x000…000`), since no warp message is delivered to the zero address. The
+> builder and the spec default both use this deny-all sentinel for the no-routes
+> case, so an unpopulated whitelist fails closed (relays nothing) rather than
+> open.
 
 The deploy-time signer itself remains a long-lived cluster secret (minimizing it
 is a deliberately-untracked accepted residual — once `.1`/`.2`/`.3` land, a
@@ -100,16 +110,21 @@ the union of per-chain `hex` recipients to `${STATE_DIR}/relayer-whitelist.json`
   brittleness of directed-edge tuples.
 - Menu-scoped: iterating `WARP_ROUTES` (not scanning `/state`) means only
   curated routes are whitelisted.
-- Empty route set → `[]` (deny-all, fail-safe).
+- Empty route set → the deny-all sentinel
+  `[{"recipientaddress":"0x000…000"}]` (32 zero bytes), NOT `[]` (which would
+  relay everything — see semantics note above).
 - If a chain's `hex` lacks a `0x` prefix, prepend it; recipients are 32-byte
   H256 (64 hex chars), which Solana pubkeys satisfy.
 
 **Wiring (env injection).**
 - **compose** `docker-compose-hyperlane-relayer.yml`: add `HYP_WHITELIST:
   ${HYP_WHITELIST}` to the relayer `environment:`.
-- **spec** `deployment/spec-relayer.yml` (+ `deployment/local/spec-relayer.yml`
-  if present + staging): add `HYP_WHITELIST: '[]'` under `config:` (explicit
-  default per the no-nested-defaults rule).
+- **spec** `deployment/spec-relayer.yml` + `deployment/local/spec-relayer.yml`:
+  add `HYP_WHITELIST` under `config:` defaulting to the deny-all sentinel
+  `'[{"recipientaddress":"0x0000000000000000000000000000000000000000000000000000000000000000"}]'`
+  (explicit per the no-nested-defaults rule; deny-all so an unpopulated relayer
+  fails closed). The e2e fixture uses a `REPLACE_AT_RUNTIME` placeholder patched
+  by conftest.
 - **e2e** `tests/e2e/conftest.py`: alongside the existing relayer IGP patch, read
   `relayer-whitelist.json` via `bridge_state_loader.read_json(...)` and set the
   relayer spec's `config.HYP_WHITELIST = json.dumps(<list>, separators=(',',':'))`.
