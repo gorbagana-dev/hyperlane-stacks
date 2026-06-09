@@ -223,7 +223,7 @@ EOF
 **Files:**
 - Create: `stack_orchestrator/data/config/warp-deployer-scripts-config/build-relayer-whitelist.sh`
 - Modify: `stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh` (invoke after build-warp-ui-config.sh, currently line 369)
-- Test: `tests/e2e/test_relayer_whitelist_builder.py`
+- Test: `tests/unit/test_relayer_whitelist_builder.py` (pure unit test — not under `tests/e2e/`)
 
 - [ ] **Step 1: Mark the pebble in progress**
 
@@ -233,7 +233,7 @@ NO_COLOR=1 pb update hyp-d9c.3 --status in_progress
 
 - [ ] **Step 2: Write the failing unit tests**
 
-Create `tests/e2e/test_relayer_whitelist_builder.py`:
+Create `tests/unit/test_relayer_whitelist_builder.py`:
 
 ```python
 """Unit tests for build-relayer-whitelist.sh — pure tempdir, no cluster."""
@@ -300,7 +300,7 @@ def test_prefixes_bare_hex_with_0x(tmp_path):
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `cd tests/e2e && python -m pytest test_relayer_whitelist_builder.py -v`
+Run: `cd tests/unit && python -m pytest test_relayer_whitelist_builder.py -v`
 Expected: FAIL — the script does not exist yet (`bash: …build-relayer-whitelist.sh: No such file`).
 
 - [ ] **Step 4: Write the builder script**
@@ -354,7 +354,7 @@ echo "Wrote ${STATE_DIR}/relayer-whitelist.json ($(jq 'length' <<<"$whitelist") 
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `cd tests/e2e && python -m pytest test_relayer_whitelist_builder.py -v`
+Run: `cd tests/unit && python -m pytest test_relayer_whitelist_builder.py -v`
 Expected: PASS (3 passed).
 
 - [ ] **Step 6: Invoke the builder from the warp deployer**
@@ -389,7 +389,7 @@ Expected: `OK`
 ```bash
 git add stack_orchestrator/data/config/warp-deployer-scripts-config/build-relayer-whitelist.sh \
         stack_orchestrator/data/config/warp-deployer-scripts-config/deploy.sh \
-        tests/e2e/test_relayer_whitelist_builder.py
+        tests/unit/test_relayer_whitelist_builder.py
 git commit -m "$(cat <<'EOF'
 feat(warp-deployer): build relayer whitelist from deployed route programs
 
@@ -816,7 +816,7 @@ EOF
 
 ## Final verification (after all tasks)
 
-- [ ] **Run the builder unit tests:** `cd tests/e2e && python -m pytest test_relayer_whitelist_builder.py -v` → 3 passed.
-- [ ] **Lint:** `cd tests/e2e && ruff check test_relayer_whitelist_builder.py test_13_ownership_whitelist.py conftest.py` → clean.
+- [ ] **Run the builder unit tests:** `cd tests/unit && python -m pytest test_relayer_whitelist_builder.py -v` → 3 passed.
+- [ ] **Lint:** `ruff check tests/unit/test_relayer_whitelist_builder.py tests/e2e/test_13_ownership_whitelist.py tests/e2e/conftest.py` → clean.
 - [ ] **Full e2e (requires the local gorchain/solana chains + cluster):** run the suite per `specs/e2e-test-spec.md`. The deploys must stay green under the now-fatal transfers, and `test_13_ownership_whitelist.py` must pass. This is the real integration gate for Tasks 1, 2, 6.
 - [ ] **Confirm no committed secrets:** `git diff main --stat` and spot-check that only program addresses (public) were added to specs — never keys.
