@@ -171,6 +171,10 @@ those as k8s ConfigMaps in each consumer's own namespace. See
   idempotent (newly-selected routes deploy, finished ones skip). The spec's
   `WARP_ROUTES` is the single source of truth for route selection — ops derives
   the list from it (no separate `warp_routes` ansible var).
+  The relayer's `HYP_WHITELIST` is built by `warp-deployer-scripts-config/build-relayer-whitelist.sh`
+  from the deployed routes' program addresses (written to `relayer-whitelist.json` in state,
+  like `warpRoutes.yaml`), injected by conftest (e2e) and `publish-bridge-state.yml` (prod);
+  an empty `[]` would relay everything, so the default is a deny-all sentinel.
 - **cluster-id lifecycle**: `deploy create` generates `laconic-{id}` in
   `deployment.yml`. `deploy start` uses it as kube context `kind-{cluster-id}`.
   Patch `deployment.yml` (not the spec) after create.

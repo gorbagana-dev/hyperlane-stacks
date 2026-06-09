@@ -279,15 +279,15 @@ Gas oracle updates are handled by the Privy oracle wallet (see `architecture-dec
 
 Operator-attended on-chain operations are signed directly on the Ledger by the forked client (see below) — no unsigned-tx artifacts.
 
-**Current implementation status — gaps tracked in pebbles `hyp-d9c`:**
+**Current implementation status (as of `hyp-d9c`):**
 
-The deploy scripts do **not** yet realize this decision in full:
+The deploy scripts now realize this decision:
 
-- **ISM ownership is not transferred.** `deployer-scripts-config/deploy.sh` transfers the mailbox (and IGP, to the oracle wallet) plus program upgrade authority, but skips the multisig ISM on a stale assumption ("core transfer-ownership does not exist in the CLI … Skipping"). The command **does** exist — `multisig-ism-message-id transfer-ownership` (verified present at the pinned monorepo sha `16c056a`). Until it is wired, the ISM access-control owner stays on the hot deployer key, and that owner can `SetValidatorsAndThreshold` — i.e. swap in attacker validators and forge messages on **every** route. Tracked: `hyp-d9c.1`. (Validator-Announce has no owner and nothing owner-gated — nothing to transfer; drop its warning.)
-- **Warp-route app-level ownership is never transferred.** `warp-deployer-scripts-config/deploy.sh` transfers only the route programs' BPF upgrade authority; the Hyperlane owner defaults to (and stays) the deployer key, which gates `enroll_remote_routers` / `set_interchain_security_module` / `set_destination_gas`. Wire `token transfer-ownership` as the last step. Tracked: `hyp-d9c.2`.
-- **The hot deployer key is a long-lived cluster secret** (`spec-warp-deployer.yml` → `~/.credentials/hyperlane/deployer-keypair.json`), re-injected each run — not the ephemeral key the design above assumes (and `verify-ownership.yml` does not exist yet). Minimizing it (JIT/ephemeral or Ledger-attended) was considered and **deliberately not tracked**: once the ownership handoffs (`hyp-d9c.1`/`.2`) and the relayer whitelist (`hyp-d9c.3`) land, a leaked deploy key can neither drain funds nor get rogue routes relayed, so the simpler hot-key workflow is kept.
+- **Multisig-ISM ownership (`hyp-d9c.1`) is transferred** to the hardware wallet by `deployer-scripts-config/deploy.sh` via `multisig-ism-message-id transfer-ownership`. A failed transfer aborts the deploy (fail-closed).
+- **Warp-route app-level ownership (`hyp-d9c.2`) is transferred** to the hardware wallet by `warp-deployer-scripts-config/deploy.sh` via `token transfer-ownership` as the final step of each route deployment. A failed transfer aborts the deploy (fail-closed).
+- **The hot deployer key is a long-lived cluster secret** (`spec-warp-deployer.yml` → `~/.credentials/hyperlane/deployer-keypair.json`), re-injected each run. Minimizing it (JIT/ephemeral or Ledger-attended) is **deliberately not tracked**: once `.1`–`.3` have landed, a leaked deploy key can neither drain funds nor get rogue routes relayed, so the simpler hot-key workflow is kept.
 
-**Route relay authorization:** the relayer currently relays every message between the two mailboxes (no `HYP_WHITELIST`; `HYP_GASPAYMENTENFORCEMENT: none`), and the mailbox is permissionless, so a newly deployed route is operational with **no operator action** — the warp-UI listing is not a security gate. The intended gate is a curated relayer `HYP_WHITELIST` derived from the git route menu (a git-reviewed config change, not Ledger-signed). Tracked: `hyp-d9c.3`.
+**Route relay authorization (`hyp-d9c.3`):** The relayer is gated by a menu-derived `HYP_WHITELIST` built from the deployed routes' program addresses by `warp-deployer-scripts-config/build-relayer-whitelist.sh` (written to `relayer-whitelist.json` in state). An empty `[]` would relay everything, so the default is a deny-all sentinel (`["deny-all"]`). The whitelist is injected by conftest (e2e) and `publish-bridge-state.yml` (prod). Adding a new route to the relayer requires a git-reviewed config change.
 
 ### Operator-Attended Signing UX
 
