@@ -160,25 +160,22 @@ the diff before it commits.
 
 ## 9. Access the stacks
 
-No public DNS — tunnel and trust the mkcert CA from your workstation.
+No public DNS, but Caddy listens on the host's public `:443`. The `local-access` playbook
+trusts the host's mkcert CA on your workstation and resolves the bridge hostnames to the
+host IP, so the UIs open directly — no tunnel.
 
 ```bash
-# 1. fetch the published mkcert root CA from the host
-scp <host>:~/.credentials/hyperlane/local-rootCA.pem ./local-rootCA.pem
-# 2. trust it on your workstation (Linux system store shown; macOS: add to Keychain;
-#    Firefox uses its own NSS store — import via Preferences > Certificates)
-sudo cp local-rootCA.pem /usr/local/share/ca-certificates/hyperlane-local.crt && sudo update-ca-certificates
-# 3. point the hostnames at the tunnel and open it
-echo "127.0.0.1 warp-ui.<zone> grafana.<zone> prometheus.<zone> minio-console.<zone>" | sudo tee -a /etc/hosts
-ssh -L 443:localhost:443 <host>
-# now browse https://grafana.<zone> etc. through the tunnel
+# trust the CA + write /etc/hosts on your workstation. Needs workstation sudo (add -K if
+# your user isn't passwordless sudo).
+ansible-playbook -i inventories/local/hosts.yml playbooks/local-access.yml
+# now browse https://grafana.<zone>, https://warp-ui.<zone>, etc. directly
 ```
 
-**If you use warp-ui**, the browser also talks directly to the chains, so add the chain
-ports to the tunnel:
+**If you use warp-ui**, the browser talks directly to the chains over `localhost`
+(mixed-content-exempt), so forward just the two chain ports:
 
 ```bash
-ssh -L 443:localhost:443 -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
+ssh -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
 ```
 
 ## 10. Reset between runs

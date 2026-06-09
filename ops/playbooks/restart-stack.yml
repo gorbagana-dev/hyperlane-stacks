@@ -33,6 +33,7 @@
 
 # Singletons: the operator names the inventory group (target_hosts). Skipped for
 # validators, which carry no target_hosts.
+# TODO: find a cleaner way to derive a stack's host than passing target_hosts by hand.
 - name: Restart a singleton stack
   hosts: "{{ target_hosts | default([]) }}"
   gather_facts: true
