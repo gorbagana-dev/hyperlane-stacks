@@ -2,6 +2,7 @@ services:
   relayer:
     image: ghcr.io/gorbagana-dev/hyperlane-agent:latest
     # image: gorbagana-dev/hyperlane-agent:local
+    user: "0"
     restart: unless-stopped
     hostname: relayer
     command:

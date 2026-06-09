@@ -79,6 +79,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-relayer
+    spec_render_generated: true
     configmap_names: "{{ stacks['hyperlane-relayer'].configmaps }}"
     # state_distribute runs as the pre-start hook (after deploy create makes the dir,
     # before start mounts the configmaps) — running it as a pre-role would create
@@ -97,17 +98,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-gas-oracle
-  roles:
-    - fetch_stack
-    - stack_deploy
-
-- name: Monitoring
-  hosts: monitoring_hosts
-  gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
-  vars:
-    stack_name: hyperlane-monitoring
+    spec_render_generated: true
   roles:
     - fetch_stack
     - stack_deploy
@@ -119,6 +110,7 @@
     - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-warp-ui
+    spec_render_generated: true
     configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
     # state_distribute runs as the pre-start hook (see the Relayer play for the rationale).
     deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
@@ -141,45 +133,67 @@
 
     - name: Gather facts for each validator host (for ansible_env under delegation)
       ansible.builtin.setup:
-      delegate_to: "{{ item.host }}"
+      delegate_to: "{{ validator.host }}"
       delegate_facts: true
       loop: "{{ validators }}"
       loop_control:
-        label: "{{ item.host }}"
+        loop_var: validator
+        label: "{{ validator.host }}"
 
     - name: Fetch the stack repo on each validator host
       ansible.builtin.include_role:
         name: fetch_stack
         apply:
-          delegate_to: "{{ item.host }}"
+          delegate_to: "{{ validator.host }}"
       vars:
-        repo_base_dir: "{{ hostvars[item.host].ansible_env.HOME }}/deployments"
+        repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
       loop: "{{ validators }}"
       loop_control:
-        label: "{{ item.label }}"
+        loop_var: validator
+        label: "{{ validator.label }}"
 
+    # loop_var: validator (not the default `item`) — stack_deploy has its own `item`
+    # loops, and these vars are lazily re-evaluated inside it; sharing `item` rebinds
+    # it to a string and breaks `validator.label`.
     - name: Deploy each validator on its host
       ansible.builtin.include_role:
         name: stack_deploy
         apply:
-          delegate_to: "{{ item.host }}"
+          delegate_to: "{{ validator.host }}"
       vars:
-        stack_name: "hyperlane-validator-{{ item.label }}"
-        repo_base_dir: "{{ hostvars[item.host].ansible_env.HOME }}/deployments"
+        stack_name: "hyperlane-validator-{{ validator.label }}"
+        repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
         repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
         deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
-        spec_file: "{{ deployment_root }}/spec-validator-{{ item.chain }}.yml"
+        spec_file: "{{ deployment_root }}/spec-validator-{{ validator.chain }}.yml"
         stack_path: "{{ repo_root }}/{{ stacks['hyperlane-validator'].path }}"
-        deploy_dir: "{{ repo_base_dir }}/hyperlane-validator-{{ item.label }}"
+        deploy_dir: "{{ repo_base_dir }}/hyperlane-validator-{{ validator.label }}"
         # state_distribute runs as the pre-start hook (after create, before start),
         # delegated to the validator's host since this play targets the controller.
         configmap_names: "{{ stacks['hyperlane-validator'].configmaps }}"
         stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
-        stack_hook_delegate_to: "{{ item.host }}"
+        stack_hook_delegate_to: "{{ validator.host }}"
         stack_env_map_key: hyperlane-validator
         stack_env_extra: >-
-          {{ {(item.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[item.label].key_id,
-              (item.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[item.label].secret} }}
+          {{ {(validator.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[validator.label].key_id,
+              (validator.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[validator.label].secret} }}
+        # The committed spec ships PRIVY_WALLET_ID: REPLACE_WITH_WALLET_ID; render this
+        # validator's id (from validators.yaml) into it. HYP_VALIDATOR_ID derives from
+        # PRIVY_WALLET_ID in the compose, so this one render covers both containers.
+        spec_token_renders_extra:
+          REPLACE_WITH_WALLET_ID: "{{ validator.privy_wallet_id }}"
       loop: "{{ validators }}"
       loop_control:
-        label: "{{ item.label }}"
+        loop_var: validator
+        label: "{{ validator.label }}"
+
+- name: Monitoring
+  hosts: monitoring_hosts
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  vars:
+    stack_name: hyperlane-monitoring
+  roles:
+    - fetch_stack
+    - stack_deploy

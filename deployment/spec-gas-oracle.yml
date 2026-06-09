@@ -13,8 +13,8 @@ config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
 
   # --- IGP program addresses (base58, from deployer output) ---
-  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
-  SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
+  GORCHAIN_IGP_PROGRAM_ID: "__GORCHAIN_IGP_PROGRAM_ID__"
+  SOLANA_IGP_PROGRAM_ID: "__SOLANA_IGP_PROGRAM_ID__"
 
   # --- Hyperlane domain IDs (must match deployer config) ---
   GORCHAIN_DOMAIN_ID: "1198486093"

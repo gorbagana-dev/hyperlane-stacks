@@ -39,7 +39,7 @@ stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 namespace: laconic-hyperlane-warp-deployer
 config:
-  WARP_ROUTES: "usdc"          # space-separated route stems from the menu
+  WARP_ROUTES: "usdc"          # comma- or space-separated route stems from the menu
   GORCHAIN_RPC_URL: "https://gorchain-rpc.example.com"
   SOLANA_RPC_URL: "https://solana-rpc.example.com"
   GORCHAIN_DOMAIN_ID: "99999"

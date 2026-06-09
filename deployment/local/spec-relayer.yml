@@ -11,14 +11,12 @@ kind-mount-root: /srv/kind/hyperlane
 config:
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
-  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_WITH_GORCHAIN_IGP_PROGRAM_ID"
-  SOLANA_IGP_PROGRAM_ID: "REPLACE_WITH_SOLANA_IGP_PROGRAM_ID"
-  GORCHAIN_IGP_ACCOUNT: "REPLACE_WITH_GORCHAIN_IGP_ACCOUNT"
-  SOLANA_IGP_ACCOUNT: "REPLACE_WITH_SOLANA_IGP_ACCOUNT"
-  # Relayer message whitelist (Hyperlane MatchingList). Default deny-all
-  # (recipient = 32 zero bytes); publish-bridge-state.yml patches this from the
-  # warp-deployer's relayer-whitelist.json. An empty [] would relay everything.
-  HYP_WHITELIST: '[{"recipientaddress":"0x0000000000000000000000000000000000000000000000000000000000000000"}]'
+  GORCHAIN_IGP_PROGRAM_ID: "__GORCHAIN_IGP_PROGRAM_ID__"
+  SOLANA_IGP_PROGRAM_ID: "__SOLANA_IGP_PROGRAM_ID__"
+  GORCHAIN_IGP_ACCOUNT: "__GORCHAIN_IGP_ACCOUNT__"
+  SOLANA_IGP_ACCOUNT: "__SOLANA_IGP_ACCOUNT__"
+  # Rendered at deploy time from relayer-whitelist.json (stack_deploy).
+  HYP_WHITELIST: '__RELAYER_WHITELIST__'
   # Rendered per topology: single -> http://hyperlane-minio:9000 (in-cluster, plain
   # HTTP); multi -> https://s3.<zone> (Caddy + LE). See ops group_vars spec_token_renders.
   AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"

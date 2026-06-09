@@ -1,0 +1,66 @@
+---
+# Workstation access for single-host local. Trusts the host's mkcert CA and resolves the
+# bridge hostnames to the host IP in /etc/hosts, so the UIs open over Caddy's public :443
+# with no tunnel. Runs on the controller (your workstation).
+#
+# Needs sudo on the workstation for the CA store + /etc/hosts; add -K if your user isn't
+# passwordless sudo. Trusts the CA in the Linux system store. For warp-ui also forward the
+# two chain ports (the browser reaches the chains directly over localhost) — see the runbook.
+- name: Local workstation access (CA trust + /etc/hosts)
+  hosts: controller
+  gather_facts: false
+  vars:
+    _host: "{{ groups['minio_hosts'][0] }}"
+  tasks:
+    - name: This playbook is single-host (mkcert + /etc/hosts) only
+      ansible.builtin.assert:
+        that: topology == 'single'
+        fail_msg: "local-access is single-host only; multi-host uses real DNS + Let's Encrypt."
+
+    - name: Gather facts for the deploy host (home + public_ip)
+      ansible.builtin.setup:
+      delegate_to: "{{ _host }}"
+      delegate_facts: true
+
+    - name: Load validators (for their hostnames)
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Resolve the bridge hostnames, host IP, and published CA path
+      ansible.builtin.set_fact:
+        _access_hosts: >-
+          {{ (dns_record_map.keys() | list
+              + (validators | map(attribute='chain')
+                 | map('regex_replace', '^', 'validator-') | list))
+             | map('regex_replace', '$', '.' ~ dns_zone) | list }}
+        _host_ip: "{{ hostvars[_host].public_ip }}"
+        _published_ca: "{{ hostvars[_host].credentials_dir }}/local-rootCA.pem"
+
+    - name: Read the mkcert root CA from the host
+      ansible.builtin.slurp:
+        src: "{{ _published_ca }}"
+      delegate_to: "{{ _host }}"
+      register: _root_ca
+
+    - name: Trust the mkcert CA in the workstation store (Linux)
+      become: true
+      ansible.builtin.copy:
+        content: "{{ _root_ca.content | b64decode }}"
+        dest: /usr/local/share/ca-certificates/hyperlane-local.crt
+        mode: "0644"
+      register: _ca_installed
+
+    - name: Refresh the CA bundle
+      become: true
+      ansible.builtin.command: update-ca-certificates
+      when: _ca_installed.changed
+      changed_when: true
+
+    - name: Resolve the bridge hostnames to the host IP in /etc/hosts
+      become: true
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} hyperlane local-access"
+        block: |
+          {% for h in _access_hosts %}
+          {{ _host_ip }} {{ h }}
+          {% endfor %}

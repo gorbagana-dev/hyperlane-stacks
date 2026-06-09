@@ -131,7 +131,7 @@ One-time Job that deploys the warp route contracts for the routes selected by `W
 ### How It Works
 1. Same `jobs:` pattern as core deployer — runs as a k8s Job with ConfigMap-mounted deploy script at `/opt/scripts/`
 2. Reads `hyperlane-program-ids` ConfigMap (created by Stack 1) for mailbox addresses
-3. `deploy.sh` loops over the space-separated `WARP_ROUTES` selection. For each route it reads `/config/warp-routes/<stem>.json` (from the `warp-routes-config` ConfigMap) and builds the on-chain token-config generically with `jq` from that route's fields (origin/remote chain, type, token, and metadata) — there is no per-token template
+3. `deploy.sh` loops over the comma- or space-separated `WARP_ROUTES` selection. For each route it reads `/config/warp-routes/<stem>.json` (from the `warp-routes-config` ConfigMap) and builds the on-chain token-config generically with `jq` from that route's fields (origin/remote chain, type, token, and metadata) — there is no per-token template
 4. Deploys the warp route programs for both sides and writes each route's addresses to state under `/state/warp-routes/<name>/`
 
 ### Warp route token model
@@ -193,7 +193,7 @@ served by the warp-UI container.)
 The spec selects routes and carries shared chain/control config; the per-route
 fields live in the menu, not the spec.
 
-- **`WARP_ROUTES`** — space-separated list of route stems to deploy (e.g. `"usdc"`
+- **`WARP_ROUTES`** — comma- or space-separated list of route stems to deploy (e.g. `"usdc"`
   in prod, `"usdc sol"` locally/e2e). Each stem must have a menu file (below) and
   must match the `warp_routes` selection in
   `ops/inventories/{prod,local}/group_vars/all.yml`.

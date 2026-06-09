@@ -1,0 +1,113 @@
+---
+# Substitute deploy-time values into the on-host spec. Shared by stack_deploy (fresh
+# create) and stack_restart (existing deployment). Requires _spec_file (from resolve.yml).
+
+# Operator/runtime tokens (DNS zone, own-chain RPC URLs). Gated on spec_token_renders,
+# set only in local/group_vars — a no-op for prod/staging. spec_token_renders_extra
+# carries per-invocation tokens (e.g. each validator's privy_wallet_id).
+- name: Render runtime tokens into the spec (local only)
+  ansible.builtin.replace:
+    path: "{{ _spec_file }}"
+    regexp: "{{ item.key | regex_escape }}"
+    replace: "{{ item.value }}"
+  loop: "{{ ((spec_token_renders | default({})) | combine(spec_token_renders_extra | default({}))) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+# Mailbox/IGP addresses come from the deployer's published program-ids.json (in the
+# on-host clone next to the spec), rendered in by consumers at deploy time.
+- name: Render published program-id tokens into the spec (consumers only)
+  when: spec_render_generated | default(false)
+  block:
+    - name: Read the published program-ids.json
+      ansible.builtin.slurp:
+        src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/program-ids.json"
+      register: _pids_render_raw
+
+    - name: Substitute program-id tokens into the on-host spec
+      ansible.builtin.replace:
+        path: "{{ _spec_file }}"
+        regexp: "{{ item.key | regex_escape }}"
+        replace: "{{ item.value }}"
+      vars:
+        _p: "{{ _pids_render_raw.content | b64decode | from_json }}"
+      loop:
+        - {key: __GORCHAIN_MAILBOX__, value: "{{ _p.gorchain.mailbox }}"}
+        - {key: __SOLANA_MAILBOX__, value: "{{ _p.solana.mailbox }}"}
+        - {key: __GORCHAIN_IGP_PROGRAM_ID__, value: "{{ _p.gorchain.igp_program_id }}"}
+        - {key: __SOLANA_IGP_PROGRAM_ID__, value: "{{ _p.solana.igp_program_id }}"}
+        - {key: __GORCHAIN_IGP_ACCOUNT__, value: "{{ _p.gorchain.igp_account }}"}
+        - {key: __SOLANA_IGP_ACCOUNT__, value: "{{ _p.solana.igp_account }}"}
+      loop_control:
+        label: "{{ item.key }}"
+
+# The relayer's message whitelist comes from the warp-deployer's relayer-whitelist.json
+# (same on-host clone), rendered in at deploy time like the program-id tokens above. The
+# spec keeps HYP_WHITELIST single-quoted so the substituted JSON (double quotes) is valid YAML.
+- name: Render the relayer whitelist token (relayer only)
+  when:
+    - spec_render_generated | default(false)
+    - (stack_env_map_key | default(stack_name)) == 'hyperlane-relayer'
+  block:
+    - name: Read the published relayer-whitelist.json
+      ansible.builtin.slurp:
+        src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/relayer-whitelist.json"
+      register: _whitelist_render_raw
+
+    - name: Substitute the relayer whitelist token into the on-host spec
+      ansible.builtin.replace:
+        path: "{{ _spec_file }}"
+        regexp: "{{ '__RELAYER_WHITELIST__' | regex_escape }}"
+        replace: "{{ _whitelist_render_raw.content | b64decode | from_json | to_json }}"
+
+# Single-host reaches host-run chains via external-services ip: -> the kind gateway.
+# Only chain-consumers need it; stacks not in the map are skipped.
+- name: Detect kind-network gateway IP (single-host chain reachability)
+  when:
+    - topology | default('') == 'single'
+    - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
+  block:
+    - name: Inspect the kind network IPAM config
+      ansible.builtin.command:
+        argv:
+          - docker
+          - network
+          - inspect
+          - kind
+          - -f
+          - '{% raw %}{{json .IPAM.Config}}{% endraw %}'
+      register: _kind_ipam
+      changed_when: false
+
+    - name: Set kind_gateway_ip from the first IPv4 gateway
+      ansible.builtin.set_fact:
+        kind_gateway_ip: >-
+          {{ _kind_ipam.stdout | from_json
+             | selectattr('Gateway', 'defined')
+             | map(attribute='Gateway')
+             | select('match', '^[0-9.]+$') | first }}
+
+# Single-host chain-consumers: insert this stack's external-services block, with the
+# detected gateway IP substituted for the literal __KIND_GATEWAY_IP__ placeholder.
+- name: Render the single-host external-services block (single-host consumers)
+  ansible.builtin.replace:
+    path: "{{ _spec_file }}"
+    regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
+    replace: >-
+      {{ single_host_external_services[stack_env_map_key | default(stack_name)]
+         | replace('__KIND_GATEWAY_IP__', kind_gateway_ip) }}
+  when:
+    - spec_token_renders is defined
+    - topology | default('') == 'single'
+    - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
+
+# Everything else (multi-host, or stacks with no block): strip the marker.
+- name: Strip the single-host external-services marker (multi-host / non-consumers)
+  ansible.builtin.replace:
+    path: "{{ _spec_file }}"
+    regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
+    replace: ''
+  when:
+    - spec_token_renders is defined
+    - not (topology | default('') == 'single'
+           and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
