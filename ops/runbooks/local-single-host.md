@@ -141,9 +141,9 @@ addresses were set in step 2.)
 ## 8. Deploy
 
 `deploy-all.yml` commits + pushes the deployer-derived state mid-flight (see below), so
-deploy off a dedicated branch — **never `main`** (the `deploy_branch` default). The hosts
-fetch the repo on that branch, so create and push it first, then pass it as
-`deploy_branch`:
+deploy off a dedicated branch — **never `main`**. The hosts fetch the repo on that
+branch, so create and push it first, then pass it as `deploy_branch` (required on
+local — there is no default):
 
 ```bash
 git checkout -b <deploy-branch> && git push -u origin <deploy-branch>

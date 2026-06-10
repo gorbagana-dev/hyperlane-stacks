@@ -33,6 +33,13 @@
           Provide -e target_hosts=<inventory group> (e.g. relayer_hosts) for {{ stack_name }}.
       when: stack_name != 'hyperlane-validator'
 
+    - name: A deploy_branch is required
+      ansible.builtin.assert:
+        that: deploy_branch is defined
+        fail_msg: >-
+          Pass -e deploy_branch=<branch> — the hosts fetch the repo on it and
+          the restart re-renders the spec from it.
+
 # Singletons: the operator names the inventory group (target_hosts). Skipped for
 # validators, which carry no target_hosts.
 # TODO: find a cleaner way to derive a stack's host than passing target_hosts by hand.

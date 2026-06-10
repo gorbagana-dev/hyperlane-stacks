@@ -7,6 +7,14 @@
   hosts: all:!controller
   gather_facts: false
   tasks:
+    - name: A deploy_branch is required
+      ansible.builtin.assert:
+        that: deploy_branch is defined
+        fail_msg: >-
+          Pass -e deploy_branch=<branch> — the hosts fetch the repo on it and
+          publish-bridge-state pushes to it.
+      run_once: true
+
     - name: Verify laconic-so is present (else run setup-all first)
       ansible.builtin.command: laconic-so version
       changed_when: false
