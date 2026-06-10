@@ -1,5 +1,11 @@
 # Fork Base Advance to Agents v2.2.0 Implementation Plan
 
+> **STATUS (2026-06-10): DEFERRED.** Fast bridging is postponed; the stacks-side
+> changes (Tasks 4-6) were implemented and then backed out pre-merge. The
+> monorepo side survives as the local `fold-docker-patches` branch
+> (4 commits on `4da9c4419a`, boundary SHA `18c2ecfcf6`) — resume from Task 4
+> when the work picks back up.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Rebuild the monorepo fork's history on upstream `4da9c4419a` (agents v2.2.0), fold the two docker patches into fork commits, tag the result, and point the stacks + CI at the fork instead of upstream-plus-patches.
