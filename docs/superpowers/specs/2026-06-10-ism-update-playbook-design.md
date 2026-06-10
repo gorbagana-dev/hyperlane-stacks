@@ -5,12 +5,17 @@
 **Depends on:** hyp-d9c (Ledger owns the ISM, so it can authorize `set-validators-and-threshold`); the merged client fork with built-in Ledger signing (`--keypair usb://ledger?key=0/0`).
 
 > **Deferral note (2026-06-10).** The whole hyp-564 maintenance-ops effort — this
-> playbook **and** additional-validator support (564.5/.6) — is **deferred**. The
-> current priority is getting the bridge **deployed**, then **WebSocket-based
-> indexing**. This document is the validated design only; **no code has been
-> written** for it. The branch carrying this spec is safe to merge as
-> design-only. When the work resumes, this spec is the starting point — pick up at
-> the writing-plans step. The hyp-564 epic and its children stay **open**.
+> playbook **and** additional-validator support (564.5/.6) — is **deferred**.
+> Priority order now:
+> 1. **WebSocket-based indexing** — it changes how the bridge indexes the chains,
+>    so it must land *before* the bridge is deployed (not after a deployment).
+> 2. **Bridge deployment**.
+> 3. Maintenance ops (this work) — after both of the above.
+>
+> This document is the validated design only; **no code has been written** for it.
+> The branch carrying this spec is safe to merge as design-only. When the work
+> resumes, this spec is the starting point — pick up at the writing-plans step.
+> The hyp-564 epic and its children stay **open**.
 
 ## Goal
 
