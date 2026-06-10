@@ -248,9 +248,20 @@ Plumbing required wherever the RPC is reachable today:
 - e2e/kind: `external-services` `ip:` entries gain the WS port; in-cluster
   DNS `gorchain-rpc:8900` (and solana-test-validator's `:18900` WS for the
   solana side).
-- prod/staging: expose 8900 alongside 8899 on the gorchain host (and through
-  the proxy if fronted — `wss://` upgrade must pass; verify Caddy config
-  forwards WebSocket upgrades, which it does by default).
+- prod/staging: the public endpoint exists in intent but is **broken today**
+  (verified 2026-06-10): `wss://rpc.gorbagana.wtf/` upgrade → 502 while HTTP
+  RPC on the same host is healthy. The `gorbagana-rpc` deployment's
+  `spec.yml` declares `websocket: true` routes, but **SO's http-proxy has no
+  websocket support — the key is silently ignored** (verified against SO
+  source: no handling anywhere in `stack_orchestrator/deploy/`). The
+  workaround (`patch-caddy-websocket.sh`) patches Caddy's admin API
+  in-memory — lost on Caddy restart — and dials a `{deployment-id}-service`
+  FQDN that goes stale on redeploy; both failure modes match the observed
+  502. **Fix: native `websocket: true` support in SO's ingress generation**
+  (`deploy/k8s/cluster_info.py`), making the spec key real and deleting the
+  patch script. Fallback if needed: expose 8900 directly on the gorchain
+  host. The bridge agents depend on this endpoint whenever they run off the
+  RPC host (multi-machine prod), so it gates the prod/staging WS rollout.
 
 ### 5.3 The latency knobs that already exist
 
