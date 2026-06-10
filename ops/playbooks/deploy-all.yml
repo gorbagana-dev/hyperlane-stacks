@@ -14,8 +14,6 @@
 - name: MinIO
   hosts: minio_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
   vars:
     stack_name: hyperlane-minio
     # Accumulated in pre_tasks under a private name, then handed to stack_deploy as a
@@ -23,6 +21,8 @@
     # plays, leaking MinIO's IAM creds into every later stack's secret env.
     stack_env_extra: "{{ _minio_env_extra | default({}) }}"
   pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
     - name: Derive validator labels + MINIO_USERS
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
     - name: Build MinIO env (MINIO_USERS + per-validator IAM)
@@ -42,8 +42,9 @@
 - name: Deployer (Job)
   hosts: deployer_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   vars:
     stack_name: hyperlane-svm-deployer
   roles:
@@ -53,8 +54,9 @@
 - name: Warp route deployer
   hosts: deployer_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   roles:
     - fetch_stack
   tasks:
@@ -75,8 +77,9 @@
 - name: Relayer
   hosts: relayer_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   vars:
     stack_name: hyperlane-relayer
     spec_render_generated: true
@@ -94,8 +97,9 @@
 - name: Gas oracle
   hosts: gas_oracle_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   vars:
     stack_name: hyperlane-gas-oracle
     spec_render_generated: true
@@ -106,8 +110,9 @@
 - name: Warp UI
   hosts: warp_ui_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   vars:
     stack_name: hyperlane-warp-ui
     spec_render_generated: true
@@ -125,8 +130,9 @@
 - name: Validators
   hosts: controller
   gather_facts: false
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   tasks:
     - name: Load validators
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
@@ -190,8 +196,9 @@
 - name: Monitoring
   hosts: monitoring_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   vars:
     stack_name: hyperlane-monitoring
   roles:
