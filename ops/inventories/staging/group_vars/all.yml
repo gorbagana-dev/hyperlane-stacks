@@ -35,9 +35,10 @@ laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/rele
 credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 
 # --- DNS ---
-# Staging zone is not yet decided — placeholder. The staging gorchain RPC and all
-# hostnames in deployment/staging/spec-*.yml derive from this zone.
-dns_zone: "REPLACE_WITH_STAGING_DNS_ZONE"
+# Hostname suffix for every staging endpoint (specs + DNS records). Changing the
+# zone is mechanical: edit this + the hostname literals in deployment/staging/
+# spec-*.yml, then re-run configure-dns.yml.
+dns_zone: staging.gorbagana.wtf
 dns_record_ttl: 300
 dns_records:
   - name: s3
@@ -52,6 +53,9 @@ dns_records:
     host: staging-bridge-ops
   - name: relayer
     host: staging-bridge-ops
+  # gorchain RPC — Caddy TLS front on the chain host (prepare-gorchain.yml)
+  - name: rpc
+    host: staging-gorchain
 
 # --- Secret-env values ---
 # See the prod group_vars for the full rationale. Staging differences: Solana uses
