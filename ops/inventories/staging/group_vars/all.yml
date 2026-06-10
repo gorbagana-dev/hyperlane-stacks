@@ -39,6 +39,7 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 # zone is mechanical: edit this + the hostname literals in deployment/staging/
 # spec-*.yml, then re-run configure-dns.yml.
 dns_zone: staging.gorbagana.wtf
+cloudflare_zone: gorbagana.wtf      # the registered CF zone; dns_zone nests under it
 dns_record_ttl: 300
 dns_records:
   - name: s3

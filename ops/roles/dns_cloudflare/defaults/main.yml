@@ -3,3 +3,7 @@ dns_record_ttl: 300
 dns_proxied: false
 # Envs without public DNS (e.g. local) set this false to skip Cloudflare entirely.
 manage_dns: true
+# The zone as REGISTERED in Cloudflare (cloudflare_dns rejects anything else).
+# dns_zone may be a deeper suffix (bridge.gorbagana.wtf) — records are then
+# created relative to cloudflare_zone (s3.bridge, rpc.staging, ...).
+cloudflare_zone: "{{ dns_zone }}"

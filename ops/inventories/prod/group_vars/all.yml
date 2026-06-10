@@ -38,6 +38,7 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 
 # --- DNS ---
 dns_zone: bridge.gorbagana.wtf
+cloudflare_zone: gorbagana.wtf      # the registered CF zone; dns_zone nests under it
 dns_record_ttl: 300
 dns_records:
   - name: s3

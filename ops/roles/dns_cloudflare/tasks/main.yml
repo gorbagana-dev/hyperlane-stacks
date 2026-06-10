@@ -20,6 +20,20 @@
     label: "{{ item.key }}"
   when: dns_record_map is defined
 
+- name: Derive the record-name prefix nesting dns_zone under the registered zone
+  ansible.builtin.set_fact:
+    _dns_zone_prefix: >-
+      {{ '' if dns_zone == cloudflare_zone
+         else '.' ~ (dns_zone | regex_replace('\.' ~ (cloudflare_zone | regex_escape) ~ '$', '')) }}
+
+- name: dns_zone must equal or nest under cloudflare_zone  # noqa: name[casing] starts with the var it validates
+  ansible.builtin.assert:
+    that: "dns_zone == cloudflare_zone or dns_zone.endswith('.' ~ cloudflare_zone)"
+    fail_msg: >-
+      dns_zone '{{ dns_zone }}' is not under cloudflare_zone '{{ cloudflare_zone }}' —
+      fix group_vars.
+    quiet: true
+
 - name: Build host -> public_ip map from host_vars
   ansible.builtin.set_fact:
     host_ip_map: "{{ host_ip_map | default({}) | combine({item: hostvars[item].public_ip}) }}"
@@ -28,8 +42,8 @@
 - name: Reconcile A records (additive)
   community.general.cloudflare_dns:
     api_token: "{{ cloudflare_api_token }}"
-    zone: "{{ dns_zone }}"
-    record: "{{ item.name }}"
+    zone: "{{ cloudflare_zone }}"
+    record: "{{ item.name }}{{ _dns_zone_prefix }}"
     type: A
     value: "{{ host_ip_map[item.host] }}"
     ttl: "{{ dns_record_ttl }}"
