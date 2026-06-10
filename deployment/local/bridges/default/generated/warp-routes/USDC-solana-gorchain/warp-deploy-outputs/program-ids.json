@@ -1,0 +1,10 @@
+{
+  "solana": {
+    "hex": "0x1c3dd157ff7fd756980084f0548849542d1784e9892198ca41a38f720841dc24",
+    "base58": "2uF65F3ApKdVKVdmRgBHpLErbnAeBw3MZSNb4ZbAvED1"
+  },
+  "gorchain": {
+    "hex": "0x5ddf56a37e13cc9b96b5cfc409d62f529308165b6597397d36bf8f705466b3c3",
+    "base58": "7KSSNs2BgCSYPjWRT27rCjNyLiXF7WadQDGsqYoUMZXg"
+  }
+}

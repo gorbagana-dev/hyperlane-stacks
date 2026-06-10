@@ -1,0 +1,24 @@
+gorchain:
+  name: gorchain
+  chainId: 1198486095
+  domainId: 1198486095
+  protocol: sealevel
+  isTestnet: true
+  rpcUrls:
+    - http: "http://gorchain-rpc:8899"
+  nativeToken:
+    name: GOR
+    symbol: GOR
+    decimals: 9
+solana:
+  name: solana
+  chainId: 1399811151
+  domainId: 1399811151
+  protocol: sealevel
+  isTestnet: true
+  rpcUrls:
+    - http: "http://solana-rpc:18899"
+  nativeToken:
+    name: SOL
+    symbol: SOL
+    decimals: 9
