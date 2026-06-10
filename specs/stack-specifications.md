@@ -64,10 +64,10 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 
 | # | Stack | repos: | containers: | pods: | jobs: |
 |---|-------|--------|-------------|-------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
+| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
 | 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-kms-proxy` | `hyperlane-validator` | — |
-| 4 | `hyperlane-relayer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
+| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` | — |
 | 6 | `hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` | — |
@@ -77,7 +77,7 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
 - Stacks 1, 2, and 4 share the same repo/container (deployer image) and are independently buildable.
 - Stack 7 balance-monitor will use a lightweight image (not the heavy deployer image).
-- The deployer image is built from `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1`; contracts are semantically unchanged from `@hyperlane-xyz/core@10.2.0` in range, client gains built-in Ledger signing.
+- The deployer image is built from `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`), not the older `agents-v2.0.0` tag.
 
 ---
 
@@ -478,7 +478,7 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
+| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
 | `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | TypeScript, source at `hyperlane-gas-oracle/`, uses `@hyperlane-xyz/sdk` |
 | `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |

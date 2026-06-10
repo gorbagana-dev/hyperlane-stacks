@@ -77,11 +77,6 @@ jobs:
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
           sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
 
-      # TODO: revert to CICD_REPO_TOKEN once its access to the fork is approved;
-      # using CICD_REPO_TOKEN_TEMP meanwhile (CICD_REPO_TOKEN lacks fork access).
-      - name: Authenticate fork clones
-        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN_TEMP }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
-
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-svm-deployer setup-repositories
 
@@ -147,11 +142,6 @@ jobs:
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
           sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
           sed -i 's/^#   #/  #/' "$STACK_YML"
-
-      # TODO: revert to CICD_REPO_TOKEN once its access to the fork is approved;
-      # using CICD_REPO_TOKEN_TEMP meanwhile (CICD_REPO_TOKEN lacks fork access).
-      - name: Authenticate fork clones
-        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN_TEMP }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
 
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator setup-repositories

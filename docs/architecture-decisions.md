@@ -61,22 +61,22 @@ Pods use standard Kubernetes egress. No special network configuration. Each host
 
 Three categories of images based on what's available upstream:
 
-#### 1. Agents (validator, relayer) — Custom fork build
+#### 1. Agents (validator, relayer) — Custom patched build
 
 **Image:** `ghcr.io/gorbagana-dev/hyperlane-agent:latest`
 
-Custom build from the `gorbagana-dev` fork of `hyperlane-monorepo`. The KMS-endpoint and S3-path-style fixes that were formerly applied as build-time patches are now committed directly in the fork:
-- **KMS endpoint**: Adds `AWS_ENDPOINT_URL_KMS` support so the validator's AWS KMS signer can be redirected to the local KMS proxy sidecar
-- **S3 path-style**: Forces S3 path-style addressing for MinIO compatibility
+Custom build from `hyperlane-monorepo` at `agents-v2.2.0` (commit `4da9c44`) with two patches applied at build time:
+- **`kms-endpoint.patch`**: Adds `AWS_ENDPOINT_URL_KMS` support so the validator's AWS KMS signer can be redirected to the local KMS proxy sidecar
+- **`s3-path-style.patch`**: Forces S3 path-style addressing for MinIO compatibility
 
-The agent image is used by both the validator and relayer stacks. Published to the Gitea registry via CI workflow.
+The patched agent image is used by both the validator and relayer stacks. Published to the Gitea registry via CI workflow.
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
-**No existing image.** Built from the `gorbagana-dev/hyperlane-monorepo` fork at tag `v2.2.0-gorbagana.1`. Contracts are semantically unchanged from `@hyperlane-xyz/core@10.2.0` in range; the client gains built-in Ledger signing via fork commits.
+**No existing image.** Must build from hyperlane-monorepo at `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`).
 
 - Base image: Ubuntu 22.04
-- Source: `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1`
+- Source: hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`)
 - Multi-stage Docker build: builder stage compiles, runtime stage copies binaries
 - Produces: `hyperlane-sealevel-client` binary + `.so` program files (mailbox, IGP, ISM, validator announce, token, token-native, token-collateral)
 - Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 3.0.14
@@ -101,7 +101,7 @@ There is no `fix-numeric-types`/sentinel-everything machinery and no source over
 
 ### Version Pinning
 
-Deployer image is built from `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` with Solana CLI **3.0.14**. Agent images (validator, relayer) are built from the same fork tag; fork commits carry the KMS endpoint and S3 path-style fixes (no separate patches applied at build time).
+Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`) with Solana CLI **3.0.14**. Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
 
 **Registry:** `ghcr.io/gorbagana-dev` (GitHub Container Registry)
 
@@ -109,7 +109,7 @@ Deployer image is built from `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.
 |-----------|-------|--------|
 | Validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
 | Relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Same image as validator |
-| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Built from `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1`, Solana CLI 3.0.14 |
+| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Custom build from `@hyperlane-xyz/core@10.2.0` (commit `16c056a`), Solana CLI 3.0.14 |
 | Warp Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
@@ -516,7 +516,7 @@ The dev path bypasses Caddy specifically to avoid Caddy v2's auto HTTP→HTTPS 3
 
 **Why the AWS SDK works with arbitrary endpoints:**
 
-`aws-config 1.1.7` (bundled in the Hyperlane agent fork) does not read `AWS_ENDPOINT_URL_S3` natively. Our fork carries a commit that forces path-style addressing and reads the env var. This change is required for MinIO compatibility — see `feedback_verify_sdk_assumptions.md` in the project memory for why we verify SDK env-var support before designing around it.
+`aws-config 1.1.7` (bundled in the Hyperlane agent fork) does not read `AWS_ENDPOINT_URL_S3` natively. Our fork carries a small `s3-path-style.patch` that forces path-style addressing and reads the env var. The patch is required for MinIO compatibility — see `feedback_verify_sdk_assumptions.md` in the project memory for why we verify SDK env-var support before designing around it.
 
 **Validator credentials:**
 - Validator pod mounts only its own namespace-local `hyperlane-validator-<label>-secrets` Secret containing `AWS_ACCESS_KEY_ID` = `<LABEL>_KEY_ID`, `AWS_SECRET_ACCESS_KEY` = `<LABEL>_SECRET`. Never sees the MinIO root credentials.

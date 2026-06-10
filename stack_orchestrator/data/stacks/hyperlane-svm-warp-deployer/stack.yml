@@ -2,9 +2,8 @@ version: "1.1"
 name: hyperlane-svm-warp-deployer
 description: "Deploys Hyperlane warp route contracts for a specific token pair"
 repos:
-  # fork tag on agents-v2.2.0 (4da9c4419a); contracts semantically unchanged from
-  # @hyperlane-xyz/core@10.2.0 in range, client gains built-in Ledger signing
-  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1
+  # @hyperlane-xyz/core@10.2.0 — includes Solana SDK v3.x migration
+  - github.com/hyperlane-xyz/hyperlane-monorepo@16c056a09af862b3ce9e14bd3b5b8034750af9d0
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:
