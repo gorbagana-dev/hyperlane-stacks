@@ -623,7 +623,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task 8: Full e2e verification + close the pebble
 
-- [ ] **Step 1: Run the e2e suite**
+**This machine is a shared dev box — do NOT run the e2e suite or any stacks here. Hand the run off to the user.**
+
+- [ ] **Step 1: Hand the e2e run to the user**
+
+Give the user the exact command to run where/when they choose:
 
 ```bash
 cd tests/e2e && python3 -m pytest -x -q 2>&1 | tail -30
@@ -635,7 +639,7 @@ Expected: all tests pass (suite takes on the order of an hour; it deploys the fu
 
 If validators/relayer crash-loop: `kubectl logs` will show a settings parse error naming the chain — check the override env var made it into the pod (`kubectl exec ... env | grep CUSTOMRPC`) before touching code.
 
-- [ ] **Step 2: Close the pebble**
+- [ ] **Step 2: Close the pebble (only after the user reports a green run)**
 
 ```bash
 pb update hyp-d34.1 --status closed
