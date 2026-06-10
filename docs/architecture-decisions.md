@@ -73,10 +73,10 @@ The agent image is used by both the validator and relayer stacks. Published to t
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
-**No existing image.** Must build from hyperlane-monorepo at `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`).
+**No existing image.** Built from the `gorbagana-dev/hyperlane-monorepo` fork at tag `v2.2.0-gorbagana.1`. Contracts are semantically unchanged from `@hyperlane-xyz/core@10.2.0` in range; the client gains built-in Ledger signing via fork commits.
 
 - Base image: Ubuntu 22.04
-- Source: hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`)
+- Source: `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1`
 - Multi-stage Docker build: builder stage compiles, runtime stage copies binaries
 - Produces: `hyperlane-sealevel-client` binary + `.so` program files (mailbox, IGP, ISM, validator announce, token, token-native, token-collateral)
 - Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 3.0.14
@@ -101,7 +101,7 @@ There is no `fix-numeric-types`/sentinel-everything machinery and no source over
 
 ### Version Pinning
 
-Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`) with Solana CLI **3.0.14**. Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
+Deployer image is built from `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` with Solana CLI **3.0.14**. Agent images (validator, relayer) are built from the same fork tag; fork commits carry the KMS endpoint and S3 path-style fixes (no separate patches applied at build time).
 
 **Registry:** `ghcr.io/gorbagana-dev` (GitHub Container Registry)
 
@@ -109,7 +109,7 @@ Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce
 |-----------|-------|--------|
 | Validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
 | Relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Same image as validator |
-| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Custom build from `@hyperlane-xyz/core@10.2.0` (commit `16c056a`), Solana CLI 3.0.14 |
+| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Built from `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1`, Solana CLI 3.0.14 |
 | Warp Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
