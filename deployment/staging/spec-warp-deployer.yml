@@ -1,0 +1,50 @@
+# Hyperlane SVM Warp Route Deployer - deployment spec
+# Deploys the warp routes selected by WARP_ROUTES from the checked-in route menu.
+# Requires core deployer (spec-deployer.yml) to have run first.
+#
+# Set all vars explicitly — SO k8s path doesn't support nested
+# ${VAR:-${OTHER}} defaults from compose files.
+stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
+deploy-to: k8s-kind
+namespace: laconic-hyperlane-warp-deployer
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+volumes:
+  bridge-state: /srv/kind/hyperlane/bridge/generated
+  bridge-logs: /srv/kind/hyperlane/bridge/logs
+config:
+  WARP_ROUTES: "usdc"
+  # Origin (solana) RPC is SOLANA_RPC_URL (Helius, secret) → see secrets:.
+  GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
+  GORCHAIN_DOMAIN_ID: "1198486095"
+  GORCHAIN_CHAIN_ID: "1198486095"
+  SOLANA_DOMAIN_ID: "1399811151"
+  SOLANA_CHAIN_ID: "1399811151"
+  GORCHAIN_IS_TESTNET: "true"
+  SOLANA_IS_TESTNET: "true"
+  FORCE_REDEPLOY: "false"
+configmaps:
+  warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
+  warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
+  warp-routes-config: ./configmaps/warp-routes-config
+# Before deploying, place the keyfile on the host:
+#   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
+# and export this env var in the shell that runs `laconic-so`:
+#   HARDWARE_WALLET_PUBKEY
+secrets:
+  hyperlane-warp-deployer-secrets:
+    keys:
+      DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
+      HARDWARE_WALLET_PUBKEY:   { env: HARDWARE_WALLET_PUBKEY }
+      SOLANA_RPC_URL:           { env: SOLANA_RPC_URL }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-warp-deployer:v1.0.0

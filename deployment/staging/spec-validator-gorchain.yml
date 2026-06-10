@@ -1,0 +1,55 @@
+# Hyperlane Validator (Gorchain) - deployment spec
+# Runs a validator for Gorchain using the hyperlane-validator stack.
+stack: stack_orchestrator/data/stacks/hyperlane-validator
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+config:
+  ORIGIN_CHAIN_NAME: gorchain
+  CHECKPOINT_BUCKET: hyperlane-validator-gorchain-primary
+  GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
+  PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
+  # MinIO via Caddy — public DNS resolves to the Caddy ingress.
+  AWS_ENDPOINT_URL_S3: "https://s3.staging.gorbagana.wtf"
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+volumes:
+  validator-data: /srv/kind/hyperlane/validator-gorchain/data
+resources:
+  volumes:
+    validator-data:
+      reservations:
+        storage: 5Gi
+configmaps:
+  agent-config: ./configmaps/agent-config
+# Before deploying, place the keyfile on the host:
+#   ~/.credentials/hyperlane/validator-gorchain.key (hex-encoded validator signing key)
+# and export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET
+#   GORCHAIN_PRIMARY_KEY_ID, GORCHAIN_PRIMARY_SECRET  — per-validator MinIO IAM creds
+secrets:
+  hyperlane-validator-gorchain-secrets:
+    keys:
+      HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-gorchain.key }
+      PRIVY_APP_ID:           { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID:      { env: GORCHAIN_PRIMARY_KEY_ID }
+      AWS_SECRET_ACCESS_KEY:  { env: GORCHAIN_PRIMARY_SECRET }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: REPLACE_WITH_GITHUB_USERNAME
+  token-env: GHCR_PAT
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: validator-gorchain.staging.gorbagana.wtf
+      routes:
+        - path: /
+          proxy-to: validator:9090
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0

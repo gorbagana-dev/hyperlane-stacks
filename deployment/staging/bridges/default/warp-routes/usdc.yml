@@ -4,7 +4,8 @@ name: USDC-solana-gorchain
 origin:
   chain: solana
   type: collateral
-  token: "REPLACE_WITH_STAGING_USDC_MINT_ADDRESS"
+  # Circle's devnet USDC mint — real Circle metadata, faucetable.
+  token: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
   name: "USD Coin"
   symbol: "USDC"
   decimals: 6
