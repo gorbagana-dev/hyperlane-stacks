@@ -1,0 +1,12 @@
+---
+# Layer-0: the inventory passed via -i satisfies the env contract — every var the
+# roles branch on is defined (no silent default() fallbacks). Run per env:
+#   for e in local staging prod; do
+#     ansible-playbook -i inventories/$e/hosts.yml tests/test_env_contract.yml
+#   done
+- name: Inventory satisfies the env contract
+  hosts: controller
+  gather_facts: false
+  tasks:
+    - name: Assert the env contract
+      ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml

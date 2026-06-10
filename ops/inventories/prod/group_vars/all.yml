@@ -18,6 +18,15 @@ deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 # prep, which overrides ansible_user to privileged_user in bootstrap-host.yml.
 ansible_user: "{{ deploy_user | default(omit) }}"
 
+# --- Topology / DNS mode ---
+# 'single' is the local-only mkcert/no-DNS mode. Prod is always Cloudflare DNS
+# + Let's Encrypt, whatever the host count — so 'multi', stated explicitly (the
+# env contract rejects inventories that leave these to role defaults).
+topology: multi
+manage_dns: true
+# SSH by public_ip from host_vars (aliases like bridge-host-1 are not DNS names).
+ansible_host: "{{ public_ip | default(omit) }}"
+
 # --- laconic-so install (prerequisites_user) ---
 laconic_so_version: "v1.1.0-a181281-202606050713"
 laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"

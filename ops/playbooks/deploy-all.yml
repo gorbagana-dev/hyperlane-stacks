@@ -3,6 +3,13 @@
 # running; on-chain ownership/ISM is sub-project 3. Each singleton play passes only
 # stack_name; stack_deploy resolves spec/path/is_job from the `stacks` map in
 # group_vars and assembles the secret env from `stack_env_vars`.
+- name: Enforce the inventory env contract
+  hosts: controller
+  gather_facts: false
+  tasks:
+    - name: Assert the env contract
+      ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml
+
 - name: Preflight — fleet is provisioned
   hosts: all:!controller
   gather_facts: false
