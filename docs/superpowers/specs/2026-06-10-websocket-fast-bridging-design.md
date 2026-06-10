@@ -85,7 +85,7 @@ occasional lost race (+5s) is acceptable, a systematic one is not.
 | D5 | One commitment knob per chain, honored consistently by indexing reads, WS subscriptions, and the validator's checkpoint observation; tx submission stays `finalized` | A commitment mismatch between subscription and reads wastes the wake-up (poll sees nothing). The security-relevant hop is the **validator signing over a `confirmed` slot** — see §4.1. |
 | D6 | Gorchain gets the same treatment: `GORCHAIN_WS_URL`, `GORCHAIN_COMMITMENT` | Fast bridging is bidirectional. Gorchain polling has no credit cost but identical latency cost; 32-slot finality (~13s) applies even on a single-node cluster. |
 | D7 | Warp-UI shows delivery and origin-finality as two independent signals; a runtime-injected mode flag collapses the display in safe mode | In fast mode delivery (~3-5s) precedes origin finality (~13-15s) — the gap *is* the rollback window and the UI must not claim irreversibility inside it. Flag is sourced from the same deployment var that sets agent commitment, so UI and agents cannot disagree. |
-| D8 | Implementation lands as commits on `gorbagana`; retag (`sealevel-vX.Y.Z-gorbagana.N`) after the rebase and after the WS work; staging redeploys from the new base | Tags, not branch tips, are the provenance pins for on-chain programs. Staging is the rehearsal ground — redeploying it from the new base is its job. |
+| D8 | Implementation lands as commits on `gorbagana`; retag (`sealevel-vX.Y.Z-gorbagana.N`) after the rebase and after the WS work | Tags, not branch tips, are the provenance pins for on-chain programs. Nothing is deployed yet (staging included), so the new base is the first provenance pin for every environment. |
 
 ---
 
@@ -105,7 +105,9 @@ is low.
    `signers.rs` saw only chore/tron churn in range — expect trivial conflicts
    at most). Remove the `patch` steps from
    `container-build/gorbagana-dev-hyperlane-agent/Dockerfile`.
-3. Tag the result; rebuild agent + deployer images; redeploy staging.
+3. Tag the result; rebuild agent + deployer images. No environment is
+   deployed yet, so there is nothing to migrate — staging's first deploy
+   happens from the new base.
 
 ### 4.1 Configurable commitment
 
@@ -362,7 +364,7 @@ untouched).
 | 3 | Configurable commitment (§4.1) | 1 (parallel with 2) |
 | 4 | Stacks plumbing + gorchain WS + e2e (§5, §8) | 2, 3 |
 | 5 | Warp-UI dual-commitment UX (§7) | 4 (mode flag exists) |
-| 6 | Staging redeploy from new base; latency measurement vs §1 budget | 1-5 |
+| 6 | First staging deploy (from the new base); latency measurement vs §1 budget | 1-5 |
 
 WS-before-commitment ordering kept from the old spec: WS has no security
 trade-off; commitment fast mode is the explicit opt-in switched on once
