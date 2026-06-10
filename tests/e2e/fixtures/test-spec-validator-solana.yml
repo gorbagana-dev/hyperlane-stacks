@@ -45,6 +45,7 @@ secrets:
       AWS_ACCESS_KEY_ID:     { env: SOLANA_PRIMARY_KEY_ID }
       AWS_SECRET_ACCESS_KEY: { env: SOLANA_PRIMARY_SECRET }
       HYP_DEFAULTSIGNER_KEY: { env: HYP_DEFAULTSIGNER_KEY }
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev

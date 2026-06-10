@@ -35,6 +35,7 @@ secrets:
       PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
       AWS_ACCESS_KEY_ID:      { env: SOLANA_PRIMARY_KEY_ID }
       AWS_SECRET_ACCESS_KEY:  { env: SOLANA_PRIMARY_SECRET }
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

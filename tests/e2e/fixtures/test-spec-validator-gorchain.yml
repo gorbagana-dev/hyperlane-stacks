@@ -9,6 +9,7 @@ kind-mount-root: /tmp/hyperlane-bridge-e2e
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain-primary
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   PRIVY_API_URL: "http://privy-mock:19876"
   PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
   # Dev only — direct cross-NS to the MinIO pod via external-services

@@ -7,6 +7,7 @@ kind-mount-root: /srv/kind/hyperlane
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain-primary
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
   # MinIO via Caddy — public DNS resolves to the Caddy ingress.
   AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf"

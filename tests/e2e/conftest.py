@@ -1066,6 +1066,7 @@ def _deploy_validator(
         f"{label_upper}_KEY_ID":   validator_key_id,
         f"{label_upper}_SECRET":   validator_secret,
         "HYP_DEFAULTSIGNER_KEY":   chain_signer_key,
+        "SOLANA_RPC_URL":          "http://solana-rpc:18899",
     })
 
     log.info("Starting %s stack...", stack_name)
