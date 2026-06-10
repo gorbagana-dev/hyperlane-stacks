@@ -156,6 +156,26 @@
     - not ansible_check_mode
     - stack_action | default('deploy') == 'restart'
 
+# SO's k8s up ignores force_recreate (its own TODO), so a restart whose only change is
+# ConfigMap content (e.g. warp-ui's warpRoutes.yaml) never rolls the pods. Stamp a
+# rollout explicitly; the availability wait below gates on it completing.
+- name: Roll the Deployments (k8s restart skips unchanged pod specs)
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --context
+      - kind-hyperlane
+      - -n
+      - "{{ _namespace }}"
+      - rollout
+      - restart
+      - deployment
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - stack_action | default('deploy') == 'restart'
+    - not (_stack_is_job | bool)
+
 # `wait --for=condition=complete` never returns for a Job that hits backoffLimit
 # (it goes condition=Failed, not Complete) — it just hangs to the timeout. Race the
 # two conditions so a crashed Job is caught at once, and capture status + logs.
