@@ -29,6 +29,35 @@
         }
       ],
       "collateralAddressOrDenom": "H4b1spC4musrm6o8dChdnYybKdYRz1gaDyPMj7sZBBHf"
+    },
+    {
+      "chainName": "solana",
+      "standard": "SealevelHypNative",
+      "name": "Solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "addressOrDenom": "2DFutEWYRM7XzeZFCJN5zrfBBnBCfeiPTtg8Y1ixV3aV",
+      "mailbox": "A63TnNPUmBcSgQnSQU1JqJ6bVk8kuwbzKAscwo3mfqmt",
+      "connections": [
+        {
+          "token": "sealevel|gorchain|74An8w73MoSi157EDa4d1nAz9pbY1wB9uK2srB9eFHMZ"
+        }
+      ]
+    },
+    {
+      "chainName": "gorchain",
+      "standard": "SealevelHypSynthetic",
+      "name": "Solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "addressOrDenom": "74An8w73MoSi157EDa4d1nAz9pbY1wB9uK2srB9eFHMZ",
+      "mailbox": "CefC91Km86uYtjhJHis5JCuo4Q6fmWXoorLG9vm7y2W",
+      "connections": [
+        {
+          "token": "sealevel|solana|2DFutEWYRM7XzeZFCJN5zrfBBnBCfeiPTtg8Y1ixV3aV"
+        }
+      ],
+      "collateralAddressOrDenom": "B3dGtNR9dKkhbdeKB5v6BZyGrjdGnZsHetuDLQqwMsDR"
     }
   ],
   "options": {}
