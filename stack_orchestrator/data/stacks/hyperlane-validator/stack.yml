@@ -2,14 +2,14 @@ version: "1.1"
 name: hyperlane-validator
 description: "Hyperlane validator with Privy KMS proxy sidecar (one deployment per chain)"
 repos:
-  # agents-v2.2.0 — patched at build time with AWS_ENDPOINT_URL_KMS support
+  # gorbagana-dev fork — KMS-endpoint and S3-path-style fixes are fork commits
   - github.com/hyperlane-xyz/hyperlane-monorepo@4da9c4419ad89783fd005e0b776f1fdcd7b59c12
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:
 #   # kms-proxy: Privy-to-AWS-KMS bridge sidecar (built from hyperlane-stacks)
 #   - gorbagana-dev/hyperlane-kms-proxy
-#   # agent: patched Hyperlane agent (built from monorepo + kms-endpoint.patch)
+#   # agent: Hyperlane agent built from the gorbagana-dev fork (KMS + S3 fixes are fork commits)
 #   # Also used by the hyperlane-relayer stack.
 #   - gorbagana-dev/hyperlane-agent
 pods:

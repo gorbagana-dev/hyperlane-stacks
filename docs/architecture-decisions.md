@@ -61,15 +61,15 @@ Pods use standard Kubernetes egress. No special network configuration. Each host
 
 Three categories of images based on what's available upstream:
 
-#### 1. Agents (validator, relayer) — Custom patched build
+#### 1. Agents (validator, relayer) — Custom fork build
 
 **Image:** `ghcr.io/gorbagana-dev/hyperlane-agent:latest`
 
-Custom build from `hyperlane-monorepo` at `agents-v2.2.0` (commit `4da9c44`) with two patches applied at build time:
-- **`kms-endpoint.patch`**: Adds `AWS_ENDPOINT_URL_KMS` support so the validator's AWS KMS signer can be redirected to the local KMS proxy sidecar
-- **`s3-path-style.patch`**: Forces S3 path-style addressing for MinIO compatibility
+Custom build from the `gorbagana-dev` fork of `hyperlane-monorepo`. The KMS-endpoint and S3-path-style fixes that were formerly applied as build-time patches are now committed directly in the fork:
+- **KMS endpoint**: Adds `AWS_ENDPOINT_URL_KMS` support so the validator's AWS KMS signer can be redirected to the local KMS proxy sidecar
+- **S3 path-style**: Forces S3 path-style addressing for MinIO compatibility
 
-The patched agent image is used by both the validator and relayer stacks. Published to the Gitea registry via CI workflow.
+The agent image is used by both the validator and relayer stacks. Published to the Gitea registry via CI workflow.
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
@@ -516,7 +516,7 @@ The dev path bypasses Caddy specifically to avoid Caddy v2's auto HTTP→HTTPS 3
 
 **Why the AWS SDK works with arbitrary endpoints:**
 
-`aws-config 1.1.7` (bundled in the Hyperlane agent fork) does not read `AWS_ENDPOINT_URL_S3` natively. Our fork carries a small `s3-path-style.patch` that forces path-style addressing and reads the env var. The patch is required for MinIO compatibility — see `feedback_verify_sdk_assumptions.md` in the project memory for why we verify SDK env-var support before designing around it.
+`aws-config 1.1.7` (bundled in the Hyperlane agent fork) does not read `AWS_ENDPOINT_URL_S3` natively. Our fork carries a commit that forces path-style addressing and reads the env var. This change is required for MinIO compatibility — see `feedback_verify_sdk_assumptions.md` in the project memory for why we verify SDK env-var support before designing around it.
 
 **Validator credentials:**
 - Validator pod mounts only its own namespace-local `hyperlane-validator-<label>-secrets` Secret containing `AWS_ACCESS_KEY_ID` = `<LABEL>_KEY_ID`, `AWS_SECRET_ACCESS_KEY` = `<LABEL>_SECRET`. Never sees the MinIO root credentials.
