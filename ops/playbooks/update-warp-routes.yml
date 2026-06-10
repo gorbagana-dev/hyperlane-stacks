@@ -1,0 +1,88 @@
+---
+# Apply the spec's WARP_ROUTES selection end to end: re-run the warp deployer with the
+# listed routes, publish the regenerated bridge state, and restart the consumers that
+# derive config from it (relayer whitelist, warp-ui routes). Newly listed routes deploy,
+# already-deployed ones self-skip, and delisted routes drop out of the whitelist and the
+# UI (their on-chain programs remain).
+#
+# The deployer runs as a restart (not a plain start) so the deploy dir syncs the new
+# WARP_ROUTES from the spec — `deployment start` on an existing deployment reuses the
+# env captured at create time. gas-oracle and validators are route-agnostic, so they
+# are left alone.
+#
+# Edit WARP_ROUTES in deployment/<env>/spec-warp-deployer.yml, commit + push to the
+# deploy branch, then:
+#   ansible-playbook -i inventories/<env>/hosts.yml playbooks/update-warp-routes.yml \
+#     -e deploy_branch=<branch>
+
+- name: Preflight — the route change is on the deploy branch
+  hosts: deployer_hosts
+  gather_facts: false
+  tasks:
+    - name: A deploy_branch is required
+      ansible.builtin.assert:
+        that: deploy_branch is defined
+        fail_msg: >-
+          Pass -e deploy_branch=<branch> — the hosts fetch the repo on it and
+          publish-bridge-state pushes to it.
+      run_once: true
+
+- name: Deploy the warp routes selected by the spec
+  hosts: deployer_hosts
+  gather_facts: true
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+  roles:
+    - fetch_stack
+  tasks:
+    - name: Re-run the warp deployer with the spec's WARP_ROUTES (restart syncs the spec)
+      ansible.builtin.include_role:
+        name: stack_deploy
+      vars:
+        stack_action: restart
+        stack_name: hyperlane-warp-deployer
+        spec_file: "{{ deployment_root }}/spec-warp-deployer.yml"
+        stack_path: "{{ repo_root }}/{{ stacks['hyperlane-svm-warp-deployer'].path }}"
+        stack_is_job: true
+        stack_env_map_key: hyperlane-svm-warp-deployer
+        stack_pre_start_tasks: "{{ playbook_dir }}/../roles/common/tasks/load_warp_routes.yml"
+
+- name: Publish the regenerated bridge state
+  ansible.builtin.import_playbook: publish-bridge-state.yml
+
+- name: Restart the relayer (re-renders HYP_WHITELIST from the published state)
+  hosts: relayer_hosts
+  gather_facts: true
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+  vars:
+    stack_action: restart
+    spec_render_generated: true
+    stack_name: hyperlane-relayer
+    configmap_names: "{{ stacks['hyperlane-relayer'].configmaps }}"
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-relayer"
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
+  roles:
+    - fetch_stack
+    - stack_deploy
+
+- name: Restart the warp UI (picks up the new route from warpRoutes.yaml)
+  hosts: warp_ui_hosts
+  gather_facts: true
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+  vars:
+    stack_action: restart
+    spec_render_generated: true
+    stack_name: hyperlane-warp-ui
+    configmap_names: "{{ stacks['hyperlane-warp-ui'].configmaps }}"
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-warp-ui"
+    # Source only generated/warp-routes/ so the ConfigMap holds just warpRoutes.yaml.
+    generated_subdir: warp-routes
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
+  roles:
+    - fetch_stack
+    - stack_deploy
