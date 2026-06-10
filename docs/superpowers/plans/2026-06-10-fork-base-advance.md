@@ -8,7 +8,7 @@
 
 **Tech Stack:** git surgery (hyperlane-monorepo checkout), Dockerfile/bash (hyperlane-stacks container-build), GitHub Actions YAML, SO stack.yml pins.
 
-**Repos/branches:** monorepo work in `/home/dev/git_puller/repos/hyperlane-monorepo`, split for PR delivery (fork rule: changes land via PRs, never directly on the default branch): branch `gorbagana-v2.2.0` carries ONLY the already-reviewed lineage (base + recreated CI prune + cherry-picked Ledger) — the user repoints the default branch onto it; branch `fold-docker-patches` (off it) carries the two NEW patch commits — the user PRs it into the repointed `gorbagana`. Leave local `gorbagana` untouched. NO local tags — the user cuts `v2.2.0-gorbagana.1` via the GitHub release UI after the PR merges (a squash/rebase merge changes SHAs, so a pre-merge tag would point at dead history). Stacks work in `/home/dev/git_puller/repos/hyperlane-stacks` on the existing `fast-bridging-design` branch. NEVER push anywhere.
+**Repos/branches:** monorepo work in `/home/dev/git_puller/repos/hyperlane-monorepo`, delivered as a single local branch `fold-docker-patches` = base `4da9c4419a` + recreated CI prune (`5e210f3d30`) + cherry-picked Ledger (`18c2ecfcf6`) + the two NEW patch commits. The user moves the default `gorbagana` branch ahead themselves (to `18c2ecfcf6`, the already-reviewed lineage) and PRs the two new patch commits from `fold-docker-patches` (fork rule: changes land via PRs, never directly on the default branch). Leave local `gorbagana` untouched. NO local tags — the user cuts `v2.2.0-gorbagana.1` via the GitHub release UI after the PR merges. Stacks work in `/home/dev/git_puller/repos/hyperlane-stacks` on the existing `fast-bridging-design` branch. NEVER push anywhere.
 
 **Shared dev machine:** No cargo builds, no docker builds, no test suites here — image builds are verified by CI after the user pushes. Local verification is git/grep/yaml only.
 
@@ -158,15 +158,9 @@ Expected: only `.github/workflows/*`, `rust/sealevel/client/*`, `rust/sealevel/C
 
 **Repo:** `/home/dev/git_puller/repos/hyperlane-monorepo`
 
-- [ ] **Step 1: Split the lineage into repoint + PR branches**
+- [ ] **Step 1: Single PR branch, no intermediate branch**
 
-```bash
-git switch -c fold-docker-patches            # at the tip with the 2 patch commits
-git branch -f gorbagana-v2.2.0 HEAD~2        # rebase-delivery branch: base + CI prune + Ledger only
-git log --oneline 4da9c4419a..gorbagana-v2.2.0
-git log --oneline gorbagana-v2.2.0..fold-docker-patches
-```
-Expected: first log = Ledger + CI prune (2 commits); second log = the s3 + kms commits (2 commits).
+The four commits live on one local branch `fold-docker-patches` (base `4da9c4419a` + CI prune + Ledger + the 2 patch commits). The user moves the default `gorbagana` branch ahead to `18c2ecfcf6` themselves; the PR then carries only the 2 new patch commits.
 
 - [ ] **Step 2: Do NOT create any tag**
 
@@ -174,7 +168,7 @@ The user cuts `v2.2.0-gorbagana.1` manually via the GitHub release UI after the 
 
 - [ ] **Step 3: Report the handoff facts**
 
-Record in the final report (the user pushes; we never do): branch `gorbagana-v2.2.0` (repoint target for the default branch), branch `fold-docker-patches` (PR), tag `v2.2.0-gorbagana.1` to be cut via release UI post-merge.
+Record in the final report (the user pushes; we never do): branch `fold-docker-patches`, the boundary SHA `18c2ecfcf6` for the default-branch advance, tag `v2.2.0-gorbagana.1` to be cut via release UI post-merge.
 
 ---
 
@@ -407,7 +401,7 @@ cd /home/dev/git_puller/repos/hyperlane-stacks && pb update hyp-d34.2 --status i
 (Closure waits for green CI image builds after the user pushes.)
 
 Hand off to the user, in order:
-1. Push `gorbagana-v2.2.0` to the fork and repoint the default branch onto it (settings switch or force-push — already-reviewed lineage only). Then push `fold-docker-patches` and open the PR for the two new commits; after it merges, cut the `v2.2.0-gorbagana.1` release (tag via the GitHub release UI).
+1. Move the fork's default `gorbagana` branch ahead to `18c2ecfcf6` (the already-reviewed lineage on the new base — their mechanics). Then push `fold-docker-patches` and open the PR for the two new commits; after it merges, cut the `v2.2.0-gorbagana.1` release (tag via the GitHub release UI).
 2. Ensure `CICD_REPO_TOKEN_TEMP` has read access to `gorbagana-dev/hyperlane-monorepo` (it currently covers the warp-ui fork).
 3. Push/merge the `fast-bridging-design` commits — the trigger bumps then fire agent + deployer image builds from the fork tag; green builds close `hyp-d34.2`.
 4. Expected benign image delta: the deployer image gains an extra `test-ism.so` (upstream added `ism/test-ism` to `build-programs.sh` in range); our deploy scripts iterate explicit program names and ignore it.
