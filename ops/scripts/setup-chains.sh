@@ -17,6 +17,8 @@
 #   SOLANA_FAUCET_PORT [19900] SOLANA_GOSSIP_PORT [18001]
 #   GORCHAIN_STACK_REF [github.com/gorbagana-dev/gorchain-stacks@main]
 #   SKIP_GORCHAIN / SKIP_SOLANA  [unset]   set to skip one chain
+#   GORCHAIN_PRESERVE [unset]  set to reuse a healthy/existing gorchain deployment
+#                              instead of recreating it (staging: persistent chain)
 set -euo pipefail
 
 CHAINS_DIR="${CHAINS_DIR:-./chains}"
@@ -64,6 +66,11 @@ wait_for_chain() {  # <rpc> <name>
 
 start_gorchain() {
   echo "== gorchain =="
+  if [ -n "${GORCHAIN_PRESERVE:-}" ] && curl -fS "$GORCHAIN_RPC/health" >/dev/null 2>&1; then
+    echo "  already running at $GORCHAIN_RPC (GORCHAIN_PRESERVE) — leaving it"
+    wait_for_chain "$GORCHAIN_RPC" gorchain
+    return 0
+  fi
   if [ -n "${GHCR_PAT:-}" ]; then
     GHCR_USER="${GHCR_USER:-gorbagana-dev}"   # GHCR auths by the PAT; the user just needs to be non-empty
     echo "  logging in to ghcr.io as ${GHCR_USER} for the private gorchain images"
@@ -79,7 +86,17 @@ start_gorchain() {
 
   local deploy_dir="$CHAINS_DIR/gorchain"
   local spec="$CHAINS_DIR/gorchain-spec.yml"
-  [ -d "$deploy_dir" ] && { echo "  removing stale deployment $deploy_dir"; laconic-so deployment --dir "$deploy_dir" stop --delete-volumes 2>/dev/null || true; rm -rf "$deploy_dir"; }
+  if [ -d "$deploy_dir" ]; then
+    if [ -n "${GORCHAIN_PRESERVE:-}" ]; then
+      echo "  existing deployment (not healthy) — starting it instead of recreating"
+      laconic-so deployment --dir "$deploy_dir" start
+      wait_for_chain "$GORCHAIN_RPC" gorchain
+      return 0
+    fi
+    echo "  removing stale deployment $deploy_dir"
+    laconic-so deployment --dir "$deploy_dir" stop --delete-volumes 2>/dev/null || true
+    rm -rf "$deploy_dir"
+  fi
 
   # Dev-RPC spec: the chain config lives in config: (laconic-so renders config.env
   # from it), NOT a hand-written config.env. GORCHAIN_DEV_RPC enables full client

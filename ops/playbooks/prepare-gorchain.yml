@@ -1,0 +1,110 @@
+---
+# Staging chain play — stand up the PERSISTENT single-node gorchain on the
+# chain host, front its RPC with Caddy + Let's Encrypt at rpc.<dns_zone>, and
+# generate the hot signing keys. Deliberately NOT part of setup-all/deploy-all
+# (same isolation as the local prepare-chains.yml): chains are pre-deploy.
+#
+#   ansible-playbook -i inventories/staging/hosts.yml playbooks/prepare-gorchain.yml
+#
+# Run AFTER setup-all.yml: bootstrap installs docker/laconic-so, and
+# configure-dns must have created rpc.<dns_zone> before Caddy can pass the
+# ACME challenge. Re-runs preserve the chain (GORCHAIN_PRESERVE) — state under
+# ~/chains/gorchain survives until an operator destroys it deliberately.
+#
+# Solana is Helius devnet — nothing to stand up. Funding the generated keys is
+# a runbook step (gorchain: own faucet; devnet: rate-limited airdrops).
+- name: Prepare the staging gorchain chain + RPC TLS front + hot keys
+  hosts: chain_hosts
+  gather_facts: true
+  vars_files:
+    - "{{ inventory_dir }}/secrets.yml"
+  vars:
+    chains_dir: "{{ ansible_env.HOME }}/chains"
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    caddy_dir: "{{ ansible_env.HOME }}/gorchain-rpc-caddy"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
+  pre_tasks:
+    - name: GHCR PAT must be set (private gorchain images)
+      ansible.builtin.assert:
+        that: "(ghcr_pat | default('') | length) > 0"
+        fail_msg: "Set ghcr_pat in secrets.yml for the private gorchain images."
+  tasks:
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ship the setup scripts
+      ansible.builtin.copy:
+        src: "../scripts/{{ item }}"
+        dest: "{{ scripts_dst }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - setup-chains.sh
+        - gen-local-keys.sh
+        - fund-test-wallets.sh
+
+    - name: Stand up gorchain (persistent — preserved across re-runs)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/setup-chains.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CHAINS_DIR: "{{ chains_dir }}"
+        GHCR_USER: "{{ ghcr_user | default('gorbagana-dev') }}"
+        GHCR_PAT: "{{ ghcr_pat }}"
+        SKIP_SOLANA: "1"
+        GORCHAIN_PRESERVE: "1"
+      register: chain_out
+      changed_when: true
+
+    - name: Generate the hot signing keys (existing files are never overwritten)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/gen-local-keys.sh --yes"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+      register: keys_out
+      changed_when: true
+
+    - name: Caddy config dir
+      ansible.builtin.file:
+        path: "{{ caddy_dir }}"
+        state: directory
+        mode: "0755"
+
+    # WebSocket exposure lands with the fast-bridging work (hyp-d34); HTTP only here.
+    - name: Render the Caddyfile (TLS front for the gorchain RPC)
+      ansible.builtin.copy:
+        dest: "{{ caddy_dir }}/Caddyfile"
+        mode: "0644"
+        content: |
+          rpc.{{ dns_zone }} {
+            reverse_proxy 127.0.0.1:8899
+          }
+      register: _caddyfile
+
+    - name: Run the Caddy RPC front (host network; certs persist in the volume)
+      community.docker.docker_container:
+        name: gorchain-rpc-caddy
+        image: caddy:2
+        restart_policy: unless-stopped
+        network_mode: host
+        recreate: "{{ _caddyfile is changed }}"
+        volumes:
+          - "{{ caddy_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro"
+          - gorchain-rpc-caddy-data:/data
+
+    - name: Show generated key addresses (fund per the staging runbook)
+      ansible.builtin.debug:
+        var: keys_out.stdout_lines

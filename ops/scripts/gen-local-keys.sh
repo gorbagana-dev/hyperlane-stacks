@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Generate THROWAWAY test signing keys for the `local` own-chains environment.
+# Generate hot signing keys for the hot-key-signer environments: `local` and
+# `staging` (per the staging design, staging signs from key files for fast
+# iteration). NEVER run this against a prod credentials dir.
 #
 # Writes the ed25519 keyfiles the local stack consumes into the operator
 # credentials dir, then prints the pubkeys/addresses to paste into group_vars and
-# to fund. TEST KEYS ONLY — never run this against a prod/staging credentials dir.
+# to fund.
 # It refuses to overwrite existing files, so it cannot clobber real keys.
 #
 # Privy-derived values (GORCHAIN/SOLANA_VALIDATOR_ADDRESS, IGP_ORACLE_PUBKEY) do
@@ -44,9 +46,9 @@ fi
 
 cat <<BANNER
 ============================================================
- gen-local-keys — TEST signing keys for the LOCAL environment
+ gen-local-keys — hot signing keys (local / staging environments)
  Target dir: $CRED_DIR
- Throwaway keys only. Do NOT use for prod/staging.
+ Hot keys only. Do NOT use for prod.
  Existing files are never overwritten.
 ============================================================
 BANNER
