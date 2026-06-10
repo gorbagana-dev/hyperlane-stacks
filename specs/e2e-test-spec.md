@@ -777,7 +777,7 @@ Tests are Python/pytest modules (not shell scripts). See `tests/e2e/` for implem
 ## Phase 3: Full Bridge Transfer
 
 Runs after Phase 2. Executes actual cross-chain warp route transfers using the
-deployed warp routes (collateral USDC on Solana ↔ synthetic gUSDC on Gorchain).
+deployed warp routes (collateral USDC on Solana ↔ synthetic USDC on Gorchain).
 
 ### Prerequisites
 
@@ -813,7 +813,7 @@ accounts needed for transfers.
    {
        "namespace": str,
        "token_mint": str,          # Collateral USDC mint on Solana
-       "synthetic_mint": str,      # Synthetic gUSDC mint on Gorchain
+       "synthetic_mint": str,      # Synthetic USDC mint on Gorchain
        "sender_keypair": str,      # Path to deployer keypair JSON
        "warp_programs": {          # {chain_name: base58_program_id}
            "solana": str,
@@ -832,7 +832,7 @@ spl-token balance <collateral-mint> \
   --owner <sender-keypair> \
   --url http://localhost:18899
 
-# Synthetic gUSDC balance on Gorchain
+# Synthetic USDC balance on Gorchain
 spl-token balance <synthetic-mint> \
   --owner <sender-keypair> \
   --url http://localhost:8899
@@ -884,10 +884,10 @@ Key arguments:
 
 All tests in `TestBridge` class, marked `@pytest.mark.slow`.
 
-**`test_transfer_solana_to_gorchain`** — Transfer collateral USDC from Solana to synthetic gUSDC on Gorchain:
+**`test_transfer_solana_to_gorchain`** — Transfer collateral USDC from Solana to synthetic USDC on Gorchain:
 
 1. Record sender's initial collateral USDC balance on Solana
-2. Record sender's initial synthetic gUSDC balance on Gorchain (likely 0)
+2. Record sender's initial synthetic USDC balance on Gorchain (likely 0)
 3. Execute `token transfer-remote` on Solana:
    - Amount: 1,000,000 (1 USDC)
    - Destination domain: 99999 (Gorchain)
@@ -898,11 +898,11 @@ All tests in `TestBridge` class, marked `@pytest.mark.slow`.
 6. **Poll destination balance** on Gorchain (timeout 120s, poll every 5s):
    - Query `spl-token balance <synthetic-mint> --owner <sender> --url gorchain-rpc`
    - Wait until balance increases by 1,000,000
-7. Assert final Gorchain gUSDC balance = initial + 1,000,000
+7. Assert final Gorchain USDC balance = initial + 1,000,000
 
-**`test_transfer_gorchain_to_solana`** — Transfer synthetic gUSDC back from Gorchain to Solana:
+**`test_transfer_gorchain_to_solana`** — Transfer synthetic USDC back from Gorchain to Solana:
 
-1. Record sender's synthetic gUSDC balance on Gorchain (should be > 0 from previous test)
+1. Record sender's synthetic USDC balance on Gorchain (should be > 0 from previous test)
 2. Record sender's collateral USDC balance on Solana
 3. Execute `token transfer-remote` on Gorchain:
    - Amount: 500,000 (0.5 USDC — use half to prove partial transfers work)
@@ -910,7 +910,7 @@ All tests in `TestBridge` class, marked `@pytest.mark.slow`.
    - Recipient: sender's own pubkey
    - Token type: `synthetic`
 4. Assert transfer tx succeeded (exit code 0)
-5. Assert sender's Gorchain gUSDC balance decreased by 500,000
+5. Assert sender's Gorchain USDC balance decreased by 500,000
 6. **Poll destination balance** on Solana (timeout 120s, poll every 5s):
    - Query `spl-token balance <collateral-mint> --owner <sender> --url solana-rpc`
    - Wait until balance increases by 500,000

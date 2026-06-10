@@ -128,8 +128,8 @@ class TestBridge:
     """Cross-chain warp route transfer tests.
 
     USDC route (collateral ↔ synthetic), five concurrent users each way:
-    - Forward: Solana collateral USDC → Gorchain synthetic gUSDC
-    - Reverse: Gorchain synthetic gUSDC → Solana collateral USDC
+    - Forward: Solana collateral USDC → Gorchain synthetic USDC
+    - Reverse: Gorchain synthetic USDC → Solana collateral USDC
 
     Native route (native ↔ synthetic), single user each way:
     - Forward: Solana native SOL → Gorchain synthetic
@@ -157,7 +157,7 @@ class TestBridge:
             initial_solana[i] = get_spl_token_balance(token_mint, kp, solana_rpc)
             initial_gorchain[i] = get_spl_token_balance(synthetic_mint, kp, gorchain_rpc)
             log.info(
-                "User %d initial — Solana USDC: %s, Gorchain gUSDC: %s",
+                "User %d initial — Solana USDC: %s, Gorchain USDC: %s",
                 i, initial_solana[i], initial_gorchain[i],
             )
 
@@ -218,7 +218,7 @@ class TestBridge:
             log.info("User %d Solana USDC after transfer: %s", i, post)
 
         # Wait for all synthetic balances on Gorchain concurrently
-        log.info("Waiting for %d Gorchain gUSDC balances...", len(users))
+        log.info("Waiting for %d Gorchain USDC balances...", len(users))
 
         def _wait_gorchain(idx: int) -> float:
             user = users[idx]
@@ -228,7 +228,7 @@ class TestBridge:
                 expected_min=expected,
                 timeout=RELAY_TIMEOUT,
                 poll_interval=POLL_INTERVAL,
-                label=f"User {idx} Gorchain gUSDC",
+                label=f"User {idx} Gorchain USDC",
             )
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_BRIDGE_USERS) as pool:
@@ -237,7 +237,7 @@ class TestBridge:
                 idx = wait_futures[fut]
                 balance = fut.result()
                 log.info(
-                    "User %d bridge Sol→Gor complete. gUSDC balance: %s",
+                    "User %d bridge Sol→Gor complete. Gorchain USDC balance: %s",
                     idx, balance,
                 )
 
@@ -246,7 +246,7 @@ class TestBridge:
     def test_usdc_reverse_transfers(
         self, bridge_setup: dict, bridge_state_loader: BridgeStateLoader,
     ) -> None:
-        """Transfer synthetic gUSDC from Gorchain back to Solana for all users concurrently."""
+        """Transfer synthetic USDC from Gorchain back to Solana for all users concurrently."""
         log.info("Waiting %ds for validator state to settle...", SETTLE_DELAY)
         time.sleep(SETTLE_DELAY)
 
@@ -267,7 +267,7 @@ class TestBridge:
             initial_gorchain[i] = get_spl_token_balance(synthetic_mint, kp, gorchain_rpc)
             initial_solana[i] = get_spl_token_balance(token_mint, kp, solana_rpc)
             log.info(
-                "User %d initial — Gorchain gUSDC: %s, Solana USDC: %s",
+                "User %d initial — Gorchain USDC: %s, Solana USDC: %s",
                 i, initial_gorchain[i], initial_solana[i],
             )
 
@@ -275,9 +275,9 @@ class TestBridge:
         amounts = {}
         for i in range(len(users)):
             amounts[i] = REVERSE_BASE + i * REVERSE_STEP
-            expected_gusdc = amounts[i] / 1_000_000
-            assert initial_gorchain[i] >= expected_gusdc, (
-                f"User {i} has insufficient gUSDC: {initial_gorchain[i]} < {expected_gusdc}. "
+            expected_usdc = amounts[i] / 1_000_000
+            assert initial_gorchain[i] >= expected_usdc, (
+                f"User {i} has insufficient Gorchain USDC: {initial_gorchain[i]} < {expected_usdc}. "
                 f"Did test_usdc_forward_transfers run first?"
             )
 
@@ -323,10 +323,10 @@ class TestBridge:
             post = get_spl_token_balance(synthetic_mint, user["keypair_path"], gorchain_rpc)
             expected_decrease = amounts[i] / 1_000_000
             assert initial_gorchain[i] - post >= expected_decrease - 0.001, (
-                f"User {i} Gorchain gUSDC didn't decrease enough: "
+                f"User {i} Gorchain USDC didn't decrease enough: "
                 f"{initial_gorchain[i]} -> {post}"
             )
-            log.info("User %d Gorchain gUSDC after transfer: %s", i, post)
+            log.info("User %d Gorchain USDC after transfer: %s", i, post)
 
         # Wait for all collateral balances on Solana concurrently
         log.info("Waiting for %d Solana USDC balances...", len(users))

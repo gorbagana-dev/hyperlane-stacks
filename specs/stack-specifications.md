@@ -152,13 +152,13 @@ the downstream warp-UI consumes are one per cell:
   USDC. Created by the warp deploy; read from
   `warp-deploy-outputs/program-ids.json` (`<collateral-chain>.base58`).
 - **`WARP_SYNTHETIC_ADDRESS`** — the warp program on gorchain that mints/burns
-  gUSDC. Created by the warp deploy; `<synthetic-chain>.base58` from the same file.
+  USDC. Created by the warp deploy; `<synthetic-chain>.base58` from the same file.
 - **`WARP_TOKEN_MINT`** — the SPL mint of the **collateral** token = the real
   Solana USDC mint. It **pre-exists** (Circle's mint); the operator supplies it
   as the deployer input `WARP_TOKEN_MINT`, and the deployer echoes it back out as
   `token-config.json` → `warpRoute.tokenMint`. Named from the deployer's "token
   to bridge" perspective; conceptually it is the collateral-side mint.
-- **`WARP_SYNTHETIC_MINT`** — the SPL mint of the **synthetic** token = the gUSDC
+- **`WARP_SYNTHETIC_MINT`** — the SPL mint of the **synthetic** token = the USDC
   mint on gorchain. It is **created** by the warp deploy (that is what "synthetic"
   means — the wrapped token is minted into existence). Its address is the PDA
   `find_program_address(["hyperlane_token","-","mint"], WARP_SYNTHETIC_ADDRESS)`,
