@@ -34,6 +34,11 @@ There is no `-e env=` switch. Per-env isolation: the environments share no mutab
 inventory or vars.
 
 - **prod** / **staging** — mainnet / devnet, Cloudflare DNS + Let's Encrypt TLS.
+  Staging additionally runs its own gorchain: a persistent single-node chain
+  brought up by `playbooks/prepare-gorchain.yml` (Caddy-fronted at `rpc.<zone>`),
+  and signs from hot key files rather than Ledger (per the staging design,
+  `docs/superpowers/specs/2026-06-10-staging-ops-design.md`). Operator guide:
+  [runbooks/staging.md](runbooks/staging.md).
 - **local** — own-chains testing (Layers 1-2): self-run gorchain + a local
   solana-test-validator. Two topologies: single-host uses self-trusted **mkcert**
   certs (no DNS provider), multi-host mirrors prod (Caddy + Cloudflare DNS + LE) under
@@ -228,7 +233,16 @@ assembly, deploy/state paths, publish scoping):
 for t in tests/test_*.yml; do ansible-playbook -i inventories/prod/hosts.yml "$t"; done
 ```
 
-CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint.yml`).
+The env contract test (`tests/test_env_contract.yml`) runs per inventory — point
+`-i` at each of `inventories/{prod,staging,local}/hosts.yml`. The spec shape-parity
+checker keeps the per-env spec trees structurally aligned (run from the repo root):
+
+```bash
+python3 ops/scripts/check-spec-parity.py
+```
+
+CI runs the Layer-0 suite (lint + syntax-check + localhost tests) against all three
+inventories on every PR (`.github/workflows/ops-lint.yml`).
 
 ## Known follow-ups (verify/extend on a real VM run)
 

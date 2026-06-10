@@ -1,5 +1,10 @@
 # Staging Environment Design
 
+> **2026-06-10:** implementation-facing parts superseded by
+> `2026-06-10-staging-ops-design.md` (the ops layer landed with a different
+> layout: `ops/inventories/`, `publish-bridge-state.yml`). This doc remains
+> the source for staging's purpose, lifecycle, and rehearsal surface.
+
 ## Goal
 
 A long-lived **staging deployment** of the Hyperlane SVM bridge that mirrors
