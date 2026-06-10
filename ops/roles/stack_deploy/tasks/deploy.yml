@@ -36,9 +36,11 @@
     that:
       - "stack_env[item] | default('', true) | string | length > 0"
       - "not (stack_env[item] | default('', true) | string is search('\\{\\{'))"
+      - "not (stack_env[item] | default('', true) | string is search('REPLACE_WITH'))"
     fail_msg: >-
-      Secret env '{{ item }}' for stack '{{ stack_name }}' is empty or an unrendered
-      template (its source var is undefined). Generate the managed creds with
+      Secret env '{{ item }}' for stack '{{ stack_name }}' is empty, an unrendered
+      template, or a REPLACE_WITH placeholder (its source var was never filled).
+      Generate the managed creds with
       playbooks/distribute-credentials.yml, or set it in inventories/<env>/secrets.yml,
       then re-run.
     quiet: true

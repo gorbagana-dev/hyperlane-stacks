@@ -19,7 +19,8 @@ config:
   SOLANA_CHAIN_ID: "1399811151"
   GORCHAIN_MAILBOX: "__GORCHAIN_MAILBOX__"
   SOLANA_MAILBOX: "__SOLANA_MAILBOX__"
-  NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
+  # No WalletConnect on local — the UI degrades to injected wallets only.
+  NEXT_PUBLIC_WALLET_CONNECT_ID: ""
 configmaps:
   warp-ui-config: ./configmaps/warp-ui-config
 resources:
@@ -35,7 +36,7 @@ resources:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
 network:
   acme-email: admin@gorbagana.wtf

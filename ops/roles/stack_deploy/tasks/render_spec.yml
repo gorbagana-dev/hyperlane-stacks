@@ -111,3 +111,24 @@
     - spec_token_renders is defined
     - not (topology | default('') == 'single'
            and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
+
+# Placeholder gate — nothing unrendered may reach laconic-so. Everything legit is
+# substituted above (tokens, program-ids, whitelist, per-validator wallet ids), so
+# any survivor is an unfilled operator value or a broken render. Catch it here with
+# names, not as a half-configured pod at runtime.
+- name: Read back the fully-rendered spec
+  ansible.builtin.slurp:
+    src: "{{ _spec_file }}"
+  register: _rendered_spec_raw
+  when: not ansible_check_mode
+
+- name: No unrendered placeholders survive in the spec
+  ansible.builtin.assert:
+    that: "_leftover | length == 0"
+    fail_msg: >-
+      Unrendered placeholders in {{ _spec_file }}: {{ _leftover | unique | join(', ') }}
+      — fill the operator value (or fix the render) and re-run.
+    quiet: true
+  vars:
+    _leftover: "{{ _rendered_spec_raw.content | b64decode | regex_findall('REPLACE_WITH[A-Z0-9_]*|__[A-Z0-9_]+__') }}"
+  when: not ansible_check_mode

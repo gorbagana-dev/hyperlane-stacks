@@ -40,7 +40,7 @@ secrets:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
 network:
   acme-email: admin@gorbagana.wtf
