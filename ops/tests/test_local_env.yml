@@ -37,8 +37,11 @@
           - "'cloudflare_api_token' not in required_operator_secrets"
           - "'privy_app_id' in required_operator_secrets"
           - "'ghcr_pat' in required_operator_secrets"
-          # chain RPCs are rendered config: literals, never secret-env names
-          - "'SOLANA_RPC_URL' not in (stack_env_vars.values() | map('list') | flatten | unique)"
+          # SOLANA_RPC_URL is exported (CUSTOMRPCURLS override keys) and resolves
+          # to the own chain locally — never a Helius URL
+          - "'SOLANA_RPC_URL' in stack_env_vars['hyperlane-relayer']"
+          - "'SOLANA_RPC_URL' in stack_env_vars['hyperlane-validator']"
+          - "SOLANA_RPC_URL == 'http://solana-rpc:18899'"
 
     - name: Single-host chain RPCs are in-cluster service names
       ansible.builtin.assert:
