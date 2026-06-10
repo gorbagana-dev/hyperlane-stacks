@@ -5,6 +5,8 @@
   gather_facts: false
   vars:
     validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
+    # fixture hostnames are prod-zone; pin dns_zone so the test is inventory-independent
+    dns_zone: bridge.gorbagana.wtf
   tasks:
     - name: Load + derive
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
