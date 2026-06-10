@@ -4,11 +4,11 @@
 
 **Goal:** Rebuild the monorepo fork's history on upstream `4da9c4419a` (agents v2.2.0), fold the two docker patches into fork commits, tag the result, and point the stacks + CI at the fork instead of upstream-plus-patches.
 
-**Architecture:** Spec §4.0 + D1/D2/D8 (`docs/superpowers/specs/2026-06-10-websocket-fast-bridging-design.md`). The fork (`gorbagana-dev/hyperlane-monorepo`, private) currently sits at old base `16c056a09a` + 2 commits (CI prune `82ab03c064`, Ledger signing `a2f6ef11b0`); the agent image meanwhile builds from **upstream** `4da9c4419a` + 2 build-time patches, and the deployer images from **upstream** `16c056a09a`. After this work everything builds from one fork tag: new local branch at `4da9c4419a` + recreated CI prune + cherry-picked Ledger commit + the two patches as commits, tagged `sealevel-v2.2.0-gorbagana.1`. WS work (`hyp-d34.3`) lands on top of this.
+**Architecture:** Spec §4.0 + D1/D2/D8 (`docs/superpowers/specs/2026-06-10-websocket-fast-bridging-design.md`). The fork (`gorbagana-dev/hyperlane-monorepo`, private) currently sits at old base `16c056a09a` + 2 commits (CI prune `82ab03c064`, Ledger signing `a2f6ef11b0`); the agent image meanwhile builds from **upstream** `4da9c4419a` + 2 build-time patches, and the deployer images from **upstream** `16c056a09a`. After this work everything builds from one fork tag: new local branch at `4da9c4419a` + recreated CI prune + cherry-picked Ledger commit + the two patches as commits, tagged `v2.2.0-gorbagana.1`. WS work (`hyp-d34.3`) lands on top of this.
 
 **Tech Stack:** git surgery (hyperlane-monorepo checkout), Dockerfile/bash (hyperlane-stacks container-build), GitHub Actions YAML, SO stack.yml pins.
 
-**Repos/branches:** monorepo work in `/home/dev/git_puller/repos/hyperlane-monorepo` on a NEW local branch `gorbagana-v2.2.0` (leave local `gorbagana` untouched — it mirrors a pushed branch; the user repoints the remote at push time). Stacks work in `/home/dev/git_puller/repos/hyperlane-stacks` on the existing `fast-bridging-design` branch. NEVER push anywhere.
+**Repos/branches:** monorepo work in `/home/dev/git_puller/repos/hyperlane-monorepo`, split for PR delivery (fork rule: changes land via PRs, never directly on the default branch): branch `gorbagana-v2.2.0` carries ONLY the already-reviewed lineage (base + recreated CI prune + cherry-picked Ledger) — the user repoints the default branch onto it; branch `fold-docker-patches` (off it) carries the two NEW patch commits — the user PRs it into the repointed `gorbagana`. Leave local `gorbagana` untouched. NO local tags — the user cuts `v2.2.0-gorbagana.1` via the GitHub release UI after the PR merges (a squash/rebase merge changes SHAs, so a pre-merge tag would point at dead history). Stacks work in `/home/dev/git_puller/repos/hyperlane-stacks` on the existing `fast-bridging-design` branch. NEVER push anywhere.
 
 **Shared dev machine:** No cargo builds, no docker builds, no test suites here — image builds are verified by CI after the user pushes. Local verification is git/grep/yaml only.
 
@@ -154,21 +154,27 @@ Expected: only `.github/workflows/*`, `rust/sealevel/client/*`, `rust/sealevel/C
 
 ---
 
-### Task 3: Tag the result (monorepo)
+### Task 3: Branch split for PR delivery (monorepo) — NO tagging
 
-**Repo:** `/home/dev/git_puller/repos/hyperlane-monorepo`, branch `gorbagana-v2.2.0`
+**Repo:** `/home/dev/git_puller/repos/hyperlane-monorepo`
 
-- [ ] **Step 1: Annotated tag per the D8 scheme**
+- [ ] **Step 1: Split the lineage into repoint + PR branches**
 
 ```bash
-git tag -a sealevel-v2.2.0-gorbagana.1 -m "Fork lineage on agents v2.2.0 (4da9c4419a): CI prune, Ledger signing, KMS endpoint override, S3 path-style. Provenance pin for agent + deployer images and on-chain programs."
-git show --no-patch --format="%H %d" sealevel-v2.2.0-gorbagana.1
+git switch -c fold-docker-patches            # at the tip with the 2 patch commits
+git branch -f gorbagana-v2.2.0 HEAD~2        # rebase-delivery branch: base + CI prune + Ledger only
+git log --oneline 4da9c4419a..gorbagana-v2.2.0
+git log --oneline gorbagana-v2.2.0..fold-docker-patches
 ```
-Expected: the tag points at the branch tip.
+Expected: first log = Ledger + CI prune (2 commits); second log = the s3 + kms commits (2 commits).
 
-- [ ] **Step 2: Report the handoff facts**
+- [ ] **Step 2: Do NOT create any tag**
 
-Record in the final report (the user pushes; we never do): branch `gorbagana-v2.2.0`, tag `sealevel-v2.2.0-gorbagana.1`, tip SHA, and that remote `gorbagana` needs a force-push/repoint by the user.
+The user cuts `v2.2.0-gorbagana.1` manually via the GitHub release UI after the `fold-docker-patches` PR merges (pre-merge local tags would point at dead history after a squash/rebase merge, and tags anchor releases).
+
+- [ ] **Step 3: Report the handoff facts**
+
+Record in the final report (the user pushes; we never do): branch `gorbagana-v2.2.0` (repoint target for the default branch), branch `fold-docker-patches` (PR), tag `v2.2.0-gorbagana.1` to be cut via release UI post-merge.
 
 ---
 
@@ -278,7 +284,7 @@ Replace:
 with:
 ```yaml
   # fork of agents-v2.2.0 (4da9c4419a) + KMS-endpoint/S3-path-style/Ledger commits
-  - github.com/gorbagana-dev/hyperlane-monorepo@sealevel-v2.2.0-gorbagana.1
+  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1
 ```
 
 - [ ] **Step 2: Deployer + warp-deployer stack pins**
@@ -292,7 +298,7 @@ with:
 ```yaml
   # fork of agents-v2.2.0 (4da9c4419a); contracts semantically unchanged from
   # @hyperlane-xyz/core@10.2.0 in range, client gains built-in Ledger signing
-  - github.com/gorbagana-dev/hyperlane-monorepo@sealevel-v2.2.0-gorbagana.1
+  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1
 ```
 
 - [ ] **Step 3: CI auth for the private fork clone**
@@ -355,7 +361,7 @@ Custom build from `hyperlane-monorepo` at `agents-v2.2.0` (commit `4da9c44`) wit
 with:
 ```markdown
 Custom build from the `gorbagana-dev/hyperlane-monorepo` fork at tag
-`sealevel-v2.2.0-gorbagana.1` (base: upstream `agents-v2.2.0`, `4da9c44`).
+`v2.2.0-gorbagana.1` (base: upstream `agents-v2.2.0`, `4da9c44`).
 The former build-time patches are fork commits:
 ```
 (keep the two bullet descriptions of the KMS/S3 fixes that follow — they still describe the changes).
@@ -367,7 +373,7 @@ At line ~76-79, update the deployer source:
 →
 ```markdown
 **No existing image.** Built from the `gorbagana-dev/hyperlane-monorepo` fork at tag
-`sealevel-v2.2.0-gorbagana.1` (contracts semantically unchanged from
+`v2.2.0-gorbagana.1` (contracts semantically unchanged from
 `@hyperlane-xyz/core@10.2.0` in range; client gains built-in Ledger signing).
 ```
 and the `- Source: hyperlane-monorepo at commit 16c056a…` line beneath it accordingly. Read the surrounding section and keep its voice; update any other `16c056a` mention in that file.
@@ -401,7 +407,7 @@ cd /home/dev/git_puller/repos/hyperlane-stacks && pb update hyp-d34.2 --status i
 (Closure waits for green CI image builds after the user pushes.)
 
 Hand off to the user, in order:
-1. Push the fork: `gorbagana-v2.2.0` branch + `sealevel-v2.2.0-gorbagana.1` tag to `gorbagana-dev.github.com`; repoint/force-push `gorbagana` to the new history (their call on mechanics).
+1. Push `gorbagana-v2.2.0` to the fork and repoint the default branch onto it (settings switch or force-push — already-reviewed lineage only). Then push `fold-docker-patches` and open the PR for the two new commits; after it merges, cut the `v2.2.0-gorbagana.1` release (tag via the GitHub release UI).
 2. Ensure `CICD_REPO_TOKEN_TEMP` has read access to `gorbagana-dev/hyperlane-monorepo` (it currently covers the warp-ui fork).
 3. Push/merge the `fast-bridging-design` commits — the trigger bumps then fire agent + deployer image builds from the fork tag; green builds close `hyp-d34.2`.
 4. Expected benign image delta: the deployer image gains an extra `test-ism.so` (upstream added `ism/test-ism` to `build-programs.sh` in range); our deploy scripts iterate explicit program names and ignore it.
