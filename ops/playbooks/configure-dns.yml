@@ -4,8 +4,9 @@
 - name: Reconcile Cloudflare DNS from the controller
   hosts: controller
   gather_facts: false
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
+  pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
   roles:
     - role: dns_cloudflare
       when: manage_dns | default(true) | bool

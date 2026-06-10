@@ -31,6 +31,46 @@
   loop_control:
     label: "{{ item }}"
 
+# Catch malformed menu entries here instead of inside the deployer Job: deploy.sh
+# reads these fields without defaults (a missing one becomes the string "null"), and
+# --argjson requires decimals to be a YAML integer, not a quoted string.
+- name: Sanity-check each selected route file
+  ansible.builtin.assert:
+    that:
+      - _r.name | default('') | length > 0
+      - _r.origin.chain | default('') in ['gorchain', 'solana']
+      - _r.remote.chain | default('') in ['gorchain', 'solana']
+      - _r.origin.chain != _r.remote.chain
+      - _r.origin.type | default('') in ['native', 'collateral', 'synthetic']
+      - _r.remote.type | default('') in ['native', 'collateral', 'synthetic']
+      - _r.origin.name | default('') | length > 0
+      - _r.remote.name | default('') | length > 0
+      - _r.origin.symbol | default('') | length > 0
+      - _r.remote.symbol | default('') | length > 0
+      - _r.origin.decimals | default('x') is integer
+      - _r.remote.decimals | default('x') is integer
+      - _r.origin.type != 'collateral' or (_r.origin.token | default('') | length > 0)
+    fail_msg: >-
+      Route '{{ item.item }}' is malformed: it needs name; origin/remote each with
+      chain (gorchain|solana, different per side), type (native|collateral|synthetic),
+      name, symbol, and integer decimals; and origin.token when origin.type=collateral.
+    quiet: true
+  vars:
+    _r: "{{ item.content | b64decode | from_yaml }}"
+  loop: "{{ _warp_route_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Route names must be unique across the selection
+  ansible.builtin.assert:
+    that: _names | length == (_names | unique | length)
+    fail_msg: "Duplicate route name(s) across the WARP_ROUTES selection: {{ _names }}"
+    quiet: true
+  vars:
+    _names: >-
+      {{ _warp_route_files.results | map(attribute='content')
+         | map('b64decode') | map('from_yaml') | map(attribute='name') | list }}
+
 # Routes carrying a runtime-generated collateral mint ship token: __WARP_TOKEN_MINT__
 # and resolve it from this file on the deploy host. Single-host: prepare-chains.yml
 # writes it (chain host == deploy host). Multi-host: the operator drops the

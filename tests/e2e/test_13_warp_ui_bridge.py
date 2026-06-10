@@ -5,7 +5,7 @@ wallet extension. The extension is loaded with the test keypair and
 configured with custom RPC URLs for gorchain and solana.
 
 Warp-ui URL params are used to pre-select chains/tokens:
-  ?origin=solana&originToken=USDC&destination=gorchain&destinationToken=gUSDC
+  ?origin=solana&originToken=USDC&destination=gorchain&destinationToken=USDC
 
 Wallet connection flow:
   1. Click "Connect wallet" on the warp-ui page
@@ -38,7 +38,7 @@ from lib.common import (
 log = logging.getLogger(__name__)
 
 FORWARD_AMOUNT = "0.1"  # 0.1 USDC (Solana → Gorchain)
-REVERSE_AMOUNT = "0.05"  # 0.05 gUSDC (Gorchain → Solana, less to account for fees)
+REVERSE_AMOUNT = "0.05"  # 0.05 USDC (Gorchain → Solana, less to account for fees)
 NATIVE_FORWARD_AMOUNT = "0.1"  # 0.1 SOL (Solana → Gorchain)
 NATIVE_REVERSE_AMOUNT = "0.05"  # 0.05 SOL (Gorchain → Solana, less to account for fees)
 RELAY_TIMEOUT = 120  # seconds to wait for relayer delivery

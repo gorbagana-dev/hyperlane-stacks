@@ -33,6 +33,10 @@ volumes:
   prometheus-data: /srv/kind/hyperlane/monitoring/prometheus
   grafana-data: /srv/kind/hyperlane/monitoring/grafana
 resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
   volumes:
     prometheus-data:
       reservations:

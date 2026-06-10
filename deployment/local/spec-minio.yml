@@ -9,6 +9,10 @@ kind-mount-root: /srv/kind/hyperlane
 volumes:
   minio-data: /srv/kind/hyperlane/minio/data
 resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
   volumes:
     minio-data:
       reservations:

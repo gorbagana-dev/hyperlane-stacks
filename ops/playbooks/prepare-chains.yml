@@ -17,8 +17,6 @@
 - name: Prepare local chains, accounts, and SPL token
   hosts: chain_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
   vars:
     chains_dir: "{{ ansible_env.HOME }}/chains"
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
@@ -32,6 +30,9 @@
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     solana_version: "v3.1.9"
   pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:
         that:

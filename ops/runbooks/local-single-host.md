@@ -141,9 +141,9 @@ addresses were set in step 2.)
 ## 8. Deploy
 
 `deploy-all.yml` commits + pushes the deployer-derived state mid-flight (see below), so
-deploy off a dedicated branch — **never `main`** (the `deploy_branch` default). The hosts
-fetch the repo on that branch, so create and push it first, then pass it as
-`deploy_branch`:
+deploy off a dedicated branch — **never `main`**. The hosts fetch the repo on that
+branch, so create and push it first, then pass it as `deploy_branch` (required on
+local — there is no default):
 
 ```bash
 git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
@@ -178,7 +178,23 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/local-access.yml
 ssh -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
 ```
 
-## 10. Reset between runs
+## 10. Update the warp routes (add a follow-on route)
+
+Edit `WARP_ROUTES` in `deployment/local/spec-warp-deployer.yml` (e.g. `"usdc,sol"` —
+the menu lives in `deployment/local/bridges/default/warp-routes/`), commit + push the
+deploy branch, then:
+
+```bash
+ansible-playbook -i inventories/local/hosts.yml playbooks/update-warp-routes.yml \
+  -e deploy_branch=<deploy-branch>
+```
+
+Already-deployed routes self-skip in the deployer Job; the playbook publishes the
+regenerated bridge state and restarts the relayer (whitelist) and warp-ui (route list).
+Removing a stem from `WARP_ROUTES` soft-disables that route the same way — it drops
+out of the whitelist and the UI; its on-chain programs remain.
+
+## 11. Reset between runs
 
 ```bash
 ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml
@@ -194,7 +210,7 @@ The chains are separate from the bridge stacks: stop them with
 `laconic-so deployment --dir ~/chains/gorchain stop --delete-volumes` and by killing the
 `solana-test-validator` (its ledger is under `~/chains/data/`).
 
-## 11. Limitations / notes
+## 12. Limitations / notes
 
 - **No hairpin.** The validator→MinIO and Prometheus scrape legs run in-cluster, so
   single-host never loops traffic out to the host's public IP and back.
