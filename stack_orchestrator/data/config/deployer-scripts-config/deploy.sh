@@ -353,6 +353,10 @@ fi
 echo ""
 echo "=== Building agent-config.json ==="
 
+# Published artifacts carry no real RPC URLs (the Helius URL embeds an API
+# key). Agents receive real URLs via HYP_CHAINS_<CHAIN>_CUSTOMRPCURLS.
+PLACEHOLDER_RPC_URL="http://rpc-placeholder.invalid"
+
 cat > "${WORK_DIR}/agent-config.json" <<AGENT_EOF
 {
   "chains": {
@@ -366,7 +370,7 @@ cat > "${WORK_DIR}/agent-config.json" <<AGENT_EOF
       "interchainSecurityModule": "$(jq -r '.multisig_ism_message_id' "$GORCHAIN_PROGRAMS")",
       "validatorAnnounce": "$(jq -r '.validator_announce' "$GORCHAIN_PROGRAMS")",
       "merkleTreeHook": "$(jq -r '.mailbox' "$GORCHAIN_PROGRAMS")",
-      "rpcUrls": [{"http": "${GORCHAIN_RPC_URL}"}],
+      "rpcUrls": [{"http": "${PLACEHOLDER_RPC_URL}"}],
       "blocks": {
         "estimateBlockTime": 0.4,
         "reorgPeriod": 0
@@ -390,7 +394,7 @@ cat > "${WORK_DIR}/agent-config.json" <<AGENT_EOF
       "interchainSecurityModule": "$(jq -r '.multisig_ism_message_id' "$SOLANA_PROGRAMS")",
       "validatorAnnounce": "$(jq -r '.validator_announce' "$SOLANA_PROGRAMS")",
       "merkleTreeHook": "$(jq -r '.mailbox' "$SOLANA_PROGRAMS")",
-      "rpcUrls": [{"http": "${SOLANA_RPC_URL}"}],
+      "rpcUrls": [{"http": "${PLACEHOLDER_RPC_URL}"}],
       "blocks": {
         "estimateBlockTime": 0.4,
         "reorgPeriod": 0
@@ -442,8 +446,14 @@ SOLANA_MS="{}"
 jq -nS --argjson g "${GORCHAIN_MS}" --argjson s "${SOLANA_MS}" \
   '{gorchain: $g, solana: $s}' > "${STATE_DIR}/multisig-config.json"
 
-# registry/: copy the rendered chain-metadata directory
-if [ -d "${RENDERED_REGISTRY_DIR}/chains" ]; then
+# registry/: publish a sanitized render — placeholder URLs only. The working
+# copy at ${RENDERED_REGISTRY_DIR} keeps real URLs for the CLI's own use.
+if [ -f "${REGISTRY_DIR}/metadata.yaml.tmpl" ]; then
+  rm -rf "${STATE_DIR}/registry"
+  mkdir -p "${STATE_DIR}/registry"
+  GORCHAIN_RPC_URL="${PLACEHOLDER_RPC_URL}" SOLANA_RPC_URL="${PLACEHOLDER_RPC_URL}" \
+    envsubst < "${REGISTRY_DIR}/metadata.yaml.tmpl" > "${STATE_DIR}/registry/metadata.yaml"
+elif [ -d "${RENDERED_REGISTRY_DIR}/chains" ]; then
   rm -rf "${STATE_DIR}/registry"
   mkdir -p "${STATE_DIR}/registry"
   cp -a "${RENDERED_REGISTRY_DIR}/chains/." "${STATE_DIR}/registry/"
