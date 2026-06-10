@@ -18,7 +18,7 @@ resources:
       cpus: "0.1"
       memory: 128M
 config:
-  WARP_ROUTES: "usdc"
+  WARP_ROUTES: "usdc, sol"
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
   GORCHAIN_DOMAIN_ID: "1198486095"
