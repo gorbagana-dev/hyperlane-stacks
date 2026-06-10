@@ -1,8 +1,16 @@
 # ISM Update Playbook Design (hyp-564.1)
 
-**Status:** design — approved shape, pending spec review
+**Status:** design captured — **implementation DEFERRED** (see below).
 **Epic:** hyp-564 (operator-attended bridge maintenance ops, Ledger-signed)
 **Depends on:** hyp-d9c (Ledger owns the ISM, so it can authorize `set-validators-and-threshold`); the merged client fork with built-in Ledger signing (`--keypair usb://ledger?key=0/0`).
+
+> **Deferral note (2026-06-10).** The whole hyp-564 maintenance-ops effort — this
+> playbook **and** additional-validator support (564.5/.6) — is **deferred**. The
+> current priority is getting the bridge **deployed**, then **WebSocket-based
+> indexing**. This document is the validated design only; **no code has been
+> written** for it. The branch carrying this spec is safe to merge as
+> design-only. When the work resumes, this spec is the starting point — pick up at
+> the writing-plans step. The hyp-564 epic and its children stay **open**.
 
 ## Goal
 
