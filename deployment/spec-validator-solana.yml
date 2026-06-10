@@ -35,6 +35,8 @@ secrets:
       PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
       AWS_ACCESS_KEY_ID:      { env: SOLANA_PRIMARY_KEY_ID }
       AWS_SECRET_ACCESS_KEY:  { env: SOLANA_PRIMARY_SECRET }
+      # Agents only read HYP_-namespace env (chains.solana.customRpcUrls);
+      # this overrides the placeholder rpcUrls in the published agent-config.json.
       HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
