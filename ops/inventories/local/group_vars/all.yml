@@ -178,6 +178,9 @@ GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
 GHCR_PAT: "{{ ghcr_pat }}"
 MINIO_ROOT_USER: "{{ minio_root_user }}"
 MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
+# Not a secret locally (own Solana chain) — exported only so the specs'
+# HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL } keys resolve.
+SOLANA_RPC_URL: "{{ 'http://solana-rpc:18899' if topology == 'single' else solana_rpc_url }}"
 
 # Local needs no Helius. Cloudflare is multi-host only (single-host uses mkcert).
 required_operator_secrets: >-
@@ -185,10 +188,10 @@ required_operator_secrets: >-
      + ['privy_app_id', 'privy_app_secret', 'privy_oracle_wallet_id', 'ghcr_pat'] }}
 
 # --- Per-stack secret env-var map ---
-# Lists only the SECRET env-var NAMES each spec injects via secrets: { env: NAME }.
-# Local has no SOLANA_RPC_URL/COLLATERAL_CHAIN_RPC_URL here — those are rendered
-# config: literals (see spec_token_renders). Keep in sync with the secrets: blocks
-# in deployment/local/spec-*.yml.
+# Lists the env-var NAMES each spec injects via secrets: { env: NAME }.
+# COLLATERAL_CHAIN_RPC_URL stays a rendered config: literal (see
+# spec_token_renders); SOLANA_RPC_URL is listed for the CUSTOMRPCURLS override
+# keys. Keep in sync with the secrets: blocks in deployment/local/spec-*.yml.
 stack_env_vars:
   hyperlane-minio:
     - MINIO_ROOT_USER
@@ -203,6 +206,7 @@ stack_env_vars:
     - HARDWARE_WALLET_PUBKEY
     - GHCR_PAT
   hyperlane-relayer:
+    - SOLANA_RPC_URL
     - GHCR_PAT
   hyperlane-gas-oracle:
     - PRIVY_APP_ID
@@ -216,6 +220,7 @@ stack_env_vars:
   hyperlane-validator:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
+    - SOLANA_RPC_URL
     - GHCR_PAT
 
 # --- Per-stack static metadata ---

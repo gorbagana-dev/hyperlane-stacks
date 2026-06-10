@@ -40,6 +40,10 @@ secrets:
       HYP_CHAINS_SOLANA_SIGNER_KEY:   { file: ~/.credentials/hyperlane/relayer-solana.key }
       RELAYER_KEYPAIR_JSON:            { file: ~/.credentials/hyperlane/relayer-fee-claim.json }
       SOLANA_RPC_URL:                 { env: SOLANA_RPC_URL }
+      # Same URL, renamed for the agent: agents only read HYP_-namespace env
+      # (chains.solana.customRpcUrls), overriding the placeholder rpcUrls in
+      # the published agent-config.json. SOLANA_RPC_URL above is for claim-fees.sh.
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

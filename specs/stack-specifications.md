@@ -109,6 +109,8 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 ### ConfigMaps (output, created by deployer via kubectl)
 - `hyperlane-program-ids` — deployed program addresses per chain
 - `hyperlane-agent-config` — agent-config.json for validators/relayer
+  (`rpcUrls` are placeholders; real URLs are env-injected — see the
+  validator/relayer sections)
 - `hyperlane-gas-oracle-config` — gas oracle configs
 - `hyperlane-multisig-config` — multisig ISM configs
 
@@ -291,6 +293,9 @@ MinIO endpoint uses the static hostname `hyperlane-minio` — a k8s Service with
 - `ORIGIN_CHAIN_NAME` — chain name (e.g., `gorchain` or `solana`), set per deployment
 - `CHECKPOINT_BUCKET` — S3 bucket name, set per deployment
 - `PRIVY_WALLET_ID` — Privy wallet ID (varies per chain deployment)
+- `HYP_CHAINS_GORCHAIN_CUSTOMRPCURLS` — real gorchain RPC URL override (compose
+  default keeps it parseable on the solana validator); the solana validator
+  gets `HYP_CHAINS_SOLANA_CUSTOMRPCURLS` via `secrets:` instead
 
 ### Secrets (injected separately)
 - `PRIVY_APP_ID`, `PRIVY_APP_SECRET` — Privy API credentials for KMS proxy
@@ -336,6 +341,9 @@ Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fee
 
 ### Config (spec.yml)
 - `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`
+- `HYP_CHAINS_GORCHAIN_CUSTOMRPCURLS` / `HYP_CHAINS_SOLANA_CUSTOMRPCURLS` —
+  real chain RPC URLs overriding the placeholder `rpcUrls` in agent-config.json
+  (solana via `secrets:` — the Helius URL embeds an API key)
 - `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID` — for igp-fee-claim sidecar
 - `GORCHAIN_IGP_ACCOUNT`, `SOLANA_IGP_ACCOUNT` — IGP account addresses for fee claims
 

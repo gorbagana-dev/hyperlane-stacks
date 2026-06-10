@@ -43,6 +43,38 @@
         mode: "u=rwX,go=rX"
       when: not ansible_check_mode
 
+    # Fail-closed gate: no secret material may reach deploy_branch even if a
+    # future artifact regresses. Needles are passed via environment so the
+    # rendered command never contains a secret; output names files only.
+    - name: Secret-scan the generated state before staging
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          dir="{{ deployment_root }}/{{ generated_rel }}"
+          hits=""
+          for var in SCAN_NEEDLE_1 SCAN_NEEDLE_2 SCAN_NEEDLE_3 SCAN_NEEDLE_4; do
+            val="${!var:-}"
+            if [ -n "$val" ]; then
+              found=$(grep -rlF -- "$val" "$dir" || true)
+              if [ -n "$found" ]; then hits="$hits$found"$'\n'; fi
+            fi
+          done
+          found=$(grep -rli -- 'api-key=' "$dir" || true)
+          if [ -n "$found" ]; then hits="$hits$found"$'\n'; fi
+          if [ -n "$hits" ]; then
+            echo "ERROR: secret material found in files staged for publish:" >&2
+            printf '%s' "$hits" | sort -u >&2
+            exit 1
+          fi
+      environment:
+        SCAN_NEEDLE_1: "{{ SOLANA_RPC_URL | default('') }}"
+        SCAN_NEEDLE_2: "{{ SOLANA_WS_URL | default('') }}"
+        SCAN_NEEDLE_3: "{{ helius_api_key | default('') }}"
+        SCAN_NEEDLE_4: "{{ solana_rpc_url | default('') }}"
+      changed_when: false
+      when: not ansible_check_mode
+
     # All deployment-derived spec values (IGP/mailbox, relayer whitelist) render at deploy
     # time from generated/ (stack_deploy render_spec), so publish only commits generated/.
     - name: Stage the generated paths (scoped)

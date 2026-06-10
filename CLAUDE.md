@@ -90,6 +90,14 @@ When making structural changes, update:
 - **`SOLANA_RPC_URL` is a secret** (the Helius URL embeds an API key): it lives
   under each spec's `secrets:` (`{ env: SOLANA_RPC_URL }`), not `config:`. SO
   injects it as a pod env var either way; only its provenance differs.
+- **Generated state is secret-free**: `agent-config.json` and the published
+  `registry/metadata.yaml` carry the placeholder `http://rpc-placeholder.invalid`
+  instead of real RPC URLs. Agents get real URLs via
+  `HYP_CHAINS_<CHAIN>_CUSTOMRPCURLS` env overrides — gorchain from compose
+  `${GORCHAIN_RPC_URL:-placeholder}`, solana via each spec's `secrets:` key
+  `{ env: SOLANA_RPC_URL }` (never via compose: a missing var renders as empty
+  string, which both crashes the agent's URL parser and shadows the envFrom
+  secret). `publish-bridge-state.yml` secret-scans `generated/` before staging.
 - **Domain/chain IDs are committed per-env spec literals** under `config:`.
   SO writes `config:` values verbatim — it does not expand `${VAR}` in `config:`.
 

@@ -95,9 +95,12 @@ class TestDeployer:
                 f"{chain_name}: expected domainId {chain_info['domain_id']}, got {chain.get('domainId')}"
             )
 
-            # RPC URL present
+            # rpcUrls must be placeholders — real URLs reach agents only via
+            # HYP_CHAINS_<CHAIN>_CUSTOMRPCURLS env overrides (hyp-d34.1)
             rpc_urls = chain.get("rpcUrls", [])
-            assert rpc_urls, f"{chain_name}: rpcUrls is empty"
+            assert rpc_urls == [{"http": "http://rpc-placeholder.invalid"}], (
+                f"{chain_name}: expected placeholder rpcUrls, got {rpc_urls}"
+            )
 
             # All address fields must be valid base58 (not "null" or empty)
             for field in AGENT_CONFIG_ADDRESS_FIELDS:
@@ -243,6 +246,30 @@ class TestDeployer:
             )
             assert "rpcUrls:" in raw, f"{chain_name}: registry missing rpcUrls"
             assert "isTestnet:" in raw, f"{chain_name}: registry missing isTestnet"
+
+        # Published registry is sanitized (hyp-d34.1)
+        assert "http://rpc-placeholder.invalid" in raw, (
+            "registry missing the placeholder rpcUrl"
+        )
+        for real_url in ("http://gorchain-rpc:8899", "http://solana-rpc:18899"):
+            assert real_url not in raw, (
+                f"registry leaks a real RPC URL: {real_url}"
+            )
+
+    def test_state_contains_no_solana_rpc_url(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+    ) -> None:
+        """No published state file may embed the Solana RPC URL (the prod
+        equivalent carries a Helius API key); mirrors the publish-time gate."""
+        secret = "http://solana-rpc:18899"
+        offenders = [
+            str(p)
+            for p in bridge_state_loader.state_dir.rglob("*")
+            if p.is_file() and secret in p.read_text(errors="ignore")
+        ]
+        assert not offenders, f"state files embed the Solana RPC URL: {offenders}"
 
     def test_programs_exist_on_chain(
         self,

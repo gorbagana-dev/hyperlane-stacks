@@ -28,6 +28,11 @@ services:
       HYP_VALIDATOR_REGION: us-east-1
       HYP_METRICSPORT: "9090"
       CONFIG_FILES: /config/agent-config.json
+      # agent-config.json carries placeholder rpcUrls; the origin chain's real
+      # URL arrives via override. The :- default keeps the var parseable on the
+      # solana validator (gorchain unused there); solana (secret) is injected
+      # via secrets: as HYP_CHAINS_SOLANA_CUSTOMRPCURLS on its own stack.
+      HYP_CHAINS_GORCHAIN_CUSTOMRPCURLS: ${GORCHAIN_RPC_URL:-http://rpc-placeholder.invalid}
       # KMS proxy sidecar for Privy signing (same pod = localhost)
       AWS_ENDPOINT_URL_KMS: "http://localhost:9999"
       # MinIO endpoint — set in each spec's config: block.

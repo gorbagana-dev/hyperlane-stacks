@@ -12,6 +12,7 @@ namespace: laconic-hyperlane-validator-gorchain
 config:
   ORIGIN_CHAIN_NAME: gorchain
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain-primary
+  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
   # Rendered per topology: single -> http://hyperlane-minio:9000 (in-cluster, plain
   # HTTP); multi -> https://s3.<zone> (Caddy + LE). See ops group_vars spec_token_renders.

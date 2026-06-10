@@ -106,6 +106,7 @@ stack_env_vars:
   hyperlane-validator:
     - PRIVY_APP_ID
     - PRIVY_APP_SECRET
+    - SOLANA_RPC_URL
     - GHCR_PAT
 
 # --- Per-stack static metadata ---
