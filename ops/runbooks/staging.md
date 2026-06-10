@@ -75,13 +75,16 @@ Fund the on-chain signers:
 
 ## 3. Deploy the bridge
 
-    ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml
+Staging requires an explicit `-e deploy_branch` (no default — a forgotten flag
+fails up front instead of publishing bridge state to main):
+
+    ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml -e deploy_branch=<branch>
 
 MinIO → deployer Job → warp deployer → relayer → gas-oracle → warp-ui →
 validators → monitoring, with the deploy gates refusing any unfilled
 placeholder. First publish of the generated state, attended:
 
-    ansible-playbook -i inventories/staging/hosts.yml playbooks/publish-bridge-state.yml -e state_review=true
+    ansible-playbook -i inventories/staging/hosts.yml playbooks/publish-bridge-state.yml -e deploy_branch=<branch> -e state_review=true
 
 ## 4. Verify
 

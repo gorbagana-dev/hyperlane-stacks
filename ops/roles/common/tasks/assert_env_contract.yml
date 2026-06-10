@@ -12,11 +12,13 @@
       Env contract: '{{ item }}' is not defined — set it in this inventory's
       group_vars/all.yml.
     quiet: true
+  # deploy_branch is deliberately NOT here: on local/staging it is a required
+  # per-invocation -e (so bridge state can't be published to main by default);
+  # the playbooks that consume it assert it themselves.
   loop:
     - topology
     - manage_dns
     - bridge_name
-    - deploy_branch
     - deployment_subdir
     - dns_zone
     - credentials_dir

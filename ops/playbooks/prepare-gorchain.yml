@@ -16,8 +16,6 @@
 - name: Prepare the staging gorchain chain + RPC TLS front + hot keys
   hosts: chain_hosts
   gather_facts: true
-  vars_files:
-    - "{{ inventory_dir }}/secrets.yml"
   vars:
     chains_dir: "{{ ansible_env.HOME }}/chains"
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
@@ -26,6 +24,9 @@
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     solana_version: "v3.1.9"
   pre_tasks:
+    - name: Load inventory secrets
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+
     - name: GHCR PAT must be set (private gorchain images)
       ansible.builtin.assert:
         that: "(ghcr_pat | default('') | length) > 0"
