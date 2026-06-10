@@ -47,6 +47,7 @@ secrets:
       HYP_CHAINS_GORCHAIN_SIGNER_KEY: { env: HYP_CHAINS_GORCHAIN_SIGNER_KEY }
       HYP_CHAINS_SOLANA_SIGNER_KEY: { env: HYP_CHAINS_SOLANA_SIGNER_KEY }
       RELAYER_KEYPAIR_JSON: { env: RELAYER_KEYPAIR_JSON }
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
