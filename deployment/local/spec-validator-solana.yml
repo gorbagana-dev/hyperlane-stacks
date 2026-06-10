@@ -22,6 +22,10 @@ annotations:
 volumes:
   validator-data: /srv/kind/hyperlane/validator-solana/data
 resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
   volumes:
     validator-data:
       reservations:

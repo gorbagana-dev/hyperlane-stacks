@@ -33,6 +33,11 @@ config:
 
   # CoinGecko-compatible API base URL. If empty, the oracle skips updates.
   PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
 # Before deploying, export these env vars in the shell that runs `laconic-so`:
 #   PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_ORACLE_WALLET_ID
 secrets:

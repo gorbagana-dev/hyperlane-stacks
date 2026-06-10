@@ -26,6 +26,10 @@ annotations:
 volumes:
   relayer-data: /srv/kind/hyperlane/relayer/data
 resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
   volumes:
     relayer-data:
       reservations:
