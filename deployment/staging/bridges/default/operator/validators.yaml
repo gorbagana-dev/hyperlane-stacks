@@ -5,11 +5,13 @@
 # validator's Privy wallet id comes from the operator's deployment-config
 # (privy_validator_wallet_ids, keyed by label).
 validators:
+  # Both on the validators host — staging-gorchain's 80/443 belong to the chain's
+  # RPC Caddy front, so no kind ingress (validator hostname) can live there.
   - label: gorchain-primary
     chain: gorchain
-    host: staging-gorchain
+    host: staging-hyperlane-validators
     hostname: validator-gorchain.staging.gorbagana.wtf
   - label: solana-primary
     chain: solana
-    host: staging-solana-validator
+    host: staging-hyperlane-validators
     hostname: validator-solana.staging.gorbagana.wtf

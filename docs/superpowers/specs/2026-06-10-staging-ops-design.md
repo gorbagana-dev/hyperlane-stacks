@@ -23,8 +23,11 @@ machine-enforced checks instead of operator care.
   the `setup-all`/`deploy-all` composites, mirroring how local keeps
   `prepare-chains.yml` outside them.
 - **Topology**: 3 VMs per the staging design — `staging-bridge-ops`
-  (singleton stacks), `staging-gorchain` (chain + gorchain validator),
-  `staging-solana-validator` (solana validator).
+  (singleton stacks), `staging-gorchain` (chain + RPC Caddy front only),
+  `staging-hyperlane-validators` (BOTH hyperlane validators). (Revised
+  2026-06-11: the gorchain validator moved off the chain host — the host
+  Caddy RPC front owns 80/443 there, and the validators' kind ingress
+  needs the same ports.)
 - **DNS zone**: `staging.gorbagana.wtf` (same Cloudflare account as prod).
   Subject to change; a zone change is mechanical — edit `base_domain` in the
   staging `group_vars` and the hostname literals in
@@ -42,8 +45,8 @@ machine-enforced checks instead of operator care.
 
 - `chain_hosts` shrinks to **only** `staging-gorchain` — the only host
   running a chain. Solana is Helius devnet; nothing chain-like runs on
-  `staging-solana-validator`.
-- `staging-solana-validator` moves to a new `validator_hosts` group. No
+  `staging-hyperlane-validators`.
+- `staging-hyperlane-validators` moves to a new `validator_hosts` group. No
   playbook targets the group; it exists so `bootstrap-host.yml`
   (`all:!controller`) provisions the host and the validator loop in
   `deploy-all.yml` can delegate to it. A comment in the file says exactly
@@ -115,11 +118,11 @@ collateral mint already exists on devnet.
 validators:
   - label: gorchain-primary
     chain: gorchain
-    host: staging-gorchain
+    host: staging-hyperlane-validators
     hostname: validator-gorchain.staging.gorbagana.wtf
   - label: solana-primary
     chain: solana
-    host: staging-solana-validator
+    host: staging-hyperlane-validators
     hostname: validator-solana.staging.gorbagana.wtf
 ```
 

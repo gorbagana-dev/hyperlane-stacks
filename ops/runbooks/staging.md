@@ -5,11 +5,15 @@ persistent single-node **gorchain**, on three VMs, with real Cloudflare DNS
 and Let's Encrypt TLS under `staging.gorbagana.wtf`. Design:
 `docs/superpowers/specs/2026-06-10-staging-ops-design.md`.
 
-| Host | Runs |
-|---|---|
-| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui |
-| `staging-gorchain` | gorchain chain (+ Caddy RPC front), gorchain validator |
-| `staging-solana-validator` | solana validator |
+| Host (`host_vars/<host>.yml`) | Runs | Starting spec |
+|---|---|---|
+| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui | 4 vCPU / 8 GB / 80 GB SSD |
+| `staging-gorchain` | gorchain chain + Caddy RPC front | 8 vCPU / 32 GB / 500 GB NVMe SSD |
+| `staging-hyperlane-validators` | both hyperlane validators | 4 vCPU / 8 GB / 60 GB SSD |
+
+Both validators live off the chain host: staging-gorchain's ports 80/443
+belong to the gorchain RPC Caddy front, so the validators' kind ingress
+(Caddy + Let's Encrypt) needs its own machine.
 
 ## 0. Prerequisites
 
@@ -23,8 +27,8 @@ and Let's Encrypt TLS under `staging.gorbagana.wtf`. Design:
 
 Then fill in exactly two things:
 
-1. `ops/inventories/staging/host_vars/<host>.yml` (all three VMs):
-   `public_ip`, `privileged_user`, `deploy_user`.
+1. `ops/inventories/staging/host_vars/<host>.yml` (one per VM in the table
+   above): `public_ip`, `privileged_user`, `deploy_user`.
 2. The one operator file — every other value (secrets, the Privy
    IDs/addresses, the WalletConnect id) lives here, each key commented:
 
@@ -64,8 +68,7 @@ keyfile to the host whose spec reads it:
 | Host | Keyfiles |
 |---|---|
 | `staging-bridge-ops` | `deployer-keypair.json`, `relayer-gorchain.key`, `relayer-solana.key`, `relayer-fee-claim.json` |
-| `staging-gorchain` | `validator-gorchain.key` |
-| `staging-solana-validator` | `validator-solana.key` |
+| `staging-hyperlane-validators` | `validator-gorchain.key`, `validator-solana.key` |
 
 Staging signs from generated throwaway key files; prod signs from
 operator-provisioned key files. The bridge owner is not a keyfile on any env:
@@ -121,13 +124,13 @@ fails up front instead of publishing bridge state to main):
 ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml -e deploy_branch=<branch>
 ```
 
-MinIO → deployer Job → warp deployer → relayer → gas-oracle → warp-ui →
-validators → monitoring, with the deploy gates refusing any unfilled
-placeholder. First publish of the generated state, attended:
-
-```bash
-ansible-playbook -i inventories/staging/hosts.yml playbooks/publish-bridge-state.yml -e deploy_branch=<branch> -e state_review=true
-```
+MinIO → deployer Job → warp deployer → **publish bridge state** → relayer →
+gas-oracle → warp-ui → validators → monitoring, with the deploy gates
+refusing any unfilled placeholder. The publish (commit + push of the
+deployer-generated state to `deploy_branch`) happens mid-flight — add
+`-e state_review=true` to gate it for an attended review on the first run.
+`playbooks/publish-bridge-state.yml` exists standalone only for re-publishing
+outside a full deploy.
 
 ## 4. Verify
 
