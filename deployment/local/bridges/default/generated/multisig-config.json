@@ -1,0 +1,18 @@
+{
+  "gorchain": {
+    "solana": {
+      "threshold": 1,
+      "validators": [
+        "0x72844DF8c73445A800953d15e28F0EBf55dB5922"
+      ]
+    }
+  },
+  "solana": {
+    "gorchain": {
+      "threshold": 1,
+      "validators": [
+        "0x92EB34A4437C2c3bae1661E7E696498f2D46C294"
+      ]
+    }
+  }
+}

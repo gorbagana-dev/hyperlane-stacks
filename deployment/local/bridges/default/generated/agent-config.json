@@ -1,0 +1,52 @@
+{
+  "chains": {
+    "gorchain": {
+      "name": "gorchain",
+      "chainId": 1198486095,
+      "domainId": 1198486095,
+      "protocol": "sealevel",
+      "mailbox": "zwD3Vx1MwaVbqbHFsEzZ9SUY2tfoQjdQayxRe1MmzWm",
+      "interchainGasPaymaster": "EcowaiTPwmfd95ij8pwCbZdR4ESKNNwPxA9zKYe9aavH",
+      "interchainSecurityModule": "J2ConA7enDQJZezEsMhNtoDMQpvyu5DZEJDLnSbeaekj",
+      "validatorAnnounce": "Dh7avw6JVwNcnkz4SbmzY2rgmxdndaN8zPuHhjeeCKkG",
+      "merkleTreeHook": "zwD3Vx1MwaVbqbHFsEzZ9SUY2tfoQjdQayxRe1MmzWm",
+      "rpcUrls": [{"http": "http://rpc-placeholder.invalid"}],
+      "blocks": {
+        "estimateBlockTime": 0.4,
+        "reorgPeriod": 0
+      },
+      "index": {
+        "from": 0,
+        "chunk": 10000,
+        "mode": "sequence"
+      },
+      "nativeToken": {
+        "decimals": 9
+      }
+    },
+    "solana": {
+      "name": "solana",
+      "chainId": 1399811151,
+      "domainId": 1399811151,
+      "protocol": "sealevel",
+      "mailbox": "B7jkN1dzx7SBibPVJtpLjfdiHa7R1qD2yfMSF1bxURRc",
+      "interchainGasPaymaster": "ETTFwYQ382bmLVhD7wA5SB5CXsjWYZd8Wrv7oJoJUBkM",
+      "interchainSecurityModule": "8ZFE5HULisP73CtG9BQ4RNQNMbEdb34MstkqWYJfUQx1",
+      "validatorAnnounce": "2H7G8ksadgGtx9a1XC9Tkc26g2QzF9o6mvVURdD3CYa3",
+      "merkleTreeHook": "B7jkN1dzx7SBibPVJtpLjfdiHa7R1qD2yfMSF1bxURRc",
+      "rpcUrls": [{"http": "http://rpc-placeholder.invalid"}],
+      "blocks": {
+        "estimateBlockTime": 0.4,
+        "reorgPeriod": 0
+      },
+      "index": {
+        "from": 0,
+        "chunk": 10000,
+        "mode": "sequence"
+      },
+      "nativeToken": {
+        "decimals": 9
+      }
+    }
+  }
+}
