@@ -160,10 +160,13 @@ Targets `chain_hosts` (= `staging-gorchain`). Three parts:
    proxied — faucet stays on-host only.
 3. **Keys + funding** — reuses `gen-local-keys.sh`: generates the
    deployer/relayer/validator hot keyfiles (the bridge owner is NOT a
-   keyfile — it is the Privy bridge-owner wallet, decision 2026-06-11)
-   and funds the gorchain side from the chain's own faucet. The solana
-   side funds via `solana airdrop` on devnet; the runbook documents the
-   rate limits and manual top-up fallback. No SPL token deploy step.
+   keyfile — it is the Privy bridge-owner wallet, decision 2026-06-11),
+   distributes each to its consumer host, and funds every signer to its
+   per-chain target balance in-play (`fund-staging-signers.sh`,
+   2026-06-11: no operator SSH). gorchain funds from the chain's own
+   faucet; devnet is best-effort against the rate-limited public faucet —
+   the play fails listing shortfalls for the operator to top up and
+   re-run (balance-driven, idempotent). No SPL token deploy step.
 
 ## 5. Correct-by-construction checks
 

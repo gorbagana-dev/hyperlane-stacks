@@ -62,8 +62,9 @@ ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorc
 Brings up the single-node gorchain via gorchain-stacks (state in
 `~/chains/gorchain` on the chain host — re-runs preserve it), starts the
 Caddy TLS front for `rpc.staging.gorbagana.wtf`, generates the hot signing
-keys into `~/.credentials/hyperlane/` on staging-gorchain, and copies each
-keyfile to the host whose spec reads it:
+keys into `~/.credentials/hyperlane/` on staging-gorchain, copies each
+keyfile to the host whose spec reads it, and funds every on-chain signer —
+no SSH-ing anywhere:
 
 | Host | Keyfiles |
 |---|---|
@@ -76,40 +77,26 @@ at the end of the deploy, program upgrade authority and mailbox/ISM/route
 ownership transfer to `BRIDGE_OWNER_PUBKEY` — the Privy bridge-owner wallet,
 which signs nothing during deployment.
 
-### Fund the on-chain signers
+### Funding (done by the play)
 
-The play exports every generated address to
-`~/.credentials/hyperlane/addresses.env` on staging-gorchain:
+The play funds each signer to its target balance (`fund-staging-signers.sh`,
+driven by the generated `addresses.env` + `igp_oracle_pubkey` from
+deployment-config). Balance-driven and idempotent — re-runs only top up:
 
-| Signer | `addresses.env` var | gorchain (SOL) | solana devnet (SOL) |
-|---|---|---|---|
-| deployer | `DEPLOYER_KEYPAIR_ADDR` | 100 | ~10 (repeat airdrops, or top up from an operator devnet wallet) |
-| gorchain validator | `VALIDATOR_GORCHAIN_ADDR` | 1 | — |
-| solana validator | `VALIDATOR_SOLANA_ADDR` | — | 1 |
-| relayer gorchain signer | `RELAYER_GORCHAIN_ADDR` | 1 | — |
-| relayer solana signer | `RELAYER_SOLANA_ADDR` | — | 1 |
-| IGP fee-claim | `RELAYER_FEE_CLAIM_ADDR` | 1 | 1 |
-| Privy IGP oracle | — (`IGP_ORACLE_PUBKEY` in group_vars) | 1 | 1 |
-| Privy bridge owner | — (`BRIDGE_OWNER_PUBKEY` in group_vars) | — | — (transfer target only) |
+| Signer | gorchain (SOL) | solana devnet (SOL) |
+|---|---|---|
+| deployer | 100 | 10 |
+| gorchain validator | 1 | — |
+| solana validator | — | 1 |
+| relayer gorchain signer | 1 | — |
+| relayer solana signer | — | 1 |
+| IGP fee-claim | 1 | 1 |
+| Privy IGP oracle | 1 | 1 |
+| Privy bridge owner | — | — (transfer target only) |
 
-On staging-gorchain:
-
-```bash
-source ~/.credentials/hyperlane/addresses.env
-ORACLE=<IGP_ORACLE_PUBKEY>   # the Privy oracle wallet's Solana pubkey
-
-# gorchain — own faucet
-solana airdrop 100 "$DEPLOYER_KEYPAIR_ADDR" --url http://localhost:8899
-for a in "$VALIDATOR_GORCHAIN_ADDR" "$RELAYER_GORCHAIN_ADDR" "$RELAYER_FEE_CLAIM_ADDR" "$ORACLE"; do
-  solana airdrop 1 "$a" --url http://localhost:8899
-done
-
-# solana devnet — 2 SOL per request, rate-limited; repeat the deployer line until ~10
-solana airdrop 2 "$DEPLOYER_KEYPAIR_ADDR" --url https://api.devnet.solana.com
-for a in "$VALIDATOR_SOLANA_ADDR" "$RELAYER_SOLANA_ADDR" "$RELAYER_FEE_CLAIM_ADDR" "$ORACLE"; do
-  solana airdrop 2 "$a" --url https://api.devnet.solana.com
-done
-```
+gorchain funds from its own faucet (guaranteed). Devnet airdrops are
+rate-limited: if the faucet refuses, the play **fails listing the underfunded
+addresses** — top them up from an operator devnet wallet and re-run.
 
 Warp collateral is Circle's devnet USDC
 (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) — faucet at

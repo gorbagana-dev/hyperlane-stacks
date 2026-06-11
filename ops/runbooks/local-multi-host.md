@@ -146,12 +146,11 @@ local-agents (validators + relayer host):
 ```
 
 The owner/oracle pubkeys and validator addresses were already filled into
-`deployment-config.yml` in step 5 — nothing more there. (The specs'
+`deployment-config.yml` in step 5; now also set `local_warp_token_mint` there —
+the `WARP_TOKEN_MINT` the SPL deploy just printed. The warp route render reads
+it from the config at deploy time (no file to place on any host). (The specs'
 `image-pull-secret` username is committed as `gorbagana-dev`; GHCR authenticates
-by the PAT, the username doesn't matter.) The chains box isn't
-ansible-managed, so write the USDC mint (the `WARP_TOKEN_MINT` the SPL deploy printed) to
-`~/.credentials/hyperlane/warp-token-mint` on the deployer host (`local-services`),
-alongside the keys — the warp route picks it up from there.
+by the PAT, the username doesn't matter.)
 
 ## 7. Run it
 

@@ -71,30 +71,34 @@
       {{ _warp_route_files.results | map(attribute='content')
          | map('b64decode') | map('from_yaml') | map(attribute='name') | list }}
 
-# Routes carrying a runtime-generated collateral mint ship token: __WARP_TOKEN_MINT__
-# and resolve it from this file on the deploy host. Single-host: prepare-chains.yml
-# writes it (chain host == deploy host). Multi-host: the operator drops the
-# deploy-spl-token output here next to the keys. Routes with a committed mint
-# (prod/staging) carry no placeholder and never touch this file (failed_when: false).
+# Routes carrying a runtime-generated collateral mint ship token: __WARP_TOKEN_MINT__.
+# Resolution order: deployment-config's local_warp_token_mint (multi-host — the
+# operator records the mint the chains-box SPL deploy printed), else the
+# warp-token-mint file on the deploy host (single-host: prepare-chains.yml writes
+# it, chain host == deploy host). Routes with a committed mint (prod/staging)
+# carry no placeholder and never touch either source (failed_when: false).
 - name: Read the persisted collateral mint, if any
   ansible.builtin.slurp:
     src: "{{ credentials_dir }}/warp-token-mint"
   register: _warp_mint_raw
   failed_when: false
 
-- name: Resolve the collateral mint
+- name: Resolve the collateral mint (deployment-config first, else the on-host file)
   ansible.builtin.set_fact:
-    _warp_token_mint: "{{ (_warp_mint_raw.content | b64decode | trim) if (_warp_mint_raw.content is defined) else '' }}"
+    _warp_token_mint: >-
+      {{ local_warp_token_mint
+         | default((_warp_mint_raw.content | b64decode | trim)
+                   if (_warp_mint_raw.content is defined) else '', true) }}
 
 - name: A collateral mint must be available for routes using __WARP_TOKEN_MINT__
   ansible.builtin.assert:
     that:
       - "not ((item.content | b64decode | string) is search('__WARP_TOKEN_MINT__')) or (_warp_token_mint | length > 0)"
     fail_msg: >-
-      Route '{{ item.item }}' uses __WARP_TOKEN_MINT__ but no mint is available at
-      {{ credentials_dir }}/warp-token-mint. Single-host: run prepare-chains.yml (it
-      persists the mint). Multi-host: write the deploy-spl-token mint to that file on
-      this host, alongside the keys.
+      Route '{{ item.item }}' uses __WARP_TOKEN_MINT__ but no mint is available.
+      Single-host: run playbooks/local/prepare-chains.yml (it persists the mint to
+      {{ credentials_dir }}/warp-token-mint). Multi-host: set local_warp_token_mint
+      in deployment-config.yml (the mint the chains-box SPL deploy printed).
     quiet: true
   loop: "{{ _warp_route_files.results }}"
   loop_control:

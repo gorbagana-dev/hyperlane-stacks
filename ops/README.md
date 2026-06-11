@@ -162,7 +162,9 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/distribute-credentials.
 `deploy-all.yml` runs hands-off end to end. The one attended option is the state
 publish:
 
-- **`publish-bridge-state.yml`** runs on the deployer host: it copies the
+- **`publish-bridge-state.yml`** is imported by `deploy-all.yml` mid-flight
+  (after the deployer Jobs, before the consumers); standalone it exists for
+  re-publishing outside a full deploy. It runs on the deployer host: it copies the
   deployer-produced `generated/` state into the on-host clone, **patches the
   deployment-derived `config:` keys** (IGP program IDs/accounts into
   `spec-relayer.yml`/`spec-gas-oracle.yml`, mailboxes + warp addresses/mints into

@@ -12,9 +12,10 @@
 # ~/chains/gorchain survives until an operator destroys it deliberately.
 #
 # Solana is Helius devnet — nothing to stand up. Generated keys are copied to
-# the hosts whose specs read them; funding them is a runbook step (gorchain:
-# own faucet; devnet: rate-limited airdrops), driven by the addresses.env the
-# key generator writes.
+# the hosts whose specs read them, and the on-chain signers are funded to their
+# target balances (gorchain: own faucet; devnet: rate-limited best effort that
+# fails the play listing any shortfall — top up and re-run, funding is
+# balance-driven and idempotent).
 - name: Prepare the staging gorchain chain + RPC TLS front + hot keys
   hosts: chain_hosts
   gather_facts: true
@@ -56,7 +57,7 @@
       loop:
         - setup-chains.sh
         - gen-local-keys.sh
-        - fund-test-wallets.sh
+        - fund-staging-signers.sh
 
     - name: Stand up gorchain (persistent — preserved across re-runs)
       ansible.builtin.command:
@@ -164,6 +165,16 @@
           - "{{ caddy_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro"
           - gorchain-rpc-caddy-data:/data
 
-    - name: Show generated key addresses (fund per the staging runbook)
+    - name: Fund the on-chain signers to their target balances
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/fund-staging-signers.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+        ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+      register: fund_out
+      changed_when: true
+
+    - name: Show generated key addresses + funding results
       ansible.builtin.debug:
-        var: keys_out.stdout_lines
+        msg: "{{ keys_out.stdout_lines + fund_out.stdout_lines }}"

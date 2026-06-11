@@ -21,6 +21,6 @@ stack gets deployed. Each runbook links into it rather than repeating it.
 to fill.
 
 **Adding a new environment runbook:** copy the structure of `local-single-host.md`
-(Networking model → Prerequisites → Privy wallets → Chains → Inventory & zone → Secrets →
-Keyfiles & group_vars → Run → Access → Reset → Limitations) and call out only what that
+(Networking model → Prerequisites → Privy wallets → Inventory → Deployment config →
+Chains & keys → Deploy → Access → Reset → Limitations) and call out only what that
 environment changes. Add a row above.
