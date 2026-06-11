@@ -849,13 +849,14 @@ Without these, Caddy will fail to obtain LE certificates on first start. The fir
 DNS records are a hardcoded list in `group_vars/all.yml`:
 
 ```yaml
-dns_zone: bridge.gorbagana.wtf
+base_domain: bridge.gorbagana.wtf      # env base domain; records nest under it
+cloudflare_zone: gorbagana.wtf         # the zone as registered in Cloudflare
 dns_records:
   - { name: s3,                  host: bridge-host-1 }
   - { name: minio-console,       host: bridge-host-1 }
   - { name: grafana,             host: bridge-host-1 }
   - { name: prometheus,          host: bridge-host-1 }
-  - { name: warp-ui,             host: bridge-host-1 }
+  - { name: "@",                 host: bridge-host-1 }   # warp-ui at base_domain itself
   - { name: relayer,             host: bridge-host-1 }
   # validator records auto-appended from validators.yaml at playbook time
 ```

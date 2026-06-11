@@ -26,7 +26,7 @@ machine-enforced checks instead of operator care.
   (singleton stacks), `staging-gorchain` (chain + gorchain validator),
   `staging-solana-validator` (solana validator).
 - **DNS zone**: `staging.gorbagana.wtf` (same Cloudflare account as prod).
-  Subject to change; a zone change is mechanical — edit `dns_zone` in the
+  Subject to change; a zone change is mechanical — edit `base_domain` in the
   staging `group_vars` and the hostname literals in
   `deployment/staging/spec-*.yml`, re-run `configure-dns.yml`.
 - **Spec model**: staging specs are committed literals exactly prod-shaped
@@ -57,7 +57,7 @@ Every var the roles branch on becomes explicit:
 ansible_host: "{{ public_ip | default(omit) }}"   # same as local; currently missing → SSH fails
 topology: multi          # literal, not local's group-comparison derivation
 manage_dns: true         # literal
-dns_zone: staging.gorbagana.wtf
+base_domain: staging.gorbagana.wtf
 ```
 
 `dns_records` gains `rpc → staging-gorchain` (the cross-host gorchain RPC
@@ -68,7 +68,7 @@ in `dns_cloudflare`.
 
 New `ops/roles/common/tasks/assert_env_contract.yml`: asserts that the
 inventory defines `topology`, `manage_dns`, `deployment_subdir`,
-`dns_zone`, `bridge_name`, `deploy_branch`, and that `stack_env_vars` has
+`base_domain`, `bridge_name`, and that `stack_env_vars` has
 an entry for every key in `stacks`. Fails fast naming each missing var.
 
 Wired in two places:
@@ -92,7 +92,7 @@ http-proxy route shape), with staging values:
 | Domain/chain IDs | gorchain `1198486095`, solana `1399811151` (devnet derivations, see `ops/README.md`) |
 | Testnet flags | `*_IS_TESTNET: "true"` |
 | `GORCHAIN_RPC_URL` | `https://rpc.staging.gorbagana.wtf` |
-| Public hostnames | `{s3,minio-console,grafana,prometheus,warp-ui,relayer,validator-gorchain,validator-solana}.staging.gorbagana.wtf` |
+| Public hostnames | `{s3,minio-console,grafana,prometheus,relayer,validator-gorchain,validator-solana}.staging.gorbagana.wtf`; warp-ui at `staging.gorbagana.wtf` itself (like prod's `bridge.gorbagana.wtf`) |
 | `AWS_ENDPOINT_URL_S3` | `https://s3.staging.gorbagana.wtf` |
 | Buckets, secrets, configmaps | identical to prod (incl. the `HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }` secret key) |
 | `PRIVY_WALLET_ID` | the `REPLACE_WITH_WALLET_ID` sentinel, rendered per validator from `validators.yaml` by the deploy loop (existing mechanism) |
