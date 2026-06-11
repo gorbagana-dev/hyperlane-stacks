@@ -88,11 +88,15 @@ Replicate exactly what the KMS proxy sends, against one EVM wallet:
 ```bash
 VID=$(jq -r .id val-gorchain.json)
 curl -s "${auth[@]}" -X POST "$PRIVY_BASE/v1/wallets/$VID/rpc" \
-  -d '{"chain_type":"ethereum","method":"secp256k1_sign",
-       "params":{"hash":"0x0000000000000000000000000000000000000000000000000000000000000001"}}'
+  -d '{"chain_type":"ethereum","method":"secp256k1_sign","params":{"hash":"0x0000000000000000000000000000000000000000000000000000000000000001"}}'
 ```
 
-- **200 with a `signature`** → app-secret auth is enough; you're good.
+(Keep the JSON on one line — a stray space after a continuation backslash sends
+the request with no body, and Privy answers with a misleading "Invalid
+discriminator value" listing every method.)
+
+- **200 with `{"method":"secp256k1_sign","data":{"signature":"0x…","encoding":"hex"}}`**
+  (verified against the live API) → app-secret auth is enough; you're good.
 - **401/403** → the wallet requires an authorization key. Recreate it without an
   owner and retry.
 
