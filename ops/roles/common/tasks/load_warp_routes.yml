@@ -50,10 +50,14 @@
       - _r.origin.decimals | default('x') is integer
       - _r.remote.decimals | default('x') is integer
       - _r.origin.type != 'collateral' or (_r.origin.token | default('') | length > 0)
+      # unfilled operator values (e.g. metadataUri sentinels) stop here, not in the Job
+      - "not ((item.content | b64decode | string) is search('REPLACE_WITH'))"
     fail_msg: >-
-      Route '{{ item.item }}' is malformed: it needs name; origin/remote each with
-      chain (gorchain|solana, different per side), type (native|collateral|synthetic),
-      name, symbol, and integer decimals; and origin.token when origin.type=collateral.
+      Route '{{ item.item }}' is malformed or unfilled: it needs name; origin/remote
+      each with chain (gorchain|solana, different per side), type
+      (native|collateral|synthetic), name, symbol, and integer decimals;
+      origin.token when origin.type=collateral; and no REPLACE_WITH_* placeholder
+      may survive (e.g. metadataUri — host the metadata JSON and commit its URL).
     quiet: true
   vars:
     _r: "{{ item.content | b64decode | from_yaml }}"

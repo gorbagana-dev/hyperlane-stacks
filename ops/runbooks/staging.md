@@ -41,6 +41,26 @@ Then fill in exactly two things:
 `setup-all` fails fast naming any missing value; the deploy gates refuse
 anything left unfilled.
 
+**One-time env fact — synthetic token metadata.** The warp deploy embeds a
+metadata URI into the gorchain synthetic mint; the route menu ships a sentinel
+the deploy gate refuses until it is filled. Host this JSON at a stable public
+HTTPS URL — a GitHub gist works (use its **raw** URL; even "secret" gists serve
+raw anonymously; gists are text-only, hence the external image URL):
+
+```json
+{
+  "name": "USD Coin",
+  "symbol": "USDC",
+  "description": "Hyperlane-bridged Circle devnet USDC on Gorchain (staging).",
+  "image": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+}
+```
+
+`name`/`symbol` must equal the route menu's `remote.name`/`remote.symbol`, and
+the image URL must return 200 — the deployer validates both. Commit the raw URL
+as `metadataUri` in `deployment/staging/bridges/default/warp-routes/usdc.yml`
+(done once for the env, then it lives in git).
+
 All commands below run from `ops/` with `-i inventories/staging/hosts.yml`.
 
 ## 1. Provision the fleet
