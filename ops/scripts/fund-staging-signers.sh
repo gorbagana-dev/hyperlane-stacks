@@ -25,6 +25,12 @@ ADDR_FILE="$CRED_DIR/addresses.env"
 [ -f "$ADDR_FILE" ] || { echo "ERROR: $ADDR_FILE not found — run gen-local-keys.sh first"; exit 1; }
 # shellcheck disable=SC1090
 source "$ADDR_FILE"
+# gen-local-keys.sh omits any address it could not derive — fail up front with
+# the gap named instead of an unbound-variable abort mid-funding.
+for v in DEPLOYER_KEYPAIR_ADDR VALIDATOR_GORCHAIN_ADDR VALIDATOR_SOLANA_ADDR \
+         RELAYER_GORCHAIN_ADDR RELAYER_SOLANA_ADDR RELAYER_FEE_CLAIM_ADDR; do
+  [ -n "${!v:-}" ] || { echo "ERROR: $v missing from $ADDR_FILE — regenerate that key (see gen-local-keys.sh output) and re-run"; exit 1; }
+done
 
 balance_sol() {  # <addr> <rpc> — whole SOL rounded down; 0 if account absent
   local out
@@ -34,25 +40,19 @@ balance_sol() {  # <addr> <rpc> — whole SOL rounded down; 0 if account absent
 
 SHORTFALLS=()
 top_up() {  # <label> <addr> <target_sol> <rpc> <chunk> <max_retries>
-  local label=$1 addr=$2 target=$3 rpc=$4 chunk=$5 max_retries=$6 have need tries amount
+  # Progress is measured by re-reading the balance, never by airdrop exit codes:
+  # the gorchain faucet returns success while silently transferring nothing for
+  # refused requests. max_retries bounds consecutive no-progress attempts.
+  local label=$1 addr=$2 target=$3 rpc=$4 chunk=$5 max_retries=$6 have prev amount fails=0
   have=$(balance_sol "$addr" "$rpc")
-  if [ "$have" -ge "$target" ]; then
-    echo "  ✓ $label $addr: $have SOL (>= $target)"
-    return 0
-  fi
-  need=$(( target - have ))
-  while [ "$need" -gt 0 ]; do
-    amount=$(( need < chunk ? need : chunk ))
-    tries=0
-    until solana airdrop "$amount" "$addr" --url "$rpc" >/dev/null 2>&1; do
-      tries=$(( tries + 1 ))
-      [ "$tries" -ge "$max_retries" ] && break
-      sleep 3
-    done
-    [ "$tries" -ge "$max_retries" ] && break
-    need=$(( need - amount ))
+  while [ "$have" -lt "$target" ] && [ "$fails" -lt "$max_retries" ]; do
+    amount=$(( (target - have) < chunk ? (target - have) : chunk ))
+    solana airdrop "$amount" "$addr" --url "$rpc" >/dev/null 2>&1 || true
+    sleep 3
+    prev=$have
+    have=$(balance_sol "$addr" "$rpc")
+    if [ "$have" -gt "$prev" ]; then fails=0; else fails=$(( fails + 1 )); fi
   done
-  have=$(balance_sol "$addr" "$rpc")
   if [ "$have" -ge "$target" ]; then
     echo "  ✓ $label $addr: $have SOL (>= $target)"
   else

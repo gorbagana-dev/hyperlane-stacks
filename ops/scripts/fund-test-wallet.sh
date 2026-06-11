@@ -42,25 +42,19 @@ balance_sol() {  # <addr> <rpc> — whole SOL rounded down; 0 if account absent
 
 rc=0
 top_up() {  # <label> <target_sol> <rpc> <chunk> <max_retries>
-  local label=$1 target=$2 rpc=$3 chunk=$4 max_retries=$5 have need tries amount
+  # Progress is measured by re-reading the balance, never by airdrop exit codes:
+  # the gorchain faucet returns success while silently transferring nothing for
+  # refused requests. max_retries bounds consecutive no-progress attempts.
+  local label=$1 target=$2 rpc=$3 chunk=$4 max_retries=$5 have prev amount fails=0
   have=$(balance_sol "$WALLET" "$rpc")
-  if [ "$have" -ge "$target" ]; then
-    echo "  ✓ $label: $have SOL (>= $target)"
-    return 0
-  fi
-  need=$(( target - have ))
-  while [ "$need" -gt 0 ]; do
-    amount=$(( need < chunk ? need : chunk ))
-    tries=0
-    until solana airdrop "$amount" "$WALLET" --url "$rpc" >/dev/null 2>&1; do
-      tries=$(( tries + 1 ))
-      [ "$tries" -ge "$max_retries" ] && break
-      sleep 3
-    done
-    [ "$tries" -ge "$max_retries" ] && break
-    need=$(( need - amount ))
+  while [ "$have" -lt "$target" ] && [ "$fails" -lt "$max_retries" ]; do
+    amount=$(( (target - have) < chunk ? (target - have) : chunk ))
+    solana airdrop "$amount" "$WALLET" --url "$rpc" >/dev/null 2>&1 || true
+    sleep 3
+    prev=$have
+    have=$(balance_sol "$WALLET" "$rpc")
+    if [ "$have" -gt "$prev" ]; then fails=0; else fails=$(( fails + 1 )); fi
   done
-  have=$(balance_sol "$WALLET" "$rpc")
   if [ "$have" -ge "$target" ]; then
     echo "  ✓ $label: $have SOL (>= $target)"
   else
