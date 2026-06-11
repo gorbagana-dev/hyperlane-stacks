@@ -1,7 +1,7 @@
 # Hyperlane Relayer - LOCAL (own-chains) deployment spec
 # Delivers cross-chain messages between Gorchain and Solana.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host; the S3
+# Local differences from prod: chain RPCs are tokens rendered on the host; the S3
 # endpoint renders per topology (single -> in-cluster MinIO over HTTP; multi -> Caddy +
 # LE at s3.<zone>).
 stack: stack_orchestrator/data/stacks/hyperlane-relayer

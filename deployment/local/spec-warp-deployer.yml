@@ -2,7 +2,7 @@
 # Deploys the warp routes selected by WARP_ROUTES from the checked-in route menu.
 # Requires core deployer (spec-deployer.yml) to have run first.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host;
+# Local differences from prod: chain RPCs are tokens rendered on the host;
 # devnet IDs; testnet token model means no metadata URI is required
 # (IS_TESTNET=true).
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer

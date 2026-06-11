@@ -1,7 +1,7 @@
 # Hyperlane Monitoring - LOCAL (own-chains) deployment spec
 # Prometheus, Grafana, pushgateway, and balance monitoring. Fronted by Caddy + LE
 # like prod; scrapes validators/relayer over the public DNS endpoints (works across
-# hosts in the multi-host topology). __BASE_DOMAIN__ is rendered on the host.
+# hosts in the multi-host topology). The base-domain token is rendered on the host.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane

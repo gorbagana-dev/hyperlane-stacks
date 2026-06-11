@@ -1,7 +1,7 @@
 # Hyperlane Warp UI - LOCAL (own-chains) deployment spec
 # Browser-based bridge UI. Fronted by Caddy + LE at warp-ui.<zone> like prod.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host —
+# Local differences from prod: chain RPCs are tokens rendered on the host —
 # SOLANA_RPC_URL is the own out-of-band chain, not a Helius secret; devnet IDs.
 stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
