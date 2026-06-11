@@ -80,7 +80,10 @@ start_gorchain() {
   fi
 
   echo "  fetching gorchain stack ($GORCHAIN_STACK_REF) ..."
-  laconic-so fetch-stack --git-ssh --pull "$GORCHAIN_STACK_REF"
+  # accept-new: fresh hosts have no github.com in known_hosts and the play is
+  # non-interactive — the host-key prompt would be a hard fail.
+  GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new" \
+    laconic-so fetch-stack --git-ssh --pull "$GORCHAIN_STACK_REF"
   local stack_path="$HOME/cerc/gorchain-stacks/stack-orchestrator/stacks/gorchain"
   [ -d "$stack_path" ] || { echo "ERROR: gorchain stack not found at $stack_path"; exit 1; }
 

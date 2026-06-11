@@ -32,7 +32,9 @@
       - --pull
   environment:
     CERC_REPO_BASE_DIR: "{{ repo_base_dir }}"
-    GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes"
+    # accept-new: fresh hosts have no github.com in known_hosts; a TOFU accept
+    # beats an interactive prompt that non-interactive ssh turns into a hard fail.
+    GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes -o StrictHostKeyChecking=accept-new"
   register: _fetch
   changed_when: >-
     'Cloning' in _fetch.stdout or 'Updating' in _fetch.stdout
