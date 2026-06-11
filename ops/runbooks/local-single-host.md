@@ -68,7 +68,8 @@ cd ops   # all commands below run from here
 ansible -i inventories/local/hosts.yml local-1 -m ping   # expect: SUCCESS / "pong"
 ```
 
-Set `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`.
+(The specs' `image-pull-secret` username is committed as `gorbagana-dev` — GHCR
+authenticates by the PAT, the username doesn't matter. Nothing to edit.)
 
 ## 4. Secrets
 

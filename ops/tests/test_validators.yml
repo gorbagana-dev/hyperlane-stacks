@@ -38,3 +38,30 @@
           - "validator_dns_records | length == 2"
           - "validator_dns_records[0].name == 'validator-gorchain'"
           - "validator_dns_records[0].host == 'bridge-host-1'"
+
+# The local multihost file is zone-tokenized — prove load_validators renders
+# base_domain into the hostnames and the wallet-id merge covers both entries.
+- name: Multihost validators file renders the operator zone
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    validators_file: >-
+      {{ playbook_dir }}/../../deployment/local/bridges/default/operator/validators-multihost.yaml
+    base_domain: zone.example
+    privy_validator_wallet_ids:
+      gorchain-primary: pw-gor
+      solana-primary: pw-sol
+  tasks:
+    - name: Load + derive
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Hostnames render from base_domain; wallet ids merge; DNS derives
+      ansible.builtin.assert:
+        that:
+          - "validators | map(attribute='hostname') | sort | list
+             == ['validator-gorchain.zone.example', 'validator-solana.zone.example']"
+          - "validators | map(attribute='privy_wallet_id') | sort | list == ['pw-gor', 'pw-sol']"
+          - "(validator_dns_records | selectattr('name', 'eq', 'validator-gorchain')
+              | first).host == 'local-agents'"
+        quiet: true

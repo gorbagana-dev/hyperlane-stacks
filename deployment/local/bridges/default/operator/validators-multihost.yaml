@@ -2,8 +2,9 @@
 # Multi-host (Layer 2) validator set — both hyperlane validators on the local-agents
 # host (off the chain test validators, so validator -> chain RPC is cross-host). Used
 # via -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
-# Pure topology: wallet ids come from deployment-config (privy_validator_wallet_ids).
-# Replace REPLACE_WITH_LOCAL_BASE_DOMAIN in the hostnames to match group_vars base_domain.
+# Pure topology: wallet ids come from deployment-config (privy_validator_wallet_ids),
+# and load_validators renders REPLACE_WITH_LOCAL_BASE_DOMAIN in the hostnames from
+# base_domain (deployment-config local_base_domain) — no edit needed.
 validators:
   - label: gorchain-primary
     chain: gorchain

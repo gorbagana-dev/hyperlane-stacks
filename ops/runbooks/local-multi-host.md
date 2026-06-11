@@ -99,23 +99,20 @@ cd ops   # all commands below run from here
 ansible -i inventories/local/hosts-multihost.yml all:!controller -m ping   # expect: SUCCESS each
 ```
 
-```yaml
-# inventories/local/group_vars/all.yml
-base_domain: "staging.gorbagana.wtf"        # your public Cloudflare zone
-```
-
-Edit `validators-multihost.yaml`: replace `REPLACE_WITH_LOCAL_BASE_DOMAIN` in the
-hostnames to match `base_domain` (e.g. `validator-gorchain.staging.gorbagana.wtf`).
-The `host:` is already `local-agents`; wallet ids come from `deployment-config.yml`.
-`dns_records` is derived from group membership, so the same `group_vars` serves both
-topologies.
+Your zone and the chains-box RPC URLs go into `deployment-config.yml` (step 5):
+`local_base_domain` (the public Cloudflare zone) plus
+`local_gorchain_rpc_url`/`local_solana_rpc_url`. No committed file needs editing:
+`validators-multihost.yaml` hostnames render from `local_base_domain` at load
+time, and `dns_records` is derived from group membership, so the same
+`group_vars` serves both topologies.
 
 ## 5. Secrets
 
 ```bash
 cp inventories/local/deployment-config.example.yml inventories/local/deployment-config.yml
-# then fill it in — every operator value lives here (secrets + the Privy
-# IDs/addresses from step 2); setup-all fails fast naming anything missing
+# then fill it in — every operator value lives here (secrets, the Privy
+# IDs/addresses from step 2, and the multi-host keys: local_base_domain +
+# local_*_rpc_url); setup-all fails fast naming anything missing
 ```
 
 `cloudflare_api_token` is **required** (Let's Encrypt + A records). No `helius_api_key` —
@@ -149,8 +146,9 @@ local-agents (validators + relayer host):
 ```
 
 The owner/oracle pubkeys and validator addresses were already filled into
-`deployment-config.yml` in step 5 — nothing more there. Still by hand:
-`REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`. The chains box isn't
+`deployment-config.yml` in step 5 — nothing more there. (The specs'
+`image-pull-secret` username is committed as `gorbagana-dev`; GHCR authenticates
+by the PAT, the username doesn't matter.) The chains box isn't
 ansible-managed, so write the USDC mint (the `WARP_TOKEN_MINT` the SPL deploy printed) to
 `~/.credentials/hyperlane/warp-token-mint` on the deployer host (`local-services`),
 alongside the keys — the warp route picks it up from there.

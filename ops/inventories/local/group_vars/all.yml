@@ -35,8 +35,9 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 # Let's Encrypt, under an operator-supplied public zone. The only local-specific
 # networking bit is the chains — own and out-of-band, reached at their own domains
 # (gorchain_rpc_url/solana_rpc_url below), not via this zone.
-# Single-host uses hyperlane.test as-is; for multi-host set a real Cloudflare zone
-# here and in the validators-multihost.yaml hostnames.
+# Single-host uses hyperlane.test as-is; for multi-host set local_base_domain (a
+# real Cloudflare zone) in deployment-config.yml — validators-multihost.yaml
+# hostnames carry a token load_validators renders from it.
 # Topology is DERIVED from inventory group membership: in single-host MinIO and the
 # agents (relayer + validators) share a host = one kind cluster, the precondition for
 # the in-cluster MinIO/scrape paths; in multi-host they don't. No flag, no per-inventory
@@ -45,7 +46,7 @@ topology: "{{ 'single' if (groups['minio_hosts'][0] == groups['relayer_hosts'][0
 # Single-host uses mkcert (local_tls role) and needs no DNS provider; multi-host
 # reconciles Cloudflare. configure-dns.yml is gated on this.
 manage_dns: "{{ topology == 'multi' }}"
-base_domain: "hyperlane.test"
+base_domain: "{{ local_base_domain | default('hyperlane.test', true) }}"
 dns_record_ttl: 300
 # Singleton DNS records are DERIVED from inventory group membership (dns_cloudflare
 # role): each subdomain points at whichever host runs that stack. One map serves both
@@ -69,11 +70,13 @@ dns_record_map:
 #   single-host: chains run on the VM; in-cluster pods reach them as
 #     gorchain-rpc:8899 / solana-rpc:18899 (external-services ip: -> kind gateway),
 #     and warp-ui's browser reaches them over the SSH tunnel at localhost. The two
-#     vars below are UNUSED on single-host — leave them at the placeholder.
+#     vars below are UNUSED on single-host — leave local_*_rpc_url unset.
 #   multi-host: chains run out-of-band on a separate box; set their full RPC URLs
-#     (scheme + domain) here — used for the in-cluster agents AND warp-ui.
-gorchain_rpc_url: "REPLACE_WITH_GORCHAIN_RPC_URL"
-solana_rpc_url: "REPLACE_WITH_SOLANA_RPC_URL"
+#     (scheme + domain) as local_*_rpc_url in deployment-config.yml — used for the
+#     in-cluster agents AND warp-ui. Left unset, the placeholder survives into the
+#     render and the placeholder gate refuses the deploy.
+gorchain_rpc_url: "{{ local_gorchain_rpc_url | default('REPLACE_WITH_GORCHAIN_RPC_URL', true) }}"
+solana_rpc_url: "{{ local_solana_rpc_url | default('REPLACE_WITH_SOLANA_RPC_URL', true) }}"
 
 # --- Single-host external-services (one block per stack) ---
 # Single-host shares one kind cluster, so cross-stack and chain hops resolve

@@ -12,10 +12,10 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
 
+    # No zone/RPC stand-ins: single-host runs entirely off the committed defaults
+    # (base_domain -> hyperlane.test, RPC urls -> inert placeholders).
     - name: Stand in operator-supplied values + single-host topology
       ansible.builtin.set_fact:
-        gorchain_rpc_url: "https://gorchain-rpc.example"
-        solana_rpc_url: "https://solana-rpc.example"
         wallet_connect_id: "wc-test"
         topology: "single"
         validators:
@@ -36,6 +36,9 @@
           - "spec_token_renders['__PROM_RELAYER_TARGETS__'] == 'primary=relayer:9091'"
           # warp-ui WalletConnect id renders from the deployment config
           - "spec_token_renders['REPLACE_WITH_WALLETCONNECT_PROJECT_ID'] == 'wc-test'"
+          # zone + RPC urls default sanely with no deployment-config overrides
+          - "base_domain == 'hyperlane.test'"
+          - "gorchain_rpc_url == 'REPLACE_WITH_GORCHAIN_RPC_URL'"
           # identity values come from the deployment config too
           - "'bridge_owner_pubkey' in required_operator_secrets"
           - "'privy_validator_wallet_ids' in required_operator_secrets"
@@ -74,11 +77,13 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
 
+    # Multi-host overrides arrive as deployment-config keys — assert the whole
+    # reference chain (local_* -> group_vars vars -> derived values).
     - name: Stand in operator-supplied values + multi-host topology
       ansible.builtin.set_fact:
-        base_domain: "staging.gorbagana.wtf"
-        gorchain_rpc_url: "https://gorchain-rpc.example"
-        solana_rpc_url: "https://solana-rpc.example"
+        local_base_domain: "staging.gorbagana.wtf"
+        local_gorchain_rpc_url: "https://gorchain-rpc.example"
+        local_solana_rpc_url: "https://solana-rpc.example"
         wallet_connect_id: ""
         topology: "multi"
 
