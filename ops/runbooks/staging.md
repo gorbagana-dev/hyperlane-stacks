@@ -156,12 +156,14 @@ Use a throwaway test wallet — never the deployer account.
 4. Open `https://staging.gorbagana.wtf`, connect Backpack, pick the
    direction + amount, transfer. After the relay (≈a minute), switch the
    RPC per step 3 to see the balance on the destination side. No token
-   import is needed — Backpack discovers SPL token accounts on-chain —
-   but the gorchain **synthetic** has no token metadata, so it shows as an
-   unrecognized mint: match it against the route's mints in the published
-   bridge state (`deployment/staging/bridges/default/generated/warp-routes/warpRoutes.yaml`
-   on `deploy_branch`). The devnet-USDC side shows as regular USDC
-   (Circle's mint carries metadata).
+   import is needed — Backpack discovers SPL token accounts on-chain.
+   Both sides carry on-chain metadata: devnet USDC is Circle's mint, and
+   the gorchain synthetic is a Token-2022 mint whose name/symbol the warp
+   deploy embedded from the route menu (no logo — staging leaves the
+   optional `metadataUri` empty). To double-check a balance, the route's
+   mints are in the published
+   `deployment/staging/bridges/default/generated/warp-routes/warpRoutes.yaml`
+   on `deploy_branch`.
 
 ## 6. Reset
 

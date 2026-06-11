@@ -207,9 +207,10 @@ single-host runbook's "Try the bridge" section, with two differences:
   domain.
 
 No token import is needed on the destination side (Backpack discovers SPL
-token accounts on-chain), but the local mints carry no metadata and show as
-unrecognized — match them against the published
-`deployment/local/bridges/default/generated/warp-routes/warpRoutes.yaml`.
+token accounts on-chain). The synthetic side shows its name/symbol
+(Token-2022 metadata embedded by the warp deploy); the local collateral
+stand-in is a bare SPL mint and renders unrecognized — match it against the
+published `deployment/local/bridges/default/generated/warp-routes/warpRoutes.yaml`.
 
 ## 10. Reset between runs
 
