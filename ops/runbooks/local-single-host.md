@@ -10,7 +10,7 @@ All commands run from `ops/` on the controller (your machine).
 
 - Self-trusted **mkcert** certs — the `local_tls` role generates a multi-SAN cert and
   pre-seeds it into Caddy (no ACME, **no DNS provider**). `dns_zone` is just a label the
-  cert covers (e.g. `hyperlane.local`), not a real Cloudflare zone.
+  cert covers (e.g. `hyperlane.test`), not a real Cloudflare zone.
 - The validator→MinIO, relayer→MinIO, and Prometheus→validator/relayer legs run
   **in-cluster over HTTP** (pod-to-pod) — no NAT hairpin.
 - The two SVM chains run on the host; in-cluster pods reach them via `external-services`
@@ -75,11 +75,11 @@ ansible -i inventories/local/hosts.yml local-1 -m ping   # expect: SUCCESS / "po
 
 ```yaml
 # inventories/local/group_vars/all.yml
-dns_zone: "hyperlane.local"        # any label mkcert signs; not a real zone
+dns_zone: "hyperlane.test"        # any label mkcert signs; not a real zone
 ```
 
 In `validators.yaml`, replace `REPLACE_WITH_LOCAL_DNS_ZONE` in both hostnames so they
-match `dns_zone` (e.g. `validator-gorchain.hyperlane.local`). The `host:` is already
+match `dns_zone` (e.g. `validator-gorchain.hyperlane.test`). The `host:` is already
 `local-1`. Also set `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`.
 
 ## 4. Secrets
