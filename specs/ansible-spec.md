@@ -1,5 +1,11 @@
 # Ops Ansible Playbooks — Implementation Spec
 
+> **Superseded.** This spec describes the archived unsigned-tx Job model
+> (`deployment/ops-archive/`). Maintenance ops will instead be operator-layer
+> playbooks (epic `hyp-564`) signing with the **Privy bridge-owner wallet**
+> (`BRIDGE_OWNER_PUBKEY`) — no hardware wallet, no unsigned-tx hand-off.
+> Kept as a historical reference for the Job/ConfigMap mechanics.
+
 ## Overview
 
 Convert the raw k8s Job manifests in `deployment/ops/` into Ansible playbooks. Each playbook creates a k8s Job on the target cluster, waits for completion, retrieves outputs (unsigned transactions), and cleans up. The inline shell scripts currently embedded in the Job YAML `args:` field are extracted into standalone `.sh` files and loaded into the Job as a ConfigMap volume.
@@ -63,7 +69,7 @@ gorchain_domain_id: 99999
 solana_domain_id: 99998
 
 # Wallets
-hardware_wallet_pubkey: ""
+owner_pubkey: ""
 ```
 
 Teardown-specific vars (can be set in `group_vars/all.yml` or passed via `--extra-vars`):
@@ -95,7 +101,7 @@ confirm_teardown: false
         that:
           - gorchain_rpc_url | length > 0
           - solana_rpc_url | length > 0
-          - hardware_wallet_pubkey | length > 0
+          - owner_pubkey | length > 0
           - treasury_address | length > 0
         fail_msg: "Required variables not set. Check group_vars/all.yml"
 
@@ -255,8 +261,8 @@ spec:
               value: "{{ gorchain_rpc_url }}"
             - name: SOLANA_RPC_URL
               value: "{{ solana_rpc_url }}"
-            - name: HARDWARE_WALLET_PUBKEY
-              value: "{{ hardware_wallet_pubkey }}"
+            - name: BRIDGE_OWNER_PUBKEY
+              value: "{{ owner_pubkey }}"
             - name: TREASURY_ADDRESS
               value: "{{ treasury_address }}"
             - name: DRY_RUN

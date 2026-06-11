@@ -4,6 +4,23 @@ Decisions on how the stacks should accommodate the maintenance operations from t
 
 ---
 
+## Bridge Owner: Privy Server Wallet (supersedes the Ledger hardware wallet)
+
+**Decision (2026-06-11):** The bridge owner — the key that receives program
+upgrade authority and mailbox/ISM/route ownership at the end of each deploy —
+is a dedicated **Privy Solana server wallet** (`BRIDGE_OWNER_PUBKEY`), not a
+Ledger hardware wallet. During deployment it signs nothing (pure transfer
+target). The maintenance playbooks (epic `hyp-564`, not yet built) will sign
+with it operator-attended via the **Privy API**; the forked client's built-in
+Ledger support remains in the fork but is unused.
+
+The operator-layer decision below **stands** (ops run from the controller, not
+in-cluster) — only the signing backend changes. In the sections that follow,
+read "Ledger" / "hardware wallet" as the Privy bridge-owner wallet; the
+on-chain signing mechanics get redesigned when `hyp-564` is picked up.
+
+---
+
 ## Ops Architecture: Operator-Layer Ops + Built-in Ledger Signing
 
 **Decision (2026-05-29, supersedes the 2026-05-28 "atomic ops as suspended SO
@@ -93,7 +110,7 @@ The gas oracle is a long-running service in the `hyperlane-gas-oracle` stack tha
 2. Signs and submits `set_gas_oracle_configs` transactions via Privy API on both chains
 3. Loops with a configurable interval (default 15 min via `GAS_ORACLE_INTERVAL_MS`)
 
-The Privy policy engine restricts the oracle wallet to `SetGasOracleConfigs` only — `SetIgpBeneficiary` and `TransferIgpOwnership` are blocked. If the oracle key is compromised, the hardware wallet retains program upgrade authority as a recovery path.
+The Privy policy engine restricts the oracle wallet to `SetGasOracleConfigs` only — `SetIgpBeneficiary` and `TransferIgpOwnership` are blocked. If the oracle key is compromised, the bridge owner retains program upgrade authority as a recovery path.
 
 ### Agent Wallet Balance Monitoring
 
@@ -259,32 +276,32 @@ Only relevant when adding new chains or tokens. Out of scope for v1 single-pair 
 
 ### Ownership Transfer
 
-**Decision:** Deployer transfers ownership to hardware wallet after deployment.
+**Decision:** Deployer transfers ownership to the bridge owner (the Privy bridge-owner wallet) after deployment.
 
 As the final step of the deployer job, ownership is transferred as follows:
-- **Mailbox, ISM, Validator Announce, Token Collateral, Token Native/Synthetic** on both chains → `HARDWARE_WALLET_PUBKEY`
+- **Mailbox, ISM, Validator Announce, Token Collateral, Token Native/Synthetic** on both chains → `BRIDGE_OWNER_PUBKEY`
 - **IGP account** on both chains → Privy oracle wallet (to enable automated gas oracle updates)
-- **Program upgrade authority** for ALL programs (including IGP) → `HARDWARE_WALLET_PUBKEY`
+- **Program upgrade authority** for ALL programs (including IGP) → `BRIDGE_OWNER_PUBKEY`
 
 The hot deployer keypair is then discarded.
 
-The `verify-ownership.yml` playbook (read-only, runs the client on the controller) confirms all programs are owned by the hardware wallet address before the deployer key is destroyed.
+The `verify-ownership.yml` playbook (read-only, runs the client on the controller) confirms all programs are owned by the bridge-owner address before the deployer key is destroyed.
 
-**Implication:** The hardware wallet is the long-lived authority for post-deployment operations:
+**Implication:** The bridge owner is the long-lived authority for post-deployment operations:
 - Kill switch (ISM reconfiguration)
 - Program upgrades (including IGP — recovery path if oracle key is compromised)
 - Bridge teardown (program closure)
 
 Gas oracle updates are handled by the Privy oracle wallet (see `architecture-decisions.md` Tier 2).
 
-Operator-attended on-chain operations are signed directly on the Ledger by the forked client (see below) — no unsigned-tx artifacts.
+Operator-attended on-chain operations will sign with the bridge-owner wallet via the Privy API (see the superseding decision at the top) — no unsigned-tx artifacts.
 
 **Current implementation status (as of `hyp-d9c`):**
 
 The deploy scripts now realize this decision:
 
-- **Multisig-ISM ownership (`hyp-d9c.1`) is transferred** to the hardware wallet by `deployer-scripts-config/deploy.sh` via `multisig-ism-message-id transfer-ownership`. A failed transfer aborts the deploy (fail-closed).
-- **Warp-route app-level ownership (`hyp-d9c.2`) is transferred** to the hardware wallet by `warp-deployer-scripts-config/deploy.sh` via `token transfer-ownership` as the final step of each route deployment. A failed transfer aborts the deploy (fail-closed).
+- **Multisig-ISM ownership (`hyp-d9c.1`) is transferred** to the bridge owner by `deployer-scripts-config/deploy.sh` via `multisig-ism-message-id transfer-ownership`. A failed transfer aborts the deploy (fail-closed).
+- **Warp-route app-level ownership (`hyp-d9c.2`) is transferred** to the bridge owner by `warp-deployer-scripts-config/deploy.sh` via `token transfer-ownership` as the final step of each route deployment. A failed transfer aborts the deploy (fail-closed).
 - **The hot deployer key is a long-lived cluster secret** (`spec-warp-deployer.yml` → `~/.credentials/hyperlane/deployer-keypair.json`), re-injected each run. Minimizing it (JIT/ephemeral or Ledger-attended) is **deliberately not tracked**: once `.1`–`.3` have landed, a leaked deploy key can neither drain funds nor get rogue routes relayed, so the simpler hot-key workflow is kept.
 
 **Route relay authorization (`hyp-d9c.3`):** The relayer is gated by a menu-derived `HYP_WHITELIST` built from the deployed routes' program addresses by `warp-deployer-scripts-config/build-relayer-whitelist.sh` (written to `relayer-whitelist.json` in state). An empty `[]` would relay everything, so the default is a deny-all sentinel — a single rule whose recipient is 32 zero bytes (`[{"recipientaddress":"0x000…000"}]`), which no real message matches. The whitelist is injected by conftest (e2e) and `publish-bridge-state.yml` (prod). Adding a new route to the relayer requires a git-reviewed config change.

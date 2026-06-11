@@ -125,26 +125,26 @@ Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce
 
 **Decision:** Three-tier key management with escalating security.
 
-### Tier 1: Hardware Wallet — Program Owner (highest security)
+### Tier 1: Privy Bridge-Owner Wallet — Program Owner (highest privilege)
 
-The **program owner key** is held on a hardware wallet and controls all post-deployment administrative operations. It is the ultimate authority over the bridge.
+The **program owner key** is a dedicated Privy Solana server wallet (the *bridge owner*) and controls all post-deployment administrative operations. It is the ultimate authority over the bridge. (Earlier designs put this key on a Ledger hardware wallet; dropped 2026-06-11 — the owner is a Privy wallet like the validator/oracle keys, distinguished by role and policy, and the fork's built-in Ledger signing support is no longer used.)
 
-- **Format:** Solana pubkey (the hardware wallet address)
-- **Provided as:** `HARDWARE_WALLET_PUBKEY` env var (public key only — private key never leaves the hardware wallet)
+- **Format:** Solana pubkey (the Privy wallet's base58 address)
+- **Provided as:** `BRIDGE_OWNER_PUBKEY` env var (public key only — the wallet signs nothing during deployment; it is purely the transfer target)
 - **Used for:** Kill switch (ISM reconfiguration), program upgrades, ownership transfers, teardown
-- **Signing:** Operator-attended. The forked `hyperlane-sealevel-client` has built-in Ledger support — run on the operator's machine with `--keypair usb://ledger…`, it builds the tx, the operator confirms on the device, and it signs and broadcasts in one step. No unsigned-tx artifacts. See `docs/superpowers/specs/2026-05-29-ops-layer-redesign-and-ledger-signing-design.md`.
+- **Signing:** Operator-attended maintenance playbooks (epic `hyp-564`, not yet built) will sign with this wallet via the Privy API.
 
 **Ownership transfer flow:**
 1. Deployer job deploys all contracts using the hot deployer key (Tier 3)
 2. As its final step, deployer transfers ownership as follows:
-   - **Mailbox, ISM, Validator Announce, Token Collateral, Token Native/Synthetic** on both chains → `HARDWARE_WALLET_PUBKEY`
+   - **Mailbox, ISM, Validator Announce, Token Collateral, Token Native/Synthetic** on both chains → `BRIDGE_OWNER_PUBKEY`
    - **IGP account** on both chains → Privy oracle wallet (Tier 2) to enable automated gas oracle updates
 3. The `verify-ownership.yml` ops playbook (read-only client run on the controller) confirms all program ownerships are set correctly
 4. Hot deployer key is discarded
 
-**Note:** The Solana program upgrade authority for ALL programs (including IGP) is transferred to the hardware wallet. The IGP account-level `owner` field (which controls `SetGasOracleConfigs`, `SetIgpBeneficiary`, `TransferIgpOwnership`) is separate from the program upgrade authority. If the oracle key is compromised, the hardware wallet can upgrade the IGP program to forcibly reset the account owner.
+**Note:** The Solana program upgrade authority for ALL programs (including IGP) is transferred to the bridge owner. The IGP account-level `owner` field (which controls `SetGasOracleConfigs`, `SetIgpBeneficiary`, `TransferIgpOwnership`) is separate from the program upgrade authority. If the oracle key is compromised, the bridge owner can upgrade the IGP program to forcibly reset the account owner.
 
-**Current implementation status:** ISM ownership (`hyp-d9c.1`) and warp-route app-level ownership (`hyp-d9c.2`) are now transferred to the hardware wallet during deploy; all ownership handoffs are fail-closed (a failed transfer aborts the deploy). The relayer is gated by a menu-derived `HYP_WHITELIST` (`hyp-d9c.3`); see `ops-decisions.md` → Ownership Transfer for specifics. The hot deployer key remains a long-lived cluster secret; minimizing it is deliberately **not** tracked — once `.1`–`.3` have landed, a leaked deploy key can neither drain funds nor get rogue routes relayed.
+**Current implementation status:** ISM ownership (`hyp-d9c.1`) and warp-route app-level ownership (`hyp-d9c.2`) are now transferred to the bridge owner during deploy; all ownership handoffs are fail-closed (a failed transfer aborts the deploy). The relayer is gated by a menu-derived `HYP_WHITELIST` (`hyp-d9c.3`); see `ops-decisions.md` → Ownership Transfer for specifics. The hot deployer key remains a long-lived cluster secret; minimizing it is deliberately **not** tracked — once `.1`–`.3` have landed, a leaked deploy key can neither drain funds nor get rogue routes relayed.
 
 ### Tier 2: Privy Server Wallets — Validator & Oracle Keys (medium security)
 
@@ -172,7 +172,7 @@ The **program owner key** is held on a hardware wallet and controls all post-dep
 
 **Why Privy for validators and oracle:**
 - Validator key compromise in 1-of-1 multisig = bridge security broken in one direction
-- Oracle key compromise = can redirect IGP fees and lock out operator (mitigated by Privy policies and program upgrade authority on hardware wallet)
+- Oracle key compromise = can redirect IGP fees and lock out operator (mitigated by Privy policies and program upgrade authority held by the bridge owner)
 - Privy provides TEE-backed key custody without exposing raw keys
 - Policy engine adds defense-in-depth (restrict what each key can sign)
 - Keys are never in pod memory — signing happens remotely
@@ -185,18 +185,18 @@ The **program owner key** is held on a hardware wallet and controls all post-dep
 
 | Key | Format | Used by | Lifecycle |
 |-----|--------|---------|-----------|
-| Hot deployer keypair | Solana keypair JSON | Deployer job | **Ephemeral** — used for initial deployment only, discarded after ownership transfer to hardware wallet |
+| Hot deployer keypair | Solana keypair JSON | Deployer job | **Ephemeral** — used for initial deployment only, discarded after ownership transfer to the bridge owner |
 | Relayer key | Hex private key (0x...) | Relayer | Long-lived, in pod as k8s Secret |
 
 **Why env vars for relayer:** Relayer key compromise is medium-impact (can't forge messages, only disrupt delivery and drain relayer wallet). The operational simplicity of env var injection outweighs the security benefit of Privy for this key.
 
-**Why env var for hot deployer:** The deployer signs ~2000+ transactions during initial deployment (program buffer writes, deploys, configuration). Hardware wallet signing at that volume is impractical. The hot key is only alive during the deploy window, then ownership is transferred and the hot key is destroyed.
+**Why env var for hot deployer:** The deployer signs ~2000+ transactions during initial deployment (program buffer writes, deploys, configuration). Operator-attended signing at that volume is impractical. The hot key is only alive during the deploy window, then ownership is transferred and the hot key is destroyed.
 
 ### Key Inventory
 
 | Key | Security Tier | Storage | Signing Method | Compromise Impact |
 |-----|--------------|---------|---------------|-------------------|
-| Program owner | Tier 1 (HW wallet) | Hardware wallet | Operator-attended | **CRITICAL** — full bridge control (program upgrades, kill switch, teardown) |
+| Program owner (bridge owner) | Tier 1 (Privy) | Privy server wallet | Privy API (operator-attended) | **CRITICAL** — full bridge control (program upgrades, kill switch, teardown) |
 | Gorchain validator | Tier 2 (Privy) | Privy server wallet | Privy API (automated) | **HIGH** — forge checkpoints in one direction |
 | Solana validator | Tier 2 (Privy) | Privy server wallet | Privy API (automated) | **HIGH** — forge checkpoints in one direction |
 | IGP oracle | Tier 2 (Privy) | Privy server wallet | Privy API (automated) | **MEDIUM** — bad gas prices, redirect fees (mitigated by Privy policy engine; recoverable via program upgrade) |
@@ -207,7 +207,7 @@ The **program owner key** is held on a hardware wallet and controls all post-dep
 
 - **Hot deployer keypair:** Must be pre-funded externally on both chains before deployment. Needs **~50+ SOL per chain** upfront. Each program deploy requires ~1.3 SOL rent for the program account plus a ~1.3 SOL buffer account, and the deployer deploys 7 programs per chain (mailbox, validator_announce, IGP, multisig_ism, token, token_collateral, token_native). The CLI retries failed deploys with increasing compute unit prices, which adds fees. Most rent is recoverable if programs are later closed (see teardown). Net non-recoverable cost is ~5-6 SOL per chain in transaction fees.
   - **TODO (production):** On real chains, the deployer must be funded manually before running the deployer stack. The deploy spec should document the exact funding amount needed and include a pre-flight balance check in the deploy script that fails early with a clear message if the deployer balance is insufficient. Consider splitting deploys across multiple transactions with balance checks between programs.
-- **Hardware wallet:** Does not need funding (only signs authority transactions, fees paid by other keys or can be funded minimally for post-deploy ops).
+- **Bridge owner (Privy):** Does not need funding for deployment (it only receives ownership). Fund minimally once maintenance ops start signing with it.
 - **Validator keys (Privy):** Must be funded on their respective chains for validator announce transactions. Fund the Privy wallet's Solana address (derived from the secp256k1 key via Ed25519 conversion).
 - **IGP oracle key (Privy):** Must be funded on both chains for `SetGasOracleConfigs` transaction fees (minimal — a few transactions per day).
 - **Relayer key:** Must be pre-funded on both chains for message delivery transaction fees.
@@ -309,7 +309,7 @@ The gas oracle is a standalone TypeScript service in the `hyperlane-gas-oracle` 
 
 - Each chain's Multisig ISM lists the addresses of all validators announcing for the *other* chain. Operator decides the threshold at deploy time (initial deployer run) and at each subsequent `ism-update` operation (when adding/removing validators or changing threshold).
 - Validator instances are identified by stable operator-assigned labels (e.g. `gorchain-primary`, `gorchain-backup`). The label drives the spec file path, namespace, bucket, MinIO IAM user, hostname, and on-host data directory — see `docs/superpowers/specs/2026-05-27-minio-per-validator-users-design.md`.
-- Adding a validator to the running deployment and adding it to the on-chain ISM are *separate operator actions*: the deployment side (validator pod + MinIO IAM + DNS + spec generation) is handled by the GitOps add-validator playbook; the on-chain side is the `ism-update` ops playbook with hardware-wallet signing. See `ops-decisions.md`.
+- Adding a validator to the running deployment and adding it to the on-chain ISM are *separate operator actions*: the deployment side (validator pod + MinIO IAM + DNS + spec generation) is handled by the GitOps add-validator playbook; the on-chain side is the `ism-update` ops playbook signing with the Privy bridge-owner wallet. See `ops-decisions.md`.
 
 **v1 default:** 1-of-1 per chain on initial bootstrap. Operators expand to m-of-n as their threat model requires.
 
@@ -350,7 +350,7 @@ The Sealevel IGP's `set_gas_oracle_configs` instruction requires the IGP account
 
 2. **Restore (`restore.yml`):** Reconfigures ISM back to the real validator addresses and starts agents back up. Messages dispatched during the pause will be delivered.
 
-Both require the ISM owner key (hardware wallet). The playbook runs the forked client on the controller with `--keypair usb://ledger…`; the operator confirms each tx on the device; the client signs and broadcasts. See `docs/ops-decisions.md` for full details.
+Both require the ISM owner key — the Privy bridge-owner wallet. The (not-yet-built, epic `hyp-564`) playbook signs operator-attended via the Privy API. See `docs/ops-decisions.md` for full details.
 
 **Supersedes** the earlier "relayer kill switch" approach — stopping the relayer alone is insufficient because a third-party relayer could still deliver messages using cached validator signatures.
 
@@ -682,7 +682,7 @@ ansible playbook on the controller):
    - gas-oracle
    - monitoring
    - warp-ui (optional)
-10. **On-chain ownership / ISM setup** — operator runs `ism-update.yml` ops playbook with the initial validator set + threshold. Hardware-wallet-attended signing. See `ops-decisions.md`.
+10. **On-chain ownership / ISM setup** — operator runs `ism-update.yml` ops playbook with the initial validator set + threshold, signing with the Privy bridge-owner wallet. See `ops-decisions.md`.
 
 Steps 4–9 are idempotent and can run from a single top-level `deploy-all.yml`
 that iterates inventory groups + `validators.yaml`. Step 10 is operator-attended.
