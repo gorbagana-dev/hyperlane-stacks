@@ -1,57 +1,14 @@
 stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
-image-overrides:
-  relayer: REPLACE_AGENT_IMAGE
-  igp-fee-claim: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-config:
-  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SOLANA_RPC_URL: "http://solana-rpc:18899"
-  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
-  SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
-  GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
-  SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
-  HYP_WHITELIST: "REPLACE_AT_RUNTIME"
-  CLAIM_INTERVAL_SECONDS: "600"
-  # Dev only — direct cross-NS to the MinIO pod via external-services
-  # selector mode below. No Caddy in this path.
-  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
-annotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "9091"
-resources:
-  containers:
-    relayer:
-      reservations:
-        cpus: "0.25"
-        memory: 256M
-      limits:
-        cpus: "1"
-        memory: 512M
-    igp-fee-claim:
-      reservations:
-        cpus: "0.1"
-        memory: 64M
-      limits:
-        cpus: "0.25"
-        memory: 128M
-volumes:
-  relayer-data: /tmp/hyperlane-bridge-e2e/relayer/data
-configmaps:
-  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
-  agent-config: ./configmaps/agent-config
-secrets:
-  hyperlane-relayer-secrets:
-    keys:
-      HYP_CHAINS_GORCHAIN_SIGNER_KEY: { env: HYP_CHAINS_GORCHAIN_SIGNER_KEY }
-      HYP_CHAINS_SOLANA_SIGNER_KEY: { env: HYP_CHAINS_SOLANA_SIGNER_KEY }
-      RELAYER_KEYPAIR_JSON: { env: RELAYER_KEYPAIR_JSON }
-      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
-image-pull-secret:
-  server: ghcr.io
-  username: gorbagana-dev
-  token-env: GHCR_PAT
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: relayer.test
+      routes:
+        - path: /
+          proxy-to: relayer:9091
 external-services:
   gorchain-rpc:
     ip: REPLACE_HOST_IP
@@ -70,10 +27,53 @@ external-services:
       app.kubernetes.io/stack: hyperlane-minio
     namespace: laconic-hyperlane-minio
     port: 9000
-network:
-  acme-email: e2e@example.test
-  http-proxy:
-    - host-name: relayer.test
-      routes:
-        - path: /
-          proxy-to: relayer:9091
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
+volumes:
+  relayer-data: /tmp/hyperlane-bridge-e2e/relayer/data
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  GORCHAIN_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  SOLANA_IGP_PROGRAM_ID: "REPLACE_AT_RUNTIME"
+  GORCHAIN_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
+  SOLANA_IGP_ACCOUNT: "REPLACE_AT_RUNTIME"
+  HYP_WHITELIST: "REPLACE_AT_RUNTIME"
+  CLAIM_INTERVAL_SECONDS: "600"
+  # Dev only — direct cross-NS to the MinIO pod via external-services
+  # selector mode below. No Caddy in this path.
+  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
+configmaps:
+  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
+  agent-config: ./configmaps/agent-config
+secrets:
+  hyperlane-relayer-secrets:
+    keys:
+      HYP_CHAINS_GORCHAIN_SIGNER_KEY: { env: HYP_CHAINS_GORCHAIN_SIGNER_KEY }
+      HYP_CHAINS_SOLANA_SIGNER_KEY: { env: HYP_CHAINS_SOLANA_SIGNER_KEY }
+      RELAYER_KEYPAIR_JSON: { env: RELAYER_KEYPAIR_JSON }
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+image-overrides:
+  relayer: REPLACE_AGENT_IMAGE
+  igp-fee-claim: REPLACE_DEPLOYER_IMAGE
+resources:
+  containers:
+    relayer:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "1"
+        memory: 512M
+    igp-fee-claim:
+      reservations:
+        cpus: "0.1"
+        memory: 64M
+      limits:
+        cpus: "0.25"
+        memory: 128M

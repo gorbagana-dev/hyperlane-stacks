@@ -11,16 +11,6 @@ kind-mount-root: /srv/kind/hyperlane
 volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
-resources:
-  containers:
-    reservations:
-      cpus: "0.1"
-      memory: 128M
-configmaps:
-  deployer-scripts-config: ./configmaps/deployer-scripts-config
-  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
-  deployer-multisig-config: ./configmaps/deployer-multisig-config
-  deployer-registry-config: ./configmaps/deployer-registry-config
 config:
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
@@ -31,6 +21,11 @@ config:
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
   FORCE_REDEPLOY: "false"
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
+  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
+  deployer-multisig-config: ./configmaps/deployer-multisig-config
+  deployer-registry-config: ./configmaps/deployer-registry-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export these env vars in the shell that runs `laconic-so`:
@@ -54,3 +49,8 @@ image-pull-secret:
 # Single-host only: this stack reaches the host-run chains in-cluster. Rendered to an
 # external-services: block on single-host, removed on multi-host.
 # __SINGLE_HOST_EXTERNAL_SERVICES__
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M

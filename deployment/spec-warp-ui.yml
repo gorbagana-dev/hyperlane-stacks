@@ -4,6 +4,13 @@ stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: bridge.gorbagana.wtf
+      routes:
+        - path: /
+          proxy-to: warp-ui:3000
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486093"
@@ -21,22 +28,6 @@ secrets:
   hyperlane-warp-ui-secrets:
     keys:
       SOLANA_RPC_URL: { env: SOLANA_RPC_URL }
-resources:
-  containers:
-    warp-ui:
-      reservations:
-        cpus: "0.25"
-        memory: 256M
-      limits:
-        cpus: "0.5"
-        memory: 512M
-network:
-  acme-email: admin@gorbagana.wtf
-  http-proxy:
-    - host-name: bridge.gorbagana.wtf
-      routes:
-        - path: /
-          proxy-to: warp-ui:3000
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
@@ -46,3 +37,12 @@ image-pull-secret:
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v1.0.0
+resources:
+  containers:
+    warp-ui:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "0.5"
+        memory: 512M

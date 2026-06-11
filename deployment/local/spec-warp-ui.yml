@@ -7,6 +7,13 @@ stack: stack_orchestrator/data/stacks/hyperlane-warp-ui
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: warp-ui.__BASE_DOMAIN__
+      routes:
+        - path: /
+          proxy-to: warp-ui:3000
 config:
   # warp-ui is browser-facing — the user's browser talks to these RPCs, so they must
   # be browser-reachable (single-host: chains over the SSH tunnel at localhost;
@@ -24,6 +31,12 @@ config:
   NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
 configmaps:
   warp-ui-config: ./configmaps/warp-ui-config
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
 resources:
   containers:
     warp-ui:
@@ -33,16 +46,3 @@ resources:
       limits:
         cpus: "0.5"
         memory: 512M
-# Private registry auth — set GHCR_PAT env var before deploy start:
-#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
-image-pull-secret:
-  server: ghcr.io
-  username: gorbagana-dev
-  token-env: GHCR_PAT
-network:
-  acme-email: admin@gorbagana.wtf
-  http-proxy:
-    - host-name: warp-ui.__BASE_DOMAIN__
-      routes:
-        - path: /
-          proxy-to: warp-ui:3000

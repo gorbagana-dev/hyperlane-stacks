@@ -1,12 +1,17 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-warp-deployer
 deploy-to: k8s-kind
 namespace: laconic-hyperlane-warp-deployer
-image-overrides:
-  warp-deployer: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 network:
   acme-email: e2e@example.test
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899
 volumes:
   bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
   bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
@@ -24,15 +29,6 @@ configmaps:
   warp-deployer-scripts-config: ./configmaps/warp-deployer-scripts-config
   warp-deployer-registry-config: ./configmaps/warp-deployer-registry-config
   warp-routes-config: ./configmaps/warp-routes-config
-resources:
-  containers:
-    warp-deployer:
-      reservations:
-        cpus: "0.5"
-        memory: 512M
-      limits:
-        cpus: "2"
-        memory: 1G
 secrets:
   hyperlane-warp-deployer-secrets:
     keys:
@@ -43,10 +39,14 @@ image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT
-external-services:
-  gorchain-rpc:
-    ip: REPLACE_HOST_IP
-    port: 8899
-  solana-rpc:
-    ip: REPLACE_HOST_IP
-    port: 18899
+image-overrides:
+  warp-deployer: REPLACE_DEPLOYER_IMAGE
+resources:
+  containers:
+    warp-deployer:
+      reservations:
+        cpus: "0.5"
+        memory: 512M
+      limits:
+        cpus: "2"
+        memory: 1G

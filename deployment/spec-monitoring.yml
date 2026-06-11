@@ -4,20 +4,6 @@ stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
-config:
-  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
-  # Wallet format: label:address or label:address:threshold
-  # Per-wallet threshold overrides BALANCE_THRESHOLD_SOL (the fallback).
-  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
-  BALANCE_CHECK_INTERVAL: "300"
-  # Prometheus scrape targets, rendered to file_sd by the prometheus container's
-  # entrypoint on each start. Format: comma-separated instance_label=host:port,
-  # one entry per instance. Add an instance here and restart the stack to pick
-  # it up.
-  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.bridge.gorbagana.wtf:443,solana-primary=validator-solana.bridge.gorbagana.wtf:443"
-  PROMETHEUS_RELAYER_TARGETS: "primary=relayer.bridge.gorbagana.wtf:443"
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
@@ -32,14 +18,20 @@ network:
 volumes:
   prometheus-data: /srv/kind/hyperlane/monitoring/prometheus
   grafana-data: /srv/kind/hyperlane/monitoring/grafana
-resources:
-  volumes:
-    prometheus-data:
-      reservations:
-        storage: 10Gi
-    grafana-data:
-      reservations:
-        storage: 2Gi
+config:
+  GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
+  # Wallet format: label:address or label:address:threshold
+  # Per-wallet threshold overrides BALANCE_THRESHOLD_SOL (the fallback).
+  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
+  BALANCE_CHECK_INTERVAL: "300"
+  # Prometheus scrape targets, rendered to file_sd by the prometheus container's
+  # entrypoint on each start. Format: comma-separated instance_label=host:port,
+  # one entry per instance. Add an instance here and restart the stack to pick
+  # it up.
+  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain.bridge.gorbagana.wtf:443,solana-primary=validator-solana.bridge.gorbagana.wtf:443"
+  PROMETHEUS_RELAYER_TARGETS: "primary=relayer.bridge.gorbagana.wtf:443"
 configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config
@@ -58,3 +50,11 @@ secrets:
 #   prometheus: prom/prometheus:v2.53.0
 #   grafana: grafana/grafana:11.1.0
 #   balance-monitor: ghcr.io/gorbagana-dev/hyperlane-balance-monitor:v1.0.0
+resources:
+  volumes:
+    prometheus-data:
+      reservations:
+        storage: 10Gi
+    grafana-data:
+      reservations:
+        storage: 2Gi

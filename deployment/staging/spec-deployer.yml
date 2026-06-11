@@ -10,11 +10,6 @@ network:
 volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
-configmaps:
-  deployer-scripts-config: ./configmaps/deployer-scripts-config
-  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
-  deployer-multisig-config: ./configmaps/deployer-multisig-config
-  deployer-registry-config: ./configmaps/deployer-registry-config
 config:
   GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486095"
@@ -24,6 +19,11 @@ config:
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
   FORCE_REDEPLOY: "false"
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
+  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
+  deployer-multisig-config: ./configmaps/deployer-multisig-config
+  deployer-registry-config: ./configmaps/deployer-registry-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export these env vars in the shell that runs `laconic-so`:

@@ -4,22 +4,28 @@ stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: validator-solana.staging.gorbagana.wtf
+      routes:
+        - path: /
+          proxy-to: validator:9090
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+volumes:
+  validator-data: /srv/kind/hyperlane/validator-solana/data
 config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
   # MinIO via Caddy — public DNS resolves to the Caddy ingress.
   AWS_ENDPOINT_URL_S3: "https://s3.staging.gorbagana.wtf"
-annotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "9090"
-volumes:
-  validator-data: /srv/kind/hyperlane/validator-solana/data
-resources:
-  volumes:
-    validator-data:
-      reservations:
-        storage: 5Gi
 configmaps:
   agent-config: ./configmaps/agent-config
 # Before deploying, place the keyfile on the host:
@@ -44,14 +50,8 @@ image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT
-network:
-  acme-email: admin@gorbagana.wtf
-  http-proxy:
-    - host-name: validator-solana.staging.gorbagana.wtf
-      routes:
-        - path: /
-          proxy-to: validator:9090
-# Optional: override container images (service name → full image ref)
-# image-overrides:
-#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
-#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0
+resources:
+  volumes:
+    validator-data:
+      reservations:
+        storage: 5Gi

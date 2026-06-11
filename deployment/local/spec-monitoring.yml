@@ -6,18 +6,6 @@ stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
-config:
-  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
-  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
-  # Wallet format: label:address or label:address:threshold
-  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  BALANCE_THRESHOLD_SOL: "1.0"
-  BALANCE_CHECK_INTERVAL: "300"
-  # Rendered per topology: single -> in-cluster names + http; multi -> <zone>:443 + https.
-  PROMETHEUS_VALIDATOR_TARGETS: "__PROM_VALIDATOR_TARGETS__"
-  PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"
-  PROMETHEUS_SCRAPE_SCHEME: "__PROM_SCRAPE_SCHEME__"
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
@@ -32,18 +20,18 @@ network:
 volumes:
   prometheus-data: /srv/kind/hyperlane/monitoring/prometheus
   grafana-data: /srv/kind/hyperlane/monitoring/grafana
-resources:
-  containers:
-    reservations:
-      cpus: "0.1"
-      memory: 128M
-  volumes:
-    prometheus-data:
-      reservations:
-        storage: 10Gi
-    grafana-data:
-      reservations:
-        storage: 2Gi
+config:
+  GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
+  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
+  # Wallet format: label:address or label:address:threshold
+  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
+  BALANCE_THRESHOLD_SOL: "1.0"
+  BALANCE_CHECK_INTERVAL: "300"
+  # Rendered per topology: single -> in-cluster names + http; multi -> <zone>:443 + https.
+  PROMETHEUS_VALIDATOR_TARGETS: "__PROM_VALIDATOR_TARGETS__"
+  PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"
+  PROMETHEUS_SCRAPE_SCHEME: "__PROM_SCRAPE_SCHEME__"
 configmaps:
   prometheus-config: ./configmaps/prometheus-config
   grafana-datasources-config: ./configmaps/grafana-datasources-config
@@ -59,3 +47,15 @@ secrets:
 # Single-host only: Prometheus scrapes validators/relayer cross-NS in-cluster. Rendered
 # to an external-services: block on single-host, removed on multi-host.
 # __SINGLE_HOST_EXTERNAL_SERVICES__
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
+  volumes:
+    prometheus-data:
+      reservations:
+        storage: 10Gi
+    grafana-data:
+      reservations:
+        storage: 2Gi
