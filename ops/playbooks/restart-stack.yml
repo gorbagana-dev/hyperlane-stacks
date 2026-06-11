@@ -124,6 +124,9 @@
         stack_action: restart
         spec_render_generated: true
         stack_name: "hyperlane-validator-{{ validator.label }}"
+        # This play's host is the controller (no host_vars); preflight reads the
+        # host-scoped public_ip, so source it from the delegated host.
+        public_ip: "{{ hostvars[validator.host].public_ip }}"
         repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
         repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
         deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"

@@ -195,6 +195,10 @@
           delegate_to: "{{ validator.host }}"
       vars:
         stack_name: "hyperlane-validator-{{ validator.label }}"
+        # delegate_to swaps the connection, not the var context: this play's host is
+        # the controller, which has no host_vars, so anything host-scoped that
+        # stack_deploy reads (preflight checks public_ip) must come from hostvars[].
+        public_ip: "{{ hostvars[validator.host].public_ip }}"
         repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
         repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
         deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
