@@ -4,7 +4,7 @@
 # generate the hot signing keys. Deliberately NOT part of setup-all/deploy-all
 # (same isolation as the local prepare-chains.yml): chains are pre-deploy.
 #
-#   ansible-playbook -i inventories/staging/hosts.yml playbooks/prepare-gorchain.yml
+#   ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml
 #
 # Run AFTER setup-all.yml: bootstrap installs docker/laconic-so, and
 # configure-dns must have created rpc.<base_domain> before Caddy can pass the
@@ -27,7 +27,7 @@
     solana_version: "v3.1.9"
   pre_tasks:
     - name: Load the deployment config
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_deployment_config.yml
 
     - name: GHCR PAT must be set (private gorchain images)
       ansible.builtin.assert:
@@ -50,7 +50,7 @@
 
     - name: Ship the setup scripts
       ansible.builtin.copy:
-        src: "../scripts/{{ item }}"
+        src: "../../scripts/{{ item }}"
         dest: "{{ scripts_dst }}/{{ item }}"
         mode: "0755"
       loop:
@@ -84,7 +84,7 @@
     # deployment/staging/spec-*.yml): deployer/relayer keys to the bridge-ops
     # host, validator keys to their validators.yaml hosts.
     - name: Derive the validator hosts (validators.yaml)
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_validators.yml
 
     - name: Map each keyfile to its consumer host
       ansible.builtin.set_fact:

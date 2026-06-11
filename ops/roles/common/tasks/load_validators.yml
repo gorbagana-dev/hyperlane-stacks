@@ -3,13 +3,14 @@
 # Input var: validators_file (path). Defaults to the env's operator file.
 - name: Resolve the validators file (explicit override, else the env's operator file)
   # The file lookup below runs on the CONTROLLER, so the default anchors on the
-  # controller's repo checkout (playbook_dir -> repo root), NOT deployment_root —
-  # deployment_root derives from ansible_env.HOME and points at the ON-HOST clone
+  # controller's repo checkout (inventory_dir -> repo root — stable however deep
+  # the calling playbook lives), NOT deployment_root — deployment_root derives
+  # from ansible_env.HOME and points at the ON-HOST clone
   # (e.g. /home/<deploy_user>/...), which a controller-side lookup can't read.
   ansible.builtin.set_fact:
     _validators_file: >-
       {{ validators_file if validators_file is defined
-         else (playbook_dir | dirname | dirname) ~ '/' ~ deployment_subdir
+         else (inventory_dir | dirname | dirname | dirname) ~ '/' ~ deployment_subdir
               ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}
 
 - name: Read validators.yaml

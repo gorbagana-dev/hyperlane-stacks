@@ -14,7 +14,7 @@
   ansible.builtin.import_playbook: configure-dns.yml
 
 - name: Provision single-host TLS (mkcert)
-  ansible.builtin.import_playbook: local-tls.yml
+  ansible.builtin.import_playbook: local/tls.yml
 
 - name: Generate + distribute credentials
   ansible.builtin.import_playbook: distribute-credentials.yml

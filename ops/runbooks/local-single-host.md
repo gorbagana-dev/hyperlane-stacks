@@ -98,7 +98,7 @@ for health **and** slot progress on both), generates and funds every signer plus
 oracle, and deploys the collateral USDC SPL mint.
 
 ```bash
-ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
+ansible-playbook -i inventories/local/hosts.yml playbooks/local/prepare-chains.yml
 ```
 
 The collateral mint is persisted to
@@ -154,7 +154,7 @@ host IP, so the UIs open directly — no tunnel.
 ```bash
 # trust the CA + write /etc/hosts on your workstation. Needs workstation sudo (add -K if
 # your user isn't passwordless sudo).
-ansible-playbook -i inventories/local/hosts.yml playbooks/local-access.yml
+ansible-playbook -i inventories/local/hosts.yml playbooks/local/access.yml
 # now browse https://grafana.<zone>, https://warp-ui.<zone>, etc. directly
 ```
 

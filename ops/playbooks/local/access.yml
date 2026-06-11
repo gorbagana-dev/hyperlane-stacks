@@ -23,7 +23,7 @@
       delegate_facts: true
 
     - name: Load validators (for their hostnames)
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_validators.yml
 
     - name: Resolve the bridge hostnames, host IP, and published CA path
       ansible.builtin.set_fact:

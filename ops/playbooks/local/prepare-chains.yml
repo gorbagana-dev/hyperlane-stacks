@@ -4,7 +4,7 @@
 # the chain_hosts group. Run after the host is bootstrapped (laconic-so/docker) and
 # before deploy-all.yml.
 #
-#   ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
+#   ansible-playbook -i inventories/local/hosts.yml playbooks/local/prepare-chains.yml
 #
 # Single-host: chain_hosts = local-1, which runs both chains. Multi-host LOCAL:
 # the chains run out-of-band on a box NOT in this inventory (no chain_hosts), so
@@ -31,7 +31,7 @@
     solana_version: "v3.1.9"
   pre_tasks:
     - name: Load the deployment config
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_deployment_config.yml
 
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:
@@ -69,7 +69,7 @@
 
     - name: Ship the setup scripts to the chain host
       ansible.builtin.copy:
-        src: "../scripts/{{ item }}"
+        src: "../../scripts/{{ item }}"
         dest: "{{ scripts_dst }}/{{ item }}"
         mode: "0755"
       loop:

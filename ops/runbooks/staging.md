@@ -56,7 +56,7 @@ generates+distributes credentials.
 ## 2. Stand up gorchain (persistent) + hot keys
 
 ```bash
-ansible-playbook -i inventories/staging/hosts.yml playbooks/prepare-gorchain.yml
+ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml
 ```
 
 Brings up the single-node gorchain via gorchain-stacks (state in

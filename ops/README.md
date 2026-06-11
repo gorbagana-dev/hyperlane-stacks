@@ -35,7 +35,7 @@ inventory or vars.
 
 - **prod** / **staging** — mainnet / devnet, Cloudflare DNS + Let's Encrypt TLS.
   Staging additionally runs its own gorchain: a persistent single-node chain
-  brought up by `playbooks/prepare-gorchain.yml` (Caddy-fronted at `rpc.<zone>`),
+  brought up by `playbooks/staging/prepare-gorchain.yml` (Caddy-fronted at `rpc.<zone>`),
   and signs from generated throwaway key files (per the staging design,
   `docs/superpowers/specs/2026-06-10-staging-ops-design.md`). Operator guide:
   [runbooks/staging.md](runbooks/staging.md).

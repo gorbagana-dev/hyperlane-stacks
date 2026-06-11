@@ -135,14 +135,14 @@ encode. This one file feeds the validator deploy loop, per-validator MinIO
 IAM generation, and DNS auto-append — its absence today is three failure
 points.
 
-## 4. Gorchain chain play — `ops/playbooks/prepare-gorchain.yml`
+## 4. Gorchain chain play — `ops/playbooks/staging/prepare-gorchain.yml`
 
 Isolated staging sibling of `prepare-chains.yml` (which stays untouched,
 local-only). Run explicitly after `bootstrap-host.yml`, never imported by
 the composites:
 
 ```bash
-ansible-playbook -i inventories/staging/hosts.yml playbooks/prepare-gorchain.yml
+ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml
 ```
 
 Targets `chain_hosts` (= `staging-gorchain`). Three parts:

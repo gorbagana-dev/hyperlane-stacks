@@ -33,7 +33,7 @@ jobs:
       - name: syntax-check playbooks + tests
         run: |
           shopt -s nullglob
-          for p in playbooks/*.yml tests/test_*.yml; do
+          for p in playbooks/*.yml playbooks/*/*.yml tests/test_*.yml; do
             echo "== $p =="
             ansible-playbook --syntax-check "$p"
           done
