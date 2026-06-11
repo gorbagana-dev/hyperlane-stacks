@@ -10,6 +10,21 @@
   vars:
     state_review: false
     generated_rel: "bridges/{{ bridge_name }}/generated"
+  pre_tasks:
+    # Standalone runs need these too: the secret-scan needles template
+    # SOLANA_RPC_URL (which embeds deployment-config keys), and fetch_stack
+    # consumes deploy_branch. Inside deploy-all both happen to be present
+    # already; don't rely on that.
+    - name: A deploy_branch is required
+      ansible.builtin.assert:
+        that: deploy_branch is defined
+        fail_msg: >-
+          Pass -e deploy_branch=<branch> — the publish commits the generated
+          state to it.
+      run_once: true
+
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   roles:
     - fetch_stack            # ensure the clone exists + is current on deploy_branch
   tasks:
@@ -159,7 +174,7 @@
           - origin
           - "HEAD:{{ deploy_branch }}"
       environment:
-        GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes"
+        GIT_SSH_COMMAND: "ssh -o ForwardAgent=yes -o StrictHostKeyChecking=accept-new"
       changed_when: true
       when:
         - not ansible_check_mode
