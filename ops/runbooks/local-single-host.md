@@ -43,15 +43,10 @@ Docker/kind/kubectl + laconic-so; `prepare-chains.yml` installs the Solana CLI
 
 ## 2. Privy wallets
 
-Mint the three server wallets once per [privy-wallets.md](privy-wallets.md), then set the
-IDs/addresses it lists — these must be in place **before** the prepare step (the oracle
-pubkey is funded there):
-
-- `privy_wallet_id` per validator in
-  `deployment/local/bridges/default/operator/validators.yaml`
-- `privy_oracle_wallet_id` in `inventories/local/deployment-config.yml`
-- `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`, `IGP_ORACLE_PUBKEY` in
-  `inventories/local/group_vars/all.yml`
+Mint the four server wallets once per [privy-wallets.md](privy-wallets.md). Every
+ID/address it lists goes into the **one** operator file,
+`inventories/local/deployment-config.yml` (filled in step 4) — these must be in
+place **before** the prepare step (the oracle pubkey is funded there).
 
 ## 3. Inventory
 
@@ -79,7 +74,8 @@ Set `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`.
 
 ```bash
 cp inventories/local/deployment-config.example.yml inventories/local/deployment-config.yml
-# fill: privy_app_id, privy_app_secret, privy_oracle_wallet_id, ghcr_pat
+# then fill it in — every operator value lives here (secrets + the Privy
+# IDs/addresses from step 2); setup-all fails fast naming anything missing
 ```
 
 **No `cloudflare_api_token`** (single-host uses mkcert). No `helius_api_key` — the Solana
@@ -124,10 +120,9 @@ Notes:
 
 ## 7. Fill the remaining vars
 
-Nothing left from key generation: the collateral mint was persisted in step 6 and
-is substituted into the warp route automatically; `BRIDGE_OWNER_PUBKEY`,
-`IGP_ORACLE_PUBKEY`, and the validator addresses all come from Privy and were set
-in step 2.
+Nothing left: the collateral mint was persisted in step 6 and is substituted
+into the warp route automatically; every Privy ID/address already lives in
+`deployment-config.yml` (steps 2 + 4).
 
 ## 8. Deploy
 

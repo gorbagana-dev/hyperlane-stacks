@@ -21,20 +21,21 @@ and Let's Encrypt TLS under `staging.gorbagana.wtf`. Design:
   server-wallet, and one server-wallet per validator — follow
   [privy-wallets.md](privy-wallets.md).
 
-Then fill in the operator values (the deploy gates refuse any value left at a
-`REPLACE_WITH_*` sentinel):
+Then fill in exactly two things:
 
-| File | Variable | Value |
-|---|---|---|
-| `ops/inventories/staging/host_vars/<host>.yml` (all three) | `public_ip`, `privileged_user`, `deploy_user` | each VM's public IP and its two users |
-| `ops/inventories/staging/deployment-config.yml` | every key under `REQUIRED` | `cp deployment-config.example.yml deployment-config.yml`, then fill: Cloudflare token, Privy app id/secret + oracle wallet id, Helius API key, GHCR PAT |
-| `deployment/staging/bridges/default/operator/validators.yaml` | `privy_wallet_id` (`gorchain-primary` entry) | the gorchain validator server-wallet id from Privy |
-| `deployment/staging/bridges/default/operator/validators.yaml` | `privy_wallet_id` (`solana-primary` entry) | the solana validator server-wallet id from Privy |
-| `ops/inventories/staging/group_vars/all.yml` | `GORCHAIN_VALIDATOR_ADDRESS` | the gorchain Privy validator wallet's address |
-| `ops/inventories/staging/group_vars/all.yml` | `SOLANA_VALIDATOR_ADDRESS` | the solana Privy validator wallet's address |
-| `ops/inventories/staging/group_vars/all.yml` | `IGP_ORACLE_PUBKEY` | the Privy oracle wallet's Solana pubkey |
-| `ops/inventories/staging/group_vars/all.yml` | `BRIDGE_OWNER_PUBKEY` | the Privy bridge-owner wallet's Solana pubkey |
-| `deployment/staging/spec-warp-ui.yml` | `NEXT_PUBLIC_WALLET_CONNECT_ID` | a WalletConnect Cloud project id, or `""` to disable |
+1. `ops/inventories/staging/host_vars/<host>.yml` (all three VMs):
+   `public_ip`, `privileged_user`, `deploy_user`.
+2. The one operator file — every other value (secrets, the Privy
+   IDs/addresses, the WalletConnect id) lives here, each key commented:
+
+   ```bash
+   cp ops/inventories/staging/deployment-config.example.yml \
+      ops/inventories/staging/deployment-config.yml
+   # then fill it in
+   ```
+
+`setup-all` fails fast naming any missing value; the deploy gates refuse
+anything left unfilled.
 
 All commands below run from `ops/` with `-i inventories/staging/hosts.yml`.
 

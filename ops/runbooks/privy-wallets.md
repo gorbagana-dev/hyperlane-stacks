@@ -67,19 +67,19 @@ Each response is `{"id":"…","address":"…","chain_type":"…"}` — EVM walle
 jq -r '"id=\(.id)  address=\(.address)"' val-gorchain.json val-solana.json oracle.json owner.json
 ```
 
-| From | Field | Set in |
-|---|---|---|
-| `val-gorchain.json` | `id` | `privy_wallet_id` (gorchain entry) — your topology's validators file¹ |
-| `val-gorchain.json` | `address` (0x) | `GORCHAIN_VALIDATOR_ADDRESS` — `group_vars/all.yml` |
-| `val-solana.json` | `id` | `privy_wallet_id` (solana entry) — validators file¹ |
-| `val-solana.json` | `address` (0x) | `SOLANA_VALIDATOR_ADDRESS` — `group_vars/all.yml` |
-| `oracle.json` | `id` | `privy_oracle_wallet_id` — `inventories/local/deployment-config.yml` |
-| `oracle.json` | `address` (base58) | `IGP_ORACLE_PUBKEY` — `group_vars/all.yml` |
-| `owner.json` | `id` | nothing consumes it yet — record it; future maintenance ops sign with this wallet |
-| `owner.json` | `address` (base58) | `BRIDGE_OWNER_PUBKEY` — `group_vars/all.yml` |
+Every value goes into the env's **one** operator file,
+`ops/inventories/<env>/deployment-config.yml`:
 
-¹ `deployment/local/bridges/default/operator/validators.yaml` (single-host) or
-`validators-multihost.yaml` (multi-host).
+| From | Field | deployment-config.yml key |
+|---|---|---|
+| `val-gorchain.json` | `id` | `privy_validator_wallet_ids.gorchain-primary` |
+| `val-gorchain.json` | `address` (0x) | `gorchain_validator_address` |
+| `val-solana.json` | `id` | `privy_validator_wallet_ids.solana-primary` |
+| `val-solana.json` | `address` (0x) | `solana_validator_address` |
+| `oracle.json` | `id` | `privy_oracle_wallet_id` |
+| `oracle.json` | `address` (base58) | `igp_oracle_pubkey` |
+| `owner.json` | `id` | nothing consumes it yet — record it; future maintenance ops sign with this wallet |
+| `owner.json` | `address` (base58) | `bridge_owner_pubkey` |
 
 ## Step 5 — Verify before deploying (catches the owner-key failure mode)
 

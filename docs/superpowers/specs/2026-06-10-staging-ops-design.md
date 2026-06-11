@@ -110,16 +110,16 @@ collateral mint already exists on devnet.
 ## 3. `deployment/staging/bridges/default/operator/validators.yaml`
 
 ```yaml
+# pure topology — wallet ids come from deployment-config's
+# privy_validator_wallet_ids (consolidation, 2026-06-11)
 validators:
   - label: gorchain-primary
     chain: gorchain
     host: staging-gorchain
-    privy_wallet_id: REPLACE_WITH_STAGING_GORCHAIN_PRIVY_WALLET_ID
     hostname: validator-gorchain.staging.gorbagana.wtf
   - label: solana-primary
     chain: solana
     host: staging-solana-validator
-    privy_wallet_id: REPLACE_WITH_STAGING_SOLANA_PRIVY_WALLET_ID
     hostname: validator-solana.staging.gorbagana.wtf
 ```
 
@@ -200,16 +200,16 @@ surface — fix those, don't allowlist them.
   expected labels/hosts.
 - `ops-lint` CI runs the Layer-0 suite against **all three** inventories
   (today's examples/docs only exercise prod), plus the parity checker.
-  Tests that need `secrets.yml` values keep working the way they do today
-  (the suite is designed to run secrets-free); anything that can't is
+  Tests that need `deployment-config.yml` values keep working the way they
+  do today (the suite is designed to run secrets-free); anything that can't is
   noted in the test header, not silently skipped.
 
 ## 6. Runbook and docs
 
 - **`ops/runbooks/staging.md`** — from-zero operator guide: 3-VM
   prerequisites and `host_vars` IPs; Cloudflare token scoped to the
-  staging zone; `secrets.yml` fill (devnet Helius key, Privy app
-  credentials, GHCR PAT); Privy wallet setup (cross-ref
+  staging zone; `deployment-config.yml` fill (devnet Helius key, Privy app
+  credentials + IDs/addresses, GHCR PAT); Privy wallet setup (cross-ref
   `privy-wallets.md`); then `prepare-gorchain` → `setup-all` →
   `deploy-all` → `publish-bridge-state -e state_review=true` for the
   first publish; verification checklist (MinIO checkpoint objects, relayer
@@ -233,11 +233,14 @@ surface — fix those, don't allowlist them.
 
 ## Operator-supplied values (collected by the runbook)
 
+(Consolidated 2026-06-11: everything below except `host_vars` lives in the
+single gitignored `inventories/staging/deployment-config.yml`, read at
+runtime — committed files keep sentinels.)
+
 - `host_vars` `public_ip` for the three VMs
-- `secrets.yml`: `cloudflare_api_token`, `helius_api_key` (devnet
-  project), `privy_app_id`/`privy_app_secret`/`privy_oracle_wallet_id`,
-  `ghcr_pat`
-- `group_vars`: `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`,
-  `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS` (all from
-  Privy wallets)
-- `validators.yaml`: the two `privy_wallet_id`s
+- `deployment-config.yml`: `cloudflare_api_token`, `helius_api_key`
+  (devnet project), `privy_app_id`/`privy_app_secret`/
+  `privy_oracle_wallet_id`, `ghcr_pat`, the four identity values
+  (`bridge_owner_pubkey`, `igp_oracle_pubkey`, the two validator
+  addresses), `privy_validator_wallet_ids` (by label), and
+  `wallet_connect_id`

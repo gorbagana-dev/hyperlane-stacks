@@ -48,14 +48,9 @@ provisions Docker/kind/kubectl + laconic-so.
 
 ## 2. Privy wallets
 
-Mint the three server wallets once per [privy-wallets.md](privy-wallets.md), then fill the IDs/addresses it
-lists:
-
-- `privy_wallet_id` per validator in
-  `deployment/local/bridges/default/operator/validators-multihost.yaml`
-- `privy_oracle_wallet_id` in `inventories/local/deployment-config.yml`
-- `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`, `IGP_ORACLE_PUBKEY` in
-  `inventories/local/group_vars/all.yml`
+Mint the four server wallets once per [privy-wallets.md](privy-wallets.md). Every
+ID/address it lists goes into the **one** operator file,
+`inventories/local/deployment-config.yml` (filled in step 5).
 
 ## 3. Chains on a separate box
 
@@ -109,9 +104,9 @@ ansible -i inventories/local/hosts-multihost.yml all:!controller -m ping   # exp
 base_domain: "staging.gorbagana.wtf"        # your public Cloudflare zone
 ```
 
-Edit `validators-multihost.yaml`: set each validator's `privy_wallet_id` and replace
-`REPLACE_WITH_LOCAL_BASE_DOMAIN` in the hostnames to match `base_domain` (e.g.
-`validator-gorchain.staging.gorbagana.wtf`). The `host:` is already `local-agents`.
+Edit `validators-multihost.yaml`: replace `REPLACE_WITH_LOCAL_BASE_DOMAIN` in the
+hostnames to match `base_domain` (e.g. `validator-gorchain.staging.gorbagana.wtf`).
+The `host:` is already `local-agents`; wallet ids come from `deployment-config.yml`.
 `dns_records` is derived from group membership, so the same `group_vars` serves both
 topologies.
 
@@ -119,8 +114,8 @@ topologies.
 
 ```bash
 cp inventories/local/deployment-config.example.yml inventories/local/deployment-config.yml
-# fill: cloudflare_api_token, privy_app_id, privy_app_secret,
-#       privy_oracle_wallet_id, ghcr_pat
+# then fill it in — every operator value lives here (secrets + the Privy
+# IDs/addresses from step 2); setup-all fails fast naming anything missing
 ```
 
 `cloudflare_api_token` is **required** (Let's Encrypt + A records). No `helius_api_key` —
@@ -153,9 +148,8 @@ local-agents (validators + relayer host):
   relayer-fee-claim.json   # Solana keypair JSON array (IGP fee-claim sidecar)
 ```
 
-Then fill in `group_vars/all.yml`: `BRIDGE_OWNER_PUBKEY`,
-`IGP_ORACLE_PUBKEY`, `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`
-(all from the Privy wallets — see [privy-wallets.md](privy-wallets.md));
+The owner/oracle pubkeys and validator addresses were already filled into
+`deployment-config.yml` in step 5 — nothing more there. Still by hand:
 `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`. The chains box isn't
 ansible-managed, so write the USDC mint (the `WARP_TOKEN_MINT` the SPL deploy printed) to
 `~/.credentials/hyperlane/warp-token-mint` on the deployer host (`local-services`),
