@@ -2,7 +2,7 @@
 - name: Require Cloudflare token
   ansible.builtin.assert:
     that: "cloudflare_api_token | default('') | length > 0"
-    fail_msg: "cloudflare_api_token missing — set it in secrets.yml"
+    fail_msg: "cloudflare_api_token missing — set it in deployment-config.yml"
 
 - name: Load validator-derived DNS records
   ansible.builtin.include_tasks: ../common/tasks/load_validators.yml

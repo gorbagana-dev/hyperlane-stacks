@@ -53,7 +53,7 @@ lists:
 
 - `privy_wallet_id` per validator in
   `deployment/local/bridges/default/operator/validators-multihost.yaml`
-- `privy_oracle_wallet_id` in `inventories/local/secrets.yml`
+- `privy_oracle_wallet_id` in `inventories/local/deployment-config.yml`
 - `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`, `IGP_ORACLE_PUBKEY` in
   `inventories/local/group_vars/all.yml`
 
@@ -118,14 +118,14 @@ topologies.
 ## 5. Secrets
 
 ```bash
-cp inventories/local/secrets.example.yml inventories/local/secrets.yml
+cp inventories/local/deployment-config.example.yml inventories/local/deployment-config.yml
 # fill: cloudflare_api_token, privy_app_id, privy_app_secret,
 #       privy_oracle_wallet_id, ghcr_pat
 ```
 
 `cloudflare_api_token` is **required** (Let's Encrypt + A records). No `helius_api_key` —
 the Solana side is your own chain. MinIO/Grafana credentials are generated into
-`secrets.yml` by the `credentials` role on first run.
+`deployment-config.yml` by the `credentials` role on first run.
 
 ## 6. Keyfiles, funding & USDC mint
 

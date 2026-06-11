@@ -27,7 +27,7 @@ Then fill in the operator values (the deploy gates refuse any value left at a
 | File | Variable | Value |
 |---|---|---|
 | `ops/inventories/staging/host_vars/<host>.yml` (all three) | `public_ip`, `privileged_user`, `deploy_user` | each VM's public IP and its two users |
-| `ops/inventories/staging/secrets.yml` | every key under `REQUIRED` | `cp secrets.example.yml secrets.yml`, then fill: Cloudflare token, Privy app id/secret + oracle wallet id, Helius API key, GHCR PAT |
+| `ops/inventories/staging/deployment-config.yml` | every key under `REQUIRED` | `cp deployment-config.example.yml deployment-config.yml`, then fill: Cloudflare token, Privy app id/secret + oracle wallet id, Helius API key, GHCR PAT |
 | `deployment/staging/bridges/default/operator/validators.yaml` | `privy_wallet_id` (`gorchain-primary` entry) | the gorchain validator server-wallet id from Privy |
 | `deployment/staging/bridges/default/operator/validators.yaml` | `privy_wallet_id` (`solana-primary` entry) | the solana validator server-wallet id from Privy |
 | `ops/inventories/staging/group_vars/all.yml` | `GORCHAIN_VALIDATOR_ADDRESS` | the gorchain Privy validator wallet's address |

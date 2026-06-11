@@ -8,5 +8,7 @@ node_modules/
 .backpack-ext/
 ops/collections/
 
-# ops: per-env operator + generated secrets (never commit)
+# ops: per-env operator config + generated secrets (never commit).
+# secrets.yml is the pre-rename name — keep ignoring operators' existing files.
+ops/inventories/*/deployment-config.yml
 ops/inventories/*/secrets.yml

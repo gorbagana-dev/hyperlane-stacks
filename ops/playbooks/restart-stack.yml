@@ -47,8 +47,8 @@
   hosts: "{{ target_hosts | default([]) }}"
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
     # Safe everywhere: a no-op for specs without program-id tokens (minio/monitoring).
@@ -63,8 +63,8 @@
   hosts: "{{ ['controller'] if (stack_name | default('')) == 'hyperlane-validator' else [] }}"
   gather_facts: false
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   tasks:
     - name: Load validators
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml

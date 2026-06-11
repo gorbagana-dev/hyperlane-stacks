@@ -40,7 +40,7 @@ jobs:
       - name: layer-0 tests (all inventories)
         run: |
           for env in local staging prod; do
-            cp "inventories/$env/secrets.example.yml" "inventories/$env/secrets.yml"
+            cp "inventories/$env/deployment-config.example.yml" "inventories/$env/deployment-config.yml"
             for t in tests/test_*.yml; do
               echo "== $env :: $t =="
               ansible-playbook -i "inventories/$env/hosts.yml" "$t"

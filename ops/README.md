@@ -54,11 +54,11 @@ behind them).
 
 ## Secrets
 
-Each env keeps a **gitignored** `inventories/<env>/secrets.yml`, created from the
-committed `secrets.example.yml`:
+Each env keeps a **gitignored** `inventories/<env>/deployment-config.yml`, created from the
+committed `deployment-config.example.yml`:
 
 ```bash
-cp inventories/prod/secrets.example.yml inventories/prod/secrets.yml
+cp inventories/prod/deployment-config.example.yml inventories/prod/deployment-config.yml
 # then fill in the REQUIRED operator-supplied secrets
 ```
 
@@ -66,7 +66,7 @@ cp inventories/prod/secrets.example.yml inventories/prod/secrets.yml
   `privy_app_secret`, `privy_oracle_wallet_id`, `helius_api_key` (builds the
   secret `SOLANA_RPC_URL`), `ghcr_pat` (private GHCR pulls).
 - **Generated automatically** by the `credentials` role on first run and written
-  back into `secrets.yml` (never rotated on re-run): `minio_root_user`,
+  back into `deployment-config.yml` (never rotated on re-run): `minio_root_user`,
   `minio_root_password`, `grafana_admin_password`, and per-validator `minio_iam`
   (key_id/secret pairs).
 

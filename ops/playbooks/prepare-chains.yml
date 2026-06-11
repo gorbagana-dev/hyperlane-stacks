@@ -30,8 +30,8 @@
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     solana_version: "v3.1.9"
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
 
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:
@@ -47,7 +47,7 @@
       ansible.builtin.assert:
         that:
           - (ghcr_pat | default('') | length) > 0
-        fail_msg: "Set ghcr_pat in secrets.yml for the private gorchain images."
+        fail_msg: "Set ghcr_pat in deployment-config.yml for the private gorchain images."
 
   tasks:
     # Official Anza installer (curl|sh) — ships solana, solana-keygen,

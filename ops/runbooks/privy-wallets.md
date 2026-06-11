@@ -73,7 +73,7 @@ jq -r '"id=\(.id)  address=\(.address)"' val-gorchain.json val-solana.json oracl
 | `val-gorchain.json` | `address` (0x) | `GORCHAIN_VALIDATOR_ADDRESS` — `group_vars/all.yml` |
 | `val-solana.json` | `id` | `privy_wallet_id` (solana entry) — validators file¹ |
 | `val-solana.json` | `address` (0x) | `SOLANA_VALIDATOR_ADDRESS` — `group_vars/all.yml` |
-| `oracle.json` | `id` | `privy_oracle_wallet_id` — `inventories/local/secrets.yml` |
+| `oracle.json` | `id` | `privy_oracle_wallet_id` — `inventories/local/deployment-config.yml` |
 | `oracle.json` | `address` (base58) | `IGP_ORACLE_PUBKEY` — `group_vars/all.yml` |
 | `owner.json` | `id` | nothing consumes it yet — record it; future maintenance ops sign with this wallet |
 | `owner.json` | `address` (base58) | `BRIDGE_OWNER_PUBKEY` — `group_vars/all.yml` |

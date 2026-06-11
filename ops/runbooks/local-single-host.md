@@ -49,7 +49,7 @@ pubkey is funded there):
 
 - `privy_wallet_id` per validator in
   `deployment/local/bridges/default/operator/validators.yaml`
-- `privy_oracle_wallet_id` in `inventories/local/secrets.yml`
+- `privy_oracle_wallet_id` in `inventories/local/deployment-config.yml`
 - `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`, `IGP_ORACLE_PUBKEY` in
   `inventories/local/group_vars/all.yml`
 
@@ -78,12 +78,12 @@ Set `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`.
 ## 4. Secrets
 
 ```bash
-cp inventories/local/secrets.example.yml inventories/local/secrets.yml
+cp inventories/local/deployment-config.example.yml inventories/local/deployment-config.yml
 # fill: privy_app_id, privy_app_secret, privy_oracle_wallet_id, ghcr_pat
 ```
 
 **No `cloudflare_api_token`** (single-host uses mkcert). No `helius_api_key` — the Solana
-side is your own chain. MinIO/Grafana credentials are generated into `secrets.yml` by the
+side is your own chain. MinIO/Grafana credentials are generated into `deployment-config.yml` by the
 `credentials` role on first run.
 
 ## 5. Provision the host
@@ -110,7 +110,7 @@ automatically — no edit needed.
 
 Notes:
 - gorchain's dev-RPC config lives in the deploy spec's `config:` (no hand-written
-  `config.env`); the chain images are pulled with the GHCR creds from `secrets.yml`.
+  `config.env`); the chain images are pulled with the GHCR creds from `deployment-config.yml`.
 - The in-cluster bridge reaches the chains via `gorchain-rpc:8899` / `solana-rpc:18899`
   **automatically** (external-services → kind gateway) — leave `gorchain_rpc_url`/
   `solana_rpc_url` at their placeholders in `group_vars/all.yml`.

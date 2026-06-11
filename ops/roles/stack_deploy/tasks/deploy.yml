@@ -41,7 +41,7 @@
       Secret env '{{ item }}' for stack '{{ stack_name }}' is empty, an unrendered
       template, or a REPLACE_WITH placeholder (its source var was never filled).
       Generate the managed creds with
-      playbooks/distribute-credentials.yml, or set it in inventories/<env>/secrets.yml,
+      playbooks/distribute-credentials.yml, or set it in inventories/<env>/deployment-config.yml,
       then re-run.
     quiet: true
   loop: "{{ stack_env.keys() | list }}"

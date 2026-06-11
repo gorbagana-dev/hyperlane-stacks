@@ -1,0 +1,23 @@
+---
+# Load the operator's deployment config (inventory_dir/deployment-config.yml) into
+# play vars at task time. A play-level `vars_files:` warns and skips on ansible-core
+# 2.19+ (vars_files are templated before inventory_dir is bound); include_vars runs
+# at task time, where inventory_dir is defined. no_log keeps the secret values in
+# the file out of -v output.
+# The config file lives on the controller (include_vars also reads it there), so the
+# existence check must run on the controller even when the play targets a remote host.
+- name: Locate the deployment config file
+  ansible.builtin.stat:
+    path: "{{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }}"
+  delegate_to: localhost
+  register: _deployment_config_file
+- name: The deployment config file must exist
+  ansible.builtin.assert:
+    that: _deployment_config_file.stat.exists
+    fail_msg: >-
+      {{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }} not found —
+      copy deployment-config.example.yml to deployment-config.yml and fill it in.
+      (Upgrading from an older checkout: mv the env's secrets.yml to deployment-config.yml.)
+- name: Load the deployment config
+  ansible.builtin.include_vars: "{{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }}"
+  no_log: true
