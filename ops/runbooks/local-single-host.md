@@ -186,7 +186,13 @@ Use a throwaway test wallet — never the deployer account.
    - **forward** (solana → gorchain): `http://localhost:18899`
    - **reverse** (gorchain → solana): `http://localhost:8899`
 4. Open the warp UI, connect Backpack, transfer; switch the RPC per step 3 to
-   see the destination balance after relay.
+   see the destination balance after relay. No token import is needed —
+   Backpack discovers SPL token accounts on-chain — but neither local mint
+   carries token metadata, so both sides show as unrecognized mints: match
+   them against the route's mints in the published bridge state
+   (`deployment/local/bridges/default/generated/warp-routes/warpRoutes.yaml`
+   on `deploy_branch`; the collateral mint is also in
+   `~/.credentials/hyperlane/warp-token-mint`).
 
 ## 11. Update the warp routes (add a follow-on route)
 

@@ -206,6 +206,11 @@ single-host runbook's "Try the bridge" section, with two differences:
   `local_solana_rpc_url` domain, **reverse** the `local_gorchain_rpc_url`
   domain.
 
+No token import is needed on the destination side (Backpack discovers SPL
+token accounts on-chain), but the local mints carry no metadata and show as
+unrecognized — match them against the published
+`deployment/local/bridges/default/generated/warp-routes/warpRoutes.yaml`.
+
 ## 10. Reset between runs
 
 ```bash
