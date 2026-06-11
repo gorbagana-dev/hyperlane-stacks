@@ -50,7 +50,9 @@ doctl compute ssh-key import staging-ops --public-key-file ~/.ssh/id_ed25519.pub
 # Already registered? Look it up instead:
 doctl compute ssh-key list
 
-cat > /tmp/staging-user-data.yml <<EOF
+# In $HOME, not /tmp: a snap-installed doctl has a private /tmp and would
+# fail with "no such file or directory" on a path that plainly exists.
+cat > ~/staging-user-data.yml <<EOF
 #cloud-config
 users:
   - name: dev
@@ -69,7 +71,7 @@ for vm in staging-bridge-ops:s-4vcpu-8gb \
     --image ubuntu-24-04-x64 \
     --region <region> \
     --ssh-keys <key-id> \
-    --user-data-file /tmp/staging-user-data.yml \
+    --user-data-file ~/staging-user-data.yml \
     --wait
 done
 ```
