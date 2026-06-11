@@ -32,19 +32,24 @@ configmaps:
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export this env var in the shell that runs `laconic-so`:
-#   HARDWARE_WALLET_PUBKEY
+#   BRIDGE_OWNER_PUBKEY
 secrets:
   hyperlane-warp-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
-      HARDWARE_WALLET_PUBKEY:   { env: HARDWARE_WALLET_PUBKEY }
+      BRIDGE_OWNER_PUBKEY:   { env: BRIDGE_OWNER_PUBKEY }
       SOLANA_RPC_URL:           { env: SOLANA_RPC_URL }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-warp-deployer:v1.0.0
+resources:
+  containers:
+    reservations:
+      cpus: "0.5"
+      memory: 1024M

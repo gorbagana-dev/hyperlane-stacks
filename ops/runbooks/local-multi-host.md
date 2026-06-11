@@ -16,7 +16,7 @@ All commands run from `ops/` on the controller (your machine).
 ## Networking model
 
 - Caddy + **Cloudflare DNS** + real **Let's Encrypt** under an operator-supplied public
-  zone (`dns_zone`). `https://s3.<zone>`, `https://validator-x.<zone>`, etc. resolve via
+  zone (`base_domain`). `https://s3.<zone>`, `https://validator-x.<zone>`, etc. resolve via
   public DNS to the right host's Caddy, and the Rust S3 client trusts the LE-issued cert
   (cross-host routing needs both). Topology is **derived** from inventory group membership
   (the agents and MinIO are on different hosts) — no flag.
@@ -36,7 +36,7 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 
 **Accounts / access:**
-- A **public DNS zone on Cloudflare** (`dns_zone`) and a Cloudflare API token scoped to it.
+- A **public DNS zone on Cloudflare** (`base_domain`) and a Cloudflare API token scoped to it.
 - A **Privy** project (validator + gas-oracle signing) — see [privy-wallets.md](privy-wallets.md).
 - A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images (the
   docker-login user defaults to `gorbagana-dev`).
@@ -48,14 +48,9 @@ provisions Docker/kind/kubectl + laconic-so.
 
 ## 2. Privy wallets
 
-Mint the three server wallets once per [privy-wallets.md](privy-wallets.md), then fill the IDs/addresses it
-lists:
-
-- `privy_wallet_id` per validator in
-  `deployment/local/bridges/default/operator/validators-multihost.yaml`
-- `privy_oracle_wallet_id` in `inventories/local/secrets.yml`
-- `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`, `IGP_ORACLE_PUBKEY` in
-  `inventories/local/group_vars/all.yml`
+Mint the four server wallets once per [privy-wallets.md](privy-wallets.md). Every
+ID/address it lists goes into the **one** operator file,
+`inventories/local/deployment-config.yml` (filled in step 5).
 
 ## 3. Chains on a separate box
 
@@ -104,28 +99,25 @@ cd ops   # all commands below run from here
 ansible -i inventories/local/hosts-multihost.yml all:!controller -m ping   # expect: SUCCESS each
 ```
 
-```yaml
-# inventories/local/group_vars/all.yml
-dns_zone: "staging.gorbagana.wtf"        # your public Cloudflare zone
-```
-
-Edit `validators-multihost.yaml`: set each validator's `privy_wallet_id` and replace
-`REPLACE_WITH_LOCAL_DNS_ZONE` in the hostnames to match `dns_zone` (e.g.
-`validator-gorchain.staging.gorbagana.wtf`). The `host:` is already `local-agents`.
-`dns_records` is derived from group membership, so the same `group_vars` serves both
-topologies.
+Your zone and the chains-box RPC URLs go into `deployment-config.yml` (step 5):
+`local_base_domain` (the public Cloudflare zone) plus
+`local_gorchain_rpc_url`/`local_solana_rpc_url`. No committed file needs editing:
+`validators-multihost.yaml` hostnames render from `local_base_domain` at load
+time, and `dns_records` is derived from group membership, so the same
+`group_vars` serves both topologies.
 
 ## 5. Secrets
 
 ```bash
-cp inventories/local/secrets.example.yml inventories/local/secrets.yml
-# fill: cloudflare_api_token, privy_app_id, privy_app_secret,
-#       privy_oracle_wallet_id, ghcr_pat
+cp inventories/local/deployment-config.example.yml inventories/local/deployment-config.yml
+# then fill it in — every operator value lives here (secrets, the Privy
+# IDs/addresses from step 2, and the multi-host keys: local_base_domain +
+# local_*_rpc_url); setup-all fails fast naming anything missing
 ```
 
 `cloudflare_api_token` is **required** (Let's Encrypt + A records). No `helius_api_key` —
 the Solana side is your own chain. MinIO/Grafana credentials are generated into
-`secrets.yml` by the `credentials` role on first run.
+`deployment-config.yml` by the `credentials` role on first run.
 
 ## 6. Keyfiles, funding & USDC mint
 
@@ -153,13 +145,12 @@ local-agents (validators + relayer host):
   relayer-fee-claim.json   # Solana keypair JSON array (IGP fee-claim sidecar)
 ```
 
-You keep `hardware-wallet.json` (its pubkey → `HARDWARE_WALLET_PUBKEY`; not deployed).
-Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY` (from the helper),
-`IGP_ORACLE_PUBKEY`, `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`;
-`REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`. The chains box isn't
-ansible-managed, so write the USDC mint (the `WARP_TOKEN_MINT` the SPL deploy printed) to
-`~/.credentials/hyperlane/warp-token-mint` on the deployer host (`local-services`),
-alongside the keys — the warp route picks it up from there.
+The owner/oracle pubkeys and validator addresses were already filled into
+`deployment-config.yml` in step 5; now also set `local_warp_token_mint` there —
+the `WARP_TOKEN_MINT` the SPL deploy just printed. The warp route render reads
+it from the config at deploy time (no file to place on any host). (The specs'
+`image-pull-secret` username is committed as `gorbagana-dev`; GHCR authenticates
+by the PAT, the username doesn't matter.)
 
 ## 7. Run it
 
@@ -197,7 +188,25 @@ Public DNS + LE — browse the hostnames directly once DNS propagates:
 `https://warp-ui.<zone>`, `https://grafana.<zone>`, `https://prometheus.<zone>`,
 `https://minio-console.<zone>`.
 
-## 9. Reset between runs
+## 9. Try the bridge (Backpack)
+
+Use a throwaway test wallet — never the deployer account. Same flow as the
+single-host runbook's "Try the bridge" section, with two differences:
+
+- The chains box is out-of-band (not ansible-managed), so fund the wallet by
+  running the script there instead of the playbook:
+
+  ```bash
+  WALLET=<address> USDC_MINT=<the WARP_TOKEN_MINT from step 6> \
+    ops/scripts/fund-test-wallet.sh   # GOR + SOL + 100 local USDC
+  ```
+
+- Backpack's custom RPC URLs are the chains box's public domains — set the
+  transfer's ORIGIN chain before sending: **forward** (solana → gorchain) the
+  `local_solana_rpc_url` domain, **reverse** the `local_gorchain_rpc_url`
+  domain.
+
+## 10. Reset between runs
 
 ```bash
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
@@ -213,7 +222,7 @@ ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml
   -e destroy_cluster=true -e wipe_data=true
 ```
 
-## 10. Limitations / notes
+## 11. Limitations / notes
 
 - **DNS propagation gates first access.** A records and LE issuance must settle before the
   hostnames resolve and serve trusted certs; the deploy preflight checks served hostnames

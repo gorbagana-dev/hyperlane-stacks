@@ -1,0 +1,59 @@
+---
+# Layer-0: staging wiring — multi-host Cloudflare env, gorchain-only chain host,
+# specs under deployment/staging/. Inventory-independent (reads the staging files
+# directly), so it runs under any -i like the other tests.
+- name: Staging wiring
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_env:
+      HOME: /home/op
+  tasks:
+    - name: Load staging env wiring
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../inventories/staging/group_vars/all.yml"
+
+    - name: Parse the staging hosts file
+      ansible.builtin.set_fact:
+        _staging_inv: >-
+          {{ lookup('ansible.builtin.file',
+                    playbook_dir ~ '/../inventories/staging/hosts.yml') | from_yaml }}
+
+    - name: Staging env resolves as designed
+      ansible.builtin.assert:
+        that:
+          - "topology == 'multi'"
+          - "manage_dns | bool"
+          - "deployment_subdir == 'deployment/staging'"
+          - "base_domain == 'staging.gorbagana.wtf'"
+          # gorchain is the only chain on staging (solana is Helius devnet)
+          - "_staging_inv.all.children.chain_hosts.hosts.keys() | list == ['staging-gorchain']"
+          # the validators host is inventoried (bootstrap covers all:!controller)
+          - "_staging_inv.all.children.validator_hosts.hosts.keys() | list == ['staging-hyperlane-validators']"
+          # the gorchain RPC seam has a DNS record on the chain host
+          - "(dns_records | selectattr('name', 'eq', 'rpc') | map(attribute='host') | list) == ['staging-gorchain']"
+          # warp-ui serves base_domain itself (staging.gorbagana.wtf), like prod's apex
+          - "(dns_records | selectattr('name', 'eq', '@') | map(attribute='host') | list) == ['staging-bridge-ops']"
+        quiet: true
+
+    - name: Parse the staging validators file
+      ansible.builtin.set_fact:
+        _staging_validators: >-
+          {{ (lookup('ansible.builtin.file',
+                     playbook_dir ~ '/../../deployment/staging/bridges/default/operator/validators.yaml')
+              | from_yaml)['validators'] }}
+
+    - name: Staging validators are the prod-shaped 1-of-1 pair
+      ansible.builtin.assert:
+        that:
+          # labels must match the *_PRIMARY_* MinIO IAM env names in the specs
+          - "_staging_validators | map(attribute='label') | list == ['gorchain-primary', 'solana-primary']"
+          # both validators off the chain host (its 80/443 belong to the RPC Caddy front)
+          - >-
+            _staging_validators | map(attribute='host') | unique | list
+            == ['staging-hyperlane-validators']
+          - >-
+            _staging_validators | map(attribute='hostname')
+            | select('search', '\.staging\.gorbagana\.wtf$') | list | length == 2
+        quiet: true

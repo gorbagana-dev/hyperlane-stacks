@@ -1,19 +1,19 @@
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind
-image-overrides:
-  deployer: REPLACE_DEPLOYER_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 network:
   acme-email: e2e@example.test
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899
 volumes:
   bridge-state: REPLACE_KIND_MOUNT_ROOT/bridge/generated
   bridge-logs: REPLACE_KIND_MOUNT_ROOT/bridge/logs
-configmaps:
-  deployer-scripts-config: ./configmaps/deployer-scripts-config
-  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
-  deployer-multisig-config: ./configmaps/deployer-multisig-config
-  deployer-registry-config: ./configmaps/deployer-registry-config
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   GORCHAIN_DOMAIN_ID: "99999"
@@ -23,6 +23,26 @@ config:
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
   FORCE_REDEPLOY: "false"
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
+  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
+  deployer-multisig-config: ./configmaps/deployer-multisig-config
+  deployer-registry-config: ./configmaps/deployer-registry-config
+secrets:
+  hyperlane-deployer-secrets:
+    keys:
+      DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
+      BRIDGE_OWNER_PUBKEY: { env: BRIDGE_OWNER_PUBKEY }
+      IGP_ORACLE_PUBKEY: { env: IGP_ORACLE_PUBKEY }
+      GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
+      SOLANA_VALIDATOR_ADDRESS: { env: SOLANA_VALIDATOR_ADDRESS }
+      SOLANA_RPC_URL: { env: SOLANA_RPC_URL }
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+image-overrides:
+  deployer: REPLACE_DEPLOYER_IMAGE
 resources:
   containers:
     deployer:
@@ -32,23 +52,3 @@ resources:
       limits:
         cpus: "2"
         memory: 1G
-secrets:
-  hyperlane-deployer-secrets:
-    keys:
-      DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
-      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
-      IGP_ORACLE_PUBKEY: { env: IGP_ORACLE_PUBKEY }
-      GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
-      SOLANA_VALIDATOR_ADDRESS: { env: SOLANA_VALIDATOR_ADDRESS }
-      SOLANA_RPC_URL: { env: SOLANA_RPC_URL }
-image-pull-secret:
-  server: ghcr.io
-  username: gorbagana-dev
-  token-env: GHCR_PAT
-external-services:
-  gorchain-rpc:
-    ip: REPLACE_HOST_IP
-    port: 8899
-  solana-rpc:
-    ip: REPLACE_HOST_IP
-    port: 18899

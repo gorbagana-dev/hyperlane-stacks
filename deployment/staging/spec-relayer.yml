@@ -1,0 +1,66 @@
+# Hyperlane Relayer - deployment spec
+# Delivers cross-chain messages between Gorchain and Solana.
+stack: stack_orchestrator/data/stacks/hyperlane-relayer
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: relayer.staging.gorbagana.wtf
+      routes:
+        - path: /
+          proxy-to: relayer:9091
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   relayer: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
+volumes:
+  relayer-data: /srv/kind/hyperlane/relayer/data
+config:
+  GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
+  GORCHAIN_IGP_PROGRAM_ID: "__GORCHAIN_IGP_PROGRAM_ID__"
+  SOLANA_IGP_PROGRAM_ID: "__SOLANA_IGP_PROGRAM_ID__"
+  GORCHAIN_IGP_ACCOUNT: "__GORCHAIN_IGP_ACCOUNT__"
+  SOLANA_IGP_ACCOUNT: "__SOLANA_IGP_ACCOUNT__"
+  # Rendered at deploy time from relayer-whitelist.json (stack_deploy).
+  HYP_WHITELIST: '__RELAYER_WHITELIST__'
+  # CLAIM_INTERVAL_SECONDS: "21600"  # IGP fee claim interval (default: 6h)
+  # MinIO via Caddy — public DNS resolves to the Caddy ingress.
+  AWS_ENDPOINT_URL_S3: "https://s3.staging.gorbagana.wtf"
+configmaps:
+  igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
+  agent-config: ./configmaps/agent-config
+# Before deploying, place these keyfiles on the host:
+#   ~/.credentials/hyperlane/relayer-gorchain.key  (hex-encoded relayer signing key for Gorchain)
+#   ~/.credentials/hyperlane/relayer-solana.key    (hex-encoded relayer signing key for Solana)
+#   ~/.credentials/hyperlane/relayer-fee-claim.json (Solana keypair JSON array for IGP fee claims)
+# No MinIO credentials needed — the relayer uses an anonymous S3 client.
+secrets:
+  hyperlane-relayer-secrets:
+    keys:
+      HYP_CHAINS_GORCHAIN_SIGNER_KEY: { file: ~/.credentials/hyperlane/relayer-gorchain.key }
+      HYP_CHAINS_SOLANA_SIGNER_KEY:   { file: ~/.credentials/hyperlane/relayer-solana.key }
+      RELAYER_KEYPAIR_JSON:            { file: ~/.credentials/hyperlane/relayer-fee-claim.json }
+      SOLANA_RPC_URL:                 { env: SOLANA_RPC_URL }
+      # Same URL, renamed for the agent: agents only read HYP_-namespace env
+      # (chains.solana.customRpcUrls), overriding the placeholder rpcUrls in
+      # the published agent-config.json. SOLANA_RPC_URL above is for claim-fees.sh.
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+resources:
+  containers:
+    reservations:
+      cpus: "0.25"
+      memory: 512M
+  volumes:
+    relayer-data:
+      reservations:
+        storage: 5Gi

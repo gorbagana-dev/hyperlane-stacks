@@ -4,6 +4,21 @@ stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: relayer.bridge.gorbagana.wtf
+      routes:
+        - path: /
+          proxy-to: relayer:9091
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   relayer: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
+volumes:
+  relayer-data: /srv/kind/hyperlane/relayer/data
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   GORCHAIN_IGP_PROGRAM_ID: "__GORCHAIN_IGP_PROGRAM_ID__"
@@ -15,16 +30,6 @@ config:
   # CLAIM_INTERVAL_SECONDS: "21600"  # IGP fee claim interval (default: 6h)
   # MinIO via Caddy — public DNS resolves to the Caddy ingress.
   AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf"
-annotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "9091"
-volumes:
-  relayer-data: /srv/kind/hyperlane/relayer/data
-resources:
-  volumes:
-    relayer-data:
-      reservations:
-        storage: 5Gi
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
   agent-config: ./configmaps/agent-config
@@ -48,15 +53,14 @@ secrets:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
-network:
-  acme-email: admin@gorbagana.wtf
-  http-proxy:
-    - host-name: relayer.bridge.gorbagana.wtf
-      routes:
-        - path: /
-          proxy-to: relayer:9091
-# Optional: override container images (service name → full image ref)
-# image-overrides:
-#   relayer: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+resources:
+  containers:
+    reservations:
+      cpus: "0.5"
+      memory: 1024M
+  volumes:
+    relayer-data:
+      reservations:
+        storage: 5Gi

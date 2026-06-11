@@ -12,7 +12,8 @@ Design: `docs/superpowers/specs/2026-06-01-deploy-side-ansible-design.md`.
 
 - Ansible 2.16+ and the linters: `pip install "ansible>=9" ansible-lint yamllint`
 - Collections: `ansible-galaxy collection install -r requirements.yml -p ./collections`
-  (installs `community.general`, `kubernetes.core`, `ansible.posix`)
+  (installs `community.general`, `kubernetes.core`, `ansible.posix`,
+  `community.docker` — re-run after pulling, the list grows)
 - `git`, `ssh` with **agent forwarding** to the target hosts, `dig`, `kubectl`
 - SSH access to every host in the target inventory
 
@@ -34,11 +35,16 @@ There is no `-e env=` switch. Per-env isolation: the environments share no mutab
 inventory or vars.
 
 - **prod** / **staging** — mainnet / devnet, Cloudflare DNS + Let's Encrypt TLS.
+  Staging additionally runs its own gorchain: a persistent single-node chain
+  brought up by `playbooks/staging/prepare-gorchain.yml` (Caddy-fronted at `rpc.<zone>`),
+  and signs from generated throwaway key files (per the staging design,
+  `docs/superpowers/specs/2026-06-10-staging-ops-design.md`). Operator guide:
+  [runbooks/staging.md](runbooks/staging.md).
 - **local** — own-chains testing (Layers 1-2): self-run gorchain + a local
   solana-test-validator. Two topologies: single-host uses self-trusted **mkcert**
   certs (no DNS provider), multi-host mirrors prod (Caddy + Cloudflare DNS + LE) under
   an operator-supplied zone. Local-specific bits: no Helius (`SOLANA_RPC_URL` is the
-  own chain), and the operator-supplied `dns_zone` + own-chain RPC URLs ship as
+  own chain), and the operator-supplied `base_domain` + own-chain RPC URLs ship as
   `__TOKENS__` in the specs, rendered on the host (`spec_token_renders`). See the
   topology runbooks: [local-single-host.md](runbooks/local-single-host.md),
   [local-multi-host.md](runbooks/local-multi-host.md).
@@ -47,26 +53,34 @@ inventory or vars.
 (start there to bring an environment up; this README is the mechanics reference
 behind them).
 
-## Secrets
+## Operator configuration — deployment-config.yml
 
-Each env keeps a **gitignored** `inventories/<env>/secrets.yml`, created from the
-committed `secrets.example.yml`:
+Each env keeps a **gitignored** `inventories/<env>/deployment-config.yml`, created
+from the committed `deployment-config.example.yml`. It is the **one file an
+operator fills** — secrets and bridge identity; the plays read it at runtime, so
+no committed file ever needs an operator edit (host connectivity excepted:
+`host_vars/<host>.yml`).
 
 ```bash
-cp inventories/prod/secrets.example.yml inventories/prod/secrets.yml
-# then fill in the REQUIRED operator-supplied secrets
+cp inventories/prod/deployment-config.example.yml inventories/prod/deployment-config.yml
+# then fill it in (each key is commented)
 ```
 
-- **Operator-supplied (required):** `cloudflare_api_token`, `privy_app_id`,
-  `privy_app_secret`, `privy_oracle_wallet_id`, `helius_api_key` (builds the
-  secret `SOLANA_RPC_URL`), `ghcr_pat` (private GHCR pulls).
+- **Secrets:** `cloudflare_api_token`, `privy_app_id`, `privy_app_secret`,
+  `privy_oracle_wallet_id`, `helius_api_key` (builds the secret
+  `SOLANA_RPC_URL`), `ghcr_pat` (private GHCR pulls).
+- **Bridge identity (not sensitive):** `bridge_owner_pubkey`,
+  `igp_oracle_pubkey`, `gorchain_validator_address`, `solana_validator_address`
+  (referenced by `group_vars` secret-env values), `privy_validator_wallet_ids`
+  (merged into the validator set by label), and `wallet_connect_id` (rendered
+  into the warp-ui spec's sentinel at deploy time; `""` disables WalletConnect).
 - **Generated automatically** by the `credentials` role on first run and written
-  back into `secrets.yml` (never rotated on re-run): `minio_root_user`,
+  back into `deployment-config.yml` (never rotated on re-run): `minio_root_user`,
   `minio_root_password`, `grafana_admin_password`, and per-validator `minio_iam`
   (key_id/secret pairs).
 
-`distribute-credentials.yml` asserts the required keys are present and fails fast
-naming any that are missing.
+`distribute-credentials.yml` (part of `setup-all.yml`) asserts the required keys
+are present and fails fast naming any that are missing.
 
 ## Configuration model
 
@@ -121,7 +135,8 @@ python3 -c "b=b'Gor'+bytes([0x4D]); print(int.from_bytes(b,'big'))"  # 119848609
 `monitoring_hosts`, `warp_ui_hosts`) plus `controller`. In a single-host run
 every group points at the same host. Validators are **not** in the inventory —
 they come from `deployment/[staging/]bridges/default/operator/validators.yaml`
-(label, chain, host, privy_wallet_id, hostname). Moving a singleton to another
+(pure topology: label, chain, host, hostname — each validator's Privy wallet id
+comes from deployment-config's `privy_validator_wallet_ids`). Moving a singleton to another
 host is an inventory edit only; no spec or playbook change.
 
 Per-host facts live in `host_vars/<alias>.yml`: `public_ip`, `privileged_user`,
@@ -148,7 +163,9 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/distribute-credentials.
 `deploy-all.yml` runs hands-off end to end. The one attended option is the state
 publish:
 
-- **`publish-bridge-state.yml`** runs on the deployer host: it copies the
+- **`publish-bridge-state.yml`** is imported by `deploy-all.yml` mid-flight
+  (after the deployer Jobs, before the consumers); standalone it exists for
+  re-publishing outside a full deploy. It runs on the deployer host: it copies the
   deployer-produced `generated/` state into the on-host clone, **patches the
   deployment-derived `config:` keys** (IGP program IDs/accounts into
   `spec-relayer.yml`/`spec-gas-oracle.yml`, mailboxes + warp addresses/mints into
@@ -228,7 +245,16 @@ assembly, deploy/state paths, publish scoping):
 for t in tests/test_*.yml; do ansible-playbook -i inventories/prod/hosts.yml "$t"; done
 ```
 
-CI runs the Layer-0 lint + syntax-check on every PR (`.github/workflows/ops-lint.yml`).
+The env contract test (`tests/test_env_contract.yml`) runs per inventory — point
+`-i` at each of `inventories/{prod,staging,local}/hosts.yml`. The spec shape-parity
+checker keeps the per-env spec trees structurally aligned (run from the repo root):
+
+```bash
+python3 ops/scripts/check-spec-parity.py
+```
+
+CI runs the Layer-0 suite (lint + syntax-check + localhost tests) against all three
+inventories on every PR (`.github/workflows/ops-lint.yml`).
 
 ## Known follow-ups (verify/extend on a real VM run)
 

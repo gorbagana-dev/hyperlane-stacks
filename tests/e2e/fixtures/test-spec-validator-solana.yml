@@ -1,55 +1,15 @@
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
-image-overrides:
-  validator: REPLACE_AGENT_IMAGE
-  kms-proxy: REPLACE_KMS_PROXY_IMAGE
 namespace: laconic-hyperlane-validator-solana
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-config:
-  ORIGIN_CHAIN_NAME: solana
-  CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
-  PRIVY_API_URL: "http://privy-mock:19876"
-  PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
-  # Dev only — direct cross-NS to the MinIO pod via external-services
-  # selector mode below. No Caddy in this path.
-  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
-annotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "9090"
-resources:
-  containers:
-    validator:
-      reservations:
-        cpus: "0.25"
-        memory: 256M
-      limits:
-        cpus: "1"
-        memory: 512M
-    kms-proxy:
-      reservations:
-        cpus: "0.1"
-        memory: 64M
-      limits:
-        cpus: "0.25"
-        memory: 128M
-volumes:
-  validator-data: /tmp/hyperlane-bridge-e2e/validator-solana/data
-configmaps:
-  agent-config: ./configmaps/agent-config
-secrets:
-  hyperlane-validator-solana-secrets:
-    keys:
-      PRIVY_APP_ID:          { env: PRIVY_APP_ID }
-      PRIVY_APP_SECRET:      { env: PRIVY_APP_SECRET }
-      AWS_ACCESS_KEY_ID:     { env: SOLANA_PRIMARY_KEY_ID }
-      AWS_SECRET_ACCESS_KEY: { env: SOLANA_PRIMARY_SECRET }
-      HYP_DEFAULTSIGNER_KEY: { env: HYP_DEFAULTSIGNER_KEY }
-      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
-image-pull-secret:
-  server: ghcr.io
-  username: gorbagana-dev
-  token-env: GHCR_PAT
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: validator-solana.test
+      routes:
+        - path: /
+          proxy-to: validator:9090
 external-services:
   gorchain-rpc:
     ip: REPLACE_HOST_IP
@@ -71,10 +31,50 @@ external-services:
       app.kubernetes.io/stack: hyperlane-minio
     namespace: laconic-hyperlane-minio
     port: 9000
-network:
-  acme-email: e2e@example.test
-  http-proxy:
-    - host-name: validator-solana.test
-      routes:
-        - path: /
-          proxy-to: validator:9090
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+volumes:
+  validator-data: /tmp/hyperlane-bridge-e2e/validator-solana/data
+config:
+  ORIGIN_CHAIN_NAME: solana
+  CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
+  PRIVY_API_URL: "http://privy-mock:19876"
+  PRIVY_WALLET_ID: REPLACE_PRIVY_WALLET_ID
+  # Dev only — direct cross-NS to the MinIO pod via external-services
+  # selector mode below. No Caddy in this path.
+  AWS_ENDPOINT_URL_S3: "http://hyperlane-minio:9000"
+configmaps:
+  agent-config: ./configmaps/agent-config
+secrets:
+  hyperlane-validator-solana-secrets:
+    keys:
+      PRIVY_APP_ID:          { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:      { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID:     { env: SOLANA_PRIMARY_KEY_ID }
+      AWS_SECRET_ACCESS_KEY: { env: SOLANA_PRIMARY_SECRET }
+      HYP_DEFAULTSIGNER_KEY: { env: HYP_DEFAULTSIGNER_KEY }
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+image-overrides:
+  validator: REPLACE_AGENT_IMAGE
+  kms-proxy: REPLACE_KMS_PROXY_IMAGE
+resources:
+  containers:
+    validator:
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+      limits:
+        cpus: "1"
+        memory: 512M
+    kms-proxy:
+      reservations:
+        cpus: "0.1"
+        memory: 64M
+      limits:
+        cpus: "0.25"
+        memory: 128M

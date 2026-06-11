@@ -1,0 +1,39 @@
+---
+# Fail fast when an inventory under-specifies the vars roles branch on. Undefined
+# vars don't error in `when:` expressions — `topology == 'single'` on an undefined
+# topology just evaluates false — which is how env gaps slip through to a live run.
+- name: Env contract — required inventory vars are defined
+  ansible.builtin.assert:
+    # Key presence in hostvars, NOT `vars[item] is defined`: the latter force-renders
+    # the value, and inventory values may template host-only facts (credentials_dir
+    # uses ansible_env.HOME) that don't resolve on the fact-less controller play.
+    that: "item in hostvars[inventory_hostname]"
+    fail_msg: >-
+      Env contract: '{{ item }}' is not defined — set it in this inventory's
+      group_vars/all.yml.
+    quiet: true
+  # deploy_branch is deliberately NOT here: on local/staging it is a required
+  # per-invocation -e (so bridge state can't be published to main by default);
+  # the playbooks that consume it assert it themselves.
+  loop:
+    - topology
+    - manage_dns
+    - bridge_name
+    - deployment_subdir
+    - base_domain
+    - credentials_dir
+    - stack_env_vars
+    - stacks
+
+- name: Env contract — topology is a known mode
+  ansible.builtin.assert:
+    that: "topology in ['single', 'multi']"
+    fail_msg: "Env contract: topology must be 'single' or 'multi', got '{{ topology }}'"
+    quiet: true
+
+- name: Env contract — every stack has a secret-env entry
+  ansible.builtin.assert:
+    that: "item in stack_env_vars"
+    fail_msg: "Env contract: stack_env_vars has no entry for stack '{{ item }}'"
+    quiet: true
+  loop: "{{ stacks.keys() | list }}"

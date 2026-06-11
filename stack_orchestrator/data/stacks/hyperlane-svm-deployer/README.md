@@ -48,7 +48,7 @@ config:
 secrets:
   hyperlane-deployer-secrets:
     - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - IGP_ORACLE_PUBKEY
     - GORCHAIN_VALIDATOR_ADDRESS
     - SOLANA_VALIDATOR_ADDRESS
@@ -69,7 +69,7 @@ The `secrets:` section in the spec references a k8s Secret by name. SO mounts it
 ```bash
 kubectl create secret generic hyperlane-deployer-secrets \
   --from-literal=DEPLOYER_KEYPAIR='[<byte array>]' \
-  --from-literal=HARDWARE_WALLET_PUBKEY='<pubkey>' \
+  --from-literal=BRIDGE_OWNER_PUBKEY='<pubkey>' \
   --from-literal=IGP_ORACLE_PUBKEY='<pubkey>' \
   --from-literal=GORCHAIN_VALIDATOR_ADDRESS='<H160 address>' \
   --from-literal=SOLANA_VALIDATOR_ADDRESS='<H160 address>'
@@ -78,7 +78,7 @@ kubectl create secret generic hyperlane-deployer-secrets \
 | Secret key | Description |
 |---|---|
 | `DEPLOYER_KEYPAIR` | JSON array of deployer secret key bytes (required) |
-| `HARDWARE_WALLET_PUBKEY` | Pubkey to receive program upgrade authority (optional) |
+| `BRIDGE_OWNER_PUBKEY` | Pubkey to receive program upgrade authority (optional) |
 | `IGP_ORACLE_PUBKEY` | Pubkey for IGP oracle account ownership (optional) |
 | `GORCHAIN_VALIDATOR_ADDRESS` | H160 (Ethereum-format) address for Gorchain validator ISM (optional) |
 | `SOLANA_VALIDATOR_ADDRESS` | H160 (Ethereum-format) address for Solana validator ISM (optional) |
@@ -99,7 +99,7 @@ The pod runs `deploy.sh` which:
 1. Checks idempotency — skips if `program-ids.json` file already exists at `/state/` (override with `FORCE_REDEPLOY=true`)
 2. Deploys core contracts on both chains via `hyperlane-sealevel-client`
 3. Verifies deployed program hashes against local `.so` files using `solana-verify`
-4. Transfers program upgrade authority to `HARDWARE_WALLET_PUBKEY`
+4. Transfers program upgrade authority to `BRIDGE_OWNER_PUBKEY`
 5. Transfers IGP and overhead IGP account ownership to `IGP_ORACLE_PUBKEY`
 6. Configures 1-of-1 multisig ISM with validator addresses
 7. Builds `agent-config.json` from deployed program IDs

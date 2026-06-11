@@ -4,7 +4,8 @@ name: USDC-solana-gorchain
 origin:
   chain: solana
   type: collateral
-  token: "REPLACE_WITH_STAGING_USDC_MINT_ADDRESS"
+  # Circle's devnet USDC mint — real Circle metadata, faucetable.
+  token: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
   name: "USD Coin"
   symbol: "USDC"
   decimals: 6
@@ -14,4 +15,7 @@ remote:
   name: "USD Coin"
   symbol: "USDC"
   decimals: 6
-metadataUri: ""
+# Offchain metadata for the gorchain synthetic (Token-2022 metadata URI). The
+# deployer validates it: name/symbol must match remote.name/remote.symbol and
+# the image URL must serve. Revision-pinned gist raw URL.
+metadataUri: "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/be4bb82fd100f6c141a001ec7bb2047ce263aa76/staging-token-metadata.json"

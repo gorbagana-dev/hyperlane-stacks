@@ -3,18 +3,38 @@
 # Input var: validators_file (path). Defaults to the env's operator file.
 - name: Resolve the validators file (explicit override, else the env's operator file)
   # The file lookup below runs on the CONTROLLER, so the default anchors on the
-  # controller's repo checkout (playbook_dir -> repo root), NOT deployment_root —
-  # deployment_root derives from ansible_env.HOME and points at the ON-HOST clone
+  # controller's repo checkout (inventory_dir -> repo root — stable however deep
+  # the calling playbook lives), NOT deployment_root — deployment_root derives
+  # from ansible_env.HOME and points at the ON-HOST clone
   # (e.g. /home/<deploy_user>/...), which a controller-side lookup can't read.
   ansible.builtin.set_fact:
     _validators_file: >-
       {{ validators_file if validators_file is defined
-         else (playbook_dir | dirname | dirname) ~ '/' ~ deployment_subdir
+         else (inventory_dir | dirname | dirname | dirname) ~ '/' ~ deployment_subdir
               ~ '/bridges/' ~ bridge_name ~ '/operator/validators.yaml' }}
 
 - name: Read validators.yaml
   ansible.builtin.set_fact:
     validators: "{{ (lookup('ansible.builtin.file', _validators_file) | from_yaml)['validators'] }}"
+
+# validators.yaml is pure topology; each validator's Privy wallet id comes from the
+# operator's deployment-config (privy_validator_wallet_ids, keyed by label). A file
+# that still carries privy_wallet_id inline (test fixtures) keeps it unless the map
+# overrides. Emptiness is asserted at the consumption point (deploy/restart).
+# Hostnames may carry the REPLACE_WITH_LOCAL_BASE_DOMAIN token (the local multihost
+# file, whose zone is operator-supplied) — rendered from base_domain here; a no-op
+# for the literal prod/staging/local-single hostnames.
+- name: Merge the operator wallet ids + base domain into the validator set
+  ansible.builtin.set_fact:
+    validators: >-
+      {%- set out = [] -%}
+      {%- for v in validators -%}
+        {%- set wid = (privy_validator_wallet_ids | default({})).get(v.label)
+                      | default(v.privy_wallet_id | default(''), true) -%}
+        {%- set hn = v.hostname | replace('REPLACE_WITH_LOCAL_BASE_DOMAIN', base_domain) -%}
+        {%- if out.append(v | combine({'privy_wallet_id': wid, 'hostname': hn})) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ out }}
 
 - name: Derive MINIO_USERS
   ansible.builtin.set_fact:
@@ -35,7 +55,7 @@
     validator_dns_records: "{{ validator_dns_records + [_record] }}"
   vars:
     _record:
-      name: "{{ item.hostname | regex_replace('\\.' ~ dns_zone ~ '$', '') }}"
+      name: "{{ item.hostname | regex_replace('\\.' ~ base_domain ~ '$', '') }}"
       host: "{{ item.host }}"
   loop: "{{ validators }}"
   loop_control:

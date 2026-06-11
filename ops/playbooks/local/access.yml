@@ -23,7 +23,7 @@
       delegate_facts: true
 
     - name: Load validators (for their hostnames)
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_validators.yml
 
     - name: Resolve the bridge hostnames, host IP, and published CA path
       ansible.builtin.set_fact:
@@ -31,7 +31,7 @@
           {{ (dns_record_map.keys() | list
               + (validators | map(attribute='chain')
                  | map('regex_replace', '^', 'validator-') | list))
-             | map('regex_replace', '$', '.' ~ dns_zone) | list }}
+             | map('regex_replace', '$', '.' ~ base_domain) | list }}
         _host_ip: "{{ hostvars[_host].public_ip }}"
         _published_ca: "{{ hostvars[_host].credentials_dir }}/local-rootCA.pem"
 

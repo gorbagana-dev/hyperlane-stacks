@@ -10,11 +10,6 @@ network:
 volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
-configmaps:
-  deployer-scripts-config: ./configmaps/deployer-scripts-config
-  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
-  deployer-multisig-config: ./configmaps/deployer-multisig-config
-  deployer-registry-config: ./configmaps/deployer-registry-config
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486093"
@@ -24,16 +19,21 @@ config:
   GORCHAIN_IS_TESTNET: "false"
   SOLANA_IS_TESTNET: "false"
   FORCE_REDEPLOY: "false"
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
+  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
+  deployer-multisig-config: ./configmaps/deployer-multisig-config
+  deployer-registry-config: ./configmaps/deployer-registry-config
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export these env vars in the shell that runs `laconic-so`:
-#   HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY,
+#   BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY,
 #   GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
 secrets:
   hyperlane-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR:           { file: ~/.credentials/hyperlane/deployer-keypair.json }
-      HARDWARE_WALLET_PUBKEY:     { env: HARDWARE_WALLET_PUBKEY }
+      BRIDGE_OWNER_PUBKEY:        { env: BRIDGE_OWNER_PUBKEY }
       IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
       GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
       SOLANA_VALIDATOR_ADDRESS:   { env: SOLANA_VALIDATOR_ADDRESS }
@@ -42,7 +42,7 @@ secrets:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
 # Optional: override container images (service name → full image ref)
 # image-overrides:
@@ -55,3 +55,8 @@ image-pull-secret:
 #   solana-rpc:
 #     ip: 10.0.0.2
 #     port: 18899
+resources:
+  containers:
+    reservations:
+      cpus: "0.5"
+      memory: 1024M

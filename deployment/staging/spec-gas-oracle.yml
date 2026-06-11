@@ -1,0 +1,77 @@
+# Hyperlane Gas Oracle - deployment spec
+# Periodically updates IGP gas oracle configurations on both chains.
+# Fetches token prices, computes exchange rates via @hyperlane-xyz/sdk,
+# and submits SetGasOracleConfigs transactions signed by Privy server wallet.
+stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+config:
+  # --- Chain RPCs ---
+  GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
+
+  # --- IGP program addresses (base58, from deployer output) ---
+  GORCHAIN_IGP_PROGRAM_ID: "__GORCHAIN_IGP_PROGRAM_ID__"
+  SOLANA_IGP_PROGRAM_ID: "__SOLANA_IGP_PROGRAM_ID__"
+
+  # --- Hyperlane domain IDs (must match deployer config) ---
+  GORCHAIN_DOMAIN_ID: "1198486095"
+  SOLANA_DOMAIN_ID: "1399811151"
+
+  # --- Update frequency ---
+  # How often the oracle re-fetches prices and submits new configs (ms).
+  # Default: 900000 (15 minutes).
+  GAS_ORACLE_INTERVAL_MS: "900000"
+
+  # --- Privy API URL ---
+  # Override for testing (e.g. mock server). Staging uses the default.
+  # PRIVY_API_URL: "https://api.privy.io/v1"
+
+  # --- Gas oracle parameters ---
+  # Gas price in decimal SOL per gas unit. This is the raw gas price before
+  # the min USD cost floor is applied. The floor modifier may increase it.
+  GAS_PRICE: "0.000000001"
+  # Destination gas overhead in compute units (matches on-chain overhead IGP setting).
+  GAS_OVERHEAD: "200000"
+  # Safety margin added to the token exchange rate (percentage).
+  # e.g. 10 means the quoted rate is 10% above the market rate to absorb volatility.
+  EXCHANGE_RATE_MARGIN_PCT: "10"
+  # Minimum USD cost floor per cross-chain message. When the natural IGP quote
+  # is below this amount, gasPrice is automatically increased to hit the floor.
+  # Matches Hyperlane production behavior ($0.50 for SVM chains).
+  # Set to "0" to disable the floor.
+  MIN_USD_COST: "0.50"
+  # sGOR → gGOR conversion factor. Gorchain's native token (gGOR) is priced as
+  # sGOR_price × this multiplier. 1 gGOR = 100 sGOR.
+  GORCHAIN_NATIVE_TOKEN_MULTIPLIER: "100"
+
+  # --- Price feed ---
+  # CoinGecko-compatible API base URL. If empty, the oracle skips updates
+  # (useful when price feed is not yet available).
+  PRICE_FEED_URL: "https://api.coingecko.com/api/v3"
+  # CoinGecko token IDs for price lookups.
+  # GORCHAIN_TOKEN_ID: "gorbagana"   # sGOR token (default)
+  # SOLANA_TOKEN_ID: "solana"         # SOL token (default)
+# Before deploying, export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET, PRIVY_ORACLE_WALLET_ID
+secrets:
+  hyperlane-gas-oracle-secrets:
+    keys:
+      PRIVY_APP_ID:            { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:        { env: PRIVY_APP_SECRET }
+      PRIVY_ORACLE_WALLET_ID:  { env: PRIVY_ORACLE_WALLET_ID }
+      SOLANA_RPC_URL:          { env: SOLANA_RPC_URL }
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   gas-oracle: ghcr.io/gorbagana-dev/hyperlane-gas-oracle:v1.0.0
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 256M

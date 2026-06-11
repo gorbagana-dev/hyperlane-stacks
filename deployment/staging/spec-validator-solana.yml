@@ -1,0 +1,65 @@
+# Hyperlane Validator (Solana) - deployment spec
+# Runs a validator for Solana using the hyperlane-validator stack.
+stack: stack_orchestrator/data/stacks/hyperlane-validator
+deploy-to: k8s-kind
+# Per-chain namespace: both validators deploy from the hyperlane-validator stack
+# and may share a host/cluster (staging does) — without an override the second
+# deployment would collide with the first's namespace.
+namespace: laconic-hyperlane-validator-solana
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: validator-solana.staging.gorbagana.wtf
+      routes:
+        - path: /
+          proxy-to: validator:9090
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   validator: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+#   kms-proxy: ghcr.io/gorbagana-dev/hyperlane-kms-proxy:v1.0.0
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+volumes:
+  validator-data: /srv/kind/hyperlane/validator-solana/data
+config:
+  ORIGIN_CHAIN_NAME: solana
+  CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
+  PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
+  # MinIO via Caddy — public DNS resolves to the Caddy ingress.
+  AWS_ENDPOINT_URL_S3: "https://s3.staging.gorbagana.wtf"
+configmaps:
+  agent-config: ./configmaps/agent-config
+# Before deploying, place the keyfile on the host:
+#   ~/.credentials/hyperlane/validator-solana.key (hex-encoded validator signing key)
+# and export these env vars in the shell that runs `laconic-so`:
+#   PRIVY_APP_ID, PRIVY_APP_SECRET
+#   SOLANA_PRIMARY_KEY_ID, SOLANA_PRIMARY_SECRET    — per-validator MinIO IAM creds
+secrets:
+  hyperlane-validator-solana-secrets:
+    keys:
+      HYP_DEFAULTSIGNER_KEY:  { file: ~/.credentials/hyperlane/validator-solana.key }
+      PRIVY_APP_ID:           { env: PRIVY_APP_ID }
+      PRIVY_APP_SECRET:       { env: PRIVY_APP_SECRET }
+      AWS_ACCESS_KEY_ID:      { env: SOLANA_PRIMARY_KEY_ID }
+      AWS_SECRET_ACCESS_KEY:  { env: SOLANA_PRIMARY_SECRET }
+      # Agents only read HYP_-namespace env (chains.solana.customRpcUrls);
+      # this overrides the placeholder rpcUrls in the published agent-config.json.
+      HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+resources:
+  containers:
+    reservations:
+      cpus: "0.25"
+      memory: 512M
+  volumes:
+    validator-data:
+      reservations:
+        storage: 5Gi

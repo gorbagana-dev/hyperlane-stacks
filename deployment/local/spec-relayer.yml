@@ -8,6 +8,21 @@ stack: stack_orchestrator/data/stacks/hyperlane-relayer
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+  http-proxy:
+    - host-name: relayer.__BASE_DOMAIN__
+      routes:
+        - path: /
+          proxy-to: relayer:9091
+# Single-host only: relayer reads validator checkpoints from the MinIO pod cross-NS
+# in-cluster. Rendered to an external-services: block on single-host, removed on multi-host.
+# __SINGLE_HOST_EXTERNAL_SERVICES__
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9091"
+volumes:
+  relayer-data: /srv/kind/hyperlane/relayer/data
 config:
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
@@ -20,20 +35,6 @@ config:
   # Rendered per topology: single -> http://hyperlane-minio:9000 (in-cluster, plain
   # HTTP); multi -> https://s3.<zone> (Caddy + LE). See ops group_vars spec_token_renders.
   AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"
-annotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "9091"
-volumes:
-  relayer-data: /srv/kind/hyperlane/relayer/data
-resources:
-  containers:
-    reservations:
-      cpus: "0.1"
-      memory: 128M
-  volumes:
-    relayer-data:
-      reservations:
-        storage: 5Gi
 configmaps:
   igp-fee-claim-scripts-config: ./configmaps/igp-fee-claim-scripts-config
   agent-config: ./configmaps/agent-config
@@ -53,15 +54,14 @@ secrets:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
-network:
-  acme-email: admin@gorbagana.wtf
-  http-proxy:
-    - host-name: relayer.__DNS_ZONE__
-      routes:
-        - path: /
-          proxy-to: relayer:9091
-# Single-host only: relayer reads validator checkpoints from the MinIO pod cross-NS
-# in-cluster. Rendered to an external-services: block on single-host, removed on multi-host.
-# __SINGLE_HOST_EXTERNAL_SERVICES__
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
+  volumes:
+    relayer-data:
+      reservations:
+        storage: 5Gi

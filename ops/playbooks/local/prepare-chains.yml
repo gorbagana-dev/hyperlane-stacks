@@ -4,7 +4,7 @@
 # the chain_hosts group. Run after the host is bootstrapped (laconic-so/docker) and
 # before deploy-all.yml.
 #
-#   ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
+#   ansible-playbook -i inventories/local/hosts.yml playbooks/local/prepare-chains.yml
 #
 # Single-host: chain_hosts = local-1, which runs both chains. Multi-host LOCAL:
 # the chains run out-of-band on a box NOT in this inventory (no chain_hosts), so
@@ -30,8 +30,8 @@
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     solana_version: "v3.1.9"
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_deployment_config.yml
 
     - name: IGP_ORACLE_PUBKEY must be set (the Privy oracle wallet)
       ansible.builtin.assert:
@@ -47,7 +47,7 @@
       ansible.builtin.assert:
         that:
           - (ghcr_pat | default('') | length) > 0
-        fail_msg: "Set ghcr_pat in secrets.yml for the private gorchain images."
+        fail_msg: "Set ghcr_pat in deployment-config.yml for the private gorchain images."
 
   tasks:
     # Official Anza installer (curl|sh) — ships solana, solana-keygen,
@@ -69,7 +69,7 @@
 
     - name: Ship the setup scripts to the chain host
       ansible.builtin.copy:
-        src: "../scripts/{{ item }}"
+        src: "../../scripts/{{ item }}"
         dest: "{{ scripts_dst }}/{{ item }}"
         mode: "0755"
       loop:
@@ -123,12 +123,6 @@
         dest: "{{ credentials_dir }}/warp-token-mint"
         mode: "0644"
 
-    - name: Capture HARDWARE_WALLET_PUBKEY from the keygen output
-      ansible.builtin.set_fact:
-        hardware_wallet_pubkey: >-
-          {{ (keys_out.stdout_lines | select('match', '^HARDWARE_WALLET_PUBKEY=')
-              | first).split('=')[1] }}
-
     - name: Show the generated key addresses + funding results
       ansible.builtin.debug:
         var: keys_out.stdout_lines
@@ -137,6 +131,5 @@
       ansible.builtin.debug:
         msg:
           - "Chains, accounts, and SPL token are ready on {{ inventory_hostname }}."
-          - "group_vars/all.yml -> HARDWARE_WALLET_PUBKEY: {{ hardware_wallet_pubkey }}"
           - "mint {{ warp_token_mint }} -> {{ credentials_dir }}/warp-token-mint (auto-substituted into the route)."
-          - "(IGP_ORACLE_PUBKEY + validator addresses come from Privy, set earlier.)"
+          - "(BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY + validator addresses come from Privy, set earlier.)"

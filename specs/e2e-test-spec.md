@@ -162,7 +162,7 @@ All test keypairs are generated during test setup and stored in `/tmp/hyperlane-
 | Wallet | Format | Used By | Funding Required |
 |--------|--------|---------|-----------------|
 | Deployer | Solana keypair JSON (byte array) | `entrypoint.sh` via `DEPLOYER_KEYPAIR` | ~10 SOL on each chain |
-| Hardware wallet (test) | Just a pubkey (Solana base58) | Receives program ownership | ~0.1 SOL on each chain (for rent) |
+| Bridge owner (test) | Just a pubkey (Solana base58) | Receives program ownership | ~0.1 SOL on each chain (for rent) |
 | IGP oracle (test) | Solana keypair JSON | Receives IGP account ownership | ~1 SOL on each chain |
 | Gorchain validator | secp256k1 private key | Mock KMS proxy signs with this | No SOL needed (signs off-chain) |
 | Solana validator | secp256k1 private key | Mock KMS proxy signs with this | No SOL needed |
@@ -173,13 +173,13 @@ All test keypairs are generated during test setup and stored in `/tmp/hyperlane-
 ```bash
 # Solana keypairs (Ed25519) — JSON byte array format
 solana-keygen new --no-bip39-passphrase -o /tmp/hyperlane-e2e-keys/deployer.json
-solana-keygen new --no-bip39-passphrase -o /tmp/hyperlane-e2e-keys/hardware-wallet.json
+solana-keygen new --no-bip39-passphrase -o /tmp/hyperlane-e2e-keys/owner.json
 solana-keygen new --no-bip39-passphrase -o /tmp/hyperlane-e2e-keys/igp-oracle.json
 solana-keygen new --no-bip39-passphrase -o /tmp/hyperlane-e2e-keys/relayer.json
 
 # Extract pubkeys
 DEPLOYER_PUBKEY=$(solana-keygen pubkey /tmp/hyperlane-e2e-keys/deployer.json)
-HARDWARE_WALLET_PUBKEY=$(solana-keygen pubkey /tmp/hyperlane-e2e-keys/hardware-wallet.json)
+BRIDGE_OWNER_PUBKEY=$(solana-keygen pubkey /tmp/hyperlane-e2e-keys/owner.json)
 IGP_ORACLE_PUBKEY=$(solana-keygen pubkey /tmp/hyperlane-e2e-keys/igp-oracle.json)
 
 # secp256k1 keys (for mock KMS proxy / validator signing)
@@ -210,12 +210,12 @@ Both chains are local test networks with faucets:
 ```bash
 # Fund on Solana test validator (host process, port 18899)
 solana airdrop 10 $DEPLOYER_PUBKEY --url http://localhost:18899
-solana airdrop 1 $HARDWARE_WALLET_PUBKEY --url http://localhost:18899
+solana airdrop 1 $BRIDGE_OWNER_PUBKEY --url http://localhost:18899
 solana airdrop 1 $IGP_ORACLE_PUBKEY --url http://localhost:18899
 
 # Fund on Gorchain (host process, port 8899)
 solana airdrop 10 $DEPLOYER_PUBKEY --url http://localhost:8899
-solana airdrop 1 $HARDWARE_WALLET_PUBKEY --url http://localhost:8899
+solana airdrop 1 $BRIDGE_OWNER_PUBKEY --url http://localhost:8899
 solana airdrop 1 $IGP_ORACLE_PUBKEY --url http://localhost:8899
 ```
 
@@ -229,7 +229,7 @@ After keypair generation, create k8s Secret manifests:
 # deployer-secrets.yaml
 kubectl create secret generic hyperlane-deployer-secrets \
   --from-file=DEPLOYER_KEYPAIR=/tmp/hyperlane-e2e-keys/deployer.json \
-  --from-literal=HARDWARE_WALLET_PUBKEY=$HARDWARE_WALLET_PUBKEY \
+  --from-literal=BRIDGE_OWNER_PUBKEY=$BRIDGE_OWNER_PUBKEY \
   --from-literal=IGP_ORACLE_PUBKEY=$IGP_ORACLE_PUBKEY \
   --from-literal=GORCHAIN_VALIDATOR_ADDRESS=$GORCHAIN_VALIDATOR_H160 \
   --from-literal=SOLANA_VALIDATOR_ADDRESS=$SOLANA_VALIDATOR_H160 \
@@ -766,7 +766,7 @@ Tests are Python/pytest modules (not shell scripts). See `tests/e2e/` for implem
 
 **test_authorities (future):**
 - For each program on both chains:
-  - `solana program show <program-id>` → "Authority" field = `HARDWARE_WALLET_PUBKEY`
+  - `solana program show <program-id>` → "Authority" field = `BRIDGE_OWNER_PUBKEY`
 - IGP account ownership = `IGP_ORACLE_PUBKEY`
 
 **test_01_deployer.py::test_multisig_configmap (ISM config validation):**
@@ -1427,7 +1427,7 @@ config:
 secrets:
   hyperlane-deployer-secrets:
     - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - IGP_ORACLE_PUBKEY
     - GORCHAIN_VALIDATOR_ADDRESS
     - SOLANA_VALIDATOR_ADDRESS
@@ -1458,7 +1458,7 @@ configmaps:
 secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - SOLANA_RPC_URL
 ```
 

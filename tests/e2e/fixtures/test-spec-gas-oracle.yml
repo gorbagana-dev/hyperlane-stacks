@@ -1,11 +1,19 @@
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind
-image-overrides:
-  gas-oracle: REPLACE_GAS_ORACLE_IMAGE
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
 network:
   acme-email: e2e@example.test
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899
+  privy-mock:
+    ip: REPLACE_HOST_IP
+    port: 19876
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
@@ -32,13 +40,5 @@ image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT
-external-services:
-  gorchain-rpc:
-    ip: REPLACE_HOST_IP
-    port: 8899
-  solana-rpc:
-    ip: REPLACE_HOST_IP
-    port: 18899
-  privy-mock:
-    ip: REPLACE_HOST_IP
-    port: 19876
+image-overrides:
+  gas-oracle: REPLACE_GAS_ORACLE_IMAGE

@@ -2,7 +2,7 @@ name: ops-lint
 
 on:
   pull_request:
-    paths: ["ops/**", ".github/workflows/ops-lint.yml"]
+    paths: ["ops/**", "deployment/**", ".github/workflows/ops-lint.yml"]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,9 @@ jobs:
         run: pip install "ansible>=9" ansible-lint yamllint
       - name: Install collections
         run: ansible-galaxy collection install -r requirements.yml -p ./collections
+      - name: spec shape parity (prod vs staging)
+        working-directory: .
+        run: python3 ops/scripts/check-spec-parity.py
       - name: yamllint
         run: yamllint .
       - name: ansible-lint
@@ -30,7 +33,16 @@ jobs:
       - name: syntax-check playbooks + tests
         run: |
           shopt -s nullglob
-          for p in playbooks/*.yml tests/test_*.yml; do
+          for p in playbooks/*.yml playbooks/*/*.yml tests/test_*.yml; do
             echo "== $p =="
             ansible-playbook --syntax-check "$p"
+          done
+      - name: layer-0 tests (all inventories)
+        run: |
+          for env in local staging prod; do
+            cp "inventories/$env/deployment-config.example.yml" "inventories/$env/deployment-config.yml"
+            for t in tests/test_*.yml; do
+              echo "== $env :: $t =="
+              ansible-playbook -i "inventories/$env/hosts.yml" "$t"
+            done
           done

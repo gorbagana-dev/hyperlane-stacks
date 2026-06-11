@@ -1,0 +1,180 @@
+---
+# Staging chain play — stand up the PERSISTENT single-node gorchain on the
+# chain host, front its RPC with Caddy + Let's Encrypt at rpc.<base_domain>, and
+# generate the hot signing keys. Deliberately NOT part of setup-all/deploy-all
+# (same isolation as the local prepare-chains.yml): chains are pre-deploy.
+#
+#   ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml
+#
+# Run AFTER setup-all.yml: bootstrap installs docker/laconic-so, and
+# configure-dns must have created rpc.<base_domain> before Caddy can pass the
+# ACME challenge. Re-runs preserve the chain (GORCHAIN_PRESERVE) — state under
+# ~/chains/gorchain survives until an operator destroys it deliberately.
+#
+# Solana is Helius devnet — nothing to stand up. Generated keys are copied to
+# the hosts whose specs read them, and the on-chain signers are funded to their
+# target balances (gorchain: own faucet; devnet: rate-limited best effort that
+# fails the play listing any shortfall — top up and re-run, funding is
+# balance-driven and idempotent).
+- name: Prepare the staging gorchain chain + RPC TLS front + hot keys
+  hosts: chain_hosts
+  gather_facts: true
+  vars:
+    chains_dir: "{{ ansible_env.HOME }}/chains"
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    caddy_dir: "{{ ansible_env.HOME }}/gorchain-rpc-caddy"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_deployment_config.yml
+
+    - name: GHCR PAT must be set (private gorchain images)
+      ansible.builtin.assert:
+        that: "(ghcr_pat | default('') | length) > 0"
+        fail_msg: "Set ghcr_pat in deployment-config.yml for the private gorchain images."
+  tasks:
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ship the setup scripts
+      ansible.builtin.copy:
+        src: "../../scripts/{{ item }}"
+        dest: "{{ scripts_dst }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - setup-chains.sh
+        - gen-local-keys.sh
+        - fund-staging-signers.sh
+
+    - name: Stand up gorchain (persistent — preserved across re-runs)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/setup-chains.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CHAINS_DIR: "{{ chains_dir }}"
+        GHCR_USER: "{{ ghcr_user | default('gorbagana-dev') }}"
+        GHCR_PAT: "{{ ghcr_pat }}"
+        SKIP_SOLANA: "1"
+        GORCHAIN_PRESERVE: "1"
+      register: chain_out
+      changed_when: true
+
+    - name: Generate the hot signing keys (existing files are never overwritten)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/gen-local-keys.sh --yes"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+      register: keys_out
+      changed_when: true
+
+    # Carry each keyfile to the host whose spec reads it (the `file:` refs in
+    # deployment/staging/spec-*.yml): deployer/relayer keys to the bridge-ops
+    # host, validator keys to their validators.yaml hosts.
+    - name: Derive the validator hosts (validators.yaml)
+      ansible.builtin.include_tasks: ../../roles/common/tasks/load_validators.yml
+
+    - name: Map each keyfile to its consumer host
+      ansible.builtin.set_fact:
+        _key_dist: >-
+          {%- set pairs = [] -%}
+          {%- for grp, files in _group_keyfiles.items() -%}
+            {%- for host in groups[grp] | default([]) | unique -%}
+              {%- for f in files -%}
+                {%- if pairs.append({'host': host, 'file': f}) -%}{%- endif -%}
+              {%- endfor -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {%- for v in validators -%}
+            {%- if pairs.append({'host': v.host, 'file': 'validator-' ~ v.chain ~ '.key'}) -%}{%- endif -%}
+          {%- endfor -%}
+          {{ pairs | rejectattr('host', 'eq', inventory_hostname) | list }}
+      vars:
+        _group_keyfiles:
+          deployer_hosts: [deployer-keypair.json]
+          relayer_hosts: [relayer-gorchain.key, relayer-solana.key, relayer-fee-claim.json]
+
+    - name: Gather the consumer hosts' facts (credentials_dir derives from their HOME)
+      ansible.builtin.setup:
+      delegate_to: "{{ item }}"
+      delegate_facts: true
+      loop: "{{ _key_dist | map(attribute='host') | unique | list }}"
+
+    - name: Ensure the credentials dir on each consumer host
+      ansible.builtin.file:
+        path: "{{ hostvars[item].credentials_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: "{{ item }}"
+      loop: "{{ _key_dist | map(attribute='host') | unique | list }}"
+
+    - name: Read the generated keyfiles
+      ansible.builtin.slurp:
+        src: "{{ credentials_dir }}/{{ item.file }}"
+      register: _key_blobs
+      loop: "{{ _key_dist }}"
+      no_log: true
+
+    - name: Carry each keyfile to its consumer host
+      ansible.builtin.copy:
+        content: "{{ item.content | b64decode }}"
+        dest: "{{ hostvars[item.item.host].credentials_dir }}/{{ item.item.file }}"
+        mode: "0600"
+      delegate_to: "{{ item.item.host }}"
+      loop: "{{ _key_blobs.results }}"
+      no_log: true
+
+    - name: Caddy config dir
+      ansible.builtin.file:
+        path: "{{ caddy_dir }}"
+        state: directory
+        mode: "0755"
+
+    # WebSocket exposure lands with the fast-bridging work (hyp-d34); HTTP only here.
+    - name: Render the Caddyfile (TLS front for the gorchain RPC)
+      ansible.builtin.copy:
+        dest: "{{ caddy_dir }}/Caddyfile"
+        mode: "0644"
+        content: |
+          rpc.{{ base_domain }} {
+            reverse_proxy 127.0.0.1:8899
+          }
+      register: _caddyfile
+
+    - name: Run the Caddy RPC front (host network; certs persist in the volume)
+      community.docker.docker_container:
+        name: gorchain-rpc-caddy
+        image: caddy:2
+        restart_policy: unless-stopped
+        network_mode: host
+        recreate: "{{ _caddyfile is changed }}"
+        volumes:
+          - "{{ caddy_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro"
+          - gorchain-rpc-caddy-data:/data
+
+    - name: Fund the on-chain signers to their target balances
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/fund-staging-signers.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+        ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+      register: fund_out
+      changed_when: true
+
+    - name: Show generated key addresses + funding results
+      ansible.builtin.debug:
+        msg: "{{ keys_out.stdout_lines + fund_out.stdout_lines }}"

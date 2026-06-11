@@ -1,0 +1,62 @@
+# Hyperlane SVM Core Deployer - deployment spec
+# Deploys Hyperlane core contracts on both chains, writes artifacts to ConfigMaps.
+# Run ONCE before deploying agent stacks.
+stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+kind-mount-root: /srv/kind/hyperlane
+network:
+  acme-email: admin@gorbagana.wtf
+volumes:
+  bridge-state: /srv/kind/hyperlane/bridge/generated
+  bridge-logs: /srv/kind/hyperlane/bridge/logs
+config:
+  GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
+  GORCHAIN_DOMAIN_ID: "1198486095"
+  SOLANA_DOMAIN_ID: "1399811151"
+  GORCHAIN_CHAIN_ID: "1198486095"
+  SOLANA_CHAIN_ID: "1399811151"
+  GORCHAIN_IS_TESTNET: "true"
+  SOLANA_IS_TESTNET: "true"
+  FORCE_REDEPLOY: "false"
+configmaps:
+  deployer-scripts-config: ./configmaps/deployer-scripts-config
+  deployer-gas-oracle-config: ./configmaps/deployer-gas-oracle-config
+  deployer-multisig-config: ./configmaps/deployer-multisig-config
+  deployer-registry-config: ./configmaps/deployer-registry-config
+# Before deploying, place the keyfile on the host:
+#   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
+# and export these env vars in the shell that runs `laconic-so`:
+#   BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY,
+#   GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
+secrets:
+  hyperlane-deployer-secrets:
+    keys:
+      DEPLOYER_KEYPAIR:           { file: ~/.credentials/hyperlane/deployer-keypair.json }
+      BRIDGE_OWNER_PUBKEY:        { env: BRIDGE_OWNER_PUBKEY }
+      IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
+      GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
+      SOLANA_VALIDATOR_ADDRESS:   { env: SOLANA_VALIDATOR_ADDRESS }
+      SOLANA_RPC_URL:             { env: SOLANA_RPC_URL }
+# Private registry auth — set GHCR_PAT env var before deploy start:
+#   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
+image-pull-secret:
+  server: ghcr.io
+  username: gorbagana-dev
+  token-env: GHCR_PAT
+# Optional: override container images (service name → full image ref)
+# image-overrides:
+#   deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v1.0.0
+# Optional: external services reachable by IP (creates headless Service + Endpoints)
+# external-services:
+#   gorchain-rpc:
+#     ip: 10.0.0.1
+#     port: 8899
+#   solana-rpc:
+#     ip: 10.0.0.2
+#     port: 18899
+resources:
+  containers:
+    reservations:
+      cpus: "0.25"
+      memory: 512M

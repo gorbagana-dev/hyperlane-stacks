@@ -1,0 +1,17 @@
+---
+# Staging validator set — 1-of-1 per chain, prod-shaped. Labels are load-bearing:
+# the committed validator specs hardcode the derived MinIO IAM env names
+# (GORCHAIN_PRIMARY_KEY_ID, SOLANA_PRIMARY_KEY_ID, ...). Pure topology: each
+# validator's Privy wallet id comes from the operator's deployment-config
+# (privy_validator_wallet_ids, keyed by label).
+validators:
+  # Both on the validators host — staging-gorchain's 80/443 belong to the chain's
+  # RPC Caddy front, so no kind ingress (validator hostname) can live there.
+  - label: gorchain-primary
+    chain: gorchain
+    host: staging-hyperlane-validators
+    hostname: validator-gorchain.staging.gorbagana.wtf
+  - label: solana-primary
+    chain: solana
+    host: staging-hyperlane-validators
+    hostname: validator-solana.staging.gorbagana.wtf

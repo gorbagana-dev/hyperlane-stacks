@@ -12,11 +12,11 @@
     mkcert_hostnames: "{{ _base_hosts + _validator_hosts }}"
   vars:
     # regex_replace on '$' appends, on '^' prepends — no backreferences, no escaping.
-    _base_hosts: "{{ dns_record_map.keys() | map('regex_replace', '$', '.' ~ dns_zone) | list }}"
+    _base_hosts: "{{ dns_record_map.keys() | map('regex_replace', '$', '.' ~ base_domain) | list }}"
     _validator_hosts: >-
       {{ validators | map(attribute='chain')
          | map('regex_replace', '^', 'validator-')
-         | map('regex_replace', '$', '.' ~ dns_zone) | list }}
+         | map('regex_replace', '$', '.' ~ base_domain) | list }}
 
 - name: Install mkcert binary
   become: true
@@ -42,7 +42,7 @@
 
 - name: Generate the multi-SAN leaf cert (lazily creates the local CA in CAROOT)
   # Each hostname is its own argv element. Guarded by creates: delete bridge.crt to
-  # force re-issue if dns_zone/validators change.
+  # force re-issue if base_domain/validators change.
   ansible.builtin.command:
     argv: "{{ _mkcert_base_argv + mkcert_hostnames }}"
   vars:

@@ -2,16 +2,15 @@
 # Multi-host (Layer 2) validator set — both hyperlane validators on the local-agents
 # host (off the chain test validators, so validator -> chain RPC is cross-host). Used
 # via -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
-# Set privy_wallet_id from the Privy project, and replace REPLACE_WITH_LOCAL_DNS_ZONE
-# in the hostnames to match group_vars dns_zone.
+# Pure topology: wallet ids come from deployment-config (privy_validator_wallet_ids),
+# and load_validators renders REPLACE_WITH_LOCAL_BASE_DOMAIN in the hostnames from
+# base_domain (deployment-config local_base_domain) — no edit needed.
 validators:
   - label: gorchain-primary
     chain: gorchain
     host: local-agents
-    privy_wallet_id: REPLACE_WITH_GORCHAIN_PRIVY_WALLET_ID
-    hostname: validator-gorchain.REPLACE_WITH_LOCAL_DNS_ZONE
+    hostname: validator-gorchain.REPLACE_WITH_LOCAL_BASE_DOMAIN
   - label: solana-primary
     chain: solana
     host: local-agents
-    privy_wallet_id: REPLACE_WITH_SOLANA_PRIVY_WALLET_ID
-    hostname: validator-solana.REPLACE_WITH_LOCAL_DNS_ZONE
+    hostname: validator-solana.REPLACE_WITH_LOCAL_BASE_DOMAIN

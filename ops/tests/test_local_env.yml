@@ -12,10 +12,11 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
 
+    # No zone/RPC stand-ins: single-host runs entirely off the committed defaults
+    # (base_domain -> hyperlane.test, RPC urls -> inert placeholders).
     - name: Stand in operator-supplied values + single-host topology
       ansible.builtin.set_fact:
-        gorchain_rpc_url: "https://gorchain-rpc.example"
-        solana_rpc_url: "https://solana-rpc.example"
+        wallet_connect_id: "wc-test"
         topology: "single"
         validators:
           - label: gorchain-primary
@@ -33,12 +34,23 @@
           - "spec_token_renders['__PROM_SCRAPE_SCHEME__'] == 'http'"
           - "'validator-gorchain:9090' in spec_token_renders['__PROM_VALIDATOR_TARGETS__']"
           - "spec_token_renders['__PROM_RELAYER_TARGETS__'] == 'primary=relayer:9091'"
+          # warp-ui WalletConnect id renders from the deployment config
+          - "spec_token_renders['REPLACE_WITH_WALLETCONNECT_PROJECT_ID'] == 'wc-test'"
+          # zone + RPC urls default sanely with no deployment-config overrides
+          - "base_domain == 'hyperlane.test'"
+          - "gorchain_rpc_url == 'REPLACE_WITH_GORCHAIN_RPC_URL'"
+          # identity values come from the deployment config too
+          - "'bridge_owner_pubkey' in required_operator_secrets"
+          - "'privy_validator_wallet_ids' in required_operator_secrets"
           # single-host needs no Cloudflare token
           - "'cloudflare_api_token' not in required_operator_secrets"
           - "'privy_app_id' in required_operator_secrets"
           - "'ghcr_pat' in required_operator_secrets"
-          # chain RPCs are rendered config: literals, never secret-env names
-          - "'SOLANA_RPC_URL' not in (stack_env_vars.values() | map('list') | flatten | unique)"
+          # SOLANA_RPC_URL is exported (CUSTOMRPCURLS override keys) and resolves
+          # to the own chain locally — never a Helius URL
+          - "'SOLANA_RPC_URL' in stack_env_vars['hyperlane-relayer']"
+          - "'SOLANA_RPC_URL' in stack_env_vars['hyperlane-validator']"
+          - "SOLANA_RPC_URL == 'http://solana-rpc:18899'"
 
     - name: Single-host chain RPCs are in-cluster service names
       ansible.builtin.assert:
@@ -65,11 +77,14 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../inventories/local/group_vars/all.yml"
 
+    # Multi-host overrides arrive as deployment-config keys — assert the whole
+    # reference chain (local_* -> group_vars vars -> derived values).
     - name: Stand in operator-supplied values + multi-host topology
       ansible.builtin.set_fact:
-        dns_zone: "staging.gorbagana.wtf"
-        gorchain_rpc_url: "https://gorchain-rpc.example"
-        solana_rpc_url: "https://solana-rpc.example"
+        local_base_domain: "staging.gorbagana.wtf"
+        local_gorchain_rpc_url: "https://gorchain-rpc.example"
+        local_solana_rpc_url: "https://solana-rpc.example"
+        wallet_connect_id: ""
         topology: "multi"
 
     - name: Multi-host wiring resolves as designed

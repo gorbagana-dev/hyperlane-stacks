@@ -91,7 +91,7 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 2. Deploy script (`deploy.sh`) is mounted via ConfigMap volume at `/opt/scripts/` rather than baked into the Docker image — allows script updates without rebuilding the image
 3. Deploys programs on both chains via `hyperlane-sealevel-client` (from `@hyperlane-xyz/core@10.2.0`)
 4. Verifies on-chain program hashes via `solana-verify`
-5. Transfers ownership: program authority → hardware wallet (uses `--skip-new-upgrade-authority-signer-check` flag required by Solana CLI 3.x), IGP → Privy oracle
+5. Transfers ownership: program authority → bridge owner (the Privy bridge-owner wallet; uses `--skip-new-upgrade-authority-signer-check` flag required by Solana CLI 3.x), IGP → Privy oracle
 6. Writes deployment artifacts as k8s ConfigMaps via kubectl (requires RBAC)
 7. Discards hot deployer key
 
@@ -121,7 +121,7 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_DOMAIN_ID` (99999), `SOLANA_DOMAIN_ID` (99998), `FORCE_REDEPLOY`
 
 ### Secrets (injected separately)
-`DEPLOYER_KEYPAIR`, `HARDWARE_WALLET_PUBKEY`, `IGP_ORACLE_PUBKEY`
+`DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`
 
 ---
 
@@ -225,7 +225,7 @@ menu the same way in conftest's `_write_warp_menu`. `deploy.sh` reads `/config/w
 for each selected route.
 
 ### Secrets (injected separately)
-`DEPLOYER_KEYPAIR`, `HARDWARE_WALLET_PUBKEY`
+`DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`
 
 ### Multiple routes
 
@@ -455,9 +455,12 @@ HTTP proxy routes host → warp-ui:3000 via nginx ingress controller with automa
 
 ---
 
-## Ops Directory (Not a Stack)
+## Ops Directory (Archived — Not a Stack)
 
-On-demand k8s Jobs applied manually with `kubectl`. These are standalone Job manifests rather than SO-managed stacks.
+**Archived** (`deployment/ops-archive/`). These unsigned-tx k8s Jobs are superseded:
+maintenance ops will be rebuilt as operator-layer playbooks (epic `hyp-564`)
+signing with the Privy bridge-owner wallet — the bridge owner is a Privy server
+wallet (`BRIDGE_OWNER_PUBKEY`), not a hardware wallet.
 
 | Job | Purpose | Signing |
 |-----|---------|---------|

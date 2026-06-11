@@ -3,6 +3,13 @@
 # running; on-chain ownership/ISM is sub-project 3. Each singleton play passes only
 # stack_name; stack_deploy resolves spec/path/is_job from the `stacks` map in
 # group_vars and assembles the secret env from `stack_env_vars`.
+- name: Enforce the inventory env contract
+  hosts: controller
+  gather_facts: false
+  tasks:
+    - name: Assert the env contract
+      ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml
+
 - name: Preflight — fleet is provisioned
   hosts: all:!controller
   gather_facts: false
@@ -29,8 +36,8 @@
     # plays, leaking MinIO's IAM creds into every later stack's secret env.
     stack_env_extra: "{{ _minio_env_extra | default({}) }}"
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
     - name: Derive validator labels + MINIO_USERS
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
     - name: Build MinIO env (MINIO_USERS + per-validator IAM)
@@ -51,8 +58,8 @@
   hosts: deployer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-svm-deployer
   roles:
@@ -63,8 +70,8 @@
   hosts: deployer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   roles:
     - fetch_stack
   tasks:
@@ -86,8 +93,8 @@
   hosts: relayer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-relayer
     spec_render_generated: true
@@ -106,8 +113,8 @@
   hosts: gas_oracle_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-gas-oracle
     spec_render_generated: true
@@ -119,8 +126,8 @@
   hosts: warp_ui_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-warp-ui
     spec_render_generated: true
@@ -139,11 +146,23 @@
   hosts: controller
   gather_facts: false
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   tasks:
     - name: Load validators
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Every validator has a wallet id in the deployment config
+      ansible.builtin.assert:
+        that: "(item.privy_wallet_id | default('')) | length > 0"
+        fail_msg: >-
+          No wallet id for validator '{{ item.label }}' — set
+          privy_validator_wallet_ids.{{ item.label }} in this inventory's
+          deployment-config.yml.
+        quiet: true
+      loop: "{{ validators }}"
+      loop_control:
+        label: "{{ item.label }}"
 
     - name: Gather facts for each validator host (for ansible_env under delegation)
       ansible.builtin.setup:
@@ -176,6 +195,10 @@
           delegate_to: "{{ validator.host }}"
       vars:
         stack_name: "hyperlane-validator-{{ validator.label }}"
+        # delegate_to swaps the connection, not the var context: this play's host is
+        # the controller, which has no host_vars, so anything host-scoped that
+        # stack_deploy reads (preflight checks public_ip) must come from hostvars[].
+        public_ip: "{{ hostvars[validator.host].public_ip }}"
         repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
         repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
         deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
@@ -192,7 +215,7 @@
           {{ {(validator.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[validator.label].key_id,
               (validator.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[validator.label].secret} }}
         # The committed spec ships PRIVY_WALLET_ID: REPLACE_WITH_WALLET_ID; render this
-        # validator's id (from validators.yaml) into it. HYP_VALIDATOR_ID derives from
+        # validator's id (deployment-config wallet-id map) into it. HYP_VALIDATOR_ID derives from
         # PRIVY_WALLET_ID in the compose, so this one render covers both containers.
         spec_token_renders_extra:
           REPLACE_WITH_WALLET_ID: "{{ validator.privy_wallet_id }}"
@@ -205,8 +228,8 @@
   hosts: monitoring_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-monitoring
   roles:

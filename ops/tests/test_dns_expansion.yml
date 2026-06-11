@@ -5,7 +5,7 @@
   gather_facts: false
   vars:
     validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
-    dns_zone: bridge.gorbagana.wtf
+    base_domain: bridge.gorbagana.wtf
     dns_records:
       - name: s3
         host: bridge-host-1
@@ -30,3 +30,26 @@
           - "all_records | length == 4"
           - "resolved_ips | unique == ['203.0.113.10']"
         fail_msg: "records={{ all_records }} resolved={{ resolved_ips }}"
+
+    - name: Relative record names nest under the registered Cloudflare zone
+      ansible.builtin.assert:
+        that:
+          - "_prefix_staging == '.staging'"
+          - "_prefix_prod == '.bridge'"
+          - "_prefix_identity == ''"
+          # a dns_records `name: "@"` entry maps to base_domain itself: the bare
+          # nesting prefix, or the true zone apex when base_domain == cloudflare_zone
+          - "(_prefix_staging[1:] if _prefix_staging else '@') == 'staging'"
+          - "(_prefix_prod[1:] if _prefix_prod else '@') == 'bridge'"
+          - "(_prefix_identity[1:] if _prefix_identity else '@') == '@'"
+        quiet: true
+      vars:
+        _prefix_staging: >-
+          {{ '' if 'staging.gorbagana.wtf' == 'gorbagana.wtf'
+             else '.' ~ ('staging.gorbagana.wtf' | regex_replace('\.' ~ ('gorbagana.wtf' | regex_escape) ~ '$', '')) }}
+        _prefix_prod: >-
+          {{ '' if 'bridge.gorbagana.wtf' == 'gorbagana.wtf'
+             else '.' ~ ('bridge.gorbagana.wtf' | regex_replace('\.' ~ ('gorbagana.wtf' | regex_escape) ~ '$', '')) }}
+        _prefix_identity: >-
+          {{ '' if 'hyperlane.local' == 'hyperlane.local'
+             else '.' ~ ('hyperlane.local' | regex_replace('\.' ~ ('hyperlane.local' | regex_escape) ~ '$', '')) }}

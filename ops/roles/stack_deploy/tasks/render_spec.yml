@@ -2,10 +2,10 @@
 # Substitute deploy-time values into the on-host spec. Shared by stack_deploy (fresh
 # create) and stack_restart (existing deployment). Requires _spec_file (from resolve.yml).
 
-# Operator/runtime tokens (DNS zone, own-chain RPC URLs). Gated on spec_token_renders,
-# set only in local/group_vars — a no-op for prod/staging. spec_token_renders_extra
+# Operator/runtime tokens (WalletConnect id everywhere; DNS zone + own-chain RPC
+# URLs on local). Gated on spec_token_renders from group_vars; spec_token_renders_extra
 # carries per-invocation tokens (e.g. each validator's privy_wallet_id).
-- name: Render runtime tokens into the spec (local only)
+- name: Render runtime tokens into the spec
   ansible.builtin.replace:
     path: "{{ _spec_file }}"
     regexp: "{{ item.key | regex_escape }}"
@@ -111,3 +111,24 @@
     - spec_token_renders is defined
     - not (topology | default('') == 'single'
            and (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({})))
+
+# Placeholder gate — nothing unrendered may reach laconic-so. Everything legit is
+# substituted above (tokens, program-ids, whitelist, per-validator wallet ids), so
+# any survivor is an unfilled operator value or a broken render. Catch it here with
+# names, not as a half-configured pod at runtime.
+- name: Read back the fully-rendered spec
+  ansible.builtin.slurp:
+    src: "{{ _spec_file }}"
+  register: _rendered_spec_raw
+  when: not ansible_check_mode
+
+- name: No unrendered placeholders survive in the spec
+  ansible.builtin.assert:
+    that: "_leftover | length == 0"
+    fail_msg: >-
+      Unrendered placeholders in {{ _spec_file }}: {{ _leftover | unique | join(', ') }}
+      — fill the operator value (or fix the render) and re-run.
+    quiet: true
+  vars:
+    _leftover: "{{ _rendered_spec_raw.content | b64decode | regex_findall('REPLACE_WITH[A-Z0-9_]*|__[A-Z0-9_]+__') }}"
+  when: not ansible_check_mode

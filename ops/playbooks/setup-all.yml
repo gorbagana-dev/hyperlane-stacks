@@ -1,4 +1,11 @@
 ---
+- name: Enforce the inventory env contract
+  hosts: controller
+  gather_facts: false
+  tasks:
+    - name: Assert the env contract
+      ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml
+
 # Phase 1 — provision the whole fleet. No stacks deployed.
 - name: Bootstrap hosts
   ansible.builtin.import_playbook: bootstrap-host.yml
@@ -7,7 +14,7 @@
   ansible.builtin.import_playbook: configure-dns.yml
 
 - name: Provision single-host TLS (mkcert)
-  ansible.builtin.import_playbook: local-tls.yml
+  ansible.builtin.import_playbook: local/tls.yml
 
 - name: Generate + distribute credentials
   ansible.builtin.import_playbook: distribute-credentials.yml

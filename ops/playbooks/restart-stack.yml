@@ -47,8 +47,8 @@
   hosts: "{{ target_hosts | default([]) }}"
   gather_facts: true
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
     # Safe everywhere: a no-op for specs without program-id tokens (minio/monitoring).
@@ -63,8 +63,8 @@
   hosts: "{{ ['controller'] if (stack_name | default('')) == 'hyperlane-validator' else [] }}"
   gather_facts: false
   pre_tasks:
-    - name: Load inventory secrets
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_secrets.yml
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   tasks:
     - name: Load validators
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
@@ -79,6 +79,18 @@
       ansible.builtin.assert:
         that: _restart_validators | length > 0
         fail_msg: "No validator labelled '{{ validator_label | default('') }}' in validators.yaml"
+
+    - name: Every validator has a wallet id in the deployment config
+      ansible.builtin.assert:
+        that: "(item.privy_wallet_id | default('')) | length > 0"
+        fail_msg: >-
+          No wallet id for validator '{{ item.label }}' — set
+          privy_validator_wallet_ids.{{ item.label }} in this inventory's
+          deployment-config.yml.
+        quiet: true
+      loop: "{{ _restart_validators }}"
+      loop_control:
+        label: "{{ item.label }}"
 
     - name: Gather facts for each validator host (for ansible_env under delegation)
       ansible.builtin.setup:
@@ -112,6 +124,9 @@
         stack_action: restart
         spec_render_generated: true
         stack_name: "hyperlane-validator-{{ validator.label }}"
+        # This play's host is the controller (no host_vars); preflight reads the
+        # host-scoped public_ip, so source it from the delegated host.
+        public_ip: "{{ hostvars[validator.host].public_ip }}"
         repo_base_dir: "{{ hostvars[validator.host].ansible_env.HOME }}/deployments"
         repo_root: "{{ repo_base_dir }}/hyperlane-stacks"
         deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"

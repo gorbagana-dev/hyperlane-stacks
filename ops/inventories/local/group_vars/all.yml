@@ -22,7 +22,7 @@ ansible_user: "{{ deploy_user | default(omit) }}"
 ansible_host: "{{ public_ip | default(omit) }}"
 
 # --- laconic-so install (prerequisites_user) ---
-laconic_so_version: "v1.1.0-a181281-202606050713"
+laconic_so_version: "v1.1.0-3c6d2f7-202606100934"
 laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"
 
 # --- Credentials dir ---
@@ -35,8 +35,9 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 # Let's Encrypt, under an operator-supplied public zone. The only local-specific
 # networking bit is the chains — own and out-of-band, reached at their own domains
 # (gorchain_rpc_url/solana_rpc_url below), not via this zone.
-# Single-host uses hyperlane.test as-is; for multi-host set a real Cloudflare zone
-# here and in the validators-multihost.yaml hostnames.
+# Single-host uses hyperlane.test as-is; for multi-host set local_base_domain (a
+# real Cloudflare zone) in deployment-config.yml — validators-multihost.yaml
+# hostnames carry a token load_validators renders from it.
 # Topology is DERIVED from inventory group membership: in single-host MinIO and the
 # agents (relayer + validators) share a host = one kind cluster, the precondition for
 # the in-cluster MinIO/scrape paths; in multi-host they don't. No flag, no per-inventory
@@ -45,7 +46,7 @@ topology: "{{ 'single' if (groups['minio_hosts'][0] == groups['relayer_hosts'][0
 # Single-host uses mkcert (local_tls role) and needs no DNS provider; multi-host
 # reconciles Cloudflare. configure-dns.yml is gated on this.
 manage_dns: "{{ topology == 'multi' }}"
-dns_zone: "hyperlane.test"
+base_domain: "{{ local_base_domain | default('hyperlane.test', true) }}"
 dns_record_ttl: 300
 # Singleton DNS records are DERIVED from inventory group membership (dns_cloudflare
 # role): each subdomain points at whichever host runs that stack. One map serves both
@@ -69,11 +70,13 @@ dns_record_map:
 #   single-host: chains run on the VM; in-cluster pods reach them as
 #     gorchain-rpc:8899 / solana-rpc:18899 (external-services ip: -> kind gateway),
 #     and warp-ui's browser reaches them over the SSH tunnel at localhost. The two
-#     vars below are UNUSED on single-host — leave them at the placeholder.
+#     vars below are UNUSED on single-host — leave local_*_rpc_url unset.
 #   multi-host: chains run out-of-band on a separate box; set their full RPC URLs
-#     (scheme + domain) here — used for the in-cluster agents AND warp-ui.
-gorchain_rpc_url: "REPLACE_WITH_GORCHAIN_RPC_URL"
-solana_rpc_url: "REPLACE_WITH_SOLANA_RPC_URL"
+#     (scheme + domain) as local_*_rpc_url in deployment-config.yml — used for the
+#     in-cluster agents AND warp-ui. Left unset, the placeholder survives into the
+#     render and the placeholder gate refuses the deploy.
+gorchain_rpc_url: "{{ local_gorchain_rpc_url | default('REPLACE_WITH_GORCHAIN_RPC_URL', true) }}"
+solana_rpc_url: "{{ local_solana_rpc_url | default('REPLACE_WITH_SOLANA_RPC_URL', true) }}"
 
 # --- Single-host external-services (one block per stack) ---
 # Single-host shares one kind cluster, so cross-stack and chain hops resolve
@@ -142,33 +145,35 @@ single_host_external_services:
   hyperlane-monitoring: "{{ _xs_chains_prom }}"
 
 spec_token_renders:
-  __DNS_ZONE__: "{{ dns_zone }}"
+  __BASE_DOMAIN__: "{{ base_domain }}"
+  # operator value from deployment-config.yml ("" disables WalletConnect)
+  REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
   # single: in-cluster service names (external-services); multi: operator domains
   __GORCHAIN_RPC_URL__: "{{ 'http://gorchain-rpc:8899' if topology == 'single' else gorchain_rpc_url }}"
   __SOLANA_RPC_URL__: "{{ 'http://solana-rpc:18899' if topology == 'single' else solana_rpc_url }}"
   # warp-ui is browser-facing: single -> chains over the SSH tunnel; multi -> domains
   __BROWSER_GORCHAIN_RPC_URL__: "{{ 'http://localhost:8899' if topology == 'single' else gorchain_rpc_url }}"
   __BROWSER_SOLANA_RPC_URL__: "{{ 'http://localhost:18899' if topology == 'single' else solana_rpc_url }}"
-  __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ dns_zone }}"
+  __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ base_domain }}"
   __PROM_SCRAPE_SCHEME__: "{{ 'http' if topology == 'single' else 'https' }}"
   __PROM_VALIDATOR_TARGETS__: >-
     {{ 'gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090'
        if topology == 'single'
-       else 'gorchain-primary=validator-gorchain.' ~ dns_zone ~ ':443,'
-            ~ 'solana-primary=validator-solana.' ~ dns_zone ~ ':443' }}
+       else 'gorchain-primary=validator-gorchain.' ~ base_domain ~ ':443,'
+            ~ 'solana-primary=validator-solana.' ~ base_domain ~ ':443' }}
   __PROM_RELAYER_TARGETS__: >-
     {{ 'primary=relayer:9091' if topology == 'single'
-       else 'primary=relayer.' ~ dns_zone ~ ':443' }}
+       else 'primary=relayer.' ~ base_domain ~ ':443' }}
 
 # --- Secret-env values ---
 # Local has no Helius (own Solana chain → solana_rpc_url is a plain domain rendered
-# into config, not a secret). Cloudflare token is needed for DNS. Operator
-# pubkeys/addresses use REPLACE_WITH_* placeholders; Privy/GHCR come from
-# secrets.yml; MinIO/Grafana are generated by the credentials role.
-HARDWARE_WALLET_PUBKEY: "REPLACE_WITH_HW_WALLET_PUBKEY"
-IGP_ORACLE_PUBKEY: "REPLACE_WITH_IGP_ORACLE_PUBKEY"
-GORCHAIN_VALIDATOR_ADDRESS: "REPLACE_WITH_GORCHAIN_VALIDATOR_ADDRESS"
-SOLANA_VALIDATOR_ADDRESS: "REPLACE_WITH_SOLANA_VALIDATOR_ADDRESS"
+# into config, not a secret). Every operator-supplied value (secrets AND the
+# non-secret pubkeys/addresses) comes from the gitignored deployment-config.yml;
+# MinIO/Grafana are generated by the credentials role into the same file.
+BRIDGE_OWNER_PUBKEY: "{{ bridge_owner_pubkey }}"
+IGP_ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+GORCHAIN_VALIDATOR_ADDRESS: "{{ gorchain_validator_address }}"
+SOLANA_VALIDATOR_ADDRESS: "{{ solana_validator_address }}"
 PRIVY_APP_ID: "{{ privy_app_id }}"
 PRIVY_APP_SECRET: "{{ privy_app_secret }}"
 PRIVY_ORACLE_WALLET_ID: "{{ privy_oracle_wallet_id }}"
@@ -183,7 +188,9 @@ SOLANA_RPC_URL: "{{ 'http://solana-rpc:18899' if topology == 'single' else solan
 # Local needs no Helius. Cloudflare is multi-host only (single-host uses mkcert).
 required_operator_secrets: >-
   {{ (['cloudflare_api_token'] if manage_dns | bool else [])
-     + ['privy_app_id', 'privy_app_secret', 'privy_oracle_wallet_id', 'ghcr_pat'] }}
+     + ['privy_app_id', 'privy_app_secret', 'privy_oracle_wallet_id', 'ghcr_pat',
+        'bridge_owner_pubkey', 'igp_oracle_pubkey', 'gorchain_validator_address',
+        'solana_validator_address', 'privy_validator_wallet_ids'] }}
 
 # --- Per-stack secret env-var map ---
 # Lists the env-var NAMES each spec injects via secrets: { env: NAME }.
@@ -195,13 +202,13 @@ stack_env_vars:
     - MINIO_ROOT_USER
     - MINIO_ROOT_PASSWORD
   hyperlane-svm-deployer:
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - IGP_ORACLE_PUBKEY
     - GORCHAIN_VALIDATOR_ADDRESS
     - SOLANA_VALIDATOR_ADDRESS
     - GHCR_PAT
   hyperlane-svm-warp-deployer:
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - GHCR_PAT
   hyperlane-relayer:
     - SOLANA_RPC_URL

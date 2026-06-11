@@ -6,28 +6,19 @@ stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
-volumes:
-  minio-data: /srv/kind/hyperlane/minio/data
-resources:
-  containers:
-    reservations:
-      cpus: "0.1"
-      memory: 128M
-  volumes:
-    minio-data:
-      reservations:
-        storage: 10Gi
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: s3.__DNS_ZONE__
+    - host-name: s3.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: minio:9000
-    - host-name: minio-console.__DNS_ZONE__
+    - host-name: minio-console.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: minio:9001
+volumes:
+  minio-data: /srv/kind/hyperlane/minio/data
 # Before deploying, export these env vars in the shell that runs `laconic-so`:
 #
 #   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD      — MinIO root credentials
@@ -51,3 +42,12 @@ secrets:
       GORCHAIN_PRIMARY_SECRET: { env: GORCHAIN_PRIMARY_SECRET }
       SOLANA_PRIMARY_KEY_ID:   { env: SOLANA_PRIMARY_KEY_ID }
       SOLANA_PRIMARY_SECRET:   { env: SOLANA_PRIMARY_SECRET }
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M
+  volumes:
+    minio-data:
+      reservations:
+        storage: 10Gi

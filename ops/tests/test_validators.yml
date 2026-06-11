@@ -5,6 +5,12 @@
   gather_facts: false
   vars:
     validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
+    # fixture hostnames are prod-zone; pin base_domain so the test is inventory-independent
+    base_domain: bridge.gorbagana.wtf
+    # deployment-config wallet-id map: overrides the fixture's inline id for one
+    # label; the other falls back to the file value (fixture-only behavior)
+    privy_validator_wallet_ids:
+      gorchain-primary: priv_from_config
   tasks:
     - name: Load + derive
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
@@ -20,9 +26,42 @@
           - "'GORCHAIN_PRIMARY' in validator_env_prefixes"
           - "'SOLANA_PRIMARY' in validator_env_prefixes"
 
+    - name: Wallet ids merge from the deployment config (map wins, file is fallback)
+      ansible.builtin.assert:
+        that:
+          - "(validators | selectattr('label', 'eq', 'gorchain-primary') | first).privy_wallet_id == 'priv_from_config'"
+          - "(validators | selectattr('label', 'eq', 'solana-primary') | first).privy_wallet_id == 'priv_bbb'"
+
     - name: Validator DNS records resolve label hostnames to the right host
       ansible.builtin.assert:
         that:
           - "validator_dns_records | length == 2"
           - "validator_dns_records[0].name == 'validator-gorchain'"
           - "validator_dns_records[0].host == 'bridge-host-1'"
+
+# The local multihost file is zone-tokenized — prove load_validators renders
+# base_domain into the hostnames and the wallet-id merge covers both entries.
+- name: Multihost validators file renders the operator zone
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    validators_file: >-
+      {{ playbook_dir }}/../../deployment/local/bridges/default/operator/validators-multihost.yaml
+    base_domain: zone.example
+    privy_validator_wallet_ids:
+      gorchain-primary: pw-gor
+      solana-primary: pw-sol
+  tasks:
+    - name: Load + derive
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Hostnames render from base_domain; wallet ids merge; DNS derives
+      ansible.builtin.assert:
+        that:
+          - "validators | map(attribute='hostname') | sort | list
+             == ['validator-gorchain.zone.example', 'validator-solana.zone.example']"
+          - "validators | map(attribute='privy_wallet_id') | sort | list == ['pw-gor', 'pw-sol']"
+          - "(validator_dns_records | selectattr('name', 'eq', 'validator-gorchain')
+              | first).host == 'local-agents'"
+        quiet: true

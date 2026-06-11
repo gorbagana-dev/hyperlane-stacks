@@ -2,39 +2,19 @@
 # Prometheus, Grafana, Pushgateway, and balance monitoring.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
-image-overrides:
-  prometheus: prom/prometheus:latest
-  pushgateway: prom/pushgateway:latest
-  grafana: grafana/grafana:latest
-  balance-monitor: python:3.12-alpine
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-config:
-  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SOLANA_RPC_URL: "http://solana-rpc:18899"
-  MONITORED_WALLETS_GORCHAIN: "REPLACE_AT_RUNTIME"
-  MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
-  BALANCE_THRESHOLD_SOL: "1.0"
-  BALANCE_CHECK_INTERVAL: "30"
-  # Scrape targets via in-cluster external-services over plain http (prod uses
-  # the public .bridge hostnames over https). The container entrypoint renders
-  # these and the scheme below on start.
-  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090"
-  PROMETHEUS_RELAYER_TARGETS: "primary=relayer:9091"
-  PROMETHEUS_SCRAPE_SCHEME: "http"
-volumes:
-  prometheus-data: /tmp/hyperlane-bridge-e2e/monitoring/prometheus
-  grafana-data: /tmp/hyperlane-bridge-e2e/monitoring/grafana
-configmaps:
-  prometheus-config: ./configmaps/prometheus-config
-  grafana-datasources-config: ./configmaps/grafana-datasources-config
-  grafana-dashboard-config: ./configmaps/grafana-dashboard-config
-  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
-  balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
-secrets:
-  hyperlane-monitoring-secrets:
-    keys:
-      GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: grafana.test
+      routes:
+        - path: /
+          proxy-to: grafana:3000
+    - host-name: prometheus.test
+      routes:
+        - path: /
+          proxy-to: prometheus:9090
 external-services:
   gorchain-rpc:
     ip: REPLACE_HOST_IP
@@ -57,14 +37,34 @@ external-services:
     selector: { app.kubernetes.io/stack: hyperlane-relayer }
     namespace: laconic-hyperlane-relayer
     port: 9091
-network:
-  acme-email: e2e@example.test
-  http-proxy:
-    - host-name: grafana.test
-      routes:
-        - path: /
-          proxy-to: grafana:3000
-    - host-name: prometheus.test
-      routes:
-        - path: /
-          proxy-to: prometheus:9090
+volumes:
+  prometheus-data: /tmp/hyperlane-bridge-e2e/monitoring/prometheus
+  grafana-data: /tmp/hyperlane-bridge-e2e/monitoring/grafana
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  SOLANA_RPC_URL: "http://solana-rpc:18899"
+  MONITORED_WALLETS_GORCHAIN: "REPLACE_AT_RUNTIME"
+  MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
+  BALANCE_THRESHOLD_SOL: "1.0"
+  BALANCE_CHECK_INTERVAL: "30"
+  # Scrape targets via in-cluster external-services over plain http (prod uses
+  # the public .bridge hostnames over https). The container entrypoint renders
+  # these and the scheme below on start.
+  PROMETHEUS_VALIDATOR_TARGETS: "gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090"
+  PROMETHEUS_RELAYER_TARGETS: "primary=relayer:9091"
+  PROMETHEUS_SCRAPE_SCHEME: "http"
+configmaps:
+  prometheus-config: ./configmaps/prometheus-config
+  grafana-datasources-config: ./configmaps/grafana-datasources-config
+  grafana-dashboard-config: ./configmaps/grafana-dashboard-config
+  grafana-dashboards-config: ./configmaps/grafana-dashboards-config
+  balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
+secrets:
+  hyperlane-monitoring-secrets:
+    keys:
+      GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
+image-overrides:
+  prometheus: prom/prometheus:latest
+  pushgateway: prom/pushgateway:latest
+  grafana: grafana/grafana:latest
+  balance-monitor: python:3.12-alpine

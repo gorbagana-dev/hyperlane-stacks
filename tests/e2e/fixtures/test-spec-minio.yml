@@ -1,18 +1,18 @@
 stack: stack_orchestrator/data/stacks/hyperlane-minio
 deploy-to: k8s-kind
-image-overrides:
-  minio: minio/minio:RELEASE.2025-09-07T16-13-09Z
 kind-cluster-name: hyperlane
 kind-mount-root: /tmp/hyperlane-bridge-e2e
-resources:
-  containers:
-    minio:
-      reservations:
-        cpus: "0.1"
-        memory: 128M
-      limits:
-        cpus: "0.5"
-        memory: 256M
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: minio-s3.test
+      routes:
+        - path: /
+          proxy-to: minio:9000
+    - host-name: minio-console.test
+      routes:
+        - path: /
+          proxy-to: minio:9001
 volumes:
   minio-data: /tmp/hyperlane-bridge-e2e/minio/data
 secrets:
@@ -27,14 +27,14 @@ secrets:
       GORCHAIN_PRIMARY_SECRET: { env: GORCHAIN_PRIMARY_SECRET }
       SOLANA_PRIMARY_KEY_ID:   { env: SOLANA_PRIMARY_KEY_ID }
       SOLANA_PRIMARY_SECRET:   { env: SOLANA_PRIMARY_SECRET }
-network:
-  acme-email: e2e@example.test
-  http-proxy:
-    - host-name: minio-s3.test
-      routes:
-        - path: /
-          proxy-to: minio:9000
-    - host-name: minio-console.test
-      routes:
-        - path: /
-          proxy-to: minio:9001
+image-overrides:
+  minio: minio/minio:RELEASE.2025-09-07T16-13-09Z
+resources:
+  containers:
+    minio:
+      reservations:
+        cpus: "0.1"
+        memory: 128M
+      limits:
+        cpus: "0.5"
+        memory: 256M

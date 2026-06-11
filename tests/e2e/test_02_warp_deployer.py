@@ -298,13 +298,13 @@ class TestWarpDeployer:
         keypairs: KeypairSet,
         bridge_state_loader: BridgeStateLoader,
     ) -> None:
-        """Verify warp route program upgrade authority was transferred to hardware wallet.
+        """Verify warp route program upgrade authority was transferred to the bridge owner.
 
         After deployment, both warp route programs (collateral on solana,
         synthetic on gorchain) should have their upgrade authority set to
-        the hardware wallet pubkey — not the deployer key.
+        the bridge-owner pubkey — not the deployer key.
         """
-        expected_authority = keypairs.hardware_wallet_pubkey
+        expected_authority = keypairs.owner_pubkey
 
         for route in (USDC_ROUTE, SOL_ROUTE):
             warp_programs = bridge_state_loader.read_route_program_addresses(route)

@@ -12,11 +12,6 @@ kind-mount-root: /srv/kind/hyperlane
 volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
-resources:
-  containers:
-    reservations:
-      cpus: "0.1"
-      memory: 128M
 config:
   WARP_ROUTES: "usdc"
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
@@ -35,19 +30,24 @@ configmaps:
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export this env var in the shell that runs `laconic-so`:
-#   HARDWARE_WALLET_PUBKEY
+#   BRIDGE_OWNER_PUBKEY
 secrets:
   hyperlane-warp-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
-      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      BRIDGE_OWNER_PUBKEY: { env: BRIDGE_OWNER_PUBKEY }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:
   server: ghcr.io
-  username: REPLACE_WITH_GITHUB_USERNAME
+  username: gorbagana-dev
   token-env: GHCR_PAT
 
 # Single-host only: this stack reaches the host-run chains in-cluster. Rendered to an
 # external-services: block on single-host, removed on multi-host.
 # __SINGLE_HOST_EXTERNAL_SERVICES__
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 128M

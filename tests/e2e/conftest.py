@@ -711,7 +711,7 @@ def deployer_deployment(
 
     os.environ.update({
         "DEPLOYER_KEYPAIR":           keypairs.deployer_keypair,
-        "HARDWARE_WALLET_PUBKEY":     keypairs.hardware_wallet_pubkey,
+        "BRIDGE_OWNER_PUBKEY":        keypairs.owner_pubkey,
         "IGP_ORACLE_PUBKEY":          keypairs.igp_oracle_pubkey,
         "GORCHAIN_VALIDATOR_ADDRESS": keypairs.gorchain_validator_address,
         "SOLANA_VALIDATOR_ADDRESS":   keypairs.solana_validator_address,
@@ -863,7 +863,7 @@ def warp_deployment(
 
             os.environ.update({
                 "DEPLOYER_KEYPAIR":       keypairs.deployer_keypair,
-                "HARDWARE_WALLET_PUBKEY": keypairs.hardware_wallet_pubkey,
+                "BRIDGE_OWNER_PUBKEY":    keypairs.owner_pubkey,
                 "SOLANA_RPC_URL":         "http://solana-rpc:18899",
             })
 
