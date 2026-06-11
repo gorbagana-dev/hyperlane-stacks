@@ -35,12 +35,12 @@ configmaps:
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export this env var in the shell that runs `laconic-so`:
-#   HARDWARE_WALLET_PUBKEY
+#   BRIDGE_OWNER_PUBKEY
 secrets:
   hyperlane-warp-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR:       { file: ~/.credentials/hyperlane/deployer-keypair.json }
-      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      BRIDGE_OWNER_PUBKEY: { env: BRIDGE_OWNER_PUBKEY }
 # Private registry auth — set GHCR_PAT env var before deploy start:
 #   export GHCR_PAT=ghp_xxxx  # GitHub PAT with packages:read scope
 image-pull-secret:

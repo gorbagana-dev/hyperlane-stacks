@@ -18,14 +18,14 @@ class KeypairSet:
 
     # Ed25519 (Solana) paths
     deployer_path: Path
-    hardware_wallet_path: Path
+    owner_path: Path
     igp_oracle_path: Path
     igp_beneficiary_path: Path
 
     # Ed25519 derived values
     deployer_pubkey: str
     deployer_keypair: str
-    hardware_wallet_pubkey: str
+    owner_pubkey: str
     igp_oracle_pubkey: str
     igp_beneficiary_pubkey: str
 
@@ -101,13 +101,13 @@ def _cast_wallet_new(output: Path) -> dict[str, str]:
 def _load_existing_keypairs(keys_dir: Path) -> KeypairSet | None:
     """Try to load previously generated keypairs. Returns None if any are missing."""
     deployer_path = keys_dir / "deployer.json"
-    hw_path = keys_dir / "hardware-wallet.json"
+    owner_path = keys_dir / "owner.json"
     oracle_path = keys_dir / "igp-oracle.json"
     beneficiary_path = keys_dir / "igp-beneficiary.json"
     gorchain_val_path = keys_dir / "gorchain-validator.json"
     solana_val_path = keys_dir / "solana-validator.json"
 
-    ed25519_files = [deployer_path, hw_path, oracle_path, beneficiary_path]
+    ed25519_files = [deployer_path, owner_path, oracle_path, beneficiary_path]
     secp_files = [gorchain_val_path, solana_val_path]
 
     if not all(f.is_file() for f in ed25519_files + secp_files):
@@ -123,12 +123,12 @@ def _load_existing_keypairs(keys_dir: Path) -> KeypairSet | None:
     return KeypairSet(
         keys_dir=keys_dir,
         deployer_path=deployer_path,
-        hardware_wallet_path=hw_path,
+        owner_path=owner_path,
         igp_oracle_path=oracle_path,
         igp_beneficiary_path=beneficiary_path,
         deployer_pubkey=_solana_pubkey(deployer_path),
         deployer_keypair=deployer_path.read_text().strip(),
-        hardware_wallet_pubkey=_solana_pubkey(hw_path),
+        owner_pubkey=_solana_pubkey(owner_path),
         igp_oracle_pubkey=_solana_pubkey(oracle_path),
         igp_beneficiary_pubkey=_solana_pubkey(beneficiary_path),
         gorchain_validator_path=gorchain_val_path,
@@ -150,7 +150,7 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     if existing:
         log_info(f"Reusing existing keypairs from {keys_dir}")
         log_info(f"  Deployer pubkey:            {existing.deployer_pubkey}")
-        log_info(f"  Hardware wallet pubkey:     {existing.hardware_wallet_pubkey}")
+        log_info(f"  Bridge owner pubkey:        {existing.owner_pubkey}")
         log_info(f"  IGP oracle pubkey:          {existing.igp_oracle_pubkey}")
         log_info(f"  IGP beneficiary pubkey:     {existing.igp_beneficiary_pubkey}")
         log_info(f"  Gorchain validator (H160):  {existing.gorchain_validator_address}")
@@ -168,10 +168,10 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     deployer_pubkey = _solana_pubkey(deployer_path)
     deployer_keypair = deployer_path.read_text().strip()
 
-    hw_path = keys_dir / "hardware-wallet.json"
-    log_info("  Generating hardware wallet keypair...")
-    _solana_keygen(hw_path)
-    hw_pubkey = _solana_pubkey(hw_path)
+    owner_path = keys_dir / "owner.json"
+    log_info("  Generating bridge-owner keypair...")
+    _solana_keygen(owner_path)
+    owner_pubkey_val = _solana_pubkey(owner_path)
 
     oracle_path = keys_dir / "igp-oracle.json"
     log_info("  Generating IGP oracle keypair...")
@@ -200,12 +200,12 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
     keypair_set = KeypairSet(
         keys_dir=keys_dir,
         deployer_path=deployer_path,
-        hardware_wallet_path=hw_path,
+        owner_path=owner_path,
         igp_oracle_path=oracle_path,
         igp_beneficiary_path=beneficiary_path,
         deployer_pubkey=deployer_pubkey,
         deployer_keypair=deployer_keypair,
-        hardware_wallet_pubkey=hw_pubkey,
+        owner_pubkey=owner_pubkey_val,
         igp_oracle_pubkey=oracle_pubkey,
         igp_beneficiary_pubkey=beneficiary_pubkey,
         gorchain_validator_path=gorchain_val_path,
@@ -218,7 +218,7 @@ def generate_test_keypairs(keys_dir: Path | None = None) -> KeypairSet:
 
     log_info("Test keypairs generated:")
     log_info(f"  Deployer pubkey:            {deployer_pubkey}")
-    log_info(f"  Hardware wallet pubkey:     {hw_pubkey}")
+    log_info(f"  Bridge owner pubkey:        {owner_pubkey_val}")
     log_info(f"  IGP oracle pubkey:          {oracle_pubkey}")
     log_info(f"  IGP beneficiary pubkey:     {beneficiary_pubkey}")
     log_info(f"  Gorchain validator (H160):  {gorchain_address}")
@@ -287,7 +287,7 @@ def fund_wallets(
         keys_dir = KEYS_DIR
 
     deployer_pubkey = _solana_pubkey(keys_dir / "deployer.json")
-    hw_pubkey = _solana_pubkey(keys_dir / "hardware-wallet.json")
+    owner_pubkey = _solana_pubkey(keys_dir / "owner.json")
     oracle_pubkey = _solana_pubkey(keys_dir / "igp-oracle.json")
     beneficiary_pubkey = _solana_pubkey(keys_dir / "igp-beneficiary.json")
 
@@ -301,7 +301,7 @@ def fund_wallets(
         chain_name = chain_names[rpc]
         log_info(f"  Funding wallets on {chain_name} ({rpc})...")
         _airdrop(deployer_funding[rpc], deployer_pubkey, rpc, "deployer")
-        _airdrop(1, hw_pubkey, rpc, "hardware wallet")
+        _airdrop(1, owner_pubkey, rpc, "bridge owner")
         _airdrop(1, oracle_pubkey, rpc, "IGP oracle")
         _airdrop(1, beneficiary_pubkey, rpc, "IGP beneficiary")
 

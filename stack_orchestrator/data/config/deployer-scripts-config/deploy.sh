@@ -250,12 +250,12 @@ hyperlane-sealevel-client \
 echo "IGP gas oracle configured on both chains"
 
 # -------------------------------------------------------
-# Transfer ownership to hardware wallet
+# Transfer ownership to the bridge owner
 # -------------------------------------------------------
-if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
+if [ -n "${BRIDGE_OWNER_PUBKEY:-}" ]; then
   echo ""
-  echo "=== Transferring program ownership to hardware wallet ==="
-  echo "Hardware wallet pubkey: ${HARDWARE_WALLET_PUBKEY}"
+  echo "=== Transferring program ownership to the bridge owner ==="
+  echo "Bridge owner pubkey: ${BRIDGE_OWNER_PUBKEY}"
 
   for CHAIN_OUTPUT in gorchain solana; do
     if [ "$CHAIN_OUTPUT" = "gorchain" ]; then
@@ -276,14 +276,14 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
       if [ -n "$PROGRAM_ID" ]; then
         echo "Transferring upgrade authority for ${PROGRAM} (${PROGRAM_ID}) on ${CHAIN_OUTPUT}..."
         solana program set-upgrade-authority "$PROGRAM_ID" \
-          --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
+          --new-upgrade-authority "${BRIDGE_OWNER_PUBKEY}" \
           --skip-new-upgrade-authority-signer-check \
           --keypair "${DEPLOYER_KEY_FILE}" \
           --url "$RPC_URL"
       fi
     done
 
-    # Transfer mailbox account ownership to the hardware wallet.
+    # Transfer mailbox account ownership to the bridge owner.
     MAILBOX_ID=$(jq -r '.mailbox // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
     if [ -n "$MAILBOX_ID" ]; then
       echo "Transferring mailbox account ownership on ${CHAIN_OUTPUT}..."
@@ -292,10 +292,10 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
         --keypair "${DEPLOYER_KEY_FILE}" \
         mailbox transfer-ownership \
         --program-id "$MAILBOX_ID" \
-        "${HARDWARE_WALLET_PUBKEY}"
+        "${BRIDGE_OWNER_PUBKEY}"
     fi
 
-    # Transfer multisig-ISM account ownership to the hardware wallet.
+    # Transfer multisig-ISM account ownership to the bridge owner.
     # validator-announce has no owner concept (Init/Announce only) — nothing to transfer.
     ISM_ID=$(jq -r '.multisig_ism_message_id // empty' "${PROGRAMS_FILE}" 2>/dev/null || true)
     if [ -n "$ISM_ID" ]; then
@@ -305,7 +305,7 @@ if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
         --keypair "${DEPLOYER_KEY_FILE}" \
         multisig-ism-message-id transfer-ownership \
         --program-id "$ISM_ID" \
-        "${HARDWARE_WALLET_PUBKEY}"
+        "${BRIDGE_OWNER_PUBKEY}"
     fi
 
     # Transfer IGP ownership to oracle wallet (if configured)

@@ -1,4 +1,4 @@
-"""hyp-d9c: assert ownership moved to the hardware wallet and the relayer
+"""hyp-d9c: assert ownership moved to the bridge owner and the relayer
 whitelist covers exactly the deployed warp programs."""
 import os
 import re
@@ -22,10 +22,10 @@ def _require_warp_deployment(warp_deployment):
 
 
 @pytest.fixture(scope="module")
-def hw_pubkey():
-    pk = os.environ.get("HARDWARE_WALLET_PUBKEY")
+def owner_pubkey():
+    pk = os.environ.get("BRIDGE_OWNER_PUBKEY")
     if not pk:
-        pytest.skip("HARDWARE_WALLET_PUBKEY not set; ownership transfer not exercised")
+        pytest.skip("BRIDGE_OWNER_PUBKEY not set; ownership transfer not exercised")
     return pk
 
 
@@ -34,7 +34,7 @@ def _owner_from(stdout: str) -> str | None:
     return m.group(1) if m else None
 
 
-def test_ism_owner_is_hardware_wallet(bridge_state_loader, hw_pubkey):
+def test_ism_owner_is_bridge_owner(bridge_state_loader, owner_pubkey):
     for chain in ("gorchain", "solana"):
         ism = bridge_state_loader.read_program_ids(chain)["multisig_ism_message_id"]
         res = run_deployer_cli(
@@ -42,10 +42,10 @@ def test_ism_owner_is_hardware_wallet(bridge_state_loader, hw_pubkey):
         )
         assert res.returncode == 0, res.stderr
         owner = _owner_from(res.stdout)
-        assert owner == hw_pubkey, f"{chain} ISM owner {owner!r} != hw {hw_pubkey!r}"
+        assert owner == owner_pubkey, f"{chain} ISM owner {owner!r} != owner {owner_pubkey!r}"
 
 
-def test_route_owners_are_hardware_wallet(bridge_state_loader, hw_pubkey):
+def test_route_owners_are_bridge_owner(bridge_state_loader, owner_pubkey):
     routes = bridge_state_loader.discover_routes()
     assert routes, "no deployed warp routes found in state"
     for route in routes:
@@ -58,8 +58,8 @@ def test_route_owners_are_hardware_wallet(bridge_state_loader, hw_pubkey):
             )
             assert res.returncode == 0, res.stderr
             owner = _owner_from(res.stdout)
-            assert owner == hw_pubkey, (
-                f"{route}/{chain} token owner {owner!r} != hw {hw_pubkey!r}"
+            assert owner == owner_pubkey, (
+                f"{route}/{chain} token owner {owner!r} != owner {owner_pubkey!r}"
             )
 
 

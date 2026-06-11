@@ -37,7 +37,7 @@ secrets:
   hyperlane-warp-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR: { env: DEPLOYER_KEYPAIR }
-      HARDWARE_WALLET_PUBKEY: { env: HARDWARE_WALLET_PUBKEY }
+      BRIDGE_OWNER_PUBKEY: { env: BRIDGE_OWNER_PUBKEY }
       SOLANA_RPC_URL: { env: SOLANA_RPC_URL }
 image-pull-secret:
   server: ghcr.io

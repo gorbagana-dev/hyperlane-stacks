@@ -459,13 +459,13 @@ class TestDeployer:
         keypairs: KeypairSet,
         bridge_state_loader: BridgeStateLoader,
     ) -> None:
-        """Verify core program upgrade authority was transferred to hardware wallet.
+        """Verify core program upgrade authority was transferred to the bridge owner.
 
         After deployment, all 4 core programs (mailbox, validator_announce,
         multisig_ism_message_id, igp) should have their upgrade authority set
-        to the hardware wallet pubkey.
+        to the bridge-owner pubkey.
         """
-        expected_authority = keypairs.hardware_wallet_pubkey
+        expected_authority = keypairs.owner_pubkey
 
         for chain_name, chain_info in CHAINS.items():
             program_ids = bridge_state_loader.read_program_ids(chain_name)

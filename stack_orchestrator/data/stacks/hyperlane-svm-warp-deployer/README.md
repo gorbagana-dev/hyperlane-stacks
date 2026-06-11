@@ -56,7 +56,7 @@ configmaps:
 secrets:
   hyperlane-warp-deployer-secrets:
     - DEPLOYER_KEYPAIR
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
 ```
 
 Then create the deployment directory:
@@ -90,13 +90,13 @@ The token-config is built at runtime by `deploy.sh` from each route's menu JSON 
 ```bash
 kubectl create secret generic hyperlane-warp-deployer-secrets \
   --from-literal=DEPLOYER_KEYPAIR='[<byte array>]' \
-  --from-literal=HARDWARE_WALLET_PUBKEY='<pubkey>'
+  --from-literal=BRIDGE_OWNER_PUBKEY='<pubkey>'
 ```
 
 | Secret key | Description |
 |---|---|
 | `DEPLOYER_KEYPAIR` | JSON array of deployer secret key bytes (required) |
-| `HARDWARE_WALLET_PUBKEY` | Pubkey to receive warp route upgrade authority (optional) |
+| `BRIDGE_OWNER_PUBKEY` | Pubkey to receive warp route upgrade authority (optional) |
 
 ## 6. Start deployment
 
@@ -112,7 +112,7 @@ route it reads `/config/warp-routes/<stem>.json` and:
 3. Builds the token config generically from the route's menu JSON with `jq`, and renders the registry template via `envsubst`
 4. Deploys the warp route programs for both sides via `hyperlane-sealevel-client`
 5. Verifies deployed program hashes against local `.so` files
-6. Transfers warp route program upgrade authority to `HARDWARE_WALLET_PUBKEY`
+6. Transfers warp route program upgrade authority to `BRIDGE_OWNER_PUBKEY`
 7. Writes artifacts to state files at `/state/warp-routes/<name>/`: `token-config.json`, `warp-deploy-outputs/`, and a scoped, RPC-redacted `deploy.log`
 
 After all selected routes are processed it shreds and deletes the deployer keypair

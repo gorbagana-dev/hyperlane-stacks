@@ -34,13 +34,13 @@ config:
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export these env vars in the shell that runs `laconic-so`:
-#   HARDWARE_WALLET_PUBKEY, IGP_ORACLE_PUBKEY,
+#   BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY,
 #   GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
 secrets:
   hyperlane-deployer-secrets:
     keys:
       DEPLOYER_KEYPAIR:           { file: ~/.credentials/hyperlane/deployer-keypair.json }
-      HARDWARE_WALLET_PUBKEY:     { env: HARDWARE_WALLET_PUBKEY }
+      BRIDGE_OWNER_PUBKEY:        { env: BRIDGE_OWNER_PUBKEY }
       IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
       GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
       SOLANA_VALIDATOR_ADDRESS:   { env: SOLANA_VALIDATOR_ADDRESS }

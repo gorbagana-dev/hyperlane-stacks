@@ -219,12 +219,12 @@ SOLCFG
   fi
 
   # -------------------------------------------------------
-  # Transfer ownership to hardware wallet (if configured)
+  # Transfer ownership to the bridge owner (if configured)
   # -------------------------------------------------------
-  if [ -n "${HARDWARE_WALLET_PUBKEY:-}" ]; then
+  if [ -n "${BRIDGE_OWNER_PUBKEY:-}" ]; then
     echo ""
-    echo "=== Transferring warp route upgrade authority to hardware wallet ==="
-    echo "Hardware wallet pubkey: ${HARDWARE_WALLET_PUBKEY}"
+    echo "=== Transferring warp route upgrade authority to the bridge owner ==="
+    echo "Bridge owner pubkey: ${BRIDGE_OWNER_PUBKEY}"
 
     # The warp-route deploy writes program-ids.json with per-chain entries:
     #   {"solana": {"hex": "0x...", "base58": "..."}, "gorchain": {"hex": "0x...", "base58": "..."}}
@@ -252,7 +252,7 @@ SOLCFG
 
         echo "Transferring warp route upgrade authority on ${CHAIN_NAME}: ${PROGRAM_ID}..."
         solana program set-upgrade-authority "$PROGRAM_ID" \
-          --new-upgrade-authority "${HARDWARE_WALLET_PUBKEY}" \
+          --new-upgrade-authority "${BRIDGE_OWNER_PUBKEY}" \
           --skip-new-upgrade-authority-signer-check \
           --keypair "${DEPLOYER_KEY_FILE}" \
           --url "$RPC_URL"
@@ -266,7 +266,7 @@ SOLCFG
           --keypair "${DEPLOYER_KEY_FILE}" \
           token transfer-ownership \
           --program-id "$PROGRAM_ID" \
-          "${HARDWARE_WALLET_PUBKEY}"
+          "${BRIDGE_OWNER_PUBKEY}"
       done
     fi
   fi
@@ -338,7 +338,7 @@ SOLCFG
     # Drop the program-id and buffer keypairs the sealevel-client emits.
     # Buffer keypairs are dead post-deploy; program-id keypairs lock in the
     # deployment identity but no consumer reads them and the upgrade-authority
-    # key (Ledger in prod) already covers any real recovery scenario.
+    # key (the Privy bridge-owner wallet in prod) already covers any real recovery scenario.
     rm -rf "${ROUTE_STATE_DIR}/warp-deploy-outputs/keys"
   fi
 

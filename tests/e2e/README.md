@@ -10,14 +10,14 @@ End-to-end tests for the Hyperlane SVM bridge stacks. Tests deploy contracts via
 - **Warp deployer** -- one deployment that deploys the routes selected via `WARP_ROUTES` (a test SPL collateral route and a native route), verifies per-route state file outputs (`token-config.json`, `warp-deploy-outputs/`) via `BridgeStateLoader` reads
 - **MinIO** -- deploys the S3-compatible checkpoint storage, verifies pod health, bucket creation, and API accessibility
 - **Validators** -- deploys gorchain and solana validators with a mock Privy server, verifies pod health, KMS proxy connectivity, metrics endpoint, log sanity, and checkpoint writing to MinIO
-- **Ownership & relay authorization** -- right after the warp deploy, asserts the multisig-ISM and each warp route's app-level owner were transferred to the hardware wallet, and that the relayer's `HYP_WHITELIST` covers exactly the deployed warp programs (`test_03_ownership_whitelist.py`)
+- **Ownership & relay authorization** -- right after the warp deploy, asserts the multisig-ISM and each warp route's app-level owner were transferred to the bridge owner, and that the relayer's `HYP_WHITELIST` covers exactly the deployed warp programs (`test_03_ownership_whitelist.py`)
 - **Relayer** -- deploys the hyperlane relayer, verifies pod health and metrics endpoint
 - **Gas oracle** -- deploys the gas oracle service with mock Privy signing, waits for first price update, verifies on-chain IGP gas oracle configs match oracle output
 - **Bridge transfers** -- executes cross-chain warp route transfers (Solana→Gorchain and reverse) via CLI, verifies on-chain balance changes
 - **Fee claims** -- claims accumulated IGP fees on both chains, verifies beneficiary balance increases (skips with warning if no fees to claim)
 - **Warp UI (Tier 1)** -- deploys the warp-ui stack, verifies pod health, HTML serving, runtime route/chain config serving, and chain config presence via HTTP
 - **Warp UI (Tier 2)** -- drives the warp-ui in a Playwright browser with a mock Solana wallet, executes real bridge transfers through the UI
-- **Ledger signing (hardware wallet)** -- signs a real on-chain op (a Solana mailbox ownership round-trip) with a physically connected Ledger via the native `hyperlane-sealevel-client`, verifying built-in hardware-wallet signing end to end. Skipped by default; see [Ledger hardware-wallet test](#ledger-hardware-wallet-test)
+- **Ledger signing (dormant fork feature)** -- signs a real on-chain op (a Solana mailbox ownership round-trip) with a physically connected Ledger via the native `hyperlane-sealevel-client`, verifying the fork's built-in Ledger signing end to end. The architecture no longer uses a hardware wallet (ownership goes to the Privy bridge-owner wallet), so this is kept only as a fork-feature test. Skipped by default; see [Ledger signing test](#ledger-signing-test)
 
 ## Prerequisites
 
@@ -134,7 +134,7 @@ pytest -v -x test_13_warp_ui_bridge.py
 pytest -v -x -m "not slow"
 ```
 
-## Ledger hardware-wallet test
+## Ledger signing test
 
 `test_14_ledger_signing.py` exercises built-in Ledger signing in the
 `hyperlane-sealevel-client`: it transfers Solana mailbox ownership to the
@@ -290,7 +290,7 @@ tests/e2e/
 ├── test_11_warp_ui.py                   # Warp UI HTTP smoke tests (Tier 1)
 ├── test_12_ingress_endpoints.py         # Ingress URL probes for all stacks (Caddy wiring sanity)
 ├── test_13_warp_ui_bridge.py            # Warp UI browser bridge tests (Tier 2, Playwright)
-├── test_14_ledger_signing.py            # Ledger hardware-wallet signing test (skipped without a device)
+├── test_14_ledger_signing.py            # Ledger device-signing test (dormant fork feature; needs a device)
 ├── .logs/                               # k8s logs captured during test runs (gitignored)
 ├── lib/
 │   ├── common.py                        # Logging, assertions, wait helpers, log capture
