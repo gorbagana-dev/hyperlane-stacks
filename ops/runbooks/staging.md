@@ -17,10 +17,21 @@ belong to the gorchain RPC Caddy front, so the validators' kind ingress
 
 ## 0. Prerequisites
 
+**Controller** — same as `ops/README.md` → "Prerequisites":
+
+```bash
+pip install "ansible>=9" ansible-lint yamllint
+ansible-galaxy collection install -r requirements.yml -p ./collections
+# re-run the collection install after pulling — prepare-gorchain needs community.docker
+```
+
+**Accounts / access:**
+
 - `doctl` installed and authenticated (`doctl auth init`).
-- An SSH key loaded in your agent that can both reach the VMs and clone this
-  repo from GitHub — `fetch_stack` clones on the hosts over the forwarded
-  agent (`ansible.cfg` sets `ForwardAgent`), so no creds land on the VMs.
+- An SSH key loaded in your agent that can reach the VMs and has **write**
+  access to this repo on GitHub — the hosts clone over the forwarded agent
+  (`ansible.cfg` sets `ForwardAgent`) and `publish-bridge-state` pushes the
+  generated state back over it, so no creds land on the VMs.
 - A Cloudflare API token with DNS edit on the `gorbagana.wtf` zone.
 - A Helius **devnet** project (separate key from prod).
 - A Privy app for staging with an oracle server-wallet, a bridge-owner

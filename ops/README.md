@@ -12,7 +12,8 @@ Design: `docs/superpowers/specs/2026-06-01-deploy-side-ansible-design.md`.
 
 - Ansible 2.16+ and the linters: `pip install "ansible>=9" ansible-lint yamllint`
 - Collections: `ansible-galaxy collection install -r requirements.yml -p ./collections`
-  (installs `community.general`, `kubernetes.core`, `ansible.posix`)
+  (installs `community.general`, `kubernetes.core`, `ansible.posix`,
+  `community.docker` — re-run after pulling, the list grows)
 - `git`, `ssh` with **agent forwarding** to the target hosts, `dig`, `kubectl`
 - SSH access to every host in the target inventory
 
