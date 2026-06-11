@@ -2,6 +2,10 @@
 # Runs a validator for Gorchain using the hyperlane-validator stack.
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
+# Per-chain namespace: both validators deploy from the hyperlane-validator stack
+# and may share a host/cluster (staging does) — without an override the second
+# deployment would collide with the first's namespace.
+namespace: laconic-hyperlane-validator-gorchain
 kind-cluster-name: hyperlane
 kind-mount-root: /srv/kind/hyperlane
 network:
