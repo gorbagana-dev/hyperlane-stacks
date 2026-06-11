@@ -19,8 +19,9 @@ config:
   SOLANA_CHAIN_ID: "1399811151"
   GORCHAIN_MAILBOX: "__GORCHAIN_MAILBOX__"
   SOLANA_MAILBOX: "__SOLANA_MAILBOX__"
-  # No WalletConnect on local — the UI degrades to injected wallets only.
-  NEXT_PUBLIC_WALLET_CONNECT_ID: ""
+  # Rendered from deployment-config wallet_connect_id; "" (the usual local
+  # choice) degrades the UI to injected wallets only.
+  NEXT_PUBLIC_WALLET_CONNECT_ID: "REPLACE_WITH_WALLETCONNECT_PROJECT_ID"
 configmaps:
   warp-ui-config: ./configmaps/warp-ui-config
 resources:

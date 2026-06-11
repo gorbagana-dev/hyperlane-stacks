@@ -59,15 +59,21 @@ dns_records:
   - name: rpc
     host: staging-gorchain
 
+# Deploy-time spec renders (render_spec.yml): operator values substituted into the
+# on-host spec copy — the committed spec keeps the sentinel.
+spec_token_renders:
+  # from deployment-config.yml ("" disables WalletConnect)
+  REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
+
 # --- Secret-env values ---
 # See the prod group_vars for the full rationale. Staging differences: Solana uses
 # the Helius DEVNET endpoint; chain RPC/domain IDs (Solana devnet 1399811151,
 # *_IS_TESTNET=true) are committed literals in deployment/staging/spec-*.yml.
 SOLANA_RPC_URL: "https://devnet.helius-rpc.com/?api-key={{ helius_api_key }}"
-BRIDGE_OWNER_PUBKEY: "REPLACE_WITH_BRIDGE_OWNER_PUBKEY"
-IGP_ORACLE_PUBKEY: "REPLACE_WITH_IGP_ORACLE_PUBKEY"
-GORCHAIN_VALIDATOR_ADDRESS: "REPLACE_WITH_GORCHAIN_VALIDATOR_ADDRESS"
-SOLANA_VALIDATOR_ADDRESS: "REPLACE_WITH_SOLANA_VALIDATOR_ADDRESS"
+BRIDGE_OWNER_PUBKEY: "{{ bridge_owner_pubkey }}"
+IGP_ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+GORCHAIN_VALIDATOR_ADDRESS: "{{ gorchain_validator_address }}"
+SOLANA_VALIDATOR_ADDRESS: "{{ solana_validator_address }}"
 PRIVY_APP_ID: "{{ privy_app_id }}"
 PRIVY_APP_SECRET: "{{ privy_app_secret }}"
 PRIVY_ORACLE_WALLET_ID: "{{ privy_oracle_wallet_id }}"

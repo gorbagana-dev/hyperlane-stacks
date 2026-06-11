@@ -1,17 +1,15 @@
 ---
 # Staging validator set — 1-of-1 per chain, prod-shaped. Labels are load-bearing:
 # the committed validator specs hardcode the derived MinIO IAM env names
-# (GORCHAIN_PRIMARY_KEY_ID, SOLANA_PRIMARY_KEY_ID, ...). Fill privy_wallet_id from
-# the staging Privy project (ops/runbooks/privy-wallets.md) before deploy-all —
-# the deploy-time placeholder gate refuses unfilled values.
+# (GORCHAIN_PRIMARY_KEY_ID, SOLANA_PRIMARY_KEY_ID, ...). Pure topology: each
+# validator's Privy wallet id comes from the operator's deployment-config
+# (privy_validator_wallet_ids, keyed by label).
 validators:
   - label: gorchain-primary
     chain: gorchain
     host: staging-gorchain
-    privy_wallet_id: REPLACE_WITH_STAGING_GORCHAIN_PRIVY_WALLET_ID
     hostname: validator-gorchain.staging.gorbagana.wtf
   - label: solana-primary
     chain: solana
     host: staging-solana-validator
-    privy_wallet_id: REPLACE_WITH_STAGING_SOLANA_PRIVY_WALLET_ID
     hostname: validator-solana.staging.gorbagana.wtf

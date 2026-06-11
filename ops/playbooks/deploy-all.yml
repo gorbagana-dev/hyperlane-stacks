@@ -152,6 +152,18 @@
     - name: Load validators
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
 
+    - name: Every validator has a wallet id in the deployment config
+      ansible.builtin.assert:
+        that: "(item.privy_wallet_id | default('')) | length > 0"
+        fail_msg: >-
+          No wallet id for validator '{{ item.label }}' — set
+          privy_validator_wallet_ids.{{ item.label }} in this inventory's
+          deployment-config.yml.
+        quiet: true
+      loop: "{{ validators }}"
+      loop_control:
+        label: "{{ item.label }}"
+
     - name: Gather facts for each validator host (for ansible_env under delegation)
       ansible.builtin.setup:
       delegate_to: "{{ validator.host }}"
@@ -199,7 +211,7 @@
           {{ {(validator.label | upper | replace('-', '_') ~ '_KEY_ID'): minio_iam[validator.label].key_id,
               (validator.label | upper | replace('-', '_') ~ '_SECRET'): minio_iam[validator.label].secret} }}
         # The committed spec ships PRIVY_WALLET_ID: REPLACE_WITH_WALLET_ID; render this
-        # validator's id (from validators.yaml) into it. HYP_VALIDATOR_ID derives from
+        # validator's id (deployment-config wallet-id map) into it. HYP_VALIDATOR_ID derives from
         # PRIVY_WALLET_ID in the compose, so this one render covers both containers.
         spec_token_renders_extra:
           REPLACE_WITH_WALLET_ID: "{{ validator.privy_wallet_id }}"

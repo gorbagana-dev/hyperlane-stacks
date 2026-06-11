@@ -16,6 +16,21 @@
   ansible.builtin.set_fact:
     validators: "{{ (lookup('ansible.builtin.file', _validators_file) | from_yaml)['validators'] }}"
 
+# validators.yaml is pure topology; each validator's Privy wallet id comes from the
+# operator's deployment-config (privy_validator_wallet_ids, keyed by label). A file
+# that still carries privy_wallet_id inline (test fixtures) keeps it unless the map
+# overrides. Emptiness is asserted at the consumption point (deploy/restart).
+- name: Merge the operator wallet ids into the validator set
+  ansible.builtin.set_fact:
+    validators: >-
+      {%- set out = [] -%}
+      {%- for v in validators -%}
+        {%- set wid = (privy_validator_wallet_ids | default({})).get(v.label)
+                      | default(v.privy_wallet_id | default(''), true) -%}
+        {%- if out.append(v | combine({'privy_wallet_id': wid})) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+
 - name: Derive MINIO_USERS
   ansible.builtin.set_fact:
     minio_users: "{{ validators | map(attribute='label') | join(',') }}"

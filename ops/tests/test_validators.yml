@@ -7,6 +7,10 @@
     validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
     # fixture hostnames are prod-zone; pin base_domain so the test is inventory-independent
     base_domain: bridge.gorbagana.wtf
+    # deployment-config wallet-id map: overrides the fixture's inline id for one
+    # label; the other falls back to the file value (fixture-only behavior)
+    privy_validator_wallet_ids:
+      gorchain-primary: priv_from_config
   tasks:
     - name: Load + derive
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
@@ -21,6 +25,12 @@
         that:
           - "'GORCHAIN_PRIMARY' in validator_env_prefixes"
           - "'SOLANA_PRIMARY' in validator_env_prefixes"
+
+    - name: Wallet ids merge from the deployment config (map wins, file is fallback)
+      ansible.builtin.assert:
+        that:
+          - "(validators | selectattr('label', 'eq', 'gorchain-primary') | first).privy_wallet_id == 'priv_from_config'"
+          - "(validators | selectattr('label', 'eq', 'solana-primary') | first).privy_wallet_id == 'priv_bbb'"
 
     - name: Validator DNS records resolve label hostnames to the right host
       ansible.builtin.assert:

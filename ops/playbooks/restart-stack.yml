@@ -80,6 +80,18 @@
         that: _restart_validators | length > 0
         fail_msg: "No validator labelled '{{ validator_label | default('') }}' in validators.yaml"
 
+    - name: Every validator has a wallet id in the deployment config
+      ansible.builtin.assert:
+        that: "(item.privy_wallet_id | default('')) | length > 0"
+        fail_msg: >-
+          No wallet id for validator '{{ item.label }}' — set
+          privy_validator_wallet_ids.{{ item.label }} in this inventory's
+          deployment-config.yml.
+        quiet: true
+      loop: "{{ _restart_validators }}"
+      loop_control:
+        label: "{{ item.label }}"
+
     - name: Gather facts for each validator host (for ansible_env under delegation)
       ansible.builtin.setup:
       delegate_to: "{{ validator.host }}"
