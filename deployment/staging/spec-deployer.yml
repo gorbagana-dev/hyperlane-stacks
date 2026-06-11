@@ -55,3 +55,8 @@ image-pull-secret:
 #   solana-rpc:
 #     ip: 10.0.0.2
 #     port: 18899
+resources:
+  containers:
+    reservations:
+      cpus: "0.25"
+      memory: 512M

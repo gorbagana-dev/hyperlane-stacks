@@ -49,6 +49,10 @@ image-pull-secret:
   username: gorbagana-dev
   token-env: GHCR_PAT
 resources:
+  containers:
+    reservations:
+      cpus: "0.5"
+      memory: 1024M
   volumes:
     validator-data:
       reservations:

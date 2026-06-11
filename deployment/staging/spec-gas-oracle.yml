@@ -70,3 +70,8 @@ image-pull-secret:
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   gas-oracle: ghcr.io/gorbagana-dev/hyperlane-gas-oracle:v1.0.0
+resources:
+  containers:
+    reservations:
+      cpus: "0.1"
+      memory: 256M

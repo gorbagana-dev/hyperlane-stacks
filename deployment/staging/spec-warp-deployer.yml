@@ -48,3 +48,8 @@ image-pull-secret:
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-warp-deployer:v1.0.0
+resources:
+  containers:
+    reservations:
+      cpus: "0.25"
+      memory: 512M
