@@ -93,7 +93,7 @@ placeholder. First publish of the generated state, attended:
   appear under both validator buckets.
 - Grafana (`https://grafana.staging.gorbagana.wtf`): relayer + validator
   dashboards report.
-- `https://warp-ui.staging.gorbagana.wtf`: run a devnet-USDC transfer
+- `https://staging.gorbagana.wtf`: run a devnet-USDC transfer
   solana → gorchain and back.
 
 ## 5. Reset

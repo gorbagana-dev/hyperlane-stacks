@@ -50,7 +50,8 @@ dns_records:
     host: staging-bridge-ops
   - name: prometheus
     host: staging-bridge-ops
-  - name: warp-ui
+  # warp-ui — served at dns_zone itself (staging.gorbagana.wtf)
+  - name: "@"
     host: staging-bridge-ops
   - name: relayer
     host: staging-bridge-ops

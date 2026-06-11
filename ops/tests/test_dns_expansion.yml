@@ -37,6 +37,11 @@
           - "_prefix_staging == '.staging'"
           - "_prefix_prod == '.bridge'"
           - "_prefix_identity == ''"
+          # a dns_records `name: "@"` entry maps to dns_zone itself: the bare
+          # nesting prefix, or the true zone apex when dns_zone == cloudflare_zone
+          - "(_prefix_staging[1:] if _prefix_staging else '@') == 'staging'"
+          - "(_prefix_prod[1:] if _prefix_prod else '@') == 'bridge'"
+          - "(_prefix_identity[1:] if _prefix_identity else '@') == '@'"
         quiet: true
       vars:
         _prefix_staging: >-

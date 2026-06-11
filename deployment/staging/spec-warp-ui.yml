@@ -33,7 +33,7 @@ resources:
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: warp-ui.staging.gorbagana.wtf
+    - host-name: staging.gorbagana.wtf
       routes:
         - path: /
           proxy-to: warp-ui:3000
