@@ -45,7 +45,7 @@ topology: "{{ 'single' if (groups['minio_hosts'][0] == groups['relayer_hosts'][0
 # Single-host uses mkcert (local_tls role) and needs no DNS provider; multi-host
 # reconciles Cloudflare. configure-dns.yml is gated on this.
 manage_dns: "{{ topology == 'multi' }}"
-dns_zone: "hyperlane.test"
+base_domain: "hyperlane.test"
 dns_record_ttl: 300
 # Singleton DNS records are DERIVED from inventory group membership (dns_cloudflare
 # role): each subdomain points at whichever host runs that stack. One map serves both
@@ -142,23 +142,23 @@ single_host_external_services:
   hyperlane-monitoring: "{{ _xs_chains_prom }}"
 
 spec_token_renders:
-  __DNS_ZONE__: "{{ dns_zone }}"
+  __BASE_DOMAIN__: "{{ base_domain }}"
   # single: in-cluster service names (external-services); multi: operator domains
   __GORCHAIN_RPC_URL__: "{{ 'http://gorchain-rpc:8899' if topology == 'single' else gorchain_rpc_url }}"
   __SOLANA_RPC_URL__: "{{ 'http://solana-rpc:18899' if topology == 'single' else solana_rpc_url }}"
   # warp-ui is browser-facing: single -> chains over the SSH tunnel; multi -> domains
   __BROWSER_GORCHAIN_RPC_URL__: "{{ 'http://localhost:8899' if topology == 'single' else gorchain_rpc_url }}"
   __BROWSER_SOLANA_RPC_URL__: "{{ 'http://localhost:18899' if topology == 'single' else solana_rpc_url }}"
-  __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ dns_zone }}"
+  __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ base_domain }}"
   __PROM_SCRAPE_SCHEME__: "{{ 'http' if topology == 'single' else 'https' }}"
   __PROM_VALIDATOR_TARGETS__: >-
     {{ 'gorchain-primary=validator-gorchain:9090,solana-primary=validator-solana:9090'
        if topology == 'single'
-       else 'gorchain-primary=validator-gorchain.' ~ dns_zone ~ ':443,'
-            ~ 'solana-primary=validator-solana.' ~ dns_zone ~ ':443' }}
+       else 'gorchain-primary=validator-gorchain.' ~ base_domain ~ ':443,'
+            ~ 'solana-primary=validator-solana.' ~ base_domain ~ ':443' }}
   __PROM_RELAYER_TARGETS__: >-
     {{ 'primary=relayer:9091' if topology == 'single'
-       else 'primary=relayer.' ~ dns_zone ~ ':443' }}
+       else 'primary=relayer.' ~ base_domain ~ ':443' }}
 
 # --- Secret-env values ---
 # Local has no Helius (own Solana chain → solana_rpc_url is a plain domain rendered

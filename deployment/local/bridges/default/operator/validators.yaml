@@ -1,8 +1,8 @@
 ---
 # Local own-chains validator set. Single-host (Layer 1): both on local-1. For the
 # multi-host split (Layer 2) move a validator's `host` to local-2 etc. Set
-# privy_wallet_id from the Privy project. Hostnames match the group_vars dns_zone
-# (load_validators derives the DNS record name by stripping dns_zone off the
+# privy_wallet_id from the Privy project. Hostnames match the group_vars base_domain
+# (load_validators derives the DNS record name by stripping base_domain off the
 # hostname).
 validators:
   - label: gorchain-primary

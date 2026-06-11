@@ -20,11 +20,11 @@ resources:
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: s3.__DNS_ZONE__
+    - host-name: s3.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: minio:9000
-    - host-name: minio-console.__DNS_ZONE__
+    - host-name: minio-console.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: minio:9001

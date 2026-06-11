@@ -1,6 +1,6 @@
 # Hyperlane Validator (Gorchain) - LOCAL (own-chains) deployment spec
 # Fronted by Caddy + LE like prod; MinIO reached via the public s3.<zone> endpoint
-# (real cert, trusted by the Rust S3 client). __DNS_ZONE__ is rendered on the host.
+# (real cert, trusted by the Rust S3 client). __BASE_DOMAIN__ is rendered on the host.
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
@@ -55,7 +55,7 @@ image-pull-secret:
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: validator-gorchain.__DNS_ZONE__
+    - host-name: validator-gorchain.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: validator:9090

@@ -37,8 +37,8 @@ laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/rele
 credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 
 # --- DNS ---
-dns_zone: bridge.gorbagana.wtf
-cloudflare_zone: gorbagana.wtf      # the registered CF zone; dns_zone nests under it
+base_domain: bridge.gorbagana.wtf
+cloudflare_zone: gorbagana.wtf      # the registered CF zone; base_domain nests under it
 dns_record_ttl: 300
 dns_records:
   - name: s3
@@ -49,7 +49,7 @@ dns_records:
     host: bridge-host-1
   - name: prometheus
     host: bridge-host-1
-  # warp-ui — served at dns_zone itself (bridge.gorbagana.wtf)
+  # warp-ui — served at base_domain itself (bridge.gorbagana.wtf)
   - name: "@"
     host: bridge-host-1
   - name: relayer

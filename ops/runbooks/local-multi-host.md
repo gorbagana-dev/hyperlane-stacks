@@ -16,7 +16,7 @@ All commands run from `ops/` on the controller (your machine).
 ## Networking model
 
 - Caddy + **Cloudflare DNS** + real **Let's Encrypt** under an operator-supplied public
-  zone (`dns_zone`). `https://s3.<zone>`, `https://validator-x.<zone>`, etc. resolve via
+  zone (`base_domain`). `https://s3.<zone>`, `https://validator-x.<zone>`, etc. resolve via
   public DNS to the right host's Caddy, and the Rust S3 client trusts the LE-issued cert
   (cross-host routing needs both). Topology is **derived** from inventory group membership
   (the agents and MinIO are on different hosts) — no flag.
@@ -36,7 +36,7 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 Plus `git`, `ssh` with **agent forwarding**, `dig`, `kubectl`.
 
 **Accounts / access:**
-- A **public DNS zone on Cloudflare** (`dns_zone`) and a Cloudflare API token scoped to it.
+- A **public DNS zone on Cloudflare** (`base_domain`) and a Cloudflare API token scoped to it.
 - A **Privy** project (validator + gas-oracle signing) — see [privy-wallets.md](privy-wallets.md).
 - A **GHCR** PAT (`packages:read`) for the private `gorbagana-dev/*` images (the
   docker-login user defaults to `gorbagana-dev`).
@@ -106,11 +106,11 @@ ansible -i inventories/local/hosts-multihost.yml all:!controller -m ping   # exp
 
 ```yaml
 # inventories/local/group_vars/all.yml
-dns_zone: "staging.gorbagana.wtf"        # your public Cloudflare zone
+base_domain: "staging.gorbagana.wtf"        # your public Cloudflare zone
 ```
 
 Edit `validators-multihost.yaml`: set each validator's `privy_wallet_id` and replace
-`REPLACE_WITH_LOCAL_DNS_ZONE` in the hostnames to match `dns_zone` (e.g.
+`REPLACE_WITH_LOCAL_BASE_DOMAIN` in the hostnames to match `base_domain` (e.g.
 `validator-gorchain.staging.gorbagana.wtf`). The `host:` is already `local-agents`.
 `dns_records` is derived from group membership, so the same `group_vars` serves both
 topologies.

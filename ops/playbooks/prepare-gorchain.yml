@@ -1,13 +1,13 @@
 ---
 # Staging chain play — stand up the PERSISTENT single-node gorchain on the
-# chain host, front its RPC with Caddy + Let's Encrypt at rpc.<dns_zone>, and
+# chain host, front its RPC with Caddy + Let's Encrypt at rpc.<base_domain>, and
 # generate the hot signing keys. Deliberately NOT part of setup-all/deploy-all
 # (same isolation as the local prepare-chains.yml): chains are pre-deploy.
 #
 #   ansible-playbook -i inventories/staging/hosts.yml playbooks/prepare-gorchain.yml
 #
 # Run AFTER setup-all.yml: bootstrap installs docker/laconic-so, and
-# configure-dns must have created rpc.<dns_zone> before Caddy can pass the
+# configure-dns must have created rpc.<base_domain> before Caddy can pass the
 # ACME challenge. Re-runs preserve the chain (GORCHAIN_PRESERVE) — state under
 # ~/chains/gorchain survives until an operator destroys it deliberately.
 #
@@ -90,7 +90,7 @@
         dest: "{{ caddy_dir }}/Caddyfile"
         mode: "0644"
         content: |
-          rpc.{{ dns_zone }} {
+          rpc.{{ base_domain }} {
             reverse_proxy 127.0.0.1:8899
           }
       register: _caddyfile

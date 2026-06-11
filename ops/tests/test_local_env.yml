@@ -70,7 +70,7 @@
 
     - name: Stand in operator-supplied values + multi-host topology
       ansible.builtin.set_fact:
-        dns_zone: "staging.gorbagana.wtf"
+        base_domain: "staging.gorbagana.wtf"
         gorchain_rpc_url: "https://gorchain-rpc.example"
         solana_rpc_url: "https://solana-rpc.example"
         topology: "multi"

@@ -5,7 +5,7 @@
   gather_facts: false
   vars:
     validators_file: "{{ playbook_dir }}/fixtures/validators.yaml"
-    dns_zone: bridge.gorbagana.wtf
+    base_domain: bridge.gorbagana.wtf
     dns_records:
       - name: s3
         host: bridge-host-1
@@ -37,8 +37,8 @@
           - "_prefix_staging == '.staging'"
           - "_prefix_prod == '.bridge'"
           - "_prefix_identity == ''"
-          # a dns_records `name: "@"` entry maps to dns_zone itself: the bare
-          # nesting prefix, or the true zone apex when dns_zone == cloudflare_zone
+          # a dns_records `name: "@"` entry maps to base_domain itself: the bare
+          # nesting prefix, or the true zone apex when base_domain == cloudflare_zone
           - "(_prefix_staging[1:] if _prefix_staging else '@') == 'staging'"
           - "(_prefix_prod[1:] if _prefix_prod else '@') == 'bridge'"
           - "(_prefix_identity[1:] if _prefix_identity else '@') == '@'"

@@ -38,8 +38,8 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 # Hostname suffix for every staging endpoint (specs + DNS records). Changing the
 # zone is mechanical: edit this + the hostname literals in deployment/staging/
 # spec-*.yml, then re-run configure-dns.yml.
-dns_zone: staging.gorbagana.wtf
-cloudflare_zone: gorbagana.wtf      # the registered CF zone; dns_zone nests under it
+base_domain: staging.gorbagana.wtf
+cloudflare_zone: gorbagana.wtf      # the registered CF zone; base_domain nests under it
 dns_record_ttl: 300
 dns_records:
   - name: s3
@@ -50,7 +50,7 @@ dns_records:
     host: staging-bridge-ops
   - name: prometheus
     host: staging-bridge-ops
-  # warp-ui — served at dns_zone itself (staging.gorbagana.wtf)
+  # warp-ui — served at base_domain itself (staging.gorbagana.wtf)
   - name: "@"
     host: staging-bridge-ops
   - name: relayer

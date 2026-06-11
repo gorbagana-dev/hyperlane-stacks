@@ -9,7 +9,7 @@ All commands run from `ops/` on the controller (your machine).
 ## Networking model
 
 - Self-trusted **mkcert** certs — the `local_tls` role generates a multi-SAN cert and
-  pre-seeds it into Caddy (no ACME, **no DNS provider**). `dns_zone` is just a label the
+  pre-seeds it into Caddy (no ACME, **no DNS provider**). `base_domain` is just a label the
   cert covers (`hyperlane.test`), not a real Cloudflare zone.
 - The validator→MinIO, relayer→MinIO, and Prometheus→validator/relayer legs run
   **in-cluster over HTTP** (pod-to-pod) — no NAT hairpin.
@@ -208,7 +208,7 @@ The chains are separate from the bridge stacks: stop them with
 - **No hairpin.** The validator→MinIO and Prometheus scrape legs run in-cluster, so
   single-host never loops traffic out to the host's public IP and back.
 - **Cert pinned to the hostname list.** The mkcert leaf cert is generated once (guarded by
-  `creates:`). If you change `dns_zone` or the validator set, delete
+  `creates:`). If you change `base_domain` or the validator set, delete
   `~/.credentials/hyperlane/local-certs/bridge.crt` on the host and re-run `setup-all.yml`.
 - **Re-running on a dirty clone.** The on-host token render edits the clone's specs in
   place (uncommitted), only on first `deploy create`. If you re-fetch a branch that also

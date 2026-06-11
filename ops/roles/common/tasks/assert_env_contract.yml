@@ -20,7 +20,7 @@
     - manage_dns
     - bridge_name
     - deployment_subdir
-    - dns_zone
+    - base_domain
     - credentials_dir
     - stack_env_vars
     - stacks

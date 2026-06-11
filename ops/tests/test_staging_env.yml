@@ -26,14 +26,14 @@
           - "topology == 'multi'"
           - "manage_dns | bool"
           - "deployment_subdir == 'deployment/staging'"
-          - "dns_zone == 'staging.gorbagana.wtf'"
+          - "base_domain == 'staging.gorbagana.wtf'"
           # gorchain is the only chain on staging (solana is Helius devnet)
           - "_staging_inv.all.children.chain_hosts.hosts.keys() | list == ['staging-gorchain']"
           # the solana validator host is inventoried (bootstrap covers all:!controller)
           - "_staging_inv.all.children.validator_hosts.hosts.keys() | list == ['staging-solana-validator']"
           # the gorchain RPC seam has a DNS record on the chain host
           - "(dns_records | selectattr('name', 'eq', 'rpc') | map(attribute='host') | list) == ['staging-gorchain']"
-          # warp-ui serves dns_zone itself (staging.gorbagana.wtf), like prod's apex
+          # warp-ui serves base_domain itself (staging.gorbagana.wtf), like prod's apex
           - "(dns_records | selectattr('name', 'eq', '@') | map(attribute='host') | list) == ['staging-bridge-ops']"
         quiet: true
 

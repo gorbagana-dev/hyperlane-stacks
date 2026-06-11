@@ -20,24 +20,24 @@
     label: "{{ item.key }}"
   when: dns_record_map is defined
 
-- name: Derive the record-name prefix nesting dns_zone under the registered zone
+- name: Derive the record-name prefix nesting base_domain under the registered zone
   ansible.builtin.set_fact:
-    _dns_zone_prefix: >-
-      {{ '' if dns_zone == cloudflare_zone
-         else '.' ~ (dns_zone | regex_replace('\.' ~ (cloudflare_zone | regex_escape) ~ '$', '')) }}
+    _base_domain_prefix: >-
+      {{ '' if base_domain == cloudflare_zone
+         else '.' ~ (base_domain | regex_replace('\.' ~ (cloudflare_zone | regex_escape) ~ '$', '')) }}
 
-# A dns_records entry `name: "@"` means dns_zone itself (e.g. the warp-ui URL
+# A dns_records entry `name: "@"` means base_domain itself (e.g. the warp-ui URL
 # bridge.gorbagana.wtf): the Cloudflare record is the nesting prefix alone, or
-# the true zone apex '@' when dns_zone IS the registered zone.
-- name: Derive the apex record name (dns_zone itself)
+# the true zone apex '@' when base_domain IS the registered zone.
+- name: Derive the apex record name (base_domain itself)
   ansible.builtin.set_fact:
-    _dns_apex_record: "{{ _dns_zone_prefix[1:] if _dns_zone_prefix else '@' }}"
+    _dns_apex_record: "{{ _base_domain_prefix[1:] if _base_domain_prefix else '@' }}"
 
-- name: dns_zone must equal or nest under cloudflare_zone  # noqa: name[casing] starts with the var it validates
+- name: base_domain must equal or nest under cloudflare_zone  # noqa: name[casing] starts with the var it validates
   ansible.builtin.assert:
-    that: "dns_zone == cloudflare_zone or dns_zone.endswith('.' ~ cloudflare_zone)"
+    that: "base_domain == cloudflare_zone or base_domain.endswith('.' ~ cloudflare_zone)"
     fail_msg: >-
-      dns_zone '{{ dns_zone }}' is not under cloudflare_zone '{{ cloudflare_zone }}' —
+      base_domain '{{ base_domain }}' is not under cloudflare_zone '{{ cloudflare_zone }}' —
       fix group_vars.
     quiet: true
 
@@ -50,7 +50,7 @@
   community.general.cloudflare_dns:
     api_token: "{{ cloudflare_api_token }}"
     zone: "{{ cloudflare_zone }}"
-    record: "{{ _dns_apex_record if item.name == '@' else item.name ~ _dns_zone_prefix }}"
+    record: "{{ _dns_apex_record if item.name == '@' else item.name ~ _base_domain_prefix }}"
     type: A
     value: "{{ host_ip_map[item.host] }}"
     ttl: "{{ dns_record_ttl }}"
@@ -58,5 +58,5 @@
     state: present
   loop: "{{ dns_records + validator_dns_records }}"
   loop_control:
-    label: "{{ dns_zone if item.name == '@' else item.name ~ '.' ~ dns_zone }}"
+    label: "{{ base_domain if item.name == '@' else item.name ~ '.' ~ base_domain }}"
   when: not ansible_check_mode

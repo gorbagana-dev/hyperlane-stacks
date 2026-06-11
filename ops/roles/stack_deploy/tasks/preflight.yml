@@ -19,15 +19,15 @@
          | map(attribute='host-name') | list }}
   when: not ansible_check_mode
 
-# The committed local specs carry the __DNS_ZONE__ token (rendered into the spec
+# The committed local specs carry the __BASE_DOMAIN__ token (rendered into the spec
 # file later, in deploy.yml). Render it here too so the resolution check below
 # tests the real hostname. A no-op for prod/staging specs, which bake in real names.
-- name: Render the DNS-zone token in the derived hostnames
+- name: Render the base-domain token in the derived hostnames
   ansible.builtin.set_fact:
-    stack_hostnames: "{{ stack_hostnames | map('regex_replace', '__DNS_ZONE__', dns_zone) | list }}"
+    stack_hostnames: "{{ stack_hostnames | map('regex_replace', '__BASE_DOMAIN__', base_domain) | list }}"
   when:
     - not ansible_check_mode
-    - dns_zone is defined
+    - base_domain is defined
     - stack_hostnames | default([]) | length > 0
 
 # Single-host serves Caddy over loopback with mkcert — no public DNS, so there is

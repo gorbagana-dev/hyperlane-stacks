@@ -41,7 +41,7 @@ image-pull-secret:
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: warp-ui.__DNS_ZONE__
+    - host-name: warp-ui.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: warp-ui:3000

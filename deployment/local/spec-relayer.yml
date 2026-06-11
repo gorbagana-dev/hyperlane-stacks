@@ -58,7 +58,7 @@ image-pull-secret:
 network:
   acme-email: admin@gorbagana.wtf
   http-proxy:
-    - host-name: relayer.__DNS_ZONE__
+    - host-name: relayer.__BASE_DOMAIN__
       routes:
         - path: /
           proxy-to: relayer:9091

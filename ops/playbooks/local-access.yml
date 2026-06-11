@@ -31,7 +31,7 @@
           {{ (dns_record_map.keys() | list
               + (validators | map(attribute='chain')
                  | map('regex_replace', '^', 'validator-') | list))
-             | map('regex_replace', '$', '.' ~ dns_zone) | list }}
+             | map('regex_replace', '$', '.' ~ base_domain) | list }}
         _host_ip: "{{ hostvars[_host].public_ip }}"
         _published_ca: "{{ hostvars[_host].credentials_dir }}/local-rootCA.pem"
 
