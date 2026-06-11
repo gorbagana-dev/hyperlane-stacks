@@ -82,8 +82,7 @@
 
     # Carry each keyfile to the host whose spec reads it (the `file:` refs in
     # deployment/staging/spec-*.yml): deployer/relayer keys to the bridge-ops
-    # host, validator keys to their validators.yaml hosts. hardware-wallet.json
-    # stays here — only its pubkey is consumed (group_vars HARDWARE_WALLET_PUBKEY).
+    # host, validator keys to their validators.yaml hosts.
     - name: Derive the validator hosts (validators.yaml)
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
 

@@ -104,8 +104,7 @@ oracle, and deploys the collateral USDC SPL mint.
 ansible-playbook -i inventories/local/hosts.yml playbooks/prepare-chains.yml
 ```
 
-It prints, in the final summary, the value you still need to set:
-`HARDWARE_WALLET_PUBKEY`. The collateral mint is persisted to
+The collateral mint is persisted to
 `~/.credentials/hyperlane/warp-token-mint` and substituted into the warp route
 automatically — no edit needed.
 
@@ -116,20 +115,19 @@ Notes:
   **automatically** (external-services → kind gateway) — leave `gorchain_rpc_url`/
   `solana_rpc_url` at their placeholders in `group_vars/all.yml`.
 - It generated these keyfiles under `~/.credentials/hyperlane/` on local-1:
-  `deployer-keypair.json` (deployer + warp-deployer), `hardware-wallet.json`
-  (`HARDWARE_WALLET_PUBKEY`, you hold it), `validator-{gorchain,solana}.key` (announce
-  keys), `relayer-{gorchain,solana}.key` (relayer signers), `relayer-fee-claim.json`
-  (IGP fee claims).
+  `deployer-keypair.json` (deployer + warp-deployer), `validator-{gorchain,solana}.key`
+  (announce keys), `relayer-{gorchain,solana}.key` (relayer signers),
+  `relayer-fee-claim.json` (IGP fee claims).
 - Re-running is safe: existing keys are never overwritten, and a healthy solana validator
   is left as-is. To run it by hand instead of via ansible, the same scripts live at
   `ops/scripts/{setup-chains,gen-local-keys,deploy-spl-token}.sh`.
 
 ## 7. Fill the remaining vars
 
-From the step-6 summary, set `HARDWARE_WALLET_PUBKEY` in
-`inventories/local/group_vars/all.yml`. (The collateral mint was persisted in step 6 and
-is substituted into the warp route automatically; `IGP_ORACLE_PUBKEY` and the validator
-addresses were set in step 2.)
+Nothing left from key generation: the collateral mint was persisted in step 6 and
+is substituted into the warp route automatically; `BRIDGE_OWNER_PUBKEY`,
+`IGP_ORACLE_PUBKEY`, and the validator addresses all come from Privy and were set
+in step 2.
 
 ## 8. Deploy
 

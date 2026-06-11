@@ -17,8 +17,9 @@ and Let's Encrypt TLS under `staging.gorbagana.wtf`. Design:
   user and a deploy user.
 - A Cloudflare API token with DNS edit on the `gorbagana.wtf` zone.
 - A Helius **devnet** project (separate key from prod).
-- A Privy app for staging with an oracle server-wallet and one server-wallet
-  per validator — follow [privy-wallets.md](privy-wallets.md).
+- A Privy app for staging with an oracle server-wallet, a bridge-owner
+  server-wallet, and one server-wallet per validator — follow
+  [privy-wallets.md](privy-wallets.md).
 
 Then fill in the operator values (the deploy gates refuse any value left at a
 `REPLACE_WITH_*` sentinel):
@@ -32,7 +33,7 @@ Then fill in the operator values (the deploy gates refuse any value left at a
 | `ops/inventories/staging/group_vars/all.yml` | `GORCHAIN_VALIDATOR_ADDRESS` | the gorchain Privy validator wallet's address |
 | `ops/inventories/staging/group_vars/all.yml` | `SOLANA_VALIDATOR_ADDRESS` | the solana Privy validator wallet's address |
 | `ops/inventories/staging/group_vars/all.yml` | `IGP_ORACLE_PUBKEY` | the Privy oracle wallet's Solana pubkey |
-| `ops/inventories/staging/group_vars/all.yml` | `HARDWARE_WALLET_PUBKEY` | printed by step 2 — fill in after `prepare-gorchain.yml` runs |
+| `ops/inventories/staging/group_vars/all.yml` | `BRIDGE_OWNER_PUBKEY` | the Privy bridge-owner wallet's Solana pubkey |
 | `deployment/staging/spec-warp-ui.yml` | `NEXT_PUBLIC_WALLET_CONNECT_ID` | a WalletConnect Cloud project id, or `""` to disable |
 
 All commands below run from `ops/` with `-i inventories/staging/hosts.yml`.
@@ -62,18 +63,14 @@ keyfile to the host whose spec reads it:
 | Host | Keyfiles |
 |---|---|
 | `staging-bridge-ops` | `deployer-keypair.json`, `relayer-gorchain.key`, `relayer-solana.key`, `relayer-fee-claim.json` |
-| `staging-gorchain` | `validator-gorchain.key` (+ `hardware-wallet.json`, which stays here) |
+| `staging-gorchain` | `validator-gorchain.key` |
 | `staging-solana-validator` | `validator-solana.key` |
 
 Staging signs from generated throwaway key files; prod signs from
-operator-provisioned key files — no Ledger is involved in deployment on
-either env. (Prod's `HARDWARE_WALLET_PUBKEY` is a hardware wallet's address,
-used during deployment only as the ownership-transfer target; staging stands
-in the generated `hardware-wallet.json` for it.)
-
-After the run, set `HARDWARE_WALLET_PUBKEY` in
-`ops/inventories/staging/group_vars/all.yml` from the play output (also in
-`addresses.env`, below).
+operator-provisioned key files. The bridge owner is not a keyfile on any env:
+at the end of the deploy, program upgrade authority and mailbox/ISM/route
+ownership transfer to `BRIDGE_OWNER_PUBKEY` — the Privy bridge-owner wallet,
+which signs nothing during deployment.
 
 ### Fund the on-chain signers
 
@@ -89,7 +86,7 @@ The play exports every generated address to
 | relayer solana signer | `RELAYER_SOLANA_ADDR` | — | 1 |
 | IGP fee-claim | `RELAYER_FEE_CLAIM_ADDR` | 1 | 1 |
 | Privy IGP oracle | — (`IGP_ORACLE_PUBKEY` in group_vars) | 1 | 1 |
-| hardware wallet | `HARDWARE_WALLET_ADDR` | — | — (transfer target only) |
+| Privy bridge owner | — (`BRIDGE_OWNER_PUBKEY` in group_vars) | — | — (transfer target only) |
 
 On staging-gorchain:
 

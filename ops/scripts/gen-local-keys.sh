@@ -4,13 +4,13 @@
 # iteration). NEVER run this against a prod credentials dir.
 #
 # Writes the ed25519 keyfiles the local stack consumes into the operator
-# credentials dir, prints the pubkeys/addresses to paste into group_vars and to
-# fund, and exports them to $CRED_DIR/addresses.env (shell-sourceable, one
-# place for funding commands to read from).
+# credentials dir, prints the addresses to fund, and exports them to
+# $CRED_DIR/addresses.env (shell-sourceable, one place for funding commands
+# to read from).
 # It refuses to overwrite existing files, so it cannot clobber real keys.
 #
-# Privy-derived values (GORCHAIN/SOLANA_VALIDATOR_ADDRESS, IGP_ORACLE_PUBKEY) do
-# NOT come from here — see ops/runbooks/privy-wallets.md.
+# Privy-derived values (GORCHAIN/SOLANA_VALIDATOR_ADDRESS, IGP_ORACLE_PUBKEY,
+# BRIDGE_OWNER_PUBKEY) do NOT come from here — see ops/runbooks/privy-wallets.md.
 #
 # Usage:  ops/scripts/gen-local-keys.sh [--yes] [--fund --oracle <IGP_ORACLE_PUBKEY>]
 #         CRED_DIR=/path ops/scripts/gen-local-keys.sh   # override target dir
@@ -111,18 +111,11 @@ gen_hex_key() {
 
 echo "Generating keyfiles in $CRED_DIR ..."
 gen_keypair_json deployer-keypair.json  "deployer — deploys programs; fund heavily"
-gen_keypair_json hardware-wallet.json   "upgrade authority -> HARDWARE_WALLET_PUBKEY"
 gen_keypair_json relayer-fee-claim.json "IGP fee-claim signer (RELAYER_KEYPAIR_JSON)"
 gen_hex_key validator-gorchain.key      "gorchain validator announce (HYP_DEFAULTSIGNER_KEY)"
 gen_hex_key validator-solana.key        "solana validator announce (HYP_DEFAULTSIGNER_KEY)"
 gen_hex_key relayer-gorchain.key        "relayer gorchain signer (HYP_CHAINS_GORCHAIN_SIGNER_KEY)"
 gen_hex_key relayer-solana.key          "relayer solana signer (HYP_CHAINS_SOLANA_SIGNER_KEY)"
-
-hw_addr=""
-for row in "${SUMMARY[@]}"; do
-  IFS='|' read -r _ file addr <<<"$row"
-  [ "$file" = "hardware-wallet.json" ] && hw_addr="$addr"
-done
 
 # Sourceable address export — regenerated every run (addresses are derived data,
 # never secret). Var name from the filename: deployer-keypair.json -> DEPLOYER_KEYPAIR_ADDR.
@@ -139,9 +132,6 @@ ADDR_FILE="$CRED_DIR/addresses.env"
 echo
 echo "Addresses exported to $ADDR_FILE"
 
-echo
-echo "== Paste into ops/inventories/local/group_vars/all.yml =="
-echo "  HARDWARE_WALLET_PUBKEY: \"$hw_addr\""
 # Assemble <address> <amount> pairs for the funder: deployer 100, everything else 1.
 FUND_PAIRS=()
 for row in "${SUMMARY[@]}"; do
@@ -174,13 +164,9 @@ cat <<NOTE
 NOT generated here (come from Privy — see ops/runbooks/privy-wallets.md):
   GORCHAIN_VALIDATOR_ADDRESS / SOLANA_VALIDATOR_ADDRESS   (Privy EVM wallets)
   IGP_ORACLE_PUBKEY                                        (Privy Solana wallet)
+  BRIDGE_OWNER_PUBKEY                                      (Privy Solana wallet)
 
 The local stack wires NO dedicated IGP beneficiary key — fees accrue to the
 deployer default. (e2e generates a separate igp-beneficiary key only to observe
 fee-claim balance changes in its tests.)
 NOTE
-
-# Machine-parseable trailer (mirrors deploy-spl-token.sh's WARP_TOKEN_MINT=) so
-# the ansible wrapper can pull the one value the operator must set by hand.
-echo
-echo "HARDWARE_WALLET_PUBKEY=$hw_addr"

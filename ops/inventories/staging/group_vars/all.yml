@@ -64,7 +64,7 @@ dns_records:
 # the Helius DEVNET endpoint; chain RPC/domain IDs (Solana devnet 1399811151,
 # *_IS_TESTNET=true) are committed literals in deployment/staging/spec-*.yml.
 SOLANA_RPC_URL: "https://devnet.helius-rpc.com/?api-key={{ helius_api_key }}"
-HARDWARE_WALLET_PUBKEY: "REPLACE_WITH_HW_WALLET_PUBKEY"
+BRIDGE_OWNER_PUBKEY: "REPLACE_WITH_BRIDGE_OWNER_PUBKEY"
 IGP_ORACLE_PUBKEY: "REPLACE_WITH_IGP_ORACLE_PUBKEY"
 GORCHAIN_VALIDATOR_ADDRESS: "REPLACE_WITH_GORCHAIN_VALIDATOR_ADDRESS"
 SOLANA_VALIDATOR_ADDRESS: "REPLACE_WITH_SOLANA_VALIDATOR_ADDRESS"
@@ -82,14 +82,14 @@ stack_env_vars:
     - MINIO_ROOT_USER
     - MINIO_ROOT_PASSWORD
   hyperlane-svm-deployer:
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - IGP_ORACLE_PUBKEY
     - GORCHAIN_VALIDATOR_ADDRESS
     - SOLANA_VALIDATOR_ADDRESS
     - SOLANA_RPC_URL
     - GHCR_PAT
   hyperlane-svm-warp-deployer:
-    - HARDWARE_WALLET_PUBKEY
+    - BRIDGE_OWNER_PUBKEY
     - SOLANA_RPC_URL
     - GHCR_PAT
   hyperlane-relayer:

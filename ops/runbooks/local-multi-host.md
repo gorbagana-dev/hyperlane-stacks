@@ -153,9 +153,9 @@ local-agents (validators + relayer host):
   relayer-fee-claim.json   # Solana keypair JSON array (IGP fee-claim sidecar)
 ```
 
-You keep `hardware-wallet.json` (its pubkey → `HARDWARE_WALLET_PUBKEY`; not deployed).
-Then fill in `group_vars/all.yml`: `HARDWARE_WALLET_PUBKEY` (from the helper),
-`IGP_ORACLE_PUBKEY`, `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`;
+Then fill in `group_vars/all.yml`: `BRIDGE_OWNER_PUBKEY`,
+`IGP_ORACLE_PUBKEY`, `GORCHAIN_VALIDATOR_ADDRESS`, `SOLANA_VALIDATOR_ADDRESS`
+(all from the Privy wallets — see [privy-wallets.md](privy-wallets.md));
 `REPLACE_WITH_GITHUB_USERNAME` in the specs' `image-pull-secret`. The chains box isn't
 ansible-managed, so write the USDC mint (the `WARP_TOKEN_MINT` the SPL deploy printed) to
 `~/.credentials/hyperlane/warp-token-mint` on the deployer host (`local-services`),
