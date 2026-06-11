@@ -1,0 +1,67 @@
+---
+# Fund an operator TEST wallet (e.g. Backpack) for trying the bridge — local and
+# staging only, never prod, and never the deployer account. Run after the chains
+# are up (local/prepare-chains.yml / staging/prepare-gorchain.yml):
+#
+#   ansible-playbook -i inventories/<env>/hosts.yml playbooks/fund-test-wallet.yml \
+#     -e wallet=<the wallet's Solana address>
+#
+# Targets chain_hosts (solana CLI + faucet access live there). The local
+# MULTI-host inventory has no managed chain host (chains are out-of-band) — this
+# play no-ops there; run ops/scripts/fund-test-wallet.sh on the chains box instead.
+#
+# GOR + SOL top up to target balances (idempotent). USDC: local transfers from the
+# deployer's minted supply; staging skips it (collateral is Circle's devnet USDC —
+# https://faucet.circle.com).
+- name: Fund an operator test wallet (GOR + SOL + local USDC)
+  hosts: chain_hosts
+  gather_facts: true
+  vars:
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    _staging: "{{ deployment_subdir == 'deployment/staging' }}"
+  pre_tasks:
+    - name: Refuse prod
+      ansible.builtin.assert:
+        that: "deployment_subdir != 'deployment'"
+        fail_msg: "fund-test-wallet is a local/staging faucet helper — not for prod."
+
+    - name: A test wallet address is required
+      ansible.builtin.assert:
+        that: "(wallet | default('')) is match('^[1-9A-HJ-NP-Za-km-z]{32,44}$')"
+        fail_msg: >-
+          Pass -e wallet=<Solana address> (base58) — the TEST wallet to fund,
+          e.g. your Backpack address. Never the deployer account.
+  tasks:
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ship the funding script
+      ansible.builtin.copy:
+        src: ../scripts/fund-test-wallet.sh
+        dest: "{{ scripts_dst }}/fund-test-wallet.sh"
+        mode: "0755"
+
+    - name: Fund the wallet to its target balances
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/fund-test-wallet.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        WALLET: "{{ wallet }}"
+        GORCHAIN_RPC: "http://localhost:8899"
+        SOLANA_RPC: "{{ 'https://api.devnet.solana.com' if _staging else 'http://localhost:18899' }}"
+        SOL_TARGET: "{{ '2' if _staging else '10' }}"
+        SOL_CHUNK: "{{ '2' if _staging else '10' }}"
+        SOL_RETRIES: "{{ '3' if _staging else '5' }}"
+        USDC_MINT_FILE: "{{ '' if _staging else credentials_dir ~ '/warp-token-mint' }}"
+        DEPLOYER_KEYPAIR: "{{ credentials_dir }}/deployer-keypair.json"
+      register: fund_out
+      changed_when: true
+
+    - name: Funding results
+      ansible.builtin.debug:
+        var: fund_out.stdout_lines

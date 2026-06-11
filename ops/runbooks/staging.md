@@ -127,9 +127,37 @@ outside a full deploy.
 - Grafana (`https://grafana.staging.gorbagana.wtf`): relayer + validator
   dashboards report.
 - `https://staging.gorbagana.wtf`: run a devnet-USDC transfer
-  solana → gorchain and back.
+  solana → gorchain and back — see the next section.
 
-## 5. Reset
+## 5. Try the bridge (Backpack)
+
+Use a throwaway test wallet — never the deployer account.
+
+1. **Backpack** (skip if you already use it): install the extension from
+   https://backpack.app and create a wallet (or import a dedicated test
+   seed). Copy its Solana address.
+2. **Fund it** — GOR on gorchain + devnet SOL, balance-driven and idempotent:
+
+   ```bash
+   ansible-playbook -i inventories/staging/hosts.yml playbooks/fund-test-wallet.yml -e wallet=<address>
+   ```
+
+   Devnet airdrops are rate-limited: on shortfall the play fails naming the
+   gap — re-run later or top up from another devnet wallet. **Devnet USDC**
+   comes from Circle: https://faucet.circle.com → token USDC, network
+   **Solana Devnet**, the same address.
+3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your
+   wallet → Solana → RPC connection) — the wallet must broadcast on the
+   chain you are sending FROM:
+   - **forward** (solana devnet → gorchain): preset **Devnet**
+     (`https://api.devnet.solana.com`)
+   - **reverse** (gorchain → solana devnet): **Custom RPC** →
+     `https://rpc.staging.gorbagana.wtf`
+4. Open `https://staging.gorbagana.wtf`, connect Backpack, pick the
+   direction + amount, transfer. After the relay (≈a minute), switch the
+   RPC per step 3 to see the balance on the destination side.
+
+## 6. Reset
 
 Stacks only (chain + state survive):
 

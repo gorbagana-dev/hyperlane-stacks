@@ -188,7 +188,25 @@ Public DNS + LE — browse the hostnames directly once DNS propagates:
 `https://warp-ui.<zone>`, `https://grafana.<zone>`, `https://prometheus.<zone>`,
 `https://minio-console.<zone>`.
 
-## 9. Reset between runs
+## 9. Try the bridge (Backpack)
+
+Use a throwaway test wallet — never the deployer account. Same flow as the
+single-host runbook's "Try the bridge" section, with two differences:
+
+- The chains box is out-of-band (not ansible-managed), so fund the wallet by
+  running the script there instead of the playbook:
+
+  ```bash
+  WALLET=<address> USDC_MINT=<the WARP_TOKEN_MINT from step 6> \
+    ops/scripts/fund-test-wallet.sh   # GOR + SOL + 100 local USDC
+  ```
+
+- Backpack's custom RPC URLs are the chains box's public domains — set the
+  transfer's ORIGIN chain before sending: **forward** (solana → gorchain) the
+  `local_solana_rpc_url` domain, **reverse** the `local_gorchain_rpc_url`
+  domain.
+
+## 10. Reset between runs
 
 ```bash
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
@@ -204,7 +222,7 @@ ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml
   -e destroy_cluster=true -e wipe_data=true
 ```
 
-## 10. Limitations / notes
+## 11. Limitations / notes
 
 - **DNS propagation gates first access.** A records and LE issuance must settle before the
   hostnames resolve and serve trusted certs; the deploy preflight checks served hostnames

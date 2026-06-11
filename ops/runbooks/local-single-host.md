@@ -165,7 +165,30 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/local/access.yml
 ssh -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
 ```
 
-## 10. Update the warp routes (add a follow-on route)
+## 10. Try the bridge (Backpack)
+
+Use a throwaway test wallet — never the deployer account.
+
+1. **Backpack** (skip if you already use it): install the extension from
+   https://backpack.app, create a wallet (or import a test seed), copy its
+   Solana address.
+2. **Fund it** — GOR + SOL + 100 local USDC (from the deployer's minted
+   supply), balance-driven and idempotent:
+
+   ```bash
+   ansible-playbook -i inventories/local/hosts.yml playbooks/fund-test-wallet.yml -e wallet=<address>
+   ```
+
+3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your wallet →
+   Solana → RPC connection → Custom). The chains are reached over your SSH
+   tunnel, so forward those ports too (`ssh -L 8899:localhost:8899
+   -L 18899:localhost:18899 …`):
+   - **forward** (solana → gorchain): `http://localhost:18899`
+   - **reverse** (gorchain → solana): `http://localhost:8899`
+4. Open the warp UI, connect Backpack, transfer; switch the RPC per step 3 to
+   see the destination balance after relay.
+
+## 11. Update the warp routes (add a follow-on route)
 
 Edit `WARP_ROUTES` in `deployment/local/spec-warp-deployer.yml` (e.g. `"usdc,sol"` —
 the menu lives in `deployment/local/bridges/default/warp-routes/`), commit + push the
@@ -181,7 +204,7 @@ regenerated bridge state and restarts the relayer (whitelist) and warp-ui (route
 Removing a stem from `WARP_ROUTES` soft-disables that route the same way — it drops
 out of the whitelist and the UI; its on-chain programs remain.
 
-## 11. Reset between runs
+## 12. Reset between runs
 
 ```bash
 ansible-playbook -i inventories/local/hosts.yml playbooks/stop-all.yml
@@ -197,7 +220,7 @@ The chains are separate from the bridge stacks: stop them with
 `laconic-so deployment --dir ~/chains/gorchain stop --delete-volumes` and by killing the
 `solana-test-validator` (its ledger is under `~/chains/data/`).
 
-## 12. Limitations / notes
+## 13. Limitations / notes
 
 - **No hairpin.** The validator→MinIO and Prometheus scrape legs run in-cluster, so
   single-host never loops traffic out to the host's public IP and back.
