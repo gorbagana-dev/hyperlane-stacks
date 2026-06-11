@@ -14,6 +14,12 @@
     ansible_user: "{{ privileged_user }}"
   roles:
     - prerequisites_privileged
+  post_tasks:
+    # The role added deploy_user to the docker group; drop the multiplexed SSH
+    # session (ControlPersist) so later plays get a fresh login that carries the
+    # new group instead of a pre-group session within the persist window.
+    - name: Reset the SSH connection to pick up the docker group
+      ansible.builtin.meta: reset_connection
 
 - name: Unprivileged deploy_user prerequisites
   hosts: "{{ target | default('all:!controller') }}"

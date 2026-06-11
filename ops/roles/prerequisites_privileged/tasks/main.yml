@@ -5,7 +5,8 @@
 
 - name: Install prerequisite apt packages
   ansible.builtin.apt:
-    name: [ca-certificates, curl, gnupg, git]
+    # bind9-dnsutils: stack_deploy's preflight shells `dig` on multi-topology hosts
+    name: [ca-certificates, curl, gnupg, git, bind9-dnsutils]
     state: present
     update_cache: true
   become: true
