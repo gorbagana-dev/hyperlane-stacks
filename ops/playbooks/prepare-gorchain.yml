@@ -11,8 +11,10 @@
 # ACME challenge. Re-runs preserve the chain (GORCHAIN_PRESERVE) — state under
 # ~/chains/gorchain survives until an operator destroys it deliberately.
 #
-# Solana is Helius devnet — nothing to stand up. Funding the generated keys is
-# a runbook step (gorchain: own faucet; devnet: rate-limited airdrops).
+# Solana is Helius devnet — nothing to stand up. Generated keys are copied to
+# the hosts whose specs read them; funding them is a runbook step (gorchain:
+# own faucet; devnet: rate-limited airdrops), driven by the addresses.env the
+# key generator writes.
 - name: Prepare the staging gorchain chain + RPC TLS front + hot keys
   hosts: chain_hosts
   gather_facts: true
@@ -77,6 +79,63 @@
         CRED_DIR: "{{ credentials_dir }}"
       register: keys_out
       changed_when: true
+
+    # Carry each keyfile to the host whose spec reads it (the `file:` refs in
+    # deployment/staging/spec-*.yml): deployer/relayer keys to the bridge-ops
+    # host, validator keys to their validators.yaml hosts. hardware-wallet.json
+    # stays here — only its pubkey is consumed (group_vars HARDWARE_WALLET_PUBKEY).
+    - name: Derive the validator hosts (validators.yaml)
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Map each keyfile to its consumer host
+      ansible.builtin.set_fact:
+        _key_dist: >-
+          {%- set pairs = [] -%}
+          {%- for grp, files in _group_keyfiles.items() -%}
+            {%- for host in groups[grp] | default([]) | unique -%}
+              {%- for f in files -%}
+                {%- if pairs.append({'host': host, 'file': f}) -%}{%- endif -%}
+              {%- endfor -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {%- for v in validators -%}
+            {%- if pairs.append({'host': v.host, 'file': 'validator-' ~ v.chain ~ '.key'}) -%}{%- endif -%}
+          {%- endfor -%}
+          {{ pairs | rejectattr('host', 'eq', inventory_hostname) | list }}
+      vars:
+        _group_keyfiles:
+          deployer_hosts: [deployer-keypair.json]
+          relayer_hosts: [relayer-gorchain.key, relayer-solana.key, relayer-fee-claim.json]
+
+    - name: Gather the consumer hosts' facts (credentials_dir derives from their HOME)
+      ansible.builtin.setup:
+      delegate_to: "{{ item }}"
+      delegate_facts: true
+      loop: "{{ _key_dist | map(attribute='host') | unique | list }}"
+
+    - name: Ensure the credentials dir on each consumer host
+      ansible.builtin.file:
+        path: "{{ hostvars[item].credentials_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: "{{ item }}"
+      loop: "{{ _key_dist | map(attribute='host') | unique | list }}"
+
+    - name: Read the generated keyfiles
+      ansible.builtin.slurp:
+        src: "{{ credentials_dir }}/{{ item.file }}"
+      register: _key_blobs
+      loop: "{{ _key_dist }}"
+      no_log: true
+
+    - name: Carry each keyfile to its consumer host
+      ansible.builtin.copy:
+        content: "{{ item.content | b64decode }}"
+        dest: "{{ hostvars[item.item.host].credentials_dir }}/{{ item.item.file }}"
+        mode: "0600"
+      delegate_to: "{{ item.item.host }}"
+      loop: "{{ _key_blobs.results }}"
+      no_log: true
 
     - name: Caddy config dir
       ansible.builtin.file:
