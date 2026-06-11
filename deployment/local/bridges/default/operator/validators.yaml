@@ -1,17 +1,17 @@
 ---
 # Local own-chains validator set. Single-host (Layer 1): both on local-1. For the
 # multi-host split (Layer 2) move a validator's `host` to local-2 etc. Set
-# privy_wallet_id from the Privy project, and replace REPLACE_WITH_LOCAL_DNS_ZONE
-# in the hostnames to match group_vars dns_zone (load_validators derives the DNS
-# record name by stripping dns_zone off the hostname).
+# privy_wallet_id from the Privy project. Hostnames match the group_vars dns_zone
+# (load_validators derives the DNS record name by stripping dns_zone off the
+# hostname).
 validators:
   - label: gorchain-primary
     chain: gorchain
     host: local-1
     privy_wallet_id: REPLACE_WITH_GORCHAIN_PRIVY_WALLET_ID
-    hostname: validator-gorchain.REPLACE_WITH_LOCAL_DNS_ZONE
+    hostname: validator-gorchain.hyperlane.test
   - label: solana-primary
     chain: solana
     host: local-1
     privy_wallet_id: REPLACE_WITH_SOLANA_PRIVY_WALLET_ID
-    hostname: validator-solana.REPLACE_WITH_LOCAL_DNS_ZONE
+    hostname: validator-solana.hyperlane.test
