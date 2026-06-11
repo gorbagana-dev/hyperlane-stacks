@@ -5,11 +5,11 @@ persistent single-node **gorchain**, on three VMs, with real Cloudflare DNS
 and Let's Encrypt TLS under `staging.gorbagana.wtf`. Design:
 `docs/superpowers/specs/2026-06-10-staging-ops-design.md`.
 
-| Host (`host_vars/<host>.yml`) | Runs | Starting spec |
-|---|---|---|
-| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui | 4 vCPU / 8 GB / 80 GB SSD |
-| `staging-gorchain` | gorchain chain + Caddy RPC front | 8 vCPU / 32 GB / 500 GB NVMe SSD |
-| `staging-hyperlane-validators` | both hyperlane validators | 4 vCPU / 8 GB / 60 GB SSD |
+| Host (`host_vars/<host>.yml`) | Runs | Starting spec | DO size slug |
+|---|---|---|---|
+| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui | 4 vCPU / 8 GB / 80 GB SSD | `s-4vcpu-8gb` |
+| `staging-gorchain` | gorchain chain + Caddy RPC front | 8 vCPU / 32 GB / 500 GB NVMe SSD | `s-8vcpu-32gb-640gb-intel` |
+| `staging-hyperlane-validators` | both hyperlane validators | 4 vCPU / 8 GB / 60 GB SSD | `s-4vcpu-8gb` |
 
 Both validators live off the chain host: staging-gorchain's ports 80/443
 belong to the gorchain RPC Caddy front, so the validators' kind ingress
@@ -17,18 +17,71 @@ belong to the gorchain RPC Caddy front, so the validators' kind ingress
 
 ## 0. Prerequisites
 
-- Three VMs reachable over SSH (agent forwarding on), each with a privileged
-  user and a deploy user.
+- `doctl` installed and authenticated (`doctl auth init`).
+- An SSH key loaded in your agent that can both reach the VMs and clone this
+  repo from GitHub — `fetch_stack` clones on the hosts over the forwarded
+  agent (`ansible.cfg` sets `ForwardAgent`), so no creds land on the VMs.
 - A Cloudflare API token with DNS edit on the `gorbagana.wtf` zone.
 - A Helius **devnet** project (separate key from prod).
 - A Privy app for staging with an oracle server-wallet, a bridge-owner
   server-wallet, and one server-wallet per validator — follow
   [privy-wallets.md](privy-wallets.md).
 
+### Create the three VMs (doctl)
+
+The inventory expects a `dev` user with passwordless sudo on every host
+(`privileged_user`/`deploy_user` in host_vars) — cloud-init creates it at
+droplet boot with your SSH key, so you never need a root session:
+
+```bash
+# Register your public key with DO (once); note the ID it prints.
+doctl compute ssh-key import staging-ops --public-key-file ~/.ssh/id_ed25519.pub
+# Already registered? Look it up instead:
+doctl compute ssh-key list
+
+cat > /tmp/staging-user-data.yml <<EOF
+#cloud-config
+users:
+  - name: dev
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - $(cat ~/.ssh/id_ed25519.pub)
+EOF
+
+# Pick a region: doctl compute region list
+for vm in staging-bridge-ops:s-4vcpu-8gb \
+          staging-gorchain:s-8vcpu-32gb-640gb-intel \
+          staging-hyperlane-validators:s-4vcpu-8gb; do
+  doctl compute droplet create "${vm%%:*}" \
+    --size "${vm##*:}" \
+    --image ubuntu-24-04-x64 \
+    --region <region> \
+    --ssh-keys <key-id> \
+    --user-data-file /tmp/staging-user-data.yml \
+    --wait
+done
+```
+
+`--ssh-keys` additionally puts the key on root (console rescue); day-to-day
+access is `dev`. No DO cloud firewall is attached — 80/443 must stay reachable
+on every host for Let's Encrypt.
+
+Grab the IPs and check you can SSH in as `dev`:
+
+```bash
+doctl compute droplet list "staging-*" --format Name,PublicIPv4
+ssh dev@<each-ip> 'sudo -n true && echo ok'   # accept the host key; prints ok
+```
+
+cloud-init runs asynchronously after boot — if `dev` is refused right after
+create, wait a minute and retry.
+
 Then fill in exactly two things:
 
 1. `ops/inventories/staging/host_vars/<host>.yml` (one per VM in the table
-   above): `public_ip`, `privileged_user`, `deploy_user`.
+   above): `public_ip` (from the droplet list above), `privileged_user`,
+   `deploy_user` (both already `dev`).
 2. The one operator file — every other value (secrets, the Privy
    IDs/addresses, the WalletConnect id) lives here, each key commented:
 
@@ -170,3 +223,9 @@ cluster (`-e destroy_cluster=true`) and, **only if intentionally resetting
 chain state**, removes `~/chains/gorchain` + the `gorchain-rpc-caddy`
 container on staging-gorchain by hand. Chain state is deliberately never
 destroyed by a playbook.
+
+Scorched earth — destroy the VMs themselves (chain state and all):
+
+```bash
+doctl compute droplet delete staging-bridge-ops staging-gorchain staging-hyperlane-validators
+```
