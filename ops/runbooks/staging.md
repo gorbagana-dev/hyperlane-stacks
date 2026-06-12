@@ -239,8 +239,12 @@ Use a throwaway test wallet — never the deployer account.
    - **reverse** (gorchain → solana devnet): **Custom RPC** →
      `https://rpc.staging.gorbagana.wtf`
 4. Open `https://staging.gorbagana.wtf`, connect Backpack, pick the
-   direction + amount, transfer. After the relay (≈a minute), switch the
-   RPC per step 3 to see the balance on the destination side.
+   direction + amount, transfer. **What to expect:** your sending-side
+   balance drops right away; the recipient balance takes 30–60 seconds —
+   the funds only exist on the destination once the relayer delivers the
+   message. The UI updates on its own (no refresh) and shows a
+   "Recipient has received funds" popup at that moment. To see the
+   destination balance in Backpack too, switch the RPC per step 3.
 
 ## 6. Reset
 
