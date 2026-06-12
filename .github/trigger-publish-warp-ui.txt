@@ -6,3 +6,4 @@ Mon Jun 08 10:55:40 AM UTC 2026
 Mon Jun 08 11:42:28 AM UTC 2026
 Mon Jun 08 11:55:35 AM UTC 2026
 Fri Jun 12 2026 — v2.0.0-gorbagana.3 (SVM transfer fixes)
+Fri Jun 12 2026 — v2.0.0-gorbagana.4 (solana RPC proxy)

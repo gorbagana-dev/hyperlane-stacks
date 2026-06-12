@@ -453,6 +453,27 @@ Browser-based bridge UI (Next.js) for cross-chain token transfers.
 ### Ingress
 HTTP proxy routes host → warp-ui:3000 via nginx ingress controller with automatic ACME TLS.
 
+### Solana RPC proxy (key protection)
+The browser-facing `chains.yaml` must not carry the keyed `SOLANA_RPC_URL` (the
+Helius URL embeds an API key). When the spec sets `WARP_UI_PUBLIC_URL`
+(staging/prod), the entrypoint renders solana's rpcUrl as
+`${WARP_UI_PUBLIC_URL}/api/rpc/solana` — a same-origin Next.js route in the UI
+that forwards an allowlisted set of JSON-RPC methods to `SOLANA_RPC_URL`
+server-side. Rejected methods return JSON-RPC `-32601` and log in the pod.
+When `WARP_UI_PUBLIC_URL` is unset (e2e/local, keyless localhost RPCs), the
+direct URL is rendered as before.
+
+### Known limitation: wallet-side confirmation
+After signing, Backpack submits the transaction itself and waits for its own
+confirmation (WebSocket `signatureSubscribe` against the **wallet's**
+configured RPC) before answering the dapp. On an RPC whose WS drops
+notifications (e.g. the public devnet endpoint), Backpack hangs at
+"Confirming Transaction" and the UI stays at "Sign transfer transaction…"
+even though the transfer lands and delivery completes. This is inside the
+wallet — the UI's HTTP-polling confirm (widgets patch, hyp-915) only runs
+after the wallet responds. Mitigation is wallet-side RPC choice (see the
+staging runbook); mainnet wallets default to reliable infrastructure.
+
 ---
 
 ## Ops Directory (Archived — Not a Stack)

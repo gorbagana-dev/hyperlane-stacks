@@ -13,6 +13,8 @@ network:
           proxy-to: warp-ui:3000
 config:
   GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
+  # Browsers reach solana via the UI's own /api/rpc/solana proxy (key stays server-side)
+  WARP_UI_PUBLIC_URL: "https://staging.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486095"
   SOLANA_DOMAIN_ID: "1399811151"
   GORCHAIN_CHAIN_ID: "1198486095"
@@ -36,7 +38,7 @@ image-pull-secret:
   token-env: GHCR_PAT
 # Pinned release; bump deliberately (latest is only for local dev)
 image-overrides:
-  warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v2.0.0-gorbagana.3
+  warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v2.0.0-gorbagana.4
 resources:
   containers:
     warp-ui:

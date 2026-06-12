@@ -6,6 +6,9 @@ services:
     environment:
       # Chain RPC URLs — entrypoint.sh renders chains.yaml from these env vars
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
+      # When set, browsers get <url>/api/rpc/solana (same-origin proxy) instead of
+      # the keyed SOLANA_RPC_URL; empty keeps the direct URL (e2e/local)
+      WARP_UI_PUBLIC_URL: ${WARP_UI_PUBLIC_URL:-}
       # Domain IDs
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
