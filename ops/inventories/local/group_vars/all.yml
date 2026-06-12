@@ -14,12 +14,14 @@ deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 # --- Connection identity ---
 # Ansible connects as the deploy_user for every play except the privileged bootstrap
 # prep, which overrides ansible_user to privileged_user in bootstrap-host.yml.
-ansible_user: "{{ deploy_user | default(omit) }}"
+ansible_user: "{{ deploy_user | default(lookup('env', 'USER')) }}"
 # On a local test VM the controller reaches the host at its public_ip, so default the
-# SSH target to it (set public_ip in host_vars and connection just works). default(omit)
-# keeps it off the controller, which has no public_ip. Override per-host if SSH lands
-# elsewhere (bastion/private address).
-ansible_host: "{{ public_ip | default(omit) }}"
+# SSH target to it (set public_ip in host_vars and connection just works); hosts without
+# one fall back to their inventory name, ansible's no-ansible_host behavior. NOT
+# default(omit) — omit only works for module arguments, anywhere else the sentinel
+# leaks (e.g. as a literal hostname). Override per-host if SSH lands elsewhere
+# (bastion/private address).
+ansible_host: "{{ public_ip | default(inventory_hostname) }}"
 
 # --- laconic-so install (prerequisites_user) ---
 laconic_so_version: "v1.1.0-3c6d2f7-202606100934"

@@ -107,12 +107,14 @@
 # configmaps the spec mounts but has no data/config source for. Runs AFTER create (which
 # makes the deploy dir) and BEFORE start (which mounts the configmaps). delegate_to lets a
 # controller-hosted play (validators) run the hook on the stack's host; plays that already
-# target the host leave stack_hook_delegate_to unset (-> omit, runs on the play host).
+# target the host leave stack_hook_delegate_to unset -> delegate to self (same as no
+# delegation). NOT default(omit): omit is only valid for module arguments — as a task
+# keyword it crashes execution (TypeError: NoneType is not subscriptable).
 - name: Pre-start hook (optional per-stack include)
   ansible.builtin.include_tasks:
     file: "{{ stack_pre_start_tasks }}"
     apply:
-      delegate_to: "{{ stack_hook_delegate_to | default(omit) }}"
+      delegate_to: "{{ stack_hook_delegate_to | default(inventory_hostname) }}"
   when:
     - stack_pre_start_tasks is defined
     - not ansible_check_mode

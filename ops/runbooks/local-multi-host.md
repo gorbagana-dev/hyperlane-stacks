@@ -73,7 +73,11 @@ health **and** slot progress on both. Funding + the SPL mint happen in step 6, o
 same box, once the keys exist.
 
 Front each chain RPC with a reachable domain/TLS (out-of-band DNS + reverse proxy), then
-**set both URLs** in `group_vars/all.yml` — they feed the in-cluster agents *and* warp-ui:
+**set both URLs** in `group_vars/all.yml` — they feed the in-cluster agents *and* warp-ui.
+The proxy must also route **WebSocket upgrades to the chain's pubsub port** (rpc-port
++ 1, e.g. gorchain 8900): wallets and warp-ui confirm transactions over `wss://` derived
+from the same URL — HTTP-only fronting makes every transfer "time out" despite landing
+(cf. the staging Caddyfile in `playbooks/staging/prepare-gorchain.yml`):
 
 ```yaml
 # inventories/local/group_vars/all.yml

@@ -34,9 +34,9 @@ image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
   token-env: GHCR_PAT
-# Optional: override container images (service name → full image ref)
-# image-overrides:
-#   warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v1.0.0
+# Pinned release; bump deliberately (latest is only for local dev)
+image-overrides:
+  warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v2.0.0-gorbagana.3
 resources:
   containers:
     warp-ui:
