@@ -158,6 +158,10 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/local/access.yml
 # now browse https://grafana.<zone>, https://warp-ui.<zone>, etc. directly
 ```
 
+Log in to the MinIO console with `minio_root_user` / `minio_root_password` and
+to Grafana with `admin` / `grafana_admin_password` — setup-all generated these
+into the inventory's `deployment-config.yml`.
+
 **If you use warp-ui**, the browser talks directly to the chains over `localhost`
 (mixed-content-exempt), so forward the chain RPC ports **and their WebSocket
 siblings** (rpc-port + 1) — web3.js confirms transactions over `ws://…:<port+1>`;

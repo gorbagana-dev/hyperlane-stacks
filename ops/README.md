@@ -6,8 +6,6 @@ deploy the stacks (`deploy-all.yml`). Operator-attended signing/lifecycle
 playbooks (kill-switch, restore, ISM update, teardown) are **sub-project 3** and
 not here.
 
-Design: `docs/superpowers/specs/2026-06-01-deploy-side-ansible-design.md`.
-
 ## Prerequisites (controller / operator machine)
 
 - Ansible 2.16+ and the linters: `pip install "ansible>=9" ansible-lint yamllint`
@@ -35,10 +33,10 @@ There is no `-e env=` switch. Per-env isolation: the environments share no mutab
 inventory or vars.
 
 - **prod** / **staging** — mainnet / devnet, Cloudflare DNS + Let's Encrypt TLS.
-  Staging additionally runs its own gorchain: a persistent single-node chain
-  brought up by `playbooks/staging/prepare-gorchain.yml` (Caddy-fronted at `rpc.<zone>`),
-  and signs from generated throwaway key files (per the staging design,
-  `docs/superpowers/specs/2026-06-10-staging-ops-design.md`). Operator guide:
+  Staging additionally runs its own gorchain (a persistent single-node chain,
+  brought up by `playbooks/staging/prepare-gorchain.yml` and served at
+  `rpc.<zone>` behind Caddy) and signs with generated throwaway key files
+  instead of prod's operator-provisioned ones. Operator guide:
   [runbooks/staging.md](runbooks/staging.md).
 - **local** — own-chains testing (Layers 1-2): self-run gorchain + a local
   solana-test-validator. Two topologies: single-host uses self-trusted **mkcert**
