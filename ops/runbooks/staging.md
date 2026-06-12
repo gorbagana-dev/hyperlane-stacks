@@ -163,7 +163,8 @@ deployment-config). Balance-driven and idempotent — re-runs only top up:
 
 gorchain funds from its own faucet (guaranteed). Devnet airdrops are
 rate-limited: if the faucet refuses, the play **fails listing the underfunded
-addresses** — top them up from an operator devnet wallet and re-run.
+addresses** — top them up from an operator devnet wallet or
+https://faucet.solana.com and re-run.
 
 Warp collateral is Circle's devnet USDC
 (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) — faucet at
@@ -219,7 +220,8 @@ Use a throwaway test wallet — never the deployer account.
    ```
 
    Devnet airdrops are rate-limited: on shortfall the play fails naming the
-   gap — re-run later or top up from another devnet wallet. **Devnet USDC**
+   gap — re-run later, or top up from another devnet wallet or
+   https://faucet.solana.com. **Devnet USDC**
    comes from Circle: https://faucet.circle.com → token USDC, network
    **Solana Devnet**, the same address.
 3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your

@@ -7,7 +7,7 @@
 # solana devnet (public faucet, ~2 SOL/request, rate-limited): best effort with
 # bounded retries; shortfalls are collected and reported with top-up guidance,
 # and the script exits non-zero so the calling play fails visibly. Re-run after
-# topping up from an operator devnet wallet or https://faucet.circle.com.
+# topping up from an operator devnet wallet or https://faucet.solana.com.
 #
 # Env: CRED_DIR        [~/.credentials/hyperlane]  holds addresses.env
 #      GORCHAIN_RPC    [http://localhost:8899]
@@ -82,7 +82,8 @@ top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"             1 "$DEVNET_RPC" 2 3 || r
 if [ "$rc" -ne 0 ]; then
   echo ""
   echo "Underfunded (devnet faucet is rate-limited — top up from an operator"
-  echo "devnet wallet, then re-run this play; funding is balance-driven):"
+  echo "devnet wallet or https://faucet.solana.com, then re-run this play;"
+  echo "funding is balance-driven):"
   printf '  %s\n' "${SHORTFALLS[@]}"
 fi
 exit "$rc"
