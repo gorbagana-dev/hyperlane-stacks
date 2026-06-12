@@ -463,6 +463,17 @@ server-side. Rejected methods return JSON-RPC `-32601` and log in the pod.
 When `WARP_UI_PUBLIC_URL` is unset (e2e/local, keyless localhost RPCs), the
 direct URL is rendered as before.
 
+### Known limitation: wallet-side confirmation
+After signing, Backpack submits the transaction itself and waits for its own
+confirmation (WebSocket `signatureSubscribe` against the **wallet's**
+configured RPC) before answering the dapp. On an RPC whose WS drops
+notifications (e.g. the public devnet endpoint), Backpack hangs at
+"Confirming Transaction" and the UI stays at "Sign transfer transaction…"
+even though the transfer lands and delivery completes. This is inside the
+wallet — the UI's HTTP-polling confirm (widgets patch, hyp-915) only runs
+after the wallet responds. Mitigation is wallet-side RPC choice (see the
+staging runbook); mainnet wallets default to reliable infrastructure.
+
 ---
 
 ## Ops Directory (Archived — Not a Stack)

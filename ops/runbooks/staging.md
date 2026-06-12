@@ -215,8 +215,15 @@ Use a throwaway test wallet — never the deployer account.
 3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your
    wallet → Solana → RPC connection) — the wallet must broadcast on the
    chain you are sending FROM:
-   - **forward** (solana devnet → gorchain): preset **Devnet**
-     (`https://api.devnet.solana.com`)
+   - **forward** (solana devnet → gorchain): **Custom RPC** → a Helius
+     devnet URL (`https://devnet.helius-rpc.com/?api-key=<key>` — your own
+     key; it stays in your local wallet config). Avoid the **Devnet**
+     preset (`api.devnet.solana.com`): Backpack confirms its own
+     submission via that RPC's WebSocket before answering the dapp, and
+     the public endpoint drops the notification — Backpack then hangs at
+     "Confirming Transaction" and the UI sticks at "Sign transfer
+     transaction in Backpack" even though the transfer lands (the
+     "Recipient has received funds" toast still fires).
    - **reverse** (gorchain → solana devnet): **Custom RPC** →
      `https://rpc.staging.gorbagana.wtf`
 4. Open `https://staging.gorbagana.wtf`, connect Backpack, pick the
