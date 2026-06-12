@@ -24,7 +24,9 @@ privy_validator_wallet_ids:      # validator wallet `id`s, keyed by validators.y
   solana-primary: ""
 
 # --- Warp UI ---
-wallet_connect_id: ""            # WalletConnect Cloud project id; "" disables WalletConnect
+# WalletConnect Cloud project id. Must be non-empty (the UI refuses an empty
+# id); with a dummy id injected wallets like Backpack still work.
+wallet_connect_id: ""
 
 # --- Multi-host only (leave unset on single-host) ---
 local_base_domain: ""            # your real Cloudflare zone; unset -> hyperlane.test (single-host)
