@@ -23,14 +23,10 @@ keyfile — which is **not** Privy.)
 ## Step 1 — Create the Privy app
 
 1. Sign up at [dashboard.privy.io](https://dashboard.privy.io) and create an app.
-2. **App settings → Basics**: copy the **App ID** → `privy_app_id`.
-3. **App settings → API keys**: create/copy the **App Secret** → `privy_app_secret`
-   (shown once).
-4. Enable **server wallets** if there's a toggle. **Do not attach an
-   owner/authorization key** to the wallets — our KMS proxy and gas oracle
-   authenticate with app-secret Basic auth only and send no
-   `privy-authorization-signature`, so an owner-gated wallet rejects every
-   signing call.
+2. Creating the app pops **"Save your new API keys"** with both values: copy the
+   **App ID** → `privy_app_id` and the **App secret** → `privy_app_secret`. The
+   secret is shown only this once — if you lose it, reset it from the app's
+   API-keys settings.
 
 ## Step 2 — Export creds for the curl calls
 
