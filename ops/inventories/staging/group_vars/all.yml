@@ -14,7 +14,7 @@ deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 # --- Connection identity ---
 # Ansible connects as the deploy_user for every play except the privileged bootstrap
 # prep, which overrides ansible_user to privileged_user in bootstrap-host.yml.
-ansible_user: "{{ deploy_user | default(omit) }}"
+ansible_user: "{{ deploy_user | default(lookup('env', 'USER')) }}"
 
 # --- Topology / DNS mode ---
 # 'single' is the local-only mkcert/no-DNS mode. Staging is always Cloudflare DNS
@@ -23,7 +23,9 @@ ansible_user: "{{ deploy_user | default(omit) }}"
 topology: multi
 manage_dns: true
 # SSH by public_ip from host_vars (aliases like staging-gorchain are not DNS names).
-ansible_host: "{{ public_ip | default(omit) }}"
+# Defaults match no-ansible_host behavior; NOT default(omit) — omit only works for
+# module arguments, anywhere else the sentinel leaks (e.g. as a literal hostname).
+ansible_host: "{{ public_ip | default(inventory_hostname) }}"
 
 # --- laconic-so install (prerequisites_user) ---
 laconic_so_version: "v1.1.0-3c6d2f7-202606100934"
