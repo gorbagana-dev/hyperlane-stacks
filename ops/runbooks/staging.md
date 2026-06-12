@@ -2,8 +2,7 @@
 
 Staging is the prod rehearsal ground: Solana **devnet** (Helius) + a
 persistent single-node **gorchain**, on three VMs, with real Cloudflare DNS
-and Let's Encrypt TLS under `staging.gorbagana.wtf`. Design:
-`docs/superpowers/specs/2026-06-10-staging-ops-design.md`.
+and Let's Encrypt TLS under `staging.gorbagana.wtf`.
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec | DO size slug |
 |---|---|---|---|
@@ -62,15 +61,17 @@ users:
       - $(cat ~/.ssh/id_ed25519.pub)
 EOF
 
-# Pick a region: doctl compute region list
+REGION=<region>    # pick one: doctl compute region list
+KEY_ID=<key-id>    # printed by the ssh-key import/list above
+
 for vm in staging-bridge-ops:s-4vcpu-8gb \
           staging-gorchain:s-8vcpu-32gb-640gb-intel \
           staging-hyperlane-validators:s-4vcpu-8gb; do
   doctl compute droplet create "${vm%%:*}" \
     --size "${vm##*:}" \
     --image ubuntu-24-04-x64 \
-    --region <region> \
-    --ssh-keys <key-id> \
+    --region "$REGION" \
+    --ssh-keys "$KEY_ID" \
     --user-data-file ~/staging-user-data.yml \
     --wait
 done
@@ -170,27 +171,36 @@ https://faucet.circle.com for transfer tests.
 
 ## 3. Deploy the bridge
 
-Staging requires an explicit `-e deploy_branch` (no default — a forgotten flag
-fails up front instead of publishing bridge state to main):
+`deploy-all.yml` publishes the deployer-generated state mid-flight, so deploy
+off a dedicated branch — **never `main`**. The hosts fetch the repo on that
+branch, so create and push it first, then pass it as `deploy_branch` (a
+forgotten flag fails up front instead of publishing bridge state to main):
 
 ```bash
-ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml -e deploy_branch=<branch>
+git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+
+ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml \
+  -e deploy_branch=<branch> -e state_review=true
 ```
 
 MinIO → deployer Job → warp deployer → **publish bridge state** → relayer →
 gas-oracle → warp-ui → validators → monitoring, with the deploy gates
 refusing any unfilled placeholder. The publish (commit + push of the
-deployer-generated state to `deploy_branch`) happens mid-flight — add
-`-e state_review=true` to gate it for an attended review on the first run.
+deployer-generated state to `deploy_branch`) happens mid-flight —
+`state_review=true` pauses it to show the staged diff for an attended review;
+drop the flag for unattended re-runs.
 `playbooks/publish-bridge-state.yml` exists standalone only for re-publishing
 outside a full deploy.
 
 ## 4. Verify
 
 - `https://rpc.staging.gorbagana.wtf/health` answers `ok` and slots advance.
-- MinIO (`https://minio-console.staging.gorbagana.wtf`): checkpoint objects
-  appear under both validator buckets.
-- Grafana (`https://grafana.staging.gorbagana.wtf`): relayer + validator
+- MinIO (`https://minio-console.staging.gorbagana.wtf` — log in with
+  `minio_root_user` / `minio_root_password`, generated into the inventory's
+  `deployment-config.yml` by setup-all): checkpoint objects appear under both
+  validator buckets.
+- Grafana (`https://grafana.staging.gorbagana.wtf` — `admin` /
+  `grafana_admin_password` from the same file): relayer + validator
   dashboards report.
 - `https://staging.gorbagana.wtf`: run a devnet-USDC transfer
   solana → gorchain and back — see the next section.
