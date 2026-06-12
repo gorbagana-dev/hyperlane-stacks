@@ -192,7 +192,8 @@ required_operator_secrets: >-
   {{ (['cloudflare_api_token'] if manage_dns | bool else [])
      + ['privy_app_id', 'privy_app_secret', 'privy_oracle_wallet_id', 'ghcr_pat',
         'bridge_owner_pubkey', 'igp_oracle_pubkey', 'gorchain_validator_address',
-        'solana_validator_address', 'privy_validator_wallet_ids'] }}
+        'solana_validator_address', 'privy_validator_wallet_ids',
+        'wallet_connect_id'] }}
 
 # --- Per-stack secret env-var map ---
 # Lists the env-var NAMES each spec injects via secrets: { env: NAME }.
