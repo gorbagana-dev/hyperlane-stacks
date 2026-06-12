@@ -159,10 +159,13 @@ ansible-playbook -i inventories/local/hosts.yml playbooks/local/access.yml
 ```
 
 **If you use warp-ui**, the browser talks directly to the chains over `localhost`
-(mixed-content-exempt), so forward just the two chain ports:
+(mixed-content-exempt), so forward the chain RPC ports **and their WebSocket
+siblings** (rpc-port + 1) — web3.js confirms transactions over `ws://…:<port+1>`;
+without it every transfer shows a bogus "Transaction timed out" despite landing:
 
 ```bash
-ssh -L 8899:localhost:8899 -L 18899:localhost:18899 <host>
+ssh -L 8899:localhost:8899 -L 8900:localhost:8900 \
+    -L 18899:localhost:18899 -L 18900:localhost:18900 <host>
 ```
 
 ## 10. Try the bridge (Backpack)
@@ -181,8 +184,8 @@ Use a throwaway test wallet — never the deployer account.
 
 3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your wallet →
    Solana → RPC connection → Custom). The chains are reached over your SSH
-   tunnel, so forward those ports too (`ssh -L 8899:localhost:8899
-   -L 18899:localhost:18899 …`):
+   tunnel — use the four-port forward from step 9 (8899/8900 +
+   18899/18900; the `+1` ports carry the WebSocket confirmations):
    - **forward** (solana → gorchain): `http://localhost:18899`
    - **reverse** (gorchain → solana): `http://localhost:8899`
 4. Open the warp UI, connect Backpack, transfer; switch the RPC per step 3 to

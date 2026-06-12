@@ -143,13 +143,21 @@
         state: directory
         mode: "0755"
 
-    # WebSocket exposure lands with the fast-bridging work (hyp-d34); HTTP only here.
+    # WS upgrades route to agave's pubsub port: web3.js confirms transactions via
+    # signatureSubscribe over wss derived from the RPC URL, so an HTTP-only front
+    # makes every gorchain-origin warp transfer "time out" in the UI despite landing.
+    # (Agent-side WS indexing is still hyp-d34 — this is just the wallet/UI path.)
     - name: Render the Caddyfile (TLS front for the gorchain RPC)
       ansible.builtin.copy:
         dest: "{{ caddy_dir }}/Caddyfile"
         mode: "0644"
         content: |
           rpc.{{ base_domain }} {
+            @websocket {
+              header Connection *Upgrade*
+              header Upgrade websocket
+            }
+            reverse_proxy @websocket 127.0.0.1:8900
             reverse_proxy 127.0.0.1:8899
           }
       register: _caddyfile
