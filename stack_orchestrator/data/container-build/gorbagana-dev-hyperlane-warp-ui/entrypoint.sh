@@ -29,6 +29,14 @@ else
 fi
 
 # 2) Chain config: render from env so the secret solana RPC never lands in git.
+# When WARP_UI_PUBLIC_URL is set (staging/prod), browsers get the app's own
+# /api/rpc/solana proxy instead of the keyed SOLANA_RPC_URL — the key stays
+# server-side. Unset (e2e/local) keeps the direct keyless URL.
+if [ -n "${WARP_UI_PUBLIC_URL:-}" ]; then
+  SOLANA_BROWSER_RPC_URL="${WARP_UI_PUBLIC_URL%/}/api/rpc/solana"
+else
+  SOLANA_BROWSER_RPC_URL="${SOLANA_RPC_URL}"
+fi
 cat > "$PUBLIC_DIR/chains.yaml" <<EOF
 gorchain:
   protocol: sealevel
@@ -53,7 +61,7 @@ solana:
   name: ${SOLANA_CHAIN_NAME:-solana}
   mailbox: ${SOLANA_MAILBOX}
   rpcUrls:
-    - http: ${SOLANA_RPC_URL}
+    - http: ${SOLANA_BROWSER_RPC_URL}
   nativeToken:
     name: ${SOLANA_NATIVE_TOKEN_NAME:-SOL}
     symbol: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}

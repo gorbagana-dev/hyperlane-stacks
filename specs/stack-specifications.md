@@ -453,6 +453,16 @@ Browser-based bridge UI (Next.js) for cross-chain token transfers.
 ### Ingress
 HTTP proxy routes host → warp-ui:3000 via nginx ingress controller with automatic ACME TLS.
 
+### Solana RPC proxy (key protection)
+The browser-facing `chains.yaml` must not carry the keyed `SOLANA_RPC_URL` (the
+Helius URL embeds an API key). When the spec sets `WARP_UI_PUBLIC_URL`
+(staging/prod), the entrypoint renders solana's rpcUrl as
+`${WARP_UI_PUBLIC_URL}/api/rpc/solana` — a same-origin Next.js route in the UI
+that forwards an allowlisted set of JSON-RPC methods to `SOLANA_RPC_URL`
+server-side. Rejected methods return JSON-RPC `-32601` and log in the pod.
+When `WARP_UI_PUBLIC_URL` is unset (e2e/local, keyless localhost RPCs), the
+direct URL is rendered as before.
+
 ---
 
 ## Ops Directory (Archived — Not a Stack)

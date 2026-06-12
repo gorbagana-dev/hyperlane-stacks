@@ -13,6 +13,8 @@ network:
           proxy-to: warp-ui:3000
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
+  # Browsers reach solana via the UI's own /api/rpc/solana proxy (key stays server-side)
+  WARP_UI_PUBLIC_URL: "https://bridge.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486093"
   SOLANA_DOMAIN_ID: "1399811149"
   GORCHAIN_CHAIN_ID: "1198486093"
