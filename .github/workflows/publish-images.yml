@@ -290,6 +290,15 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          # Also publish the source release tag from stack.yml (vX.Y.Z-gorbagana.N)
+          # so deployment specs can pin it via image-overrides.
+          REF=$(grep -oP 'hyperlane-warp-ui-template@\K\S+' \
+            stack_orchestrator/data/stacks/hyperlane-warp-ui/stack.yml)
+          if [[ "$REF" =~ ^v[0-9] ]]; then
+            echo "ref_tag=${REF}" >> $GITHUB_OUTPUT
+          else
+            echo "ref_tag=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Tag and push image
         run: |
@@ -304,6 +313,13 @@ jobs:
 
           echo "Published: ${REMOTE_TAG}"
           echo "Published: ${REMOTE_LATEST}"
+
+          REF_TAG="${{ steps.tag.outputs.ref_tag }}"
+          if [ -n "${REF_TAG}" ]; then
+            docker tag "${LOCAL_IMAGE}" "${REMOTE_IMAGE}:${REF_TAG}"
+            docker push "${REMOTE_IMAGE}:${REF_TAG}"
+            echo "Published: ${REMOTE_IMAGE}:${REF_TAG}"
+          fi
 
   build-gas-oracle:
     needs: changes
