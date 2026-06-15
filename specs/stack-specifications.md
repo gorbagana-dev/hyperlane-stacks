@@ -160,7 +160,7 @@ beneficiary stays the deployer key (pre-existing behavior). The base IGP account
 carries the beneficiary; the overhead IGP has none and is untouched.
 
 ### Secrets (injected separately)
-`DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`
+`DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`, `IGP_BENEFICIARY_PUBKEY`
 
 ---
 
