@@ -35,7 +35,6 @@ from lib.common import (
     CHAINS,
     E2E_DIR,
     force_rmtree,
-    run_deployer_cli,
     save_job_describe,
     save_job_logs,
     save_pod_describe,
@@ -713,6 +712,7 @@ def deployer_deployment(
         "DEPLOYER_KEYPAIR":           keypairs.deployer_keypair,
         "BRIDGE_OWNER_PUBKEY":        keypairs.owner_pubkey,
         "IGP_ORACLE_PUBKEY":          keypairs.igp_oracle_pubkey,
+        "IGP_BENEFICIARY_PUBKEY":     keypairs.igp_beneficiary_pubkey,
         "GORCHAIN_VALIDATOR_ADDRESS": keypairs.gorchain_validator_address,
         "SOLANA_VALIDATOR_ADDRESS":   keypairs.solana_validator_address,
         "SOLANA_RPC_URL":             "http://solana-rpc:18899",
@@ -1678,33 +1678,6 @@ def _read_route_synthetic_mint(bridge_state_loader: BridgeStateLoader, route: st
     return synthetic_mint
 
 
-def _set_igp_beneficiary(
-    rpc: str,
-    program_id: str,
-    igp_account: str,
-    new_beneficiary: str,
-    chain: str,
-    owner_keypair: str | None = None,
-) -> None:
-    """Change the IGP account beneficiary to a new address.
-
-    Must be signed by the IGP account owner (igp-oracle key after
-    ownership transfer, or deployer key if transfer hasn't happened).
-    """
-    result = run_deployer_cli(
-        "igp", "set-igp-beneficiary",
-        "--program-id", program_id,
-        "--igp-account", igp_account,
-        new_beneficiary,
-        keypair_path=owner_keypair,
-        rpc=rpc,
-    )
-    output = result.stdout + result.stderr
-    assert result.returncode == 0, (
-        f"Failed to set IGP beneficiary on {chain}: {output}"
-    )
-    log.info("Set %s IGP beneficiary to %s", chain, new_beneficiary)
-
 
 @pytest.fixture(scope="session")
 def bridge_setup(
@@ -1755,30 +1728,9 @@ def bridge_setup(
         "gorchain": route_setups[usdc_route]["warp_gorchain"],
     }
 
-    # Change IGP beneficiary on both chains from deployer → dedicated account.
-    # The beneficiary keypair is generated and funded during initial test setup
-    # (keygen.py). Without this, the deployer is both fee payer and beneficiary,
-    # making fee collection invisible to fee claim tests.
-    # TODO: add an ops job/playbook to configure the IGP beneficiary address
-    # for production deployments (deployment/ops/).
-    beneficiary_pubkey = subprocess.run(
-        ["solana-keygen", "pubkey", str(KEYS_DIR / "igp-beneficiary.json")],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    # IGP account ownership is transferred to the igp-oracle key during
-    # core deployment. set-igp-beneficiary requires the owner's signature.
-    igp_oracle_keypair = str(KEYS_DIR / "igp-oracle.json")
-    log.info("Setting IGP beneficiary to %s...", beneficiary_pubkey)
-    for chain in ("gorchain", "solana"):
-        program_ids = bridge_state_loader.read_program_ids(chain)
-        _set_igp_beneficiary(
-            rpc=CHAINS[chain]["rpc"],
-            program_id=program_ids["igp_program_id"],
-            igp_account=program_ids["igp_account"],
-            new_beneficiary=beneficiary_pubkey,
-            chain=chain,
-            owner_keypair=igp_oracle_keypair,
-        )
+    # IGP beneficiary is set by the deployer Job at deploy time
+    # (IGP_BENEFICIARY_PUBKEY → keypairs.igp_beneficiary_pubkey); the dedicated
+    # keygen account is still funded so fee-claim tests observe a balance bump.
 
     # Create bridge user keypairs and fund them for concurrent transfer tests.
     num_bridge_users = 5
