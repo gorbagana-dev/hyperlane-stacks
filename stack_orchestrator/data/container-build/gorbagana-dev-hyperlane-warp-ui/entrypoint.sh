@@ -77,11 +77,13 @@ solana:
 EOF
 echo "Rendered chains.yaml"
 
-# 3) WalletConnect id: NEXT_PUBLIC_* is inlined at build, so the bundle ships with a
-# sentinel placeholder; replace it here with the real id from pod env.
+# 3) NEXT_PUBLIC_* values: inlined at build, so the bundle ships with sentinel
+# placeholders; replace them here with the real values from pod env. EXPLORER_URL
+# is optional — an empty value renders no "View in Explorer" link in the UI.
 find /app/.next -name '*.js' -exec sed -i \
-  "s|__NEXT_PUBLIC_WALLET_CONNECT_ID__|${NEXT_PUBLIC_WALLET_CONNECT_ID}|g" {} +
-echo "Substituted WalletConnect id"
+  -e "s|__NEXT_PUBLIC_WALLET_CONNECT_ID__|${NEXT_PUBLIC_WALLET_CONNECT_ID}|g" \
+  -e "s|__NEXT_PUBLIC_EXPLORER_URL__|${EXPLORER_URL:-}|g" {} +
+echo "Substituted NEXT_PUBLIC_* runtime values"
 
 echo "Starting Next.js standalone server..."
 exec node server.js

@@ -15,6 +15,8 @@ config:
   GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
   # Browsers reach solana via the UI's own /api/rpc/solana proxy (key stays server-side)
   WARP_UI_PUBLIC_URL: "https://staging.gorbagana.wtf"
+  # Self-hosted explorer; transfer modal links to <url>/message/<msgId> ("" hides it)
+  EXPLORER_URL: "https://explorer.staging.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486095"
   SOLANA_DOMAIN_ID: "1399811151"
   GORCHAIN_CHAIN_ID: "1198486095"
