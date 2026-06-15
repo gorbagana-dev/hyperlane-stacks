@@ -209,12 +209,15 @@ Use a throwaway test wallet — never the deployer account.
    ansible-playbook -i inventories/staging/hosts.yml playbooks/fund-test-wallet.yml -e wallet=<address>
    ```
 
-   Devnet SOL airdrops usually fail from the staging box (datacenter IPs are
-   blocked); on shortfall the play names the gap — fund those addresses from a
-   personal devnet wallet (or https://faucet.solana.com from your laptop, then
-   `solana transfer`). **Devnet USDC**
-   comes from Circle: https://faucet.circle.com → token USDC, network
-   **Solana Devnet**, the same address.
+   This funds GOR from gorchain's faucet, then **fails on the devnet SOL leg**
+   (`✗ SOL: have 0 SOL, want 2 — top up and re-run`) — the public devnet faucet
+   blocks the staging box's datacenter IP. That's expected: from **your own
+   machine**, fund the wallet's devnet SOL — paste the address into
+   https://faucet.solana.com (devnet), or `solana transfer --url devnet <address> 2`
+   from a personal wallet — then re-run the play (it's balance-driven and passes
+   once the wallet is at target). **Devnet USDC** comes from Circle:
+   https://faucet.circle.com → token USDC, network **Solana Devnet**, the same
+   address.
 3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your
    wallet → Solana → RPC connection) — the wallet must broadcast on the
    chain you are sending FROM:
