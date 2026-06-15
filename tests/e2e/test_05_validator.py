@@ -22,7 +22,6 @@ from lib.common import (
     PortForward,
     run_deployer_cli,
 )
-from lib.deploy import DeploymentInfo
 from lib.privy_mock import (
     GORCHAIN_WALLET_ID,
     SOLANA_WALLET_ID,
