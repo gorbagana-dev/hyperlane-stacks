@@ -1,0 +1,3 @@
+# Edit this file to trigger the explorer (frontend) image publish workflow.
+# TODO: Replace this mechanism with a release-triggered workflow.
+publish
