@@ -16,6 +16,7 @@ ghcr_pat: ""                    # GitHub PAT (packages:read) for private GHCR im
 #     wallets; runbooks/privy-wallets.md Step 4 maps each output here) ---
 bridge_owner_pubkey: ""          # owner.json `address` (base58) — receives all ownership
 igp_oracle_pubkey: ""            # oracle.json `address` (base58)
+igp_beneficiary_pubkey: ""       # optional — defaults to bridge_owner_pubkey
 gorchain_validator_address: ""   # val-gorchain.json `address` (0x…)
 solana_validator_address: ""     # val-solana.json `address` (0x…)
 # Each validator wallet's `id` from privy-wallets.md Step 3, keyed by its
