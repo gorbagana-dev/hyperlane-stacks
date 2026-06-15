@@ -111,6 +111,8 @@ SLACK_WEBHOOK_URL: "{{ slack_webhook_url | default('') }}"
 GHCR_PAT: "{{ ghcr_pat }}"
 MINIO_ROOT_USER: "{{ minio_root_user }}"
 MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
+POSTGRES_PASSWORD: "{{ explorer_db_password }}"
+HASURA_GRAPHQL_ADMIN_SECRET: "{{ explorer_hasura_admin_secret }}"
 
 # --- Per-stack secret env-var map ---
 # Each key is a stack name; the value lists the env var NAMES that stack's spec
@@ -157,6 +159,11 @@ stack_env_vars:
     - PRIVY_APP_SECRET
     - SOLANA_RPC_URL
     - GHCR_PAT
+  hyperlane-explorer:
+    - SOLANA_RPC_URL
+    - POSTGRES_PASSWORD
+    - HASURA_GRAPHQL_ADMIN_SECRET
+    - GHCR_PAT
 
 # --- Per-stack static metadata ---
 # deploy-all plays pass only stack_name; stack_deploy resolves spec_file/stack_path/
@@ -191,5 +198,10 @@ stacks:
       - warp-ui-config
   hyperlane-validator:
     path: stack_orchestrator/data/stacks/hyperlane-validator
+    configmaps:
+      - agent-config
+  hyperlane-explorer:
+    spec: spec-explorer.yml
+    path: stack_orchestrator/data/stacks/hyperlane-explorer
     configmaps:
       - agent-config

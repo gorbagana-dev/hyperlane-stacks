@@ -33,6 +33,9 @@ all:
     warp_ui_hosts:
       hosts:
         local-services:
+    explorer_hosts:
+      hosts:
+        local-services:
     # local-agents: both hyperlane validators (from validators-multihost.yaml) + relayer.
     # Every hop from here (-> MinIO, -> chain RPC, <- monitoring scrape) is cross-host.
     relayer_hosts:
