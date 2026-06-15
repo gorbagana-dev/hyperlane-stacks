@@ -29,7 +29,7 @@ configmaps:
 # Before deploying, place the keyfile on the host:
 #   ~/.credentials/hyperlane/deployer-keypair.json (Solana keypair JSON array)
 # and export these env vars in the shell that runs `laconic-so`:
-#   BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY,
+#   BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY, IGP_BENEFICIARY_PUBKEY,
 #   GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS
 secrets:
   hyperlane-deployer-secrets:
@@ -37,6 +37,7 @@ secrets:
       DEPLOYER_KEYPAIR:           { file: ~/.credentials/hyperlane/deployer-keypair.json }
       BRIDGE_OWNER_PUBKEY:        { env: BRIDGE_OWNER_PUBKEY }
       IGP_ORACLE_PUBKEY:          { env: IGP_ORACLE_PUBKEY }
+      IGP_BENEFICIARY_PUBKEY:     { env: IGP_BENEFICIARY_PUBKEY }
       GORCHAIN_VALIDATOR_ADDRESS: { env: GORCHAIN_VALIDATOR_ADDRESS }
       SOLANA_VALIDATOR_ADDRESS:   { env: SOLANA_VALIDATOR_ADDRESS }
 # Private registry auth — set GHCR_PAT env var before deploy start:
