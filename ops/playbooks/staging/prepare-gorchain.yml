@@ -182,7 +182,17 @@
         ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
       register: fund_out
       changed_when: true
+      failed_when: false
 
     - name: Show generated key addresses + funding results
       ansible.builtin.debug:
         msg: "{{ keys_out.stdout_lines + fund_out.stdout_lines }}"
+
+    - name: Every signer reached its target balance
+      ansible.builtin.assert:
+        that: fund_out.rc == 0
+        fail_msg: >-
+          Some signers are underfunded (listed above) — top them up from an
+          operator devnet wallet or https://faucet.solana.com, then re-run;
+          funding is balance-driven and only adds the gap.
+        quiet: true

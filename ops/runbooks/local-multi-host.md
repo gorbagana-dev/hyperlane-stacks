@@ -1,5 +1,10 @@
 # Runbook — `local` multi-host (Layer 2)
 
+> **Untested.** This runbook has not been run end-to-end. The single-host
+> ([local-single-host.md](local-single-host.md)) and staging
+> ([staging.md](staging.md)) flows are the validated paths; treat the steps below
+> as a draft and expect to debug.
+
 Bring the bridge up across **two ansible-managed hosts** to exercise cross-host routing —
 every S3 write, chain-RPC call, and metrics scrape crosses a host boundary. This mirrors
 the prod/staging ingress path (Caddy + Cloudflare + Let's Encrypt). The two SVM chains run
@@ -163,22 +168,24 @@ deploy off a dedicated branch — **never `main`** (the `deploy_branch` default)
 fetch the repo on that branch, so create and push it first:
 
 ```bash
-git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+BRANCH=<deploy-branch>   # any name except main, e.g. local-deploy
+
+git checkout -b "$BRANCH" && git push -u origin "$BRANCH"
 ```
 
 Point both playbooks at the multi-host validators file via `-e validators_file=...` and
-the same `-e deploy_branch=<deploy-branch>`:
+the same `-e deploy_branch="$BRANCH"` (same shell, so `$BRANCH` carries over):
 
 ```bash
 # Phase 1 — provision + reconcile Cloudflare DNS + LE + generate creds
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/setup-all.yml \
   -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
-  -e deploy_branch=<deploy-branch>
+  -e deploy_branch="$BRANCH"
 
 # Phase 2 — deploy MinIO -> deployer Job -> publish state -> consumers + validators
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/deploy-all.yml \
   -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
-  -e deploy_branch=<deploy-branch>
+  -e deploy_branch="$BRANCH"
 ```
 
 `deploy-all.yml` runs `publish-bridge-state.yml` mid-flight: it patches the

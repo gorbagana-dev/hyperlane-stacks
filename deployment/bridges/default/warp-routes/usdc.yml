@@ -15,3 +15,6 @@ remote:
   symbol: "USDC"
   decimals: 6
 metadataUri: "REPLACE_WITH_TOKEN_METADATA_URI"
+# Token logo shown in the warp-UI (applied to both sides). Separate from
+# metadataUri: the UI reads warpRoutes.yaml, not the on-chain Token-2022 metadata.
+logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"

@@ -6,9 +6,30 @@ deploy the stacks (`deploy-all.yml`). Operator-attended signing/lifecycle
 playbooks (kill-switch, restore, ISM update, teardown) are **sub-project 3** and
 not here.
 
-Design: `docs/superpowers/specs/2026-06-01-deploy-side-ansible-design.md`.
+> **All commands in this README run from the `ops/` directory.** From the repo
+> root: `cd ops`. (Paths like `inventories/…`, `playbooks/…`, `requirements.yml`
+> are relative to it; `check-spec-parity.py` is the one exception, noted inline.)
+
+## What's in `ops/`
+
+```
+inventories/<env>/   hosts, group_vars, host_vars, deployment-config (one per env: local, staging, prod)
+playbooks/           setup-all.yml, deploy-all.yml + per-step plays; staging/ holds staging-only plays
+roles/               the building blocks the playbooks call (fetch_stack, stack_deploy, credentials, dns_cloudflare, …)
+runbooks/            from-zero operator guides, one per environment — start here to bring a bridge up
+scripts/             host-side helpers (chain setup, key generation, funding)
+tests/               Layer-0 localhost assertion tests (no VM needed)
+```
+
+**New here?** Follow a [runbook](runbooks/) — those are the entry point. This
+README is the mechanics reference behind them: read it to understand how a step
+works or when changing the ops layer.
 
 ## Prerequisites (controller / operator machine)
+
+```bash
+cd ops   # all commands below are relative to this directory
+```
 
 - Ansible 2.16+ and the linters: `pip install "ansible>=9" ansible-lint yamllint`
 - Collections: `ansible-galaxy collection install -r requirements.yml -p ./collections`
@@ -35,19 +56,17 @@ There is no `-e env=` switch. Per-env isolation: the environments share no mutab
 inventory or vars.
 
 - **prod** / **staging** — mainnet / devnet, Cloudflare DNS + Let's Encrypt TLS.
-  Staging additionally runs its own gorchain: a persistent single-node chain
-  brought up by `playbooks/staging/prepare-gorchain.yml` (Caddy-fronted at `rpc.<zone>`),
-  and signs from generated throwaway key files (per the staging design,
-  `docs/superpowers/specs/2026-06-10-staging-ops-design.md`). Operator guide:
+  Staging additionally runs its own gorchain (a persistent single-node chain,
+  brought up by `playbooks/staging/prepare-gorchain.yml` and served at
+  `rpc.<zone>` behind Caddy) and signs with generated throwaway key files
+  instead of prod's operator-provisioned ones. Operator guide:
   [runbooks/staging.md](runbooks/staging.md).
-- **local** — own-chains testing (Layers 1-2): self-run gorchain + a local
-  solana-test-validator. Two topologies: single-host uses self-trusted **mkcert**
-  certs (no DNS provider), multi-host mirrors prod (Caddy + Cloudflare DNS + LE) under
-  an operator-supplied zone. Local-specific bits: no Helius (`SOLANA_RPC_URL` is the
-  own chain), and the operator-supplied `base_domain` + own-chain RPC URLs ship as
-  `__TOKENS__` in the specs, rendered on the host (`spec_token_renders`). See the
-  topology runbooks: [local-single-host.md](runbooks/local-single-host.md),
-  [local-multi-host.md](runbooks/local-multi-host.md).
+- **local** — own-chains testing: self-run gorchain + a local
+  solana-test-validator. Single-host uses self-trusted **mkcert** certs (no DNS
+  provider). Local-specific bits: no Helius (`SOLANA_RPC_URL` is the own chain),
+  and the operator-supplied `base_domain` + own-chain RPC URLs ship as
+  `__TOKENS__` in the specs, rendered on the host (`spec_token_renders`). Operator
+  guide: [local-single-host.md](runbooks/local-single-host.md).
 
 **From-scratch operator guides per environment live in [`runbooks/`](runbooks/)**
 (start there to bring an environment up; this README is the mechanics reference
@@ -100,33 +119,13 @@ laconic-so writes a spec's `config:` block **verbatim** — it does not expand
 
 ### Domain / chain IDs
 
-Both chains are **SVM** (Solana / agave fork) — there is no EIP-155 `chainId` to
-look up; an SVM chain identifies by its genesis hash. Hyperlane instead assigns a
-`u32` **domain** derived from the chain name and sets `chainId == domainId`. The
-derivation: take the first ASCII characters of the name as big-endian bytes, then a
-trailing **network byte** (`0x4D`/`0x4E`/`0x4F` for mainnet/testnet/devnet):
-
-```
-"Sol" = 0x53 0x6F 0x6C
-  solana mainnet  0x536F6C4D = 1399811149   (canonical Hyperlane value)
-  solana testnet  0x536F6C4E = 1399811150
-  solana devnet   0x536F6C4F = 1399811151
-
-"Gor" = 0x47 0x6F 0x72
-  gorchain mainnet 0x476F724D = 1198486093   (prod)
-  gorchain devnet  0x476F724F = 1198486095   (staging)
-```
-
-Solana uses its canonical registered values. gorchain has no canonical Hyperlane
-domain (we deploy our own core on it), so we mint one the same way. These are
-**immutable once deployed** (baked into the on-chain contracts) — used as
-committed `config:` literals in the per-env specs: prod `deployment/spec-*.yml`
-(gorchain `1198486093`, solana `1399811149`), staging `deployment/staging/spec-*.yml`
-(gorchain `1198486095`, solana `1399811151`). To verify a value:
-
-```python
-python3 -c "b=b'Gor'+bytes([0x4D]); print(int.from_bytes(b,'big'))"  # 1198486093
-```
+SVM chains have no EIP-155 `chainId`; Hyperlane derives a `u32` **domain** from
+the chain name (`chainId == domainId`) — `1399811149`/`1198486093` for solana/
+gorchain on prod, `…1151`/`…6095` on staging (devnet). They're **immutable once
+deployed** and live as committed `config:` literals in the per-env specs. Full
+derivation (the name+network-byte math) is in
+[`specs/stack-specifications.md`](../specs/stack-specifications.md) → Stack 1 →
+Domain / chain IDs.
 
 ## Inventory + topology
 
@@ -185,7 +184,7 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/stop-all.yml -e destroy
 ## How a stack gets deployed
 
 Every deploy host fetches the stack repo itself, so `laconic-so` reads the specs
-and stack definitions locally — single-host and multi-host work the same way, with
+and stack definitions locally — one host or several work the same way, with
 no repo paths leaking from the operator's machine. The `fetch_stack` role runs
 first on each host:
 
@@ -218,16 +217,11 @@ Deployments live under `~/deployments/<stack-name>` on each host (the `deploy_ba
 role default); the fetched stack repo is `~/deployments/hyperlane-stacks` — one
 clone per host, shared by `fetch_stack`, `state_distribute`, and `stack_deploy`.
 
-State flows deployer-host → git → consumer-hosts. `publish-bridge-state.yml` runs
-**on the deployer host** (the artifacts are already there): it copies the deployer's
-`generated/` from the host-path volume into the on-host clone, patches the
-deployment-derived `config:` keys (IGP IDs/accounts into
-`spec-relayer.yml`/`spec-gas-oracle.yml`, mailboxes + warp addresses/mints into
-`spec-warp-ui.yml`), then commits (with the operator's git identity, read from the
-controller) and pushes `deploy_branch` over the forwarded agent. Each consumer's
-`fetch_stack --pull` then brings down the published specs + `generated/`, and
-`state_distribute` copies the `agent-config` ConfigMap from the clone into each
-stack's `configmaps/`.
+State flows deployer-host → git → consumer-hosts: `publish-bridge-state.yml`
+(see *Running it* above) commits the patched specs + `generated/` on
+`deploy_branch` from the deployer host; each consumer's `fetch_stack --pull`
+brings them down, and `state_distribute` copies the `agent-config` ConfigMap from
+the clone into each stack's `configmaps/`.
 
 ## Linting (Layer 0)
 
@@ -255,20 +249,3 @@ python3 ops/scripts/check-spec-parity.py
 
 CI runs the Layer-0 suite (lint + syntax-check + localhost tests) against all three
 inventories on every PR (`.github/workflows/ops-lint.yml`).
-
-## Known follow-ups (verify/extend on a real VM run)
-
-The Layer-0 tests lock the var-wiring and logic contracts but exercise no real
-host, so the cross-machine paths are unproven end to end. On a real multi-VM run,
-confirm:
-
-- **`fetch-stack` over the forwarded agent:** each host clones the private repo
-  with `--git-ssh`; verify SSH agent forwarding reaches the host (and validator
-  hosts under `delegate_to`) and that `deploy_branch` is checked out.
-- **Publish from the deployer host:** `publish-bridge-state.yml` commits with the
-  operator's git identity (read from the controller) and pushes `deploy_branch`
-  over the forwarded agent — confirm the push authenticates and consumers'
-  `fetch_stack --pull` then sees the patched specs + `generated/`.
-- **Delegated validators:** the loop gathers each validator host's facts so
-  repo/deploy paths use its real `ansible_env.HOME`; confirm fact gathering and
-  path resolution on a genuine multi-host split (correct in the localhost tests).

@@ -19,3 +19,6 @@ remote:
 # deployer validates it: name/symbol must match remote.name/remote.symbol and
 # the image URL must serve. Revision-pinned gist raw URL.
 metadataUri: "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/be4bb82fd100f6c141a001ec7bb2047ce263aa76/staging-token-metadata.json"
+# Token logo shown in the warp-UI (applied to both sides). Separate from
+# metadataUri: the UI reads warpRoutes.yaml, not the on-chain Token-2022 metadata.
+logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"

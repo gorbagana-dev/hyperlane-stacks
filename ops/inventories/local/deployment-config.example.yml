@@ -19,12 +19,17 @@ bridge_owner_pubkey: ""          # owner.json `address` (base58) — receives al
 igp_oracle_pubkey: ""            # oracle.json `address` (base58)
 gorchain_validator_address: ""   # val-gorchain.json `address` (0x…)
 solana_validator_address: ""     # val-solana.json `address` (0x…)
-privy_validator_wallet_ids:      # validator wallet `id`s, keyed by validators.yaml label
-  gorchain-primary: ""
-  solana-primary: ""
+# Each validator wallet's `id` from privy-wallets.md Step 3, keyed by its
+# validators.yaml label:
+privy_validator_wallet_ids:
+  gorchain-primary: ""           # val-gorchain.json `id`
+  solana-primary: ""             # val-solana.json `id`
 
 # --- Warp UI ---
-wallet_connect_id: ""            # WalletConnect Cloud project id; "" disables WalletConnect
+# WalletConnect project id (from cloud.reown.com). Must be non-empty — the UI
+# refuses an empty id; a dummy value works (Backpack and other injected wallets
+# don't use it).
+wallet_connect_id: ""
 
 # --- Multi-host only (leave unset on single-host) ---
 local_base_domain: ""            # your real Cloudflare zone; unset -> hyperlane.test (single-host)

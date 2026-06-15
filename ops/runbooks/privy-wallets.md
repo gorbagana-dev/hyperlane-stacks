@@ -1,6 +1,6 @@
 # Privy server wallets — shared setup
 
-Both the `local` runbooks (single- and multi-host), and prod/staging, sign with
+Every environment — `local`, staging, and prod — signs with
 **Privy server wallets**. This page is the one-time "mint the wallets and record
 the IDs/addresses" procedure; each runbook links here and then says which vars to
 fill. Do it once per bridge.
@@ -23,14 +23,9 @@ keyfile — which is **not** Privy.)
 ## Step 1 — Create the Privy app
 
 1. Sign up at [dashboard.privy.io](https://dashboard.privy.io) and create an app.
-2. **App settings → Basics**: copy the **App ID** → `privy_app_id`.
-3. **App settings → API keys**: create/copy the **App Secret** → `privy_app_secret`
-   (shown once).
-4. Enable **server wallets** if there's a toggle. **Do not attach an
-   owner/authorization key** to the wallets — our KMS proxy and gas oracle
-   authenticate with app-secret Basic auth only and send no
-   `privy-authorization-signature`, so an owner-gated wallet rejects every
-   signing call.
+2. Creating the app pops **"Save your new API keys"** with both values: copy the
+   **App ID** → `privy_app_id` and the **App secret** → `privy_app_secret`. The
+   secret is shown only this once — if you lose it, reset it from the `App settings`.
 
 ## Step 2 — Export creds for the curl calls
 
@@ -68,7 +63,10 @@ jq -r '"id=\(.id)  address=\(.address)"' val-gorchain.json val-solana.json oracl
 ```
 
 Every value goes into the env's **one** operator file,
-`ops/inventories/<env>/deployment-config.yml`:
+`ops/inventories/<env>/deployment-config.yml`. That file doesn't exist yet —
+you create it from `deployment-config.example.yml` at your runbook's secrets
+step. Mint the wallets now and **keep these outputs handy** (the `*.json` files
+above); paste them in when you reach that step.
 
 | From | Field | deployment-config.yml key |
 |---|---|---|
