@@ -63,7 +63,10 @@ jq -r '"id=\(.id)  address=\(.address)"' val-gorchain.json val-solana.json oracl
 ```
 
 Every value goes into the env's **one** operator file,
-`ops/inventories/<env>/deployment-config.yml`:
+`ops/inventories/<env>/deployment-config.yml`. That file doesn't exist yet —
+you create it from `deployment-config.example.yml` at your runbook's secrets
+step. Mint the wallets now and **keep these outputs handy** (the `*.json` files
+above); paste them in when you reach that step.
 
 | From | Field | deployment-config.yml key |
 |---|---|---|

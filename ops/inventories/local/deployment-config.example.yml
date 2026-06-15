@@ -24,8 +24,9 @@ privy_validator_wallet_ids:      # validator wallet `id`s, keyed by validators.y
   solana-primary: ""
 
 # --- Warp UI ---
-# WalletConnect Cloud project id. Must be non-empty (the UI refuses an empty
-# id); with a dummy id injected wallets like Backpack still work.
+# WalletConnect project id (from cloud.reown.com). Must be non-empty — the UI
+# refuses an empty id; a dummy value works (Backpack and other injected wallets
+# don't use it).
 wallet_connect_id: ""
 
 # --- Multi-host only (leave unset on single-host) ---
