@@ -38,7 +38,7 @@ image-pull-secret:
   token-env: GHCR_PAT
 # Pinned release; bump deliberately (latest is only for local dev)
 image-overrides:
-  warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v2.0.0-gorbagana.4
+  warp-ui: ghcr.io/gorbagana-dev/hyperlane-warp-ui:v2.0.0-gorbagana.5
 resources:
   containers:
     warp-ui:
