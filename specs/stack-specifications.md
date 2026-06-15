@@ -150,6 +150,15 @@ python3 -c "b=b'Gor'+bytes([0x4D]); print(int.from_bytes(b,'big'))"  # 119848609
 ### Config (spec.yml)
 `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_DOMAIN_ID` (99999), `SOLANA_DOMAIN_ID` (99998), `FORCE_REDEPLOY`
 
+**IGP fee beneficiary.** The deployer sets the InterchainGasPaymaster beneficiary
+(the account that `igp claim` pays accumulated gas fees to) via the optional
+`IGP_BENEFICIARY_PUBKEY`. It is applied on both chains by `deploy.sh`
+(`igp set-igp-beneficiary`, deployer-signed) immediately before IGP ownership is
+handed to the oracle wallet — so the deployer must still be the IGP owner at that
+point. When unset it defaults to `BRIDGE_OWNER_PUBKEY`; if neither is set the
+beneficiary stays the deployer key (pre-existing behavior). The base IGP account
+carries the beneficiary; the overhead IGP has none and is untouched.
+
 ### Secrets (injected separately)
 `DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`
 
