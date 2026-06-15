@@ -20,6 +20,8 @@ config:
   # multi-host: the public chain domains), NOT the in-cluster gorchain-rpc names.
   GORCHAIN_RPC_URL: "__BROWSER_GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__BROWSER_SOLANA_RPC_URL__"
+  # No self-hosted explorer locally — empty hides the "View in Explorer" link
+  EXPLORER_URL: ""
   GORCHAIN_DOMAIN_ID: "1198486095"
   SOLANA_DOMAIN_ID: "1399811151"
   GORCHAIN_CHAIN_ID: "1198486095"

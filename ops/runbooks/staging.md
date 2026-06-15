@@ -137,7 +137,7 @@ deployment-config). Balance-driven and idempotent — re-runs only top up:
 | relayer solana signer | — | 1 |
 | IGP fee-claim | 1 | 1 |
 | Privy IGP oracle | 1 | 1 |
-| Privy bridge owner | — | — (transfer target only) |
+| Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
 The gorchain side funds from gorchain's own faucet automatically. **The Solana
 devnet side will not** — the public devnet faucet rate-limits and blocks

@@ -74,6 +74,7 @@ spec_token_renders:
 SOLANA_RPC_URL: "https://mainnet.helius-rpc.com/?api-key={{ helius_api_key }}"
 BRIDGE_OWNER_PUBKEY: "{{ bridge_owner_pubkey }}"
 IGP_ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+IGP_BENEFICIARY_PUBKEY: "{{ igp_beneficiary_pubkey | default('') }}"
 GORCHAIN_VALIDATOR_ADDRESS: "{{ gorchain_validator_address }}"
 SOLANA_VALIDATOR_ADDRESS: "{{ solana_validator_address }}"
 PRIVY_APP_ID: "{{ privy_app_id }}"
@@ -99,6 +100,7 @@ stack_env_vars:
   hyperlane-svm-deployer:
     - BRIDGE_OWNER_PUBKEY
     - IGP_ORACLE_PUBKEY
+    - IGP_BENEFICIARY_PUBKEY
     - GORCHAIN_VALIDATOR_ADDRESS
     - SOLANA_VALIDATOR_ADDRESS
     - SOLANA_RPC_URL

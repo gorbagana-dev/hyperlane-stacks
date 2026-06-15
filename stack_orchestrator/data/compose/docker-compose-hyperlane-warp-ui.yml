@@ -9,6 +9,9 @@ services:
       # When set, browsers get <url>/api/rpc/solana (same-origin proxy) instead of
       # the keyed SOLANA_RPC_URL; empty keeps the direct URL (e2e/local)
       WARP_UI_PUBLIC_URL: ${WARP_UI_PUBLIC_URL:-}
+      # Optional self-hosted explorer base URL; when set, the transfer modal shows a
+      # "View in Explorer" link to <url>/message/<msgId>. Empty hides the link.
+      EXPLORER_URL: ${EXPLORER_URL:-}
       # Domain IDs
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
       SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}

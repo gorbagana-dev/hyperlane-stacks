@@ -453,6 +453,44 @@ class TestDeployer:
                 chain_name, rate_match.group(1), gas_match.group(1), dec_match.group(1),
             )
 
+    def test_igp_beneficiary_set_to_configured_account(
+        self,
+        deployer_deployment: DeploymentInfo,
+        bridge_state_loader: BridgeStateLoader,
+        keypairs: KeypairSet,
+    ) -> None:
+        """The deployer sets the IGP beneficiary to the configured address.
+
+        IGP_BENEFICIARY_PUBKEY is wired (in conftest) to the dedicated
+        igp-beneficiary keypair, so deploy.sh must set that as the on-chain
+        beneficiary on both chains — proving fees no longer accrue to the
+        throwaway deployer key.
+        """
+        expected = keypairs.igp_beneficiary_pubkey
+
+        for chain_name, chain_info in CHAINS.items():
+            program_ids = bridge_state_loader.read_program_ids(chain_name)
+            result = run_deployer_cli(
+                "igp", "query",
+                "--program-id", program_ids["igp_program_id"],
+                "--igp-account", program_ids["igp_account"],
+                rpc=chain_info["rpc"],
+            )
+            output = result.stdout + result.stderr
+            assert result.returncode == 0, (
+                f"{chain_name}: IGP query failed: {output}"
+            )
+            match = re.search(
+                r"beneficiary:\s*([1-9A-HJ-NP-Za-km-z]{32,44})", output,
+            )
+            assert match, (
+                f"{chain_name}: could not parse beneficiary from:\n{output}"
+            )
+            assert match.group(1) == expected, (
+                f"{chain_name}: IGP beneficiary is {match.group(1)}, "
+                f"expected configured account {expected}"
+            )
+
     def test_program_upgrade_authority_transferred(
         self,
         deployer_deployment: DeploymentInfo,

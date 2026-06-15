@@ -17,7 +17,6 @@ import subprocess
 import pytest
 
 from lib.common import CHAINS, run_deployer_cli
-from lib.keygen import KEYS_DIR
 from lib.state_loader import BridgeStateLoader
 
 log = logging.getLogger(__name__)

@@ -150,8 +150,17 @@ python3 -c "b=b'Gor'+bytes([0x4D]); print(int.from_bytes(b,'big'))"  # 119848609
 ### Config (spec.yml)
 `GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `GORCHAIN_DOMAIN_ID` (99999), `SOLANA_DOMAIN_ID` (99998), `FORCE_REDEPLOY`
 
+**IGP fee beneficiary.** The deployer sets the InterchainGasPaymaster beneficiary
+(the account that `igp claim` pays accumulated gas fees to) via the optional
+`IGP_BENEFICIARY_PUBKEY`. It is applied on both chains by `deploy.sh`
+(`igp set-igp-beneficiary`, deployer-signed) immediately before IGP ownership is
+handed to the oracle wallet — so the deployer must still be the IGP owner at that
+point. When unset it defaults to `BRIDGE_OWNER_PUBKEY`; if neither is set the
+beneficiary stays the deployer key (pre-existing behavior). The base IGP account
+carries the beneficiary; the overhead IGP has none and is untouched.
+
 ### Secrets (injected separately)
-`DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`
+`DEPLOYER_KEYPAIR`, `BRIDGE_OWNER_PUBKEY`, `IGP_ORACLE_PUBKEY`, `IGP_BENEFICIARY_PUBKEY`
 
 ---
 
@@ -504,6 +513,16 @@ same-origin (next/image won't render SVG without `dangerouslyAllowSVG`). The
 fork also empties the upstream template's hardcoded SVM chain list
 (`consts/chains.ts`), which otherwise added empty, un-bridgeable chains — and a
 duplicate "Solana" — to the selector.
+
+### Explorer link
+The transfer-details modal shows a "View in Explorer" link to
+`<EXPLORER_URL>/message/<msgId>` (the Hyperlane explorer message scheme) when the
+spec sets the optional `EXPLORER_URL` (staging → `explorer.staging.gorbagana.wtf`,
+prod → `explorer.bridge.gorbagana.wtf`); blank/unset (local, e2e) hides the link.
+Like the WalletConnect id, `EXPLORER_URL` is a build-time `NEXT_PUBLIC_*` value, so
+the image bakes a `__NEXT_PUBLIC_EXPLORER_URL__` sentinel and the entrypoint
+substitutes the per-deployment value at container start — one image serves every
+environment. (The explorer service itself is a separate, future stack.)
 
 ### Known limitation: wallet-side confirmation
 After signing, Backpack submits the transaction itself and waits for its own

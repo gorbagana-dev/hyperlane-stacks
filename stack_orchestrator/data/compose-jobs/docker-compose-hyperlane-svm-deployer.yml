@@ -15,8 +15,9 @@ services:
       FORCE_REDEPLOY: ${FORCE_REDEPLOY:-false}
       # Key management + SOLANA_RPC_URL — injected via secrets: in spec.yml
       # (envFrom.secretRef), so they're not repeated in this environment block.
-      # DEPLOYER_KEYPAIR, BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY
-      # GORCHAIN_VALIDATOR_ADDRESS, SOLANA_VALIDATOR_ADDRESS, SOLANA_RPC_URL
+      # DEPLOYER_KEYPAIR, BRIDGE_OWNER_PUBKEY, IGP_ORACLE_PUBKEY,
+      # IGP_BENEFICIARY_PUBKEY, GORCHAIN_VALIDATOR_ADDRESS,
+      # SOLANA_VALIDATOR_ADDRESS, SOLANA_RPC_URL
     volumes:
       - deployer-scripts-config:/opt/scripts:ro
       - deployer-gas-oracle-config:/config/gas-oracle:ro

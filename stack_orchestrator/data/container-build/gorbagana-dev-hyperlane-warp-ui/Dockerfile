@@ -30,9 +30,10 @@ RUN sed -i 's/reactStrictMode: true,/reactStrictMode: true,\n  output: "standalo
     sed -i '/outputFileTracingExcludes/,/^  },/d' next.config.js
 
 # Next.js inlines NEXT_PUBLIC_* into the bundle at build, so it won't read this from the
-# container env at runtime. Build with a sentinel that entrypoint.sh substitutes with the
-# real id (from pod env) at container start — so one image works across deployments.
+# container env at runtime. Build with sentinels that entrypoint.sh substitutes with the
+# real values (from pod env) at container start — so one image works across deployments.
 ENV NEXT_PUBLIC_WALLET_CONNECT_ID=__NEXT_PUBLIC_WALLET_CONNECT_ID__
+ENV NEXT_PUBLIC_EXPLORER_URL=__NEXT_PUBLIC_EXPLORER_URL__
 
 RUN pnpm build
 

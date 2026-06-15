@@ -115,4 +115,6 @@ public key, Ethereum address: 0x…` — it must equal `GORCHAIN_VALIDATOR_ADDRE
 - The **Solana oracle wallet** submits IGP txs on both chains — fund its base58
   pubkey on gorchain **and** solana (see the chains step in your runbook).
 - The **bridge-owner wallet** signs nothing during deployment (it only receives
-  ownership) — no funding needed until maintenance ops start signing with it.
+  ownership) and is the **default IGP fee beneficiary** (where claimed gas fees
+  land unless `igp_beneficiary_pubkey` overrides it) — no funding needed until
+  maintenance ops or fee withdrawals start signing with it.
