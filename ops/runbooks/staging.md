@@ -122,7 +122,7 @@ at the end of the deploy, program upgrade authority and mailbox/ISM/route
 ownership transfer to `BRIDGE_OWNER_PUBKEY` — the Privy bridge-owner wallet,
 which signs nothing during deployment.
 
-### Funding (done by the play)
+### Funding the signers (expect to do the devnet side by hand)
 
 The play funds each signer to its target balance (`fund-staging-signers.sh`,
 driven by the generated `addresses.env` + `igp_oracle_pubkey` from
@@ -139,13 +139,20 @@ deployment-config). Balance-driven and idempotent — re-runs only top up:
 | Privy IGP oracle | 1 | 1 |
 | Privy bridge owner | — | — (transfer target only) |
 
-gorchain funds from its own faucet (guaranteed). The Solana **devnet** airdrops
-usually **fail from a datacenter IP** — the public faucet rate-limits and
-commonly blocks cloud/VM ranges outright, so expect the play to **fail listing
-the underfunded addresses** on a fresh staging box. This is normal: top those
-addresses up from a personal devnet wallet (or https://faucet.solana.com run
-from your laptop, then `solana transfer` to each) and re-run — funding is
-balance-driven and only adds the gap.
+The gorchain side funds from gorchain's own faucet automatically. **The Solana
+devnet side will not** — the public devnet faucet rate-limits and blocks
+datacenter/VM IPs, so the in-play airdrops fail from the staging box. This is
+expected; fund those addresses yourself:
+
+1. Run the play. It funds gorchain, then **fails listing the underfunded devnet
+   addresses** (the deployer, solana validator, relayer-solana, fee-claim, and
+   oracle ed25519 pubkeys).
+2. From your **own machine** (not the VM), fund each listed address with the
+   target amount above — paste it into the faucet at https://faucet.solana.com
+   (devnet), or `solana transfer --url devnet <address> <amount>` from a personal
+   devnet wallet.
+3. Re-run the play. Funding is balance-driven, so it only adds the remaining gap
+   and passes once every signer is at target.
 
 Warp collateral is Circle's devnet USDC
 (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) — faucet at
