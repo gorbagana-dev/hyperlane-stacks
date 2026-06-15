@@ -133,11 +133,13 @@ branch, so create and push it first, then pass it as `deploy_branch` (required o
 local — there is no default):
 
 ```bash
-git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+BRANCH=<deploy-branch>   # any name except main, e.g. local-deploy
+
+git checkout -b "$BRANCH" && git push -u origin "$BRANCH"
 
 # MinIO -> deployer Job -> publish state -> consumers + validators
 ansible-playbook -i inventories/local/hosts.yml playbooks/deploy-all.yml \
-  -e deploy_branch=<deploy-branch>
+  -e deploy_branch="$BRANCH"
 ```
 
 `deploy-all.yml` runs `publish-bridge-state.yml` mid-flight: it patches the
@@ -204,8 +206,10 @@ the menu lives in `deployment/local/bridges/default/warp-routes/`), commit + pus
 deploy branch, then:
 
 ```bash
+BRANCH=<deploy-branch>   # the branch you deployed from
+
 ansible-playbook -i inventories/local/hosts.yml playbooks/update-warp-routes.yml \
-  -e deploy_branch=<deploy-branch>
+  -e deploy_branch="$BRANCH"
 ```
 
 Already-deployed routes self-skip in the deployer Job; the playbook publishes the
