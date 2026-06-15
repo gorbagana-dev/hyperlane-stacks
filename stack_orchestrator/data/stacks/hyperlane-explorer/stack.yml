@@ -1,0 +1,16 @@
+version: "1.1"
+name: hyperlane-explorer
+description: "Hyperlane Explorer — self-hosted message indexer + search UI (frontend + scraper + Postgres + Hasura)"
+repos:
+  - github.com/gorbagana-dev/hyperlane-explorer@add-explorer-stack
+  # Scraper is built from the DEPLOYER pin (matches the on-chain programs the
+  # deployer published), NOT the agent pin.
+  - github.com/hyperlane-xyz/hyperlane-monorepo@16c056a09af862b3ce9e14bd3b5b8034750af9d0
+# containers is commented out so deploy-start won't kind-load the images;
+# k8s pulls them from the registry instead. Uncomment for local builds.
+# containers:
+#   - gorbagana-dev/hyperlane-explorer
+#   - gorbagana-dev/hyperlane-scraper
+#   - gorbagana-dev/hyperlane-hasura
+pods:
+  - hyperlane-explorer

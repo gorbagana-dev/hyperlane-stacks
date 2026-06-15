@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    hostname: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - explorer-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  scraper:
+    image: ghcr.io/gorbagana-dev/hyperlane-scraper:latest
+    # image: gorbagana-dev/hyperlane-scraper:local
+    restart: unless-stopped
+    hostname: scraper
+    environment:
+      CONFIG_FILES: /config/agent-config.json
+      # init-db reads DATABASE_URL; scraper reads HYP_DB — same DSN.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-postgres}
+      HYP_DB: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-postgres}
+      HYP_CHAINSTOSCRAPE: "gorchain,solana"
+      # agent-config.json carries placeholder rpcUrls; real URLs arrive here.
+      HYP_CHAINS_GORCHAIN_CUSTOMRPCURLS: ${GORCHAIN_RPC_URL:-http://rpc-placeholder.invalid}
+      # Solana (secret) is injected via secrets: as HYP_CHAINS_SOLANA_CUSTOMRPCURLS.
+      # Metrics server must bind an explicit free port (panics AddrInUse otherwise).
+      HYP_METRICSPORT: "9090"
+      # Domain-seed values consumed by the entrypoint.
+      GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
+      SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
+      GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
+      SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
+      GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
+      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solana}
+      GORCHAIN_NATIVE_TOKEN_SYMBOL: ${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}
+      SOLANA_NATIVE_TOKEN_SYMBOL: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
+      GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
+      SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
+    volumes:
+      - agent-config:/config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9090 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  hasura:
+    image: ghcr.io/gorbagana-dev/hyperlane-hasura:latest
+    # image: gorbagana-dev/hyperlane-hasura:local
+    restart: unless-stopped
+    hostname: hasura
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-postgres}
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
+      HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
+    ports:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  explorer:
+    image: ghcr.io/gorbagana-dev/hyperlane-explorer:latest
+    # image: gorbagana-dev/hyperlane-explorer:local
+    restart: unless-stopped
+    hostname: explorer
+    environment:
+      # Server-side only (the browser uses the relative /api/graphql proxy).
+      HASURA_GRAPHQL_URL: http://hasura:8080/v1/graphql
+      # Public, non-secret RPCs — only embedded into the injected chain-metadata
+      # file; the explorer's read path never calls them.
+      GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
+      GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
+      SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
+      GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
+      SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
+      GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
+      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solana}
+      # Standalone server must bind all interfaces for k8s Service routing.
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  # agent-config: ConfigMap volume sourced from state_distribute at deploy-create.
+  agent-config:
+  explorer-postgres-data:
