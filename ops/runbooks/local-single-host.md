@@ -157,7 +157,7 @@ host IP, so the UIs open directly — no tunnel.
 # trust the CA + write /etc/hosts on your workstation. Needs workstation sudo (add -K if
 # your user isn't passwordless sudo).
 ansible-playbook -i inventories/local/hosts.yml playbooks/local/access.yml
-# now browse https://grafana.<zone>, https://warp-ui.<zone>, etc. directly
+# now browse https://grafana.<zone>, https://warp-ui.<zone>, https://explorer.<zone>, etc. directly
 ```
 
 Log in to the MinIO console with `minio_root_user` / `minio_root_password` and
@@ -198,6 +198,11 @@ Use a throwaway test wallet — never the deployer account.
    see the destination balance after relay. (The local collateral stand-in has
    no token metadata, so it shows as a bare mint —
    `~/.credentials/hyperlane/warp-token-mint`.)
+5. **Find it in the explorer** — once relayed, browse `https://explorer.<zone>`
+   and search by message id / address / tx hash. The default feed also lists
+   recent gorbagana messages (origin/destination, status, latency). No tunnel is
+   needed — the explorer reads from its own index via the in-cluster Hasura, not
+   the chains.
 
 ## 11. Update the warp routes (add a follow-on route)
 

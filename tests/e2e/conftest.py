@@ -49,13 +49,20 @@ from lib.deploy import (
     AGENT_IMAGE_LOCAL,
     DEPLOY_DIR,
     DEPLOYER_IMAGE,
+    EXPLORER_IMAGE,
+    EXPLORER_IMAGE_LOCAL,
     GAS_ORACLE_IMAGE,
+    HASURA_IMAGE,
+    HASURA_IMAGE_LOCAL,
     KMS_PROXY_IMAGE,
     KMS_PROXY_IMAGE_LOCAL,
+    SCRAPER_IMAGE,
+    SCRAPER_IMAGE_LOCAL,
     WARP_UI_IMAGE,
     WARP_UI_IMAGE_LOCAL,
     DeploymentInfo,
     build_agent_image,
+    build_explorer_images,
     build_warp_ui_image,
     deploy_prepare,
     deploy_start,
@@ -64,6 +71,7 @@ from lib.deploy import (
     get_deployment_id,
     prefetch_agent_images,
     prefetch_deployer_image,
+    prefetch_explorer_images,
     prefetch_gas_oracle_image,
     prefetch_minio_images,
     prefetch_monitoring_images,
@@ -101,6 +109,7 @@ RELAYER_SPEC = E2E_DIR / "fixtures" / "test-spec-relayer.yml"
 GAS_ORACLE_SPEC = E2E_DIR / "fixtures" / "test-spec-gas-oracle.yml"
 MONITORING_SPEC = E2E_DIR / "fixtures" / "test-spec-monitoring.yml"
 WARP_UI_SPEC = E2E_DIR / "fixtures" / "test-spec-warp-ui.yml"
+EXPLORER_SPEC = E2E_DIR / "fixtures" / "test-spec-explorer.yml"
 
 # Warp routes deployed by the warp_deployment fixture. A SINGLE config-driven
 # warp-deployer deployment deploys every route here, selected via the spec's
@@ -150,6 +159,9 @@ def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
             "REPLACE_KMS_PROXY_IMAGE": KMS_PROXY_IMAGE_LOCAL,
             "REPLACE_WARP_UI_IMAGE": WARP_UI_IMAGE_LOCAL,
             "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
+            "REPLACE_EXPLORER_IMAGE": EXPLORER_IMAGE_LOCAL,
+            "REPLACE_SCRAPER_IMAGE": SCRAPER_IMAGE_LOCAL,
+            "REPLACE_HASURA_IMAGE": HASURA_IMAGE_LOCAL,
         }
     return {
         "REPLACE_DEPLOYER_IMAGE": DEPLOYER_IMAGE,
@@ -157,6 +169,9 @@ def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
         "REPLACE_KMS_PROXY_IMAGE": KMS_PROXY_IMAGE,
         "REPLACE_WARP_UI_IMAGE": WARP_UI_IMAGE,
         "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
+        "REPLACE_EXPLORER_IMAGE": EXPLORER_IMAGE,
+        "REPLACE_SCRAPER_IMAGE": SCRAPER_IMAGE,
+        "REPLACE_HASURA_IMAGE": HASURA_IMAGE,
     }
 
 
@@ -333,6 +348,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--skip-warp-ui-deploy", action="store_true", default=False,
         help="Skip warp-ui deployment (reuse existing from a previous --skip-cleanup run)"
+    )
+    parser.addoption(
+        "--skip-explorer-deploy", action="store_true", default=False,
+        help="Skip explorer deployment (reuse existing from a previous --skip-cleanup run)"
     )
     parser.addoption(
         "--skip-monitoring-deploy", action="store_true", default=False,
@@ -1811,6 +1830,9 @@ def bridge_setup(
 WARP_UI_HOSTNAME = "bridge.test"
 WARP_UI_URL = f"https://{WARP_UI_HOSTNAME}"
 
+EXPLORER_HOSTNAME = "explorer.test"
+EXPLORER_URL = f"https://{EXPLORER_HOSTNAME}"
+
 @pytest.fixture(scope="session")
 def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
     """Build or pre-fetch the warp-ui image to host Docker (SO preloads it via image-overrides at deploy_start)."""
@@ -1919,6 +1941,93 @@ def warp_ui_deployment(
     if not skip_cleanup:
         log.info("Stopping warp-ui stack...")
         stop_stack("hyperlane-warp-ui")
+
+
+@pytest.fixture(scope="session")
+def explorer_image(request: pytest.FixtureRequest, host_prep: None) -> None:
+    """Build or pre-fetch the explorer images (frontend + scraper + hasura + postgres)
+    to host Docker (SO preloads them into kind via image-overrides at deploy_start)."""
+    if request.config.getoption("--skip-explorer-deploy", default=False):
+        log.info("Skipping explorer image build (--skip-explorer-deploy)")
+        return
+    if request.config.getoption("--build-from-source"):
+        log.info("Building explorer container images from source...")
+        build_explorer_images()
+    else:
+        log.info("Pre-fetching published explorer images to host Docker...")
+        prefetch_explorer_images()
+
+
+@pytest.fixture(scope="session")
+def explorer_deployment(
+    request: pytest.FixtureRequest,
+    deployer_deployment: DeploymentInfo,
+    host_prep: None,
+    bridge_state_loader: BridgeStateLoader,
+    explorer_image: None,
+) -> Generator[dict, None, None]:
+    """Deploy the hyperlane-explorer stack (postgres + scraper + hasura + frontend).
+
+    The scraper reads the deployer's agent-config.json (mailboxes, domain ids) from
+    the agent-config ConfigMap; its entrypoint creates the schema and seeds domains.
+    """
+    skip_cleanup = request.config.getoption("--skip-cleanup")
+    skip_explorer = request.config.getoption("--skip-explorer-deploy", default=False)
+    namespace = "laconic-hyperlane-explorer"
+
+    if skip_explorer:
+        deploy_dir = DEPLOY_DIR / "hyperlane-explorer"
+        if deployment_exists(deploy_dir):
+            deployment_id = get_deployment_id(deploy_dir)
+            log.info("Reusing existing explorer deployment (namespace: %s)", namespace)
+            yield {
+                "deployment": DeploymentInfo(
+                    deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace
+                ),
+                "url": EXPLORER_URL,
+            }
+            return
+        log.info("--skip-explorer-deploy set but %s missing — deploying fresh", deploy_dir)
+
+    log.info("Preparing explorer stack...")
+    deploy_info = deploy_prepare(
+        "hyperlane-explorer", EXPLORER_SPEC,
+        spec_replacements=SPEC_REPLACEMENTS,
+        deployment_id="explorer",
+    )
+
+    # agent-config.json (mailboxes/domain ids) → the agent-config ConfigMap dir.
+    bridge_state_loader.populate("hyperlane-explorer", deploy_info.deploy_dir)
+
+    log.info("Starting explorer stack...")
+    deploy_start(deploy_info.deploy_dir)
+
+    # The frontend serves immediately; Hasura crash-restarts until the scraper has
+    # created the schema. Wait on the frontend ingress (the user-facing signal).
+    log.info("Waiting for explorer to respond via Caddy ingress...")
+    for _ in range(120):
+        probe = subprocess.run(
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{EXPLORER_URL}/"],
+            capture_output=True, text=True, check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip() == "200":
+            break
+        time.sleep(2)
+    else:
+        log.warning("Explorer not returning 200 after 240s")
+    log.info("Explorer ingress ready at %s", EXPLORER_URL)
+
+    yield {
+        "deployment": deploy_info,
+        "url": EXPLORER_URL,
+    }
+
+    save_pod_logs(namespace, "app=scraper", "scraper")
+    save_pod_logs(namespace, "app=hasura", "hasura")
+    save_pod_logs(namespace, "app=explorer", "explorer")
+    if not skip_cleanup:
+        log.info("Stopping explorer stack...")
+        stop_stack("hyperlane-explorer")
 
 
 @pytest.fixture(scope="session")
