@@ -211,9 +211,11 @@ Each route is defined in a checked-in per-env menu file. The deployment menus â€
 operator routes; the e2e suite owns a parallel menu under
 `tests/e2e/fixtures/warp-routes/<stem>.yml`. A menu file describes one route: its
 `name`, the origin and remote sides (`chain`/`type`/`token`/`name`/`symbol`/
-`decimals`, each side may label or scale the asset independently), and the
-synthetic-side `metadataUri`. Deployment menus ship `usdc`; the e2e menu adds
-`sol` (a native-route test vehicle).
+`decimals`, each side may label or scale the asset independently), the
+synthetic-side `metadataUri`, and an optional `logoURI` (the token logo the
+warp-UI shows for both sides â€” it reads `warpRoutes.yaml`, not the on-chain
+Token-2022 metadata, so this is distinct from `metadataUri`). Deployment menus
+ship `usdc`; the e2e menu adds `sol` (a native-route test vehicle).
 
 #### warp-routes-config ConfigMap
 The selected routes are carried into the deployer as the `warp-routes-config`

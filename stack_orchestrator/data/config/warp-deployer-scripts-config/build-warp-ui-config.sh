@@ -28,6 +28,7 @@ for route in $(echo "${WARP_ROUTES}" | tr ',' ' '); do
   cfg="${WARP_ROUTES_DIR}/${route}.json"
   [ -s "$cfg" ] || { echo "ERROR: warp-UI config: menu $cfg not found for route '${route}'" >&2; exit 1; }
   name=$(jq -r '.name' "$cfg")
+  logo=$(jq -r '.logoURI // ""' "$cfg")  # optional; same logo on both sides
   route_dir="${STATE_DIR}/warp-routes/${name}"
   tcfg="${route_dir}/token-config.json"
   wpids="${route_dir}/warp-deploy-outputs/program-ids.json"
@@ -54,13 +55,14 @@ for route in $(echo "${WARP_ROUTES}" | tr ',' ' '); do
     entry=$(printf '%s' "$side" | jq \
       --arg chainName "$self" --arg standard "$standard" \
       --arg addr "$self_prog" --arg mailbox "$mailbox" \
-      --arg conn "sealevel|${other}|${other_prog}" \
+      --arg conn "sealevel|${other}|${other_prog}" --arg logo "$logo" \
       '{chainName:$chainName, standard:$standard, name:.name, symbol:.symbol,
         decimals:.decimals, addressOrDenom:$addr, mailbox:$mailbox,
         connections:[{token:$conn}]}
        + (if .type=="collateral" then {collateralAddressOrDenom:.token}
           elif .type=="synthetic" then {collateralAddressOrDenom:.mint}
-          else {} end)')
+          else {} end)
+       + (if $logo!="" then {logoURI:$logo} else {} end)')
     tokens=$(jq -c --argjson e "$entry" '. + [$e]' <<<"$tokens")
   done
 done
