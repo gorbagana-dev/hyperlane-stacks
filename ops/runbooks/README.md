@@ -5,12 +5,11 @@ environment. One file per environment; they share the same two-phase flow
 (`setup-all.yml` → `deploy-all.yml`) and differ only in inputs (inventory, chains,
 DNS/TLS, secrets).
 
-| Runbook | Environment | Chains | DNS / TLS | Status |
-|---|---|---|---|---|
-| [local-single-host.md](local-single-host.md) | Own-chains, one VM (Layer 1) | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) | available |
-| [local-multi-host.md](local-multi-host.md) | Own-chains, cross-host (Layer 2) | self-run gorchain + solana-test-validator, separate box | Cloudflare + Let's Encrypt | **untested** |
-| [staging.md](staging.md) | Devnet rehearsal (Layer 3), three VMs | persistent self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt | available |
-| [prod.md](prod.md) | Production | mainnet gorchain + Helius mainnet | Cloudflare + Let's Encrypt | _placeholder_ |
+| Runbook | Environment | Chains | DNS / TLS |
+|---|---|---|---|
+| [local-single-host.md](local-single-host.md) | Own-chains, one VM (Layer 1) | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) |
+| [staging.md](staging.md) | Devnet rehearsal (Layer 3), three VMs | persistent self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt |
+| [prod.md](prod.md) | Production (placeholder — guide still to be written) | mainnet gorchain + Helius mainnet | Cloudflare + Let's Encrypt |
 
 **Shared reference** (mechanics behind every runbook): `ops/README.md` — the
 environment/inventory model, the secret-vs-config model, `fetch-stack`, and how a

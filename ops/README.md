@@ -10,6 +10,20 @@ not here.
 > root: `cd ops`. (Paths like `inventories/…`, `playbooks/…`, `requirements.yml`
 > are relative to it; `check-spec-parity.py` is the one exception, noted inline.)
 
+## What's in `ops/`
+
+```
+inventories/<env>/   hosts, group_vars, host_vars, deployment-config (one per env: local, staging, prod)
+playbooks/           setup-all.yml, deploy-all.yml + per-step plays; staging/ holds staging-only plays
+roles/               the building blocks the playbooks call (fetch_stack, stack_deploy, credentials, dns_cloudflare, …)
+runbooks/            from-zero operator guides, one per environment — start here to bring a bridge up
+scripts/             host-side helpers (chain setup, key generation, funding)
+tests/               Layer-0 localhost assertion tests (no VM needed)
+```
+
+**New here?** Follow a [runbook](runbooks/); this README is the reference behind
+them — read it when a runbook points you in, or when changing the ops layer.
+
 ## Prerequisites (controller / operator machine)
 
 ```bash
@@ -51,8 +65,7 @@ inventory or vars.
   provider). Local-specific bits: no Helius (`SOLANA_RPC_URL` is the own chain),
   and the operator-supplied `base_domain` + own-chain RPC URLs ship as
   `__TOKENS__` in the specs, rendered on the host (`spec_token_renders`). Operator
-  guide: [local-single-host.md](runbooks/local-single-host.md). (A cross-host
-  multi-host variant exists in the code but its runbook is **untested**.)
+  guide: [local-single-host.md](runbooks/local-single-host.md).
 
 **From-scratch operator guides per environment live in [`runbooks/`](runbooks/)**
 (start there to bring an environment up; this README is the mechanics reference
@@ -190,7 +203,7 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/stop-all.yml -e destroy
 ## How a stack gets deployed
 
 Every deploy host fetches the stack repo itself, so `laconic-so` reads the specs
-and stack definitions locally — single-host and multi-host work the same way, with
+and stack definitions locally — one host or several work the same way, with
 no repo paths leaking from the operator's machine. The `fetch_stack` role runs
 first on each host:
 
