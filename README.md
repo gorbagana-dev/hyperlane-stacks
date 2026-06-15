@@ -2,6 +2,25 @@
 
 Stack-orchestrator (`laconic-so`) stacks for deploying and operating a Hyperlane cross-chain token bridge between Gorchain and Solana. Includes contract deployers, validators, relayer, monitoring, and a browser-based bridge UI — all packaged for `k8s-kind` deployment.
 
+## Deploying the bridge
+
+The supported way to stand up a full bridge is the **ops/ ansible layer**, which
+provisions the hosts and deploys every stack in order across one or more machines.
+Start with the operator runbook for your environment — each is a from-zero,
+copy-runnable guide:
+
+| Environment | Runbook | What it is |
+|---|---|---|
+| **staging** | [ops/runbooks/staging.md](ops/runbooks/staging.md) | Prod rehearsal: Solana devnet + a persistent single-node gorchain, real DNS/TLS, on three VMs |
+| **local (single-host)** | [ops/runbooks/local-single-host.md](ops/runbooks/local-single-host.md) | Whole bridge + both chains on one VM, self-trusted certs |
+| **local (multi-host)** | [ops/runbooks/local-multi-host.md](ops/runbooks/local-multi-host.md) | Prod-shaped local across hosts with real DNS/TLS |
+| **prod** | [ops/README.md](ops/README.md) | Mainnet; mechanics reference behind the runbooks |
+
+[**ops/README.md**](ops/README.md) is the mechanics reference behind the runbooks
+(configuration model, inventory/topology, how a stack gets deployed). The
+per-stack tables below are for understanding the components; you don't deploy them
+by hand.
+
 ## Stacks
 
 Each stack has its own README with deployment instructions.
@@ -37,6 +56,7 @@ Each stack has its own README with deployment instructions.
 
 ## Documentation
 
-- [Stack Specifications](specs/stack-specifications.md) — Detailed per-stack specs
-- [Ansible Ops Spec](specs/ansible-spec.md) — Ops job playbook design
-- [Architecture Decisions](docs/architecture-decisions.md) — Design rationale and build strategy
+- [Operator runbooks](ops/runbooks/) — from-zero deployment guides per environment
+- [ops/ deploy layer](ops/README.md) — ansible mechanics reference
+- [Stack Specifications](specs/stack-specifications.md) — detailed per-stack specs
+- [Architecture Decisions](docs/architecture-decisions.md) — design rationale and build strategy
