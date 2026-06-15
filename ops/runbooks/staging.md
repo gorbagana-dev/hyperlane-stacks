@@ -159,10 +159,12 @@ branch, so create and push it first, then pass it as `deploy_branch` (a
 forgotten flag fails up front instead of publishing bridge state to main):
 
 ```bash
-git checkout -b <deploy-branch> && git push -u origin <deploy-branch>
+BRANCH=<deploy-branch>   # any name except main, e.g. staging-deploy
+
+git checkout -b "$BRANCH" && git push -u origin "$BRANCH"
 
 ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml \
-  -e deploy_branch=<branch> -e state_review=true
+  -e deploy_branch="$BRANCH" -e state_review=true
 ```
 
 MinIO → deployer Job → warp deployer → **publish bridge state** → relayer →
