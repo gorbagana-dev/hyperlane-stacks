@@ -1692,8 +1692,9 @@ def bridge_setup(
     Depends on all bridge infrastructure being deployed. Returns a dict with
     warp program addresses, token mints, and sender keypair path.
 
-    Also configures a dedicated IGP beneficiary (separate from the deployer)
-    so that fee claim tests can observe balance changes.
+    The IGP beneficiary is configured by the deployer Job at deploy time (not
+    here); the dedicated keygen account stays funded so fee-claim tests can
+    observe balance changes.
     """
     sender_keypair = str(KEYS_DIR / "deployer.json")
 
