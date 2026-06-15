@@ -25,8 +25,7 @@ keyfile — which is **not** Privy.)
 1. Sign up at [dashboard.privy.io](https://dashboard.privy.io) and create an app.
 2. Creating the app pops **"Save your new API keys"** with both values: copy the
    **App ID** → `privy_app_id` and the **App secret** → `privy_app_secret`. The
-   secret is shown only this once — if you lose it, reset it from the app's
-   API-keys settings.
+   secret is shown only this once — if you lose it, reset it from the `App settings`.
 
 ## Step 2 — Export creds for the curl calls
 
