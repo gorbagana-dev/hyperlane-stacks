@@ -250,6 +250,44 @@ hyperlane-sealevel-client \
 echo "IGP gas oracle configured on both chains"
 
 # -------------------------------------------------------
+# Set the IGP fee beneficiary (defaults to the bridge owner)
+# -------------------------------------------------------
+# Runs while the deployer is still the IGP owner, so it must precede the IGP
+# ownership handoff in the bridge-owner loop below. set-igp-beneficiary is
+# authorized by the current IGP owner (the deployer key here). A dedicated loop
+# (not nested in the bridge-owner loop) so an explicit beneficiary still applies
+# when no bridge owner is configured.
+IGP_BENEFICIARY="${IGP_BENEFICIARY_PUBKEY:-${BRIDGE_OWNER_PUBKEY:-}}"
+if [ -n "$IGP_BENEFICIARY" ]; then
+  echo ""
+  echo "=== Setting IGP fee beneficiary to ${IGP_BENEFICIARY} ==="
+  for CHAIN_OUTPUT in gorchain solana; do
+    if [ "$CHAIN_OUTPUT" = "gorchain" ]; then
+      RPC_URL="${GORCHAIN_RPC_URL}"
+      PROGRAMS_FILE="${GORCHAIN_PROGRAMS}"
+    else
+      RPC_URL="${SOLANA_RPC_URL}"
+      PROGRAMS_FILE="${SOLANA_PROGRAMS}"
+    fi
+
+    IGP_ID=$(jq -r '.igp_program_id // empty' "${PROGRAMS_FILE}")
+    IGP_ACCOUNT=$(jq -r '.igp_account // empty' "${PROGRAMS_FILE}")
+    if [ -z "$IGP_ID" ] || [ -z "$IGP_ACCOUNT" ]; then
+      echo "FATAL: igp_program_id or igp_account missing from ${CHAIN_OUTPUT} program-ids.json"
+      exit 1
+    fi
+    echo "Setting IGP beneficiary on ${CHAIN_OUTPUT} (IGP account ${IGP_ACCOUNT})..."
+    hyperlane-sealevel-client \
+      --url "$RPC_URL" \
+      --keypair "${DEPLOYER_KEY_FILE}" \
+      igp set-igp-beneficiary \
+      --program-id "$IGP_ID" \
+      --igp-account "$IGP_ACCOUNT" \
+      "$IGP_BENEFICIARY"
+  done
+fi
+
+# -------------------------------------------------------
 # Transfer ownership to the bridge owner
 # -------------------------------------------------------
 if [ -n "${BRIDGE_OWNER_PUBKEY:-}" ]; then
