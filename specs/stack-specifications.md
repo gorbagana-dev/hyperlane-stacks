@@ -465,6 +465,16 @@ server-side. Rejected methods return JSON-RPC `-32601` and log in the pod.
 When `WARP_UI_PUBLIC_URL` is unset (e2e/local, keyless localhost RPCs), the
 direct URL is rendered as before.
 
+### Chain display (name + logo)
+The entrypoint renders each chain's `displayName` and `logoURI` into
+`chains.yaml`, defaulting to `Gorbagana`/`/gorbagana-logo.jpg` and
+`Solana`/`/solana-logo.png` (overridable via `*_DISPLAY_NAME`/`*_LOGO_URI`
+env). The logos are checked into the UI image's `public/` and served
+same-origin (next/image won't render SVG without `dangerouslyAllowSVG`). The
+fork also empties the upstream template's hardcoded SVM chain list
+(`consts/chains.ts`), which otherwise added empty, un-bridgeable chains — and a
+duplicate "Solana" — to the selector.
+
 ### Known limitation: wallet-side confirmation
 After signing, Backpack submits the transaction itself and waits for its own
 confirmation (WebSocket `signatureSubscribe` against the **wallet's**

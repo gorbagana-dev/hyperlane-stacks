@@ -43,6 +43,8 @@ gorchain:
   chainId: ${GORCHAIN_CHAIN_ID}
   domainId: ${GORCHAIN_DOMAIN_ID}
   name: ${GORCHAIN_CHAIN_NAME:-gorchain}
+  displayName: ${GORCHAIN_DISPLAY_NAME:-Gorbagana}
+  logoURI: ${GORCHAIN_LOGO_URI:-/gorbagana-logo.jpg}
   mailbox: ${GORCHAIN_MAILBOX}
   rpcUrls:
     - http: ${GORCHAIN_RPC_URL}
@@ -59,6 +61,8 @@ solana:
   chainId: ${SOLANA_CHAIN_ID}
   domainId: ${SOLANA_DOMAIN_ID}
   name: ${SOLANA_CHAIN_NAME:-solana}
+  displayName: ${SOLANA_DISPLAY_NAME:-Solana}
+  logoURI: ${SOLANA_LOGO_URI:-/solana-logo.png}
   mailbox: ${SOLANA_MAILBOX}
   rpcUrls:
     - http: ${SOLANA_BROWSER_RPC_URL}
