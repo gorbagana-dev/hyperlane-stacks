@@ -1,5 +1,10 @@
 # Runbook — `local` multi-host (Layer 2)
 
+> **Untested.** This runbook has not been run end-to-end. The single-host
+> ([local-single-host.md](local-single-host.md)) and staging
+> ([staging.md](staging.md)) flows are the validated paths; treat the steps below
+> as a draft and expect to debug.
+
 Bring the bridge up across **two ansible-managed hosts** to exercise cross-host routing —
 every S3 write, chain-RPC call, and metrics scrape crosses a host boundary. This mirrors
 the prod/staging ingress path (Caddy + Cloudflare + Let's Encrypt). The two SVM chains run

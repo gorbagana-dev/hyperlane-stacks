@@ -13,8 +13,7 @@ copy-runnable guide:
 |---|---|---|
 | **staging** | [ops/runbooks/staging.md](ops/runbooks/staging.md) | Prod rehearsal: Solana devnet + a persistent single-node gorchain, real DNS/TLS, on three VMs |
 | **local (single-host)** | [ops/runbooks/local-single-host.md](ops/runbooks/local-single-host.md) | Whole bridge + both chains on one VM, self-trusted certs |
-| **local (multi-host)** | [ops/runbooks/local-multi-host.md](ops/runbooks/local-multi-host.md) | Prod-shaped local across hosts with real DNS/TLS |
-| **prod** | [ops/README.md](ops/README.md) | Mainnet; mechanics reference behind the runbooks |
+| **prod** | [ops/runbooks/prod.md](ops/runbooks/prod.md) | Mainnet (runbook in progress) |
 
 [**ops/README.md**](ops/README.md) is the mechanics reference behind the runbooks
 (configuration model, inventory/topology, how a stack gets deployed). The
@@ -48,11 +47,13 @@ Each stack has its own README with deployment instructions.
 ## Repository Structure
 
 - `stack_orchestrator/` — Stack definitions, compose files, config, and container builds
-- `deployment/` — Reference spec files and ops playbooks
-- `specs/` — Stack specifications and ops design docs
+- `deployment/` — Per-environment deployment specs and warp-route menus (prod at the root, `staging/`, `local/`)
+- `ops/` — Ansible deploy layer (inventories, playbooks, roles) and operator [`runbooks/`](ops/runbooks/)
+- `tests/` — Test suites (`e2e/` pytest, `unit/`)
+- `specs/` — Stack specifications
+- `docs/` — Architecture decisions
 - `hyperlane-kms-proxy/` — Privy KMS proxy sidecar (Go)
 - `hyperlane-gas-oracle/` — Gas oracle service (Node.js)
-- `docs/` — Architecture decisions
 
 ## Documentation
 

@@ -46,14 +46,13 @@ inventory or vars.
   `rpc.<zone>` behind Caddy) and signs with generated throwaway key files
   instead of prod's operator-provisioned ones. Operator guide:
   [runbooks/staging.md](runbooks/staging.md).
-- **local** — own-chains testing (Layers 1-2): self-run gorchain + a local
-  solana-test-validator. Two topologies: single-host uses self-trusted **mkcert**
-  certs (no DNS provider), multi-host mirrors prod (Caddy + Cloudflare DNS + LE) under
-  an operator-supplied zone. Local-specific bits: no Helius (`SOLANA_RPC_URL` is the
-  own chain), and the operator-supplied `base_domain` + own-chain RPC URLs ship as
-  `__TOKENS__` in the specs, rendered on the host (`spec_token_renders`). See the
-  topology runbooks: [local-single-host.md](runbooks/local-single-host.md),
-  [local-multi-host.md](runbooks/local-multi-host.md).
+- **local** — own-chains testing: self-run gorchain + a local
+  solana-test-validator. Single-host uses self-trusted **mkcert** certs (no DNS
+  provider). Local-specific bits: no Helius (`SOLANA_RPC_URL` is the own chain),
+  and the operator-supplied `base_domain` + own-chain RPC URLs ship as
+  `__TOKENS__` in the specs, rendered on the host (`spec_token_renders`). Operator
+  guide: [local-single-host.md](runbooks/local-single-host.md). (A cross-host
+  multi-host variant exists in the code but its runbook is **untested**.)
 
 **From-scratch operator guides per environment live in [`runbooks/`](runbooks/)**
 (start there to bring an environment up; this README is the mechanics reference

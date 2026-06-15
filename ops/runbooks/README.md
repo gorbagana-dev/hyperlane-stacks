@@ -8,9 +8,9 @@ DNS/TLS, secrets).
 | Runbook | Environment | Chains | DNS / TLS | Status |
 |---|---|---|---|---|
 | [local-single-host.md](local-single-host.md) | Own-chains, one VM (Layer 1) | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) | available |
-| [local-multi-host.md](local-multi-host.md) | Own-chains, cross-host (Layer 2) | self-run gorchain + solana-test-validator, separate box | Cloudflare + Let's Encrypt | available |
+| [local-multi-host.md](local-multi-host.md) | Own-chains, cross-host (Layer 2) | self-run gorchain + solana-test-validator, separate box | Cloudflare + Let's Encrypt | **untested** |
 | [staging.md](staging.md) | Devnet rehearsal (Layer 3), three VMs | persistent self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt | available |
-| prod.md | Production | mainnet gorchain + Helius mainnet | Cloudflare + Let's Encrypt | _to be added_ |
+| [prod.md](prod.md) | Production | mainnet gorchain + Helius mainnet | Cloudflare + Let's Encrypt | _placeholder_ |
 
 **Shared reference** (mechanics behind every runbook): `ops/README.md` — the
 environment/inventory model, the secret-vs-config model, `fetch-stack`, and how a
