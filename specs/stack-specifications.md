@@ -95,6 +95,36 @@ One-time Job that deploys Hyperlane core contracts (Mailbox, IGP, ISM, Validator
 6. Writes deployment artifacts as k8s ConfigMaps via kubectl (requires RBAC)
 7. Discards hot deployer key
 
+### Domain / chain IDs
+
+Both chains are **SVM** (Solana / agave fork) — there is no EIP-155 `chainId`;
+an SVM chain identifies by its genesis hash. Hyperlane assigns a `u32` **domain**
+derived from the chain name and sets `chainId == domainId`. The derivation: the
+first ASCII chars of the name as big-endian bytes, then a trailing **network
+byte** (`0x4D`/`0x4E`/`0x4F` for mainnet/testnet/devnet):
+
+```
+"Sol" = 0x53 0x6F 0x6C
+  solana mainnet  0x536F6C4D = 1399811149   (canonical Hyperlane value)
+  solana testnet  0x536F6C4E = 1399811150
+  solana devnet   0x536F6C4F = 1399811151
+
+"Gor" = 0x47 0x6F 0x72
+  gorchain mainnet 0x476F724D = 1198486093   (prod)
+  gorchain devnet  0x476F724F = 1198486095   (staging)
+```
+
+Solana uses its canonical registered values; gorchain has no canonical Hyperlane
+domain (we deploy our own core on it), so we mint one the same way. These are
+**immutable once deployed** (baked into the on-chain contracts) and live as
+committed `config:` literals in the per-env specs (prod `deployment/spec-*.yml`,
+staging `deployment/staging/spec-*.yml`; local/e2e use 99999/99998). Verify a
+value with:
+
+```python
+python3 -c "b=b'Gor'+bytes([0x4D]); print(int.from_bytes(b,'big'))"  # 1198486093
+```
+
 ### Services
 | Service | Image | Notes |
 |---------|-------|-------|
