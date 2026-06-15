@@ -14,6 +14,23 @@ Both validators live off the chain host: staging-gorchain's ports 80/443
 belong to the gorchain RPC Caddy front, so the validators' kind ingress
 (Caddy + Let's Encrypt) needs its own machine.
 
+## The whole flow at a glance
+
+```mermaid
+flowchart TD
+    P[Mint Privy wallets<br/>privy-wallets.md] -. record IDs/addresses .-> CFG
+    VM[Create 3 droplets<br/>staging-droplets.md] --> CFG[Fill host_vars +<br/>deployment-config.yml]
+    CFG --> S1[1 - Provision fleet<br/>setup-all.yml]
+    S1 --> S2[2 - gorchain + keys + funding<br/>prepare-gorchain.yml]
+    S2 --> S3[3 - Deploy bridge on a branch<br/>deploy-all.yml -e state_review=true]
+    S3 --> S4[4 - Verify<br/>RPC / MinIO / Grafana]
+    S4 --> S5[5 - Try the bridge<br/>Backpack transfer]
+```
+
+Each numbered step below is one command. Steps 0 (prerequisites: droplets,
+Privy, secrets) are one-time setup; steps 1–5 are the deployment itself.
+**Tested end-to-end with the [Backpack](https://backpack.app) wallet.**
+
 ## 0. Prerequisites
 
 **Controller** — same as `ops/README.md` → "Prerequisites":
@@ -35,63 +52,20 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 - A Helius **devnet** project (separate key from prod).
 - A Privy app for staging with an oracle server-wallet, a bridge-owner
   server-wallet, and one server-wallet per validator — follow
-  [privy-wallets.md](privy-wallets.md).
+  [privy-wallets.md](privy-wallets.md). You **mint these now** but **record the
+  IDs/addresses later**, in the `deployment-config.yml` created below — that
+  file doesn't exist yet, so just keep the Privy outputs handy.
 
-### Create the three VMs (doctl)
+### Create the three VMs
 
-The inventory expects a `dev` user with passwordless sudo on every host
-(`privileged_user`/`deploy_user` in host_vars) — cloud-init creates it at
-droplet boot with your SSH key, so you never need a root session:
+Create the three droplets from the table above following
+[**staging-droplets.md**](staging-droplets.md) (doctl: SSH key, cloud-init `dev`
+user, the create loop, IP harvesting). When you can `ssh dev@<ip>` into all
+three, come back here.
 
-```bash
-# Register your public key with DO (once); note the ID it prints.
-doctl compute ssh-key import staging-ops --public-key-file ~/.ssh/id_ed25519.pub
-# Already registered? Look it up instead:
-doctl compute ssh-key list
+### Configure inventory + secrets
 
-# In $HOME, not /tmp: a snap-installed doctl has a private /tmp and would
-# fail with "no such file or directory" on a path that plainly exists.
-cat > ~/staging-user-data.yml <<EOF
-#cloud-config
-users:
-  - name: dev
-    shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    ssh_authorized_keys:
-      - $(cat ~/.ssh/id_ed25519.pub)
-EOF
-
-REGION=<region>    # pick one: doctl compute region list
-KEY_ID=<key-id>    # printed by the ssh-key import/list above
-
-for vm in staging-bridge-ops:s-4vcpu-8gb \
-          staging-gorchain:s-8vcpu-32gb-640gb-intel \
-          staging-hyperlane-validators:s-4vcpu-8gb; do
-  doctl compute droplet create "${vm%%:*}" \
-    --size "${vm##*:}" \
-    --image ubuntu-24-04-x64 \
-    --region "$REGION" \
-    --ssh-keys "$KEY_ID" \
-    --user-data-file ~/staging-user-data.yml \
-    --wait
-done
-```
-
-`--ssh-keys` additionally puts the key on root (console rescue); day-to-day
-access is `dev`. No DO cloud firewall is attached — 80/443 must stay reachable
-on every host for Let's Encrypt.
-
-Grab the IPs and check you can SSH in as `dev`:
-
-```bash
-doctl compute droplet list "staging-*" --format Name,PublicIPv4
-ssh dev@<each-ip> 'sudo -n true && echo ok'   # accept the host key; prints ok
-```
-
-cloud-init runs asynchronously after boot — if `dev` is refused right after
-create, wait a minute and retry.
-
-Then fill in exactly two things:
+Fill in exactly two things:
 
 1. `ops/inventories/staging/host_vars/<host>.yml` (one per VM in the table
    above): `public_ip` (from the droplet list above), `privileged_user`,
@@ -108,7 +82,11 @@ Then fill in exactly two things:
 `setup-all` fails fast naming any missing value; the deploy gates refuse
 anything left unfilled.
 
-All commands below run from `ops/` with `-i inventories/staging/hosts.yml`.
+All commands below run from the `ops/` directory:
+
+```bash
+cd ops   # from the repo root
+```
 
 ## 1. Provision the fleet
 
@@ -161,10 +139,13 @@ deployment-config). Balance-driven and idempotent — re-runs only top up:
 | Privy IGP oracle | 1 | 1 |
 | Privy bridge owner | — | — (transfer target only) |
 
-gorchain funds from its own faucet (guaranteed). Devnet airdrops are
-rate-limited: if the faucet refuses, the play **fails listing the underfunded
-addresses** — top them up from an operator devnet wallet or
-https://faucet.solana.com and re-run.
+gorchain funds from its own faucet (guaranteed). The Solana **devnet** airdrops
+usually **fail from a datacenter IP** — the public faucet rate-limits and
+commonly blocks cloud/VM ranges outright, so expect the play to **fail listing
+the underfunded addresses** on a fresh staging box. This is normal: top those
+addresses up from a personal devnet wallet (or https://faucet.solana.com run
+from your laptop, then `solana transfer` to each) and re-run — funding is
+balance-driven and only adds the gap.
 
 Warp collateral is Circle's devnet USDC
 (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`) — faucet at
@@ -219,9 +200,10 @@ Use a throwaway test wallet — never the deployer account.
    ansible-playbook -i inventories/staging/hosts.yml playbooks/fund-test-wallet.yml -e wallet=<address>
    ```
 
-   Devnet airdrops are rate-limited: on shortfall the play fails naming the
-   gap — re-run later, or top up from another devnet wallet or
-   https://faucet.solana.com. **Devnet USDC**
+   Devnet SOL airdrops usually fail from the staging box (datacenter IPs are
+   blocked); on shortfall the play names the gap — fund those addresses from a
+   personal devnet wallet (or https://faucet.solana.com from your laptop, then
+   `solana transfer`). **Devnet USDC**
    comes from Circle: https://faucet.circle.com → token USDC, network
    **Solana Devnet**, the same address.
 3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your
@@ -260,8 +242,5 @@ chain state**, removes `~/chains/gorchain` + the `gorchain-rpc-caddy`
 container on staging-gorchain by hand. Chain state is deliberately never
 destroyed by a playbook.
 
-Scorched earth — destroy the VMs themselves (chain state and all):
-
-```bash
-doctl compute droplet delete staging-bridge-ops staging-gorchain staging-hyperlane-validators
-```
+Scorched earth — destroy the VMs themselves (chain state and all): see
+[staging-droplets.md → Teardown](staging-droplets.md#teardown).
