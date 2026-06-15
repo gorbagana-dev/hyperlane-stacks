@@ -6,7 +6,15 @@ deploy the stacks (`deploy-all.yml`). Operator-attended signing/lifecycle
 playbooks (kill-switch, restore, ISM update, teardown) are **sub-project 3** and
 not here.
 
+> **All commands in this README run from the `ops/` directory.** From the repo
+> root: `cd ops`. (Paths like `inventories/…`, `playbooks/…`, `requirements.yml`
+> are relative to it; `check-spec-parity.py` is the one exception, noted inline.)
+
 ## Prerequisites (controller / operator machine)
+
+```bash
+cd ops   # all commands below are relative to this directory
+```
 
 - Ansible 2.16+ and the linters: `pip install "ansible>=9" ansible-lint yamllint`
 - Collections: `ansible-galaxy collection install -r requirements.yml -p ./collections`
