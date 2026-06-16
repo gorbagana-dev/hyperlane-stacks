@@ -25,6 +25,7 @@ flowchart TD
     S2 --> S3[3 - Deploy bridge on a branch<br/>deploy-all.yml -e state_review=true]
     S3 --> S4[4 - Verify<br/>RPC / MinIO / Grafana]
     S4 --> S5[5 - Try the bridge<br/>Backpack transfer]
+    S5 --> S6[6 - Retire the deployer key<br/>retire-deployer-key.yml]
 ```
 
 Each numbered step below is one command. Steps 0 (prerequisites: droplets,
@@ -185,16 +186,26 @@ outside a full deploy.
 
 ## 4. Verify
 
+The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's Encrypt TLS):
+
+| Service | URL | Credentials |
+|---|---|---|
+| Warp UI (the bridge) | https://staging.gorbagana.wtf | — |
+| Relayer metrics | https://relayer.staging.gorbagana.wtf/metrics | — |
+| Grafana | https://grafana.staging.gorbagana.wtf | `admin` / `grafana_admin_password` |
+| Prometheus | https://prometheus.staging.gorbagana.wtf | — |
+| MinIO console | https://minio-console.staging.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
+| MinIO S3 API | https://s3.staging.gorbagana.wtf | validator IAM (per-validator) |
+| Gorchain RPC | https://rpc.staging.gorbagana.wtf | — (Caddy TLS front on the chain host) |
+
+`grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
+The block explorer (`https://explorer.staging.gorbagana.wtf`) is external — not served by this deployment.
+
 - `https://rpc.staging.gorbagana.wtf/health` answers `ok` and slots advance.
-- MinIO (`https://minio-console.staging.gorbagana.wtf` — log in with
-  `minio_root_user` / `minio_root_password`, generated into the inventory's
-  `deployment-config.yml` by setup-all): checkpoint objects appear under both
-  validator buckets.
-- Grafana (`https://grafana.staging.gorbagana.wtf` — `admin` /
-  `grafana_admin_password` from the same file): relayer + validator
-  dashboards report.
-- `https://staging.gorbagana.wtf`: run a devnet-USDC transfer
-  solana → gorchain and back — see the next section.
+- MinIO console: checkpoint objects appear under both validator buckets.
+- Grafana: relayer + validator dashboards report.
+- Warp UI loads and shows the token routes — run a devnet-USDC transfer
+  solana → gorchain and back (see the next section).
 
 ## 5. Try the bridge (Backpack)
 
@@ -240,7 +251,50 @@ Use a throwaway test wallet — never the deployer account.
    "Recipient has received funds" popup at that moment. To see the
    destination balance in Backpack too, switch the RPC per step 3.
 
-## 6. Reset
+## 6. Retire the deployer key
+
+Exercise this on staging before running it in prod. Once deployment is complete, drain and
+remove the deployer key on-box. The deployer is a completed Job; removing its keyfile does
+not affect the running relayer or validators (their keyfiles stay — deployment restart
+re-reads them).
+
+```bash
+ansible-playbook -i inventories/staging/hosts.yml playbooks/retire-deployer-key.yml \
+  -e treasury_address=<BASE58> -e confirm_retire=true
+```
+
+The play drains the deployer balance to `treasury_address` (confirming each transfer), then
+deletes the keyfile on-box. No copy is kept — a drained key has no value. Deploying
+additional warp routes later needs a funded deployer key again: re-run `prepare-gorchain.yml`
+(it regenerates the deleted keyfile), fund the new address, then run the warp deployer.
+
+## Updating a stack
+
+To apply a committed change to one stack (spec edit, image bump, mounted script/config)
+without a full redeploy — preserving the cluster and data volumes — use `restart-stack.yml`.
+It drives `laconic-so deployment restart`, which re-renders the on-host spec from
+`deploy_branch` and rolling-restarts the pods:
+
+```bash
+# a singleton stack (name the inventory host group via target_hosts):
+ansible-playbook -i inventories/staging/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-warp-ui -e target_hosts=warp_ui_hosts -e deploy_branch=<branch>
+
+# both validators (no target_hosts — they run per-entry from validators.yaml):
+ansible-playbook -i inventories/staging/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-validator -e deploy_branch=<branch>
+```
+
+`deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name` values
+are the keys of the `stacks` map in `inventories/staging/group_vars/all.yml`.
+
+## 7. Reset
+
+> ⚠️ **`stop-all` halts the bridge** — message delivery stops until the stack is back up.
+> `-e destroy_cluster=true` additionally **wipes the kind cluster and all in-cluster state**
+> (generated MinIO/Grafana secrets, validator checkpoints). The persistent gorchain chain
+> state under `~/chains/gorchain` is removed **only** if you delete it by hand — no playbook
+> destroys it.
 
 Stacks only (chain + state survive):
 
