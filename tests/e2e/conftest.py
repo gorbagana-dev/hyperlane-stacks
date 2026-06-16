@@ -1434,61 +1434,60 @@ PROMETHEUS_HOSTNAME = "prometheus.test"
 PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 
 
-def _wait_for_balance_monitor(
-    namespace: str, pod_name: str, timeout: int = 60,
-) -> None:
-    """Wait for the balance monitor to complete at least one check cycle."""
-    import subprocess
+def _build_watches(keypairs: KeypairSet) -> tuple[dict, list[str]]:
+    """Build a watches.json doc for e2e and return (doc, low_labels).
 
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        result = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "logs", pod_name,
-                "-c", "balance-monitor",
-            ],
-            capture_output=True, text=True, check=False,
-        )
-        if result.returncode == 0 and "Gorchain wallets:" in result.stdout:
-            log.info("Balance monitor has started and reported wallets")
-            return
-        time.sleep(5)
-
-    raise TimeoutError(
-        f"Balance monitor did not report wallets within {timeout}s"
-    )
-
-
-def _build_wallet_string(keypairs: KeypairSet) -> tuple[str, list[str]]:
-    """Build MONITORED_WALLETS string and return (wallet_string, label_list).
-
-    Both chains use the same wallets (all funded on both chains during setup).
+    Uses keypairs funded during setup. The igp-beneficiary is left UNFUNDED in
+    setup, so it is the deliberate low-balance watch that must trigger a Slack
+    alert; the deployer (funded) watch must stay quiet.
     """
-    # Get relayer pubkey from fee-claim keypair (if it exists)
-    relayer_keypair_path = keypairs.keys_dir / "relayer-fee-claim.json"
-    # (label, address, per-wallet threshold)
-    wallet_entries = [
-        ("deployer", keypairs.deployer_pubkey, None),
-        ("igp-oracle", keypairs.igp_oracle_pubkey, "2.0"),
-        ("igp-beneficiary", keypairs.igp_beneficiary_pubkey, None),
-    ]
-    if relayer_keypair_path.is_file():
-        result = subprocess.run(
-            ["solana-keygen", "pubkey", str(relayer_keypair_path)],
-            capture_output=True, text=True, check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            wallet_entries.append(("relayer", result.stdout.strip(), "5.0"))
+    high, low = "1.0", "1000000.0"  # low threshold = quiet; high = guaranteed breach
+    watches = {
+        "watches": [
+            {"chain": "gorchain", "label": "relayer", "address": keypairs.deployer_pubkey,
+             "tokens": [{"symbol": "GOR", "mint": "native", "threshold": high}]},
+            {"chain": "solana", "label": "relayer", "address": keypairs.deployer_pubkey,
+             "tokens": [{"symbol": "SOL", "mint": "native", "threshold": high}]},
+            {"chain": "solana", "label": "igp-beneficiary", "address": keypairs.igp_beneficiary_pubkey,
+             "tokens": [{"symbol": "SOL", "mint": "native", "threshold": low}]},
+        ]
+    }
+    return watches, ["igp-beneficiary"]
 
-    parts = []
-    for label, addr, threshold in wallet_entries:
-        if threshold:
-            parts.append(f"{label}:{addr}:{threshold}")
-        else:
-            parts.append(f"{label}:{addr}")
-    wallet_string = ",".join(parts)
-    labels = [label for label, _, _ in wallet_entries]
-    return wallet_string, labels
+
+class _SlackCapture:
+    """Threaded HTTP server capturing POSTed Slack payloads for assertions."""
+
+    def __init__(self, port: int = 18080) -> None:
+        import http.server
+        import threading
+
+        self.payloads: list[dict] = []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                try:
+                    outer.payloads.append(json.loads(body))
+                except ValueError:
+                    pass
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):  # silence
+                return
+
+        self._server = http.server.HTTPServer(("0.0.0.0", port), Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    def __enter__(self) -> "_SlackCapture":
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self._server.shutdown()
 
 
 @pytest.fixture(scope="session")
@@ -1518,25 +1517,6 @@ def monitoring_deployment(
                 capture_output=True, text=True, check=False,
             ).stdout.strip()
             assert pod_name, "Monitoring pod not found — cannot reuse deployment"
-            # Recover wallet labels from Prometheus metrics
-            wallet_labels = []
-            probe = subprocess.run(
-                ["curl", "-s",
-                 f"{PROMETHEUS_URL}/api/v1/query?query=hyperlane_wallet_balance_sol"],
-                capture_output=True, text=True, check=False,
-            )
-            if probe.returncode == 0 and probe.stdout.strip():
-                import json as _json
-                try:
-                    data = _json.loads(probe.stdout)
-                    labels = {
-                        r["metric"].get("wallet")
-                        for r in data.get("data", {}).get("result", [])
-                        if r["metric"].get("wallet")
-                    }
-                    wallet_labels = sorted(labels)
-                except (ValueError, KeyError):
-                    pass
             log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
             yield {
                 "deployment": DeploymentInfo(
@@ -1544,107 +1524,92 @@ def monitoring_deployment(
                 ),
                 "namespace": namespace,
                 "pod_name": pod_name,
-                "expected_wallet_labels": wallet_labels,
+                "low_labels": [],
+                "slack_payloads": [],
                 "grafana_url": GRAFANA_URL,
                 "prometheus_url": PROMETHEUS_URL,
             }
             return
         log.info("--skip-monitoring-deploy set but %s missing — deploying fresh", deploy_dir)
 
-    # Build wallet strings from keypairs
-    wallet_string, wallet_labels = _build_wallet_string(keypairs)
-    log.info("Monitoring wallet string: %s", wallet_string)
-
-    # Patch spec with wallet strings
-    content = MONITORING_SPEC.read_text()
-    content = content.replace(
-        'MONITORED_WALLETS_GORCHAIN: "REPLACE_AT_RUNTIME"',
-        f'MONITORED_WALLETS_GORCHAIN: "{wallet_string}"',
-    )
-    content = content.replace(
-        'MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"',
-        f'MONITORED_WALLETS_SOLANA: "{wallet_string}"',
-    )
-    patched_path = E2E_DIR / ".monitoring-spec-patched.yml"
-    patched_path.write_text(content)
+    # Build the watch file from keypairs (no spec wallet substitution anymore).
+    watches_doc, low_labels = _build_watches(keypairs)
 
     log.info("Preparing monitoring stack...")
     deploy_info = deploy_prepare(
-        "hyperlane-monitoring", patched_path,
+        "hyperlane-monitoring", MONITORING_SPEC,
         spec_replacements=SPEC_REPLACEMENTS,
         deployment_id="monitoring",
     )
 
-    bridge_state_loader.populate("hyperlane-monitoring", deploy_info.deploy_dir)
+    # Write the watch file into the runtime configmap dir (monitoring has no
+    # bridge_state_loader populate mapping — the watch doc is built here).
+    watch_dir = deploy_info.deploy_dir / "configmaps" / "balance-monitor-config"
+    watch_dir.mkdir(parents=True, exist_ok=True)
+    (watch_dir / "watches.json").write_text(json.dumps(watches_doc))
 
     os.environ["GF_SECURITY_ADMIN_PASSWORD"] = GRAFANA_ADMIN_PASSWORD
 
-    log.info("Starting monitoring stack...")
-    deploy_start(deploy_info.deploy_dir)
+    with _SlackCapture(port=18080) as slack:
+        log.info("Starting monitoring stack...")
+        deploy_start(deploy_info.deploy_dir)
 
-    try:
-        log.info("Waiting for monitoring pod to be running...")
-        wait_for_pod_phase(
-            namespace, f"app={deploy_info.deployment_id}", "Running", timeout=180,
-        )
-        log.info("Monitoring pod is running")
-    except Exception:
-        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
-        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
-        raise
-
-    # Get pod name for kubectl exec in tests
-    pod_name = subprocess.run(
-        [
-            "kubectl", "-n", namespace, "get", "pods",
-            "-l", f"app={deploy_info.deployment_id}",
-            "-o", "jsonpath={.items[0].metadata.name}",
-        ],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-
-    # Wait for balance monitor to complete first check
-    try:
-        log.info("Waiting for balance monitor to report wallets...")
-        _wait_for_balance_monitor(namespace, pod_name)
-    except TimeoutError:
-        save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
-        save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
-        raise
-
-    # Give Prometheus time to scrape the Pushgateway metrics
-    log.info("Waiting for Prometheus to scrape balance metrics...")
-    time.sleep(20)
-
-    # Caddy serves grafana.test and prometheus.test via SO's http-proxy emission;
-    # the cert was pre-loaded into caddy-system at install time.
-    for url, health_path in [(GRAFANA_URL, "/api/health"),
-                             (PROMETHEUS_URL, "/-/healthy")]:
-        log.info("Waiting for %s to respond via Caddy ingress...", url)
-        for _ in range(30):
-            probe = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                 f"{url}{health_path}"],
-                capture_output=True, text=True, check=False,
+        try:
+            log.info("Waiting for monitoring pod to be running...")
+            wait_for_pod_phase(
+                namespace, f"app={deploy_info.deployment_id}", "Running", timeout=180,
             )
-            if probe.returncode == 0 and probe.stdout.strip() == "200":
-                break
-            time.sleep(2)
-        else:
-            log.warning("%s not returning 200 after 60s", url)
-        log.info("Ingress ready at %s", url)
+            log.info("Monitoring pod is running")
+        except Exception:
+            save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
+            save_pod_describe(namespace, f"app={deploy_info.deployment_id}", "monitoring")
+            raise
 
-    yield {
-        "deployment": deploy_info,
-        "namespace": namespace,
-        "pod_name": pod_name,
-        "expected_wallet_labels": wallet_labels,
-        "grafana_url": GRAFANA_URL,
-        "prometheus_url": PROMETHEUS_URL,
-    }
+        # Get pod name for kubectl exec in tests
+        pod_name = subprocess.run(
+            [
+                "kubectl", "-n", namespace, "get", "pods",
+                "-l", f"app={deploy_info.deployment_id}",
+                "-o", "jsonpath={.items[0].metadata.name}",
+            ],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        # Wait for the balance monitor to alert on the underfunded wallet.
+        log.info("Waiting for balance monitor to alert on the underfunded wallet...")
+        deadline = time.time() + 120
+        while time.time() < deadline and not slack.payloads:
+            time.sleep(3)
+
+        # Caddy serves grafana.test and prometheus.test via SO's http-proxy emission;
+        # the cert was pre-loaded into caddy-system at install time.
+        for url, health_path in [(GRAFANA_URL, "/api/health"),
+                                 (PROMETHEUS_URL, "/-/healthy")]:
+            log.info("Waiting for %s to respond via Caddy ingress...", url)
+            for _ in range(30):
+                probe = subprocess.run(
+                    ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                     f"{url}{health_path}"],
+                    capture_output=True, text=True, check=False,
+                )
+                if probe.returncode == 0 and probe.stdout.strip() == "200":
+                    break
+                time.sleep(2)
+            else:
+                log.warning("%s not returning 200 after 60s", url)
+            log.info("Ingress ready at %s", url)
+
+        yield {
+            "deployment": deploy_info,
+            "namespace": namespace,
+            "pod_name": pod_name,
+            "low_labels": low_labels,
+            "slack_payloads": list(slack.payloads),
+            "grafana_url": GRAFANA_URL,
+            "prometheus_url": PROMETHEUS_URL,
+        }
 
     save_pod_logs(namespace, f"app={deploy_info.deployment_id}", "monitoring")
-    patched_path.unlink(missing_ok=True)
     if not skip_cleanup:
         log.info("Stopping monitoring stack...")
         stop_stack("hyperlane-monitoring")
