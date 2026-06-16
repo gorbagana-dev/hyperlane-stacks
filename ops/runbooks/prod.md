@@ -21,7 +21,7 @@ flowchart TD
     CFG[Fill host_vars +<br/>deployment-config.yml] --> S1[1 - Provision host<br/>setup-all.yml]
     S1 --> S2[2 - Generate keys + check funding<br/>prepare-prod.yml]
     S2 -->|fund from treasury, repeat until gate passes| S2
-    S3[3 - Deploy bridge on a branch<br/>deploy-all.yml -e state_review=true]
+    S3[3 - Deploy bridge from main<br/>deploy-all.yml -e state_review=true]
     S2 --> S3
     S3 --> S4[4 - Verify<br/>warp-UI / Grafana / MinIO]
     S4 --> S5[5 - Try the bridge<br/>Backpack transfer]
@@ -135,19 +135,16 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/verify-funding.yml
 
 ## 3. Deploy the bridge
 
-`deploy-all.yml` publishes deployer-generated state mid-flight, so deploy off a dedicated
-branch — **never `main`**. The host fetches the repo on that branch, so create and push
-it first, then pass it as `deploy_branch` (a forgotten flag fails up front instead of
-publishing bridge state to main):
-
 ```bash
-BRANCH=<deploy-branch>   # any name except main, e.g. prod-deploy
-
-git checkout -b "$BRANCH" && git push -u origin "$BRANCH"
-
-ansible-playbook -i inventories/prod/hosts.yml playbooks/deploy-all.yml \
-  -e deploy_branch="$BRANCH" -e state_review=true
+ansible-playbook -i inventories/prod/hosts.yml playbooks/deploy-all.yml -e state_review=true
 ```
+
+`deploy-all.yml` publishes the deployer-generated bridge state (program IDs, agent-config —
+secret-free) mid-flight to `deploy_branch`, which for prod **defaults to `main`** (set in
+`inventories/prod/group_vars/all.yml`): `main` is the canonical home for production state, so
+no throwaway branch is needed — that's a staging/rehearsal practice. Deploy from `main` (make
+sure it's the intended revision and the host can push to it). To deploy a variant off main,
+override with `-e deploy_branch=<branch>`.
 
 A **prod funding gate** runs first (before any stack starts) and aborts the deploy if any
 signer is underfunded — same check as `prepare-prod.yml`, but now a hard blocker.
