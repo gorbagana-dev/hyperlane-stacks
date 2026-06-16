@@ -21,3 +21,11 @@
 - name: Load the deployment config
   ansible.builtin.include_vars: "{{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }}"
   no_log: true
+- name: wallet_connect_id must be present (empty disables WalletConnect; missing is a gap)
+  ansible.builtin.assert:
+    that: wallet_connect_id is defined
+    fail_msg: >-
+      wallet_connect_id is not set in deployment-config.yml — add it (an empty
+      string "" is valid and disables WalletConnect; a missing key dies later as
+      an undefined-var at the warp-ui spec render).
+    quiet: true

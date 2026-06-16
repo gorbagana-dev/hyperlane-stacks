@@ -4,6 +4,17 @@
   changed_when: false
   when: not ansible_check_mode
 
+- name: Reject an unfilled public_ip (host_vars not configured)
+  ansible.builtin.assert:
+    that: "public_ip is not defined or (public_ip is string and 'REPLACE_WITH' not in public_ip)"
+    fail_msg: >-
+      public_ip for {{ inventory_hostname }} is still the REPLACE_WITH placeholder —
+      set it in inventories/<env>/host_vars/{{ inventory_hostname }}.yml.
+    quiet: true
+  when:
+    - not ansible_check_mode
+    - topology | default('') != 'single'
+
 # The spec lives on the deploy host (fetched clone), so read it there with slurp;
 # lookup('file') would read the controller's filesystem instead.
 - name: Read the spec to derive served hostnames

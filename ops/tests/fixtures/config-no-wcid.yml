@@ -1,0 +1,13 @@
+---
+# Fixture: a deployment-config that fills the usual secrets but OMITS
+# wallet_connect_id, to prove load_deployment_config's presence gate fires.
+cloudflare_api_token: "x"
+privy_app_id: "x"
+privy_app_secret: "x"
+privy_oracle_wallet_id: "x"
+helius_api_key: "x"
+ghcr_pat: "x"
+bridge_owner_pubkey: "x"
+igp_oracle_pubkey: "x"
+gorchain_validator_address: "0x0"
+solana_validator_address: "0x0"

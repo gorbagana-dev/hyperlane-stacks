@@ -10,3 +10,26 @@
   tasks:
     - name: Assert the env contract
       ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml
+
+- name: load_deployment_config rejects a config missing wallet_connect_id
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    deployment_config_file: "{{ playbook_dir }}/fixtures/config-no-wcid.yml"
+  tasks:
+    - name: Include the loader (must fail once the presence gate exists)
+      block:
+        - name: Load the config
+          ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+        - name: Loader succeeded
+          ansible.builtin.set_fact:
+            _loaded_ok: true
+      rescue:
+        - name: Loader failed (expected)
+          ansible.builtin.set_fact:
+            _loaded_ok: false
+    - name: The wallet_connect_id presence gate fired
+      ansible.builtin.assert:
+        that: "not (_loaded_ok | default(true))"
+        fail_msg: "load_deployment_config did not reject a config missing wallet_connect_id"
