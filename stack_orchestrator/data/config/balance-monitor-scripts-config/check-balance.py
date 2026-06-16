@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
-"""Balance monitor — checks wallet balances via Solana JSON-RPC and pushes to Pushgateway.
+"""Balance monitor — checks native + SPL balances from a generated watch file and
+posts low-balance alerts to a Slack webhook.
 
-Runs in a loop, checking balances at configurable intervals.
-No external dependencies — uses only Python stdlib.
+Driven by /config/watches.json:
+
+  {"watches": [
+     {"chain": "solana", "label": "relayer", "address": "...",
+      "tokens": [{"symbol": "SOL",  "mint": "native", "threshold": 5.0},
+                 {"symbol": "USDC", "mint": "EPjF...", "threshold": 250.0}]}
+  ]}
+
+RPC per chain comes from env (GORCHAIN_RPC_URL / SOLANA_RPC_URL) so the secret
+Helius URL never enters the generated file. SLACK_WEBHOOK_URL empty => alerting
+disabled (the loop still runs and logs). Anti-spam: alert once on breach, re-alert
+every ALERT_REPEAT_SECONDS while still low, one recovery note on return above.
+Stdlib only.
 """
+
+from __future__ import annotations
 
 import json
 import os
@@ -11,129 +25,185 @@ import time
 import urllib.error
 import urllib.request
 
-PUSHGATEWAY_URL = os.environ.get("PUSHGATEWAY_URL", "http://localhost:9091")
+WATCHES_FILE = os.environ.get("WATCHES_FILE", "/config/watches.json")
 INTERVAL = int(os.environ.get("BALANCE_CHECK_INTERVAL", "300"))
-THRESHOLD = float(os.environ.get("BALANCE_THRESHOLD_SOL", "1.0"))
+ALERT_REPEAT_SECONDS = int(os.environ.get("ALERT_REPEAT_SECONDS", "21600"))
+SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
 
-GORCHAIN_RPC = os.environ.get("GORCHAIN_RPC_URL", "")
-SOLANA_RPC = os.environ.get("SOLANA_RPC_URL", "")
+RPC_BY_CHAIN = {
+    "gorchain": os.environ.get("GORCHAIN_RPC_URL", "").strip(),
+    "solana": os.environ.get("SOLANA_RPC_URL", "").strip(),
+}
 
-WALLETS_GORCHAIN = os.environ.get("MONITORED_WALLETS_GORCHAIN", "")
-WALLETS_SOLANA = os.environ.get("MONITORED_WALLETS_SOLANA", "")
-
-# Solana native token has 9 decimals (1 SOL = 1e9 lamports)
 LAMPORTS_PER_SOL = 1_000_000_000
 
 
-def get_balance(rpc_url: str, address: str) -> float | None:
-    """Fetch wallet balance in SOL via Solana JSON-RPC getBalance."""
-    payload = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "getBalance",
-        "params": [address],
-    }).encode()
-
+def _rpc(rpc_url: str, method: str, params: list) -> dict:
+    payload = json.dumps(
+        {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    ).encode()
     req = urllib.request.Request(
-        rpc_url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
+        rpc_url, data=payload, headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def get_native_balance(rpc_url: str, address: str) -> float | None:
+    """Native balance in whole tokens (e.g. SOL), or None on failure."""
+    try:
+        data = _rpc(rpc_url, "getBalance", [address])
+    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+        print(f"  [ERROR] getBalance {address}: {exc}", flush=True)
+        return None
+    if "error" in data:
+        print(f"  [ERROR] getBalance {address}: {data['error']}", flush=True)
+        return None
+    return data.get("result", {}).get("value", 0) / LAMPORTS_PER_SOL
+
+
+def get_spl_balance(rpc_url: str, owner: str, mint: str) -> float | None:
+    """Summed SPL uiAmount across the owner's token accounts for `mint` (decimals
+    come from the RPC response), or None on failure."""
+    try:
+        data = _rpc(
+            rpc_url,
+            "getTokenAccountsByOwner",
+            [owner, {"mint": mint}, {"encoding": "jsonParsed"}],
+        )
+    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+        print(f"  [ERROR] getTokenAccountsByOwner {owner}/{mint}: {exc}", flush=True)
+        return None
+    if "error" in data:
+        print(f"  [ERROR] getTokenAccountsByOwner {owner}/{mint}: {data['error']}", flush=True)
+        return None
+    total = 0.0
+    for acct in data.get("result", {}).get("value", []):
+        amt = acct["account"]["data"]["parsed"]["info"]["tokenAmount"]
+        total += float(amt.get("uiAmount") or 0)
+    return total
+
+
+def get_balance(chain: str, address: str, mint: str) -> float | None:
+    """Dispatch native vs SPL using the chain's RPC env. Unknown chain -> None."""
+    rpc_url = RPC_BY_CHAIN.get(chain, "")
+    if not rpc_url:
+        print(f"  [ERROR] no RPC URL for chain {chain!r}", flush=True)
+        return None
+    if mint in ("", "native", None):
+        return get_native_balance(rpc_url, address)
+    return get_spl_balance(rpc_url, address, mint)
+
+
+def load_watches(path: str) -> list[dict]:
+    with open(path) as fh:
+        return json.load(fh).get("watches", [])
+
+
+def evaluate_cycle(
+    watches: list[dict],
+    balance_fn,
+    alert_state: dict,
+    now: float,
+    repeat: float,
+) -> tuple[list[dict], list[dict]]:
+    """Check every (account, token) once; return (breaches, recoveries).
+
+    alert_state[(chain, address, mint)] = {"low": bool, "last_alert": float}.
+    A breach is reported on first crossing and re-reported once `repeat` seconds
+    have elapsed while still low. A recovery is reported once when a low watch
+    returns to/above threshold. A None balance (transient RPC failure) is ignored
+    and does not toggle state.
+    """
+    breaches: list[dict] = []
+    recoveries: list[dict] = []
+    for w in watches:
+        for t in w.get("tokens", []):
+            mint = t.get("mint", "native")
+            bal = balance_fn(w["chain"], w["address"], mint)
+            if bal is None:
+                continue
+            threshold = float(t["threshold"])
+            key = (w["chain"], w["address"], mint)
+            st = alert_state.setdefault(key, {"low": False, "last_alert": 0.0})
+            item = {
+                "label": w["label"], "chain": w["chain"], "symbol": t["symbol"],
+                "balance": bal, "threshold": threshold, "address": w["address"],
+            }
+            if bal < threshold:
+                if (not st["low"]) or (now - st["last_alert"] >= repeat):
+                    breaches.append(item)
+                    st["last_alert"] = now
+                st["low"] = True
+                print(f"  [WARNING] {w['label']}/{t['symbol']} on {w['chain']}: "
+                      f"{bal:.4f} < {threshold}", flush=True)
+            else:
+                if st["low"]:
+                    recoveries.append(item)
+                st["low"] = False
+    return breaches, recoveries
+
+
+def build_breach_message(breaches: list[dict]) -> str:
+    lines = ["*:rotating_light: Hyperlane bridge — low balance*"]
+    for b in breaches:
+        lines.append(
+            f"• `{b['label']}` {b['symbol']} on *{b['chain']}*: "
+            f"{b['balance']:.4f} < {b['threshold']} (`{b['address']}`)"
+        )
+    return "\n".join(lines)
+
+
+def build_recovery_message(recoveries: list[dict]) -> str:
+    lines = ["*:white_check_mark: Hyperlane bridge — balance recovered*"]
+    for r in recoveries:
+        lines.append(
+            f"• `{r['label']}` {r['symbol']} on *{r['chain']}*: "
+            f"{r['balance']:.4f} >= {r['threshold']}"
+        )
+    return "\n".join(lines)
+
+
+def slack_post(text: str) -> None:
+    if not SLACK_WEBHOOK_URL:
+        return
+    body = json.dumps({"text": text}).encode()
+    req = urllib.request.Request(
+        SLACK_WEBHOOK_URL, data=body,
+        headers={"Content-Type": "application/json"}, method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
-        print(f"  [ERROR] RPC call failed for {address}: {exc}", flush=True)
-        return None
-
-    if "error" in data:
-        print(f"  [ERROR] RPC error for {address}: {data['error']}", flush=True)
-        return None
-
-    lamports = data.get("result", {}).get("value", 0)
-    return lamports / LAMPORTS_PER_SOL
-
-
-def push_metric(chain: str, label: str, address: str, balance: float) -> None:
-    """Push a single balance metric to Pushgateway."""
-    body = (
-        "# HELP hyperlane_wallet_balance_sol Wallet balance in SOL\n"
-        "# TYPE hyperlane_wallet_balance_sol gauge\n"
-        f'hyperlane_wallet_balance_sol{{chain="{chain}",'
-        f'wallet="{label}",address="{address}"}} {balance}\n'
-    ).encode()
-
-    url = f"{PUSHGATEWAY_URL}/metrics/job/balance_monitor/chain/{chain}/wallet/{label}"
-    req = urllib.request.Request(url, data=body, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=5):
+        with urllib.request.urlopen(req, timeout=10):
             pass
     except (urllib.error.URLError, OSError) as exc:
-        print(f"  [ERROR] Pushgateway push failed: {exc}", flush=True)
-
-
-def parse_wallets(raw: str) -> list[tuple[str, str, float]]:
-    """Parse comma-separated 'label:address' or 'label:address:threshold' entries.
-
-    Returns list of (label, address, threshold) tuples.
-    If no per-wallet threshold is specified, uses the global BALANCE_THRESHOLD_SOL.
-    """
-    wallets = []
-    for entry in raw.split(","):
-        entry = entry.strip()
-        if not entry or ":" not in entry:
-            continue
-        parts = entry.split(":")
-        if len(parts) < 2:
-            continue
-        label = parts[0].strip()
-        address = parts[1].strip()
-        threshold = THRESHOLD
-        if len(parts) >= 3 and parts[2].strip():
-            try:
-                threshold = float(parts[2].strip())
-            except ValueError:
-                pass
-        wallets.append((label, address, threshold))
-    return wallets
-
-
-def check_wallets(rpc_url: str, chain: str, wallets: list[tuple[str, str, float]]) -> None:
-    """Check and push balance for each wallet on a chain."""
-    for label, address, threshold in wallets:
-        balance = get_balance(rpc_url, address)
-        if balance is None:
-            continue
-        push_metric(chain, label, address, balance)
-        if balance < threshold:
-            print(
-                f"  [WARNING] {label} on {chain}: {balance:.4f} SOL "
-                f"< threshold {threshold} SOL",
-                flush=True,
-            )
+        print(f"  [ERROR] Slack post failed: {exc}", flush=True)
 
 
 def main() -> None:
-    print(f"[balance-monitor] Starting (interval: {INTERVAL}s, default threshold: {THRESHOLD} SOL)", flush=True)
-
-    gorchain_wallets = parse_wallets(WALLETS_GORCHAIN)
-    solana_wallets = parse_wallets(WALLETS_SOLANA)
-
-    if not gorchain_wallets and not solana_wallets:
-        print("[balance-monitor] No wallets configured, exiting.", flush=True)
-        return
-
     print(
-        f"[balance-monitor] Gorchain wallets: {len(gorchain_wallets)}, "
-        f"Solana wallets: {len(solana_wallets)}",
+        f"[balance-monitor] Starting (interval {INTERVAL}s, repeat "
+        f"{ALERT_REPEAT_SECONDS}s, slack {'on' if SLACK_WEBHOOK_URL else 'off'})",
+        flush=True,
+    )
+    watches = load_watches(WATCHES_FILE)
+    if not watches:
+        print("[balance-monitor] No watches configured, exiting.", flush=True)
+        return
+    n_tokens = sum(len(w.get("tokens", [])) for w in watches)
+    print(
+        f"[balance-monitor] {len(watches)} account(s), {n_tokens} token watch(es)",
         flush=True,
     )
 
+    alert_state: dict = {}
     while True:
-        if gorchain_wallets and GORCHAIN_RPC:
-            check_wallets(GORCHAIN_RPC, "gorchain", gorchain_wallets)
-        if solana_wallets and SOLANA_RPC:
-            check_wallets(SOLANA_RPC, "solana", solana_wallets)
+        breaches, recoveries = evaluate_cycle(
+            watches, get_balance, alert_state, time.time(), ALERT_REPEAT_SECONDS
+        )
+        if breaches:
+            slack_post(build_breach_message(breaches))
+        if recoveries:
+            slack_post(build_recovery_message(recoveries))
         time.sleep(INTERVAL)
 
 
