@@ -59,7 +59,11 @@ def get_native_balance(rpc_url: str, address: str) -> float | None:
     if "error" in data:
         print(f"  [ERROR] getBalance {address}: {data['error']}", flush=True)
         return None
-    return data.get("result", {}).get("value", 0) / LAMPORTS_PER_SOL
+    value = data.get("result", {}).get("value")
+    if value is None:
+        print(f"  [ERROR] getBalance {address}: malformed response {data}", flush=True)
+        return None
+    return value / LAMPORTS_PER_SOL
 
 
 def get_spl_balance(rpc_url: str, owner: str, mint: str) -> float | None:
@@ -79,8 +83,11 @@ def get_spl_balance(rpc_url: str, owner: str, mint: str) -> float | None:
         return None
     total = 0.0
     for acct in data.get("result", {}).get("value", []):
-        amt = acct["account"]["data"]["parsed"]["info"]["tokenAmount"]
-        total += float(amt.get("uiAmount") or 0)
+        try:
+            amt = acct["account"]["data"]["parsed"]["info"]["tokenAmount"]
+            total += float(amt.get("uiAmount") or 0)
+        except (KeyError, TypeError, ValueError) as exc:
+            print(f"  [WARNING] skipping malformed token account for {owner}/{mint}: {exc}", flush=True)
     return total
 
 
@@ -119,28 +126,32 @@ def evaluate_cycle(
     recoveries: list[dict] = []
     for w in watches:
         for t in w.get("tokens", []):
-            mint = t.get("mint", "native")
-            bal = balance_fn(w["chain"], w["address"], mint)
-            if bal is None:
+            try:
+                mint = t.get("mint", "native")
+                bal = balance_fn(w["chain"], w["address"], mint)
+                if bal is None:
+                    continue
+                threshold = float(t["threshold"])
+                key = (w["chain"], w["address"], mint)
+                st = alert_state.setdefault(key, {"low": False, "last_alert": 0.0})
+                item = {
+                    "label": w["label"], "chain": w["chain"], "symbol": t["symbol"],
+                    "balance": bal, "threshold": threshold, "address": w["address"],
+                }
+                if bal < threshold:
+                    if (not st["low"]) or (now - st["last_alert"] >= repeat):
+                        breaches.append(item)
+                        st["last_alert"] = now
+                    st["low"] = True
+                    print(f"  [WARNING] {w['label']}/{t['symbol']} on {w['chain']}: "
+                          f"{bal:.4f} < {threshold}", flush=True)
+                else:
+                    if st["low"]:
+                        recoveries.append(item)
+                    st["low"] = False
+            except (KeyError, TypeError, ValueError) as exc:
+                print(f"  [WARNING] skipping malformed watch entry {w.get('label', '?')}: {exc}", flush=True)
                 continue
-            threshold = float(t["threshold"])
-            key = (w["chain"], w["address"], mint)
-            st = alert_state.setdefault(key, {"low": False, "last_alert": 0.0})
-            item = {
-                "label": w["label"], "chain": w["chain"], "symbol": t["symbol"],
-                "balance": bal, "threshold": threshold, "address": w["address"],
-            }
-            if bal < threshold:
-                if (not st["low"]) or (now - st["last_alert"] >= repeat):
-                    breaches.append(item)
-                    st["last_alert"] = now
-                st["low"] = True
-                print(f"  [WARNING] {w['label']}/{t['symbol']} on {w['chain']}: "
-                      f"{bal:.4f} < {threshold}", flush=True)
-            else:
-                if st["low"]:
-                    recoveries.append(item)
-                st["low"] = False
     return breaches, recoveries
 
 

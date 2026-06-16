@@ -103,3 +103,38 @@ def test_slack_post_noop_when_disabled(cb, monkeypatch):
                         lambda *a, **k: called.__setitem__("n", called["n"] + 1))
     cb.slack_post("hi")
     assert called["n"] == 0
+
+
+def test_get_balance_dispatch_and_unknown_chain(cb, monkeypatch):
+    seen = {}
+
+    def fake_native(rpc_url, address):
+        seen["native"] = (rpc_url, address)
+        return 3.0
+
+    def fake_spl(rpc_url, owner, mint):
+        seen["spl"] = (rpc_url, owner, mint)
+        return 7.0
+
+    monkeypatch.setattr(cb, "RPC_BY_CHAIN", {"solana": "http://rpc"})
+    monkeypatch.setattr(cb, "get_native_balance", fake_native)
+    monkeypatch.setattr(cb, "get_spl_balance", fake_spl)
+
+    assert cb.get_balance("solana", "OWNER", "native") == 3.0
+    assert cb.get_balance("solana", "OWNER", "MINT") == 7.0
+    # Unknown chain (no RPC) -> None, and neither balance fn is consulted for it
+    assert cb.get_balance("gorchain", "OWNER", "native") is None
+
+
+def test_spl_summation_skips_malformed_account(cb, monkeypatch):
+    resp = {
+        "result": {
+            "value": [
+                {"account": {"data": {"parsed": {"info": {"tokenAmount": {"uiAmount": 1.5}}}}}},
+                {"account": {"data": "not-jsonparsed"}},  # malformed -> skipped
+                {"account": {"data": {"parsed": {"info": {"tokenAmount": {"uiAmount": 2.0}}}}}},
+            ]
+        }
+    }
+    monkeypatch.setattr(cb, "_rpc", lambda *a, **k: resp)
+    assert cb.get_spl_balance("http://rpc", "OWNER", "MINT") == pytest.approx(3.5)
