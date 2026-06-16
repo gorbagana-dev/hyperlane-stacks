@@ -1,11 +1,10 @@
 # hyperlane-monitoring
 
-Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four containers:
+Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with three containers:
 
-- **Prometheus** — scrapes validator and relayer `/metrics` over their public Caddy hostnames (targets configured in the spec), and Pushgateway for balance metrics
-- **Grafana** — dashboards for bridge operations, validator checkpoints, relayer throughput, and wallet balances
-- **Pushgateway** — receives balance metrics pushed by the balance monitor
-- **Balance monitor** — Python script that polls wallet balances via Solana JSON-RPC and pushes to Pushgateway
+- **Prometheus** — scrapes validator and relayer `/metrics` over their public Caddy hostnames (targets configured in the spec)
+- **Grafana** — dashboards for bridge operations, validator checkpoints, and relayer throughput
+- **Balance monitor** — Python script that checks signer balances via JSON-RPC and posts low-balance alerts to Slack
 
 ## How it works
 
@@ -13,9 +12,9 @@ Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four
                       ┌─────────────────────────────────────────────┐
                       │            monitoring pod                   │
                       │                                             │
-  validator pods ────►│  Prometheus ◄── Pushgateway ◄── balance     │
-  relayer pod    ────►│  (scrapes)      (receives)      monitor     │
-                      │      │                          (polls RPC) │
+  validator pods ────►│  Prometheus      balance monitor ──► Slack  │
+  relayer pod    ────►│  (scrapes)       (checks RPC, alerts)       │
+                      │      │                                      │
                       │      ▼                                      │
                       │  Grafana (dashboards)                       │
                       └─────────────────────────────────────────────┘
@@ -24,7 +23,15 @@ Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four
 **Metrics flow:**
 
 1. **Validator/relayer metrics**: Prometheus scrapes each validator/relayer `/metrics` endpoint over its public Caddy hostname. Targets are declared in the spec (`PROMETHEUS_VALIDATOR_TARGETS` / `PROMETHEUS_RELAYER_TARGETS`); the prometheus container's entrypoint (`run.sh`) renders them to `validators.yml` / `relayer.yml` on each start, and the `validators` / `relayers` jobs in `prometheus.yml` consume them via `file_sd_configs`. Each target carries a `hyperlane_instance` label so multiple validators (including two on the same chain) appear as distinct series. Because rendering happens at container start, adding a validator is an env change plus a restart — no deploy hook or `laconic-so` update step. The scrape scheme is rendered from `PROMETHEUS_SCRAPE_SCHEME` (`https` in prod; the e2e harness sets `http` to scrape pods in-cluster).
-2. **Wallet balances**: The balance monitor queries Solana JSON-RPC (`getBalance`) for each configured wallet, then pushes `hyperlane_wallet_balance_sol` gauge metrics to Pushgateway. Prometheus scrapes Pushgateway on `localhost:9091`
+2. **Balance monitoring + Slack alerts**: The balance monitor reads
+   `/config/watches.json` (the `balance-monitor-config` ConfigMap) and, every
+   `BALANCE_CHECK_INTERVAL` seconds, checks each account's native and/or SPL token
+   balances against per-token thresholds. When a balance is below threshold it
+   POSTs a batched alert to `SLACK_WEBHOOK_URL` (empty disables alerting); it
+   re-alerts every `ALERT_REPEAT_SECONDS` while still low and posts a recovery
+   message when it climbs back. RPC URLs come from `GORCHAIN_RPC_URL` /
+   `SOLANA_RPC_URL` (kept out of the watch file). No Prometheus/Pushgateway metric
+   is emitted for balances.
 3. **Grafana**: Queries Prometheus as its datasource. Three dashboards are provisioned automatically: overview, validator detail, and relayer detail
 
 **Prerequisites:**
@@ -32,28 +39,35 @@ Monitoring stack for the Hyperlane SVM bridge. Deploys as a single pod with four
 
 ## Configuration
 
-### Wallet format
+### Watch file (`balance-monitor-config`)
 
-Wallets are specified as comma-separated `label:address` or `label:address:threshold` entries:
+The balance monitor reads `/config/watches.json` from the `balance-monitor-config`
+ConfigMap. Schema:
 
+```json
+{ "watches": [
+  { "chain": "solana", "label": "relayer", "address": "<pubkey>",
+    "tokens": [ { "symbol": "SOL", "mint": "native", "threshold": 5 } ] }
+] }
 ```
-relayer:ABC123:5.0,igp-oracle:DEF456:2.0,deployer:GHI789
-```
 
-- Per-wallet threshold (third field) is optional
-- Wallets without a threshold use the global `BALANCE_THRESHOLD_SOL` as fallback
-- Set higher thresholds for critical wallets (relayer) and lower for less critical ones
+- `mint: "native"` (or omitted) → native gas balance via `getBalance`
+- any other `mint` → that SPL token's balance via `getTokenAccountsByOwner`
+  (summed across the account's token accounts; decimals read from RPC)
+- `threshold` is the low-balance floor for that token
+
+In ops deployments the file is generated from the bridge's own signers; operators
+add extra/SPL watches by editing it on the monitoring host and restarting the stack
+(see `ops/runbooks/monitoring.md`).
 
 ### Environment variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `GORCHAIN_RPC_URL` | Gorchain Solana-compatible RPC endpoint | — |
-| `SOLANA_RPC_URL` | Solana RPC endpoint | — |
-| `MONITORED_WALLETS_GORCHAIN` | Wallets to monitor on Gorchain | — |
-| `MONITORED_WALLETS_SOLANA` | Wallets to monitor on Solana | — |
-| `BALANCE_THRESHOLD_SOL` | Default low-balance warning threshold (SOL) | `1.0` |
+| `SOLANA_RPC_URL` | Solana RPC endpoint (secret) | — |
 | `BALANCE_CHECK_INTERVAL` | Seconds between balance checks | `300` |
+| `ALERT_REPEAT_SECONDS` | Re-alert cadence while a balance stays low | `21600` |
 | `PROMETHEUS_VALIDATOR_TARGETS` | Validator scrape targets, `instance=host:port` comma-separated | — |
 | `PROMETHEUS_RELAYER_TARGETS` | Relayer scrape targets, `instance=host:port` comma-separated | — |
 
@@ -62,6 +76,8 @@ relayer:ABC123:5.0,igp-oracle:DEF456:2.0,deployer:GHI789
 | Secret key | Description |
 |------------|-------------|
 | `GF_SECURITY_ADMIN_PASSWORD` | Grafana admin password |
+| `SLACK_WEBHOOK_URL` | Slack incoming-webhook URL for balance alerts (empty disables alerting) |
+| `SOLANA_RPC_URL` | Solana RPC endpoint (Helius URL embeds an API key) |
 
 ## Deployment
 
@@ -71,13 +87,15 @@ relayer:ABC123:5.0,igp-oracle:DEF456:2.0,deployer:GHI789
 laconic-so --stack hyperlane-monitoring deploy init --output monitoring-spec.yml
 ```
 
-The generated spec includes `http-proxy` defaults for Grafana (`grafana.example.com`) and Prometheus (`prometheus.example.com`). Edit the hostnames and wallet addresses.
+The generated spec includes `http-proxy` defaults for Grafana (`grafana.example.com`) and Prometheus (`prometheus.example.com`). Edit the hostnames.
 
 ### 2. Create secrets
 
 ```bash
 kubectl create secret generic hyperlane-monitoring-secrets \
-  --from-literal=GF_SECURITY_ADMIN_PASSWORD='<grafana-password>'
+  --from-literal=GF_SECURITY_ADMIN_PASSWORD='<grafana-password>' \
+  --from-literal=SLACK_WEBHOOK_URL='<slack-webhook-url>' \
+  --from-literal=SOLANA_RPC_URL='<solana-rpc-url>'
 ```
 
 ### 3. Deploy
@@ -107,6 +125,6 @@ curl https://prometheus.example.com/api/v1/targets
 
 Three dashboards are provisioned automatically:
 
-- **Hyperlane Overview** — wallet balances, latest checkpoints, message throughput
+- **Hyperlane Overview** — latest checkpoints, message throughput
 - **Hyperlane Validator** — per-chain validator checkpoint progress, block height, signing activity
 - **Hyperlane Relayer** — message processing rates, gas usage, delivery status

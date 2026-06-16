@@ -641,33 +641,34 @@ secrets:
 
 **hyperlane-monitoring** (`test_07_monitoring.py`):
 
-The monitoring stack runs Prometheus, Grafana, Pushgateway, and a balance monitor
-in a single pod. Prometheus scrapes its own metrics and Pushgateway (static config),
-plus validator/relayer pods via k8s service discovery (prometheus.io annotations).
-Grafana is provisioned with a Prometheus datasource and three dashboard JSON files.
-The balance monitor queries wallet balances via Solana JSON-RPC and pushes metrics
-to Pushgateway.
+The monitoring stack runs Prometheus, Grafana, and a balance monitor in a single
+pod. Prometheus scrapes its own metrics plus validator/relayer pods via k8s service
+discovery (prometheus.io annotations). Grafana is provisioned with a Prometheus
+datasource and three dashboard JSON files. The balance monitor reads
+`watches.json`, checks native/SPL balances via JSON-RPC, and POSTs low-balance
+alerts to `SLACK_WEBHOOK_URL`. No Prometheus/Pushgateway balance metric is emitted.
 
 Prerequisites:
 - Kind cluster running with namespace created
 - Validator and relayer pods already deployed with `prometheus.io/scrape` annotations
   (tests run after `test_05_relayer`)
-- Keypairs available (deployer, IGP oracle, IGP beneficiary, relayer-fee-claim pubkeys)
+- Keypairs available (deployer, IGP oracle, relayer-fee-claim pubkeys)
 
 **Setup:**
 
 1. Create `hyperlane-monitoring-secrets` k8s Secret:
    - `GF_SECURITY_ADMIN_PASSWORD` — test value (e.g. `"testadmin"`)
-2. Build `MONITORED_WALLETS_GORCHAIN` and `MONITORED_WALLETS_SOLANA` strings from
-   keypairs — comma-separated `"label:address"` format:
-   - Gorchain: `"deployer:{deployer_pubkey},igp-oracle:{igp_oracle_pubkey},igp-beneficiary:{igp_beneficiary_pubkey},relayer:{relayer_pubkey}"`
-   - Solana: same wallet set (all wallets are funded on both chains)
-3. Patch `test-spec-monitoring.yml` with wallet strings and RPC URLs
+   - `SLACK_WEBHOOK_URL` — URL of an in-cluster mock Slack webhook that captures POSTs
+2. Render `watches.json` for the `balance-monitor-config` ConfigMap from test
+   keypairs. Include funded signers (relayer, igp-oracle) plus one deliberately
+   underfunded watch (a fresh/empty address with a non-zero threshold) so an alert
+   is guaranteed to fire.
+3. Patch `test-spec-monitoring.yml` with RPC URLs
 4. Deploy using `test-spec-monitoring.yml` fixture
-5. Wait for all containers Running (prometheus, grafana, pushgateway, balance-monitor)
-6. Wait for balance monitor to complete at least one check cycle — poll pod logs for
-   `"[balance-monitor] Gorchain wallets:"` startup message (timeout 60s)
-7. Wait briefly for Pushgateway to receive metrics (~5s after balance-monitor starts)
+5. Wait for all containers Running (prometheus, grafana, balance-monitor)
+6. Wait for the balance monitor to complete at least one check cycle — poll pod logs
+   for its startup line reporting the watch counts (timeout 60s)
+7. Wait briefly for the mock webhook to receive the low-balance alert
 
 **Tests:**
 
@@ -675,11 +676,6 @@ Prerequisites:
   (curl/wget in prometheus container)
 - `test_prometheus_self_scrape` — Query `up{job="prometheus"}` via PromQL API
   (`/prometheus/api/v1/query`). Assert value is `1` (Prometheus is scraping itself)
-- `test_prometheus_pushgateway_target` — Query `up{job="pushgateway"}` via PromQL API.
-  Assert value is `1` (Pushgateway scrape target is up)
-- `test_prometheus_has_balance_metrics` — Query
-  `hyperlane_wallet_balance_sol{chain="gorchain"}` via PromQL API. Assert at least one
-  result exists (balance monitor successfully pushed metrics through Pushgateway)
 - `test_grafana_healthy` — `GET /grafana/api/health` returns 200 via `kubectl exec`
 - `test_grafana_login` — `POST /grafana/api/org` with Basic auth
   (`admin:testadmin`) returns 200, confirming login with injected password
@@ -688,19 +684,17 @@ Prerequisites:
 - `test_grafana_dashboards_provisioned` — `GET /grafana/api/search` with auth.
   Assert dashboard UIDs include `hyperlane-overview`, `hyperlane-validator`,
   `hyperlane-relayer` (the three provisioned JSON files)
-- `test_balance_monitor_wallets_checked` — Parse balance-monitor container logs.
-  Confirm log output includes lines for each configured wallet label
-  (deployer, igp-oracle, igp-beneficiary, relayer) on both chains
-- `test_balance_metrics_have_correct_labels` — Query Prometheus for
-  `hyperlane_wallet_balance_sol` and verify `chain`, `wallet`, `address` labels
-  are present with expected values. Check both `gorchain` and `solana` chain labels.
+- `test_balance_monitor_started` — Parse balance-monitor container logs. Confirm the
+  monitor started and reports the expected watch counts (number of watches/accounts
+  loaded from `watches.json`).
+- `test_balance_alert_fires` — Query the mock Slack webhook's captured payloads.
+  Assert a low-balance alert was posted for the deliberately-underfunded watch, and
+  that the funded signers did not trigger an alert.
 
-**Balance monitor wallet configuration:** The fixture constructs wallet lists from
-test keypairs. These are the same wallets funded during test setup, so `getBalance`
-calls return real balances. The balance monitor format is `"label:address"` pairs:
-```
-deployer:ABC123...,igp-oracle:DEF456...,igp-beneficiary:GHI789...,relayer:JKL012...
-```
+**Watch configuration:** The fixture renders `watches.json` from test keypairs.
+Funded signers stay above threshold (no alert); one underfunded watch is included to
+exercise the alert path. RPC URLs come from `GORCHAIN_RPC_URL` / `SOLANA_RPC_URL` env,
+not from the watch file.
 
 **Grafana API access:** All Grafana API calls use `kubectl exec` against the grafana
 container in the monitoring pod, curling `localhost:3000`. This avoids needing
@@ -715,10 +709,8 @@ kind-cluster-name: REPLACE_KIND_CLUSTER
 config:
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
   SOLANA_RPC_URL: "http://solana-rpc:18899"
-  MONITORED_WALLETS_GORCHAIN: "REPLACE_AT_RUNTIME"
-  MONITORED_WALLETS_SOLANA: "REPLACE_AT_RUNTIME"
-  BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "30"
+  ALERT_REPEAT_SECONDS: "30"
 volumes:
   prometheus-data:
   grafana-data:
@@ -728,9 +720,11 @@ configmaps:
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
   grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
+  balance-monitor-config: ./configmaps/balance-monitor-config
 secrets:
   hyperlane-monitoring-secrets:
     - GF_SECURITY_ADMIN_PASSWORD
+    - SLACK_WEBHOOK_URL
 ```
 
 Note: `BALANCE_CHECK_INTERVAL` is set to 30s in tests (vs 300s in prod) so the

@@ -22,3 +22,7 @@ to fill.
 **Shared:** Adding a warp route to a running bridge is the same flow in every
 environment — see [warp-routes.md](warp-routes.md) (edit `WARP_ROUTES`, then
 `update-warp-routes.yml`). Each runbook links there from its "Adding a warp route" section.
+
+**Shared:** Balance monitoring and Slack low-balance alerts work the same in every
+environment — see [monitoring.md](monitoring.md) (what's watched automatically and how
+to add extra/SPL watches).

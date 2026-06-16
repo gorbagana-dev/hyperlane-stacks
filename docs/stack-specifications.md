@@ -56,7 +56,7 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 | 4 | `hyperlane-relayer` | Long-running | relayer + igp-fee-claim | Message delivery + periodic IGP fee claiming |
 | 5 | `hyperlane-minio` | Long-running | minio + minio-init | S3-compatible checkpoint storage |
 | 6 | `hyperlane-gas-oracle` | Long-running | gas-oracle | Periodic IGP gas oracle updates via Privy |
-| 7 | `hyperlane-monitoring` | Long-running | prometheus + pushgateway + grafana + balance-monitor | Metrics, alerting, dashboards |
+| 7 | `hyperlane-monitoring` | Long-running | prometheus + grafana + balance-monitor | Metrics, dashboards, Slack balance alerts |
 | 8 | `hyperlane-warp-ui` | Long-running | warp-ui | Browser-based bridge UI |
 | - | `ops/` | On-demand | kubectl Jobs | Kill switch, restore, teardown, ownership verify |
 
@@ -381,7 +381,7 @@ Delivers cross-chain messages between Gorchain and Solana. Includes an IGP fee c
 |---------|-------|-------|
 | agent-config-init | `alpine/kubectl:1.35.3` | Init container — fetches `hyperlane-agent-config` ConfigMap to shared PVC |
 | relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | `relayer` subcommand, gas enforcement `none`, metrics on :9091 |
-| igp-fee-claim | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every 6h |
+| igp-fee-claim | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:latest` | Runs `claim-fees.sh` from ConfigMap, loops every `CLAIM_INTERVAL_SECONDS` (default 6h) |
 
 ### IGP Fee Claim Sidecar
 Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fees.sh`. Mounted as ConfigMap volume. Claims accumulated IGP fees on both chains using the relayer key for tx fees (permissionless operation).
@@ -393,6 +393,7 @@ Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fee
   (solana via `secrets:` — the Helius URL embeds an API key)
 - `GORCHAIN_IGP_PROGRAM_ID`, `SOLANA_IGP_PROGRAM_ID` — for igp-fee-claim sidecar
 - `GORCHAIN_IGP_ACCOUNT`, `SOLANA_IGP_ACCOUNT` — IGP account addresses for fee claims
+- `CLAIM_INTERVAL_SECONDS` — igp-fee-claim loop interval, operator-tunable (default 21600 = 6h)
 
 ### Secrets (injected separately)
 - `HYP_CHAINS_GORCHAIN_SIGNER_KEY` — hex ed25519 key for Gorchain delivery txs
@@ -462,34 +463,46 @@ Keypair mode: `ORACLE_KEYPAIR`
 ## Stack 7: hyperlane-monitoring
 
 ### Purpose
-Prometheus metrics collection, alerting, Grafana dashboards, and wallet balance monitoring.
+Prometheus metrics collection, Grafana dashboards, and signer balance monitoring with Slack alerts.
 
 ### Compose: `docker-compose-hyperlane-monitoring.yml`
 
 | Service | Image | Notes |
 |---------|-------|-------|
 | prometheus | `prom/prometheus:latest` | 30d retention, k8s service discovery |
-| pushgateway | `prom/pushgateway:latest` | Receives pushed metrics from balance monitor |
 | grafana | `grafana/grafana:latest` | Auto-provisioned datasource + dashboards |
-| balance-monitor | TBD (lightweight image with solana-cli + curl) | Runs `check-balance.sh` from ConfigMap, pushes to pushgateway at localhost:9091 |
+| balance-monitor | `ghcr.io/gorbagana-dev/hyperlane-balance-monitor:latest` | Runs `check-balance.py` from ConfigMap, posts low-balance alerts to Slack |
 
 ### Balance Monitor
-Script at `stack_orchestrator/data/config/balance-monitor-scripts-config/check-balance.sh`. Mounted as ConfigMap volume. Checks wallet balances on both chains and pushes metrics to pushgateway.
+Script at `stack_orchestrator/data/config/balance-monitor-scripts-config/check-balance.py`.
+Reads `/config/watches.json` (the `balance-monitor-config` ConfigMap) and, every
+`BALANCE_CHECK_INTERVAL` seconds, checks each account's native and/or SPL token
+balances against per-token thresholds. Below threshold → batched POST to
+`SLACK_WEBHOOK_URL` (empty disables alerting); re-alerts every `ALERT_REPEAT_SECONDS`
+while still low, posts one recovery message on return above. RPC URLs come from
+`GORCHAIN_RPC_URL` / `SOLANA_RPC_URL` (kept out of the watch file). No
+Prometheus/Pushgateway metric is emitted for balances — the Pushgateway service, its
+scrape job, the `WalletBalanceLow` alert rule, and the Grafana overview balance panel
+were removed. Watch schema: `{"watches":[{"chain","label","address","tokens":[{"symbol","mint","threshold"}]}]}`;
+`mint:"native"` (or omitted) → native gas balance, any other `mint` → that SPL token's
+balance (summed, decimals from RPC).
 
 ### ConfigMaps
 - `prometheus-config` — prometheus.yml (with `kubernetes_sd_configs` for cross-pod scraping), alerts.yml
 - `grafana-datasources-config` — Prometheus datasource
 - `grafana-dashboard-config` — Dashboard provisioning config
 - `grafana-dashboards` — hyperlane-overview.json
+- `balance-monitor-scripts-config` — `check-balance.py`
+- `balance-monitor-config` — `watches.json` (runtime-generated; in ops, rendered from the bridge's own signers)
 
 ### deploy/commands.py
 `create()` applies RBAC (ClusterRole + ClusterRoleBinding) for Prometheus k8s service discovery.
 
 ### Config (spec.yml)
-`GORCHAIN_RPC_URL`, `SOLANA_RPC_URL`, `MONITORED_WALLETS_GORCHAIN`, `MONITORED_WALLETS_SOLANA`, `BALANCE_THRESHOLD_SOL`, `BALANCE_CHECK_INTERVAL`
+`GORCHAIN_RPC_URL`, `BALANCE_CHECK_INTERVAL`, `ALERT_REPEAT_SECONDS`, `PROMETHEUS_VALIDATOR_TARGETS`, `PROMETHEUS_RELAYER_TARGETS`
 
 ### Secrets (injected separately)
-`GRAFANA_ADMIN_PASSWORD`
+`GF_SECURITY_ADMIN_PASSWORD`, `SLACK_WEBHOOK_URL` (empty disables alerting), `SOLANA_RPC_URL` (Helius URL embeds an API key)
 
 ### Prometheus Scrape Targets
 Uses `kubernetes_sd_configs` with pod annotation relabeling (`prometheus.io/scrape: "true"`) to discover validators/relayer in separate pods. Validator/relayer compose files should include prometheus annotations.
@@ -707,7 +720,7 @@ All stacks deploy to the same k8s-kind cluster.
 | Validators → MinIO | `http://hyperlane-minio:9000` | k8s Service created by `deploy/commands.py` |
 | Relayer → MinIO | `http://hyperlane-minio:9000` | Same k8s Service |
 | Validator → KMS proxy | `localhost:9999` | Same pod (must be same stack) |
-| Balance monitor → Pushgateway | `localhost:9091` | Same pod (monitoring stack) |
+| Balance monitor → Slack | `SLACK_WEBHOOK_URL` | Outbound webhook POST (monitoring stack) |
 | Prometheus → Agents | k8s service discovery | `kubernetes_sd_configs` with annotations |
 | Deployer → k8s API | kubectl in-pod | RBAC grants ConfigMap create/update |
 | Grafana → Prometheus | `localhost:9090` | Same pod (monitoring stack) |
