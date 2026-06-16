@@ -70,6 +70,8 @@ spec_token_renders:
   REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
   # Gas-oracle loop interval (ms); operator override, default 15 min.
   __GAS_ORACLE_INTERVAL_MS__: "{{ gas_oracle_interval_ms | default('900000') }}"
+  # IGP fee-claim interval (seconds); operator override, default 6 h.
+  __CLAIM_INTERVAL_SECONDS__: "{{ fee_claim_interval_seconds | default('21600') }}"
 
 # --- Secret-env values ---
 # See the prod group_vars for the full rationale. Staging differences: Solana uses

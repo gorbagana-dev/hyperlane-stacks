@@ -152,6 +152,8 @@ spec_token_renders:
   REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
   # Gas-oracle loop interval (ms); operator override, default 15 min.
   __GAS_ORACLE_INTERVAL_MS__: "{{ gas_oracle_interval_ms | default('900000') }}"
+  # IGP fee-claim interval (seconds); operator override, default 6 h.
+  __CLAIM_INTERVAL_SECONDS__: "{{ fee_claim_interval_seconds | default('21600') }}"
   # single: in-cluster service names (external-services); multi: operator domains
   __GORCHAIN_RPC_URL__: "{{ 'http://gorchain-rpc:8899' if topology == 'single' else gorchain_rpc_url }}"
   __SOLANA_RPC_URL__: "{{ 'http://solana-rpc:18899' if topology == 'single' else solana_rpc_url }}"

@@ -27,7 +27,7 @@ config:
   SOLANA_IGP_ACCOUNT: "__SOLANA_IGP_ACCOUNT__"
   # Rendered at deploy time from relayer-whitelist.json (stack_deploy).
   HYP_WHITELIST: '__RELAYER_WHITELIST__'
-  # CLAIM_INTERVAL_SECONDS: "21600"  # IGP fee claim interval (default: 6h)
+  CLAIM_INTERVAL_SECONDS: "__CLAIM_INTERVAL_SECONDS__"  # IGP fee claim interval (default 6h)
   # MinIO endpoint is topology-aware (ops __S3_ENDPOINT__): in-cluster on
   # single-host, the public Caddy URL on multi-host.
   AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"
