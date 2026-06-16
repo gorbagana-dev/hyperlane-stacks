@@ -1,13 +1,21 @@
 #!/bin/sh
 set -eu
 
-# Required env for the injected chain-metadata file and the in-cluster Hasura URL.
-# HASURA_GRAPHQL_URL is read by the Next server at runtime (server-side only);
-# the browser uses the relative /api/graphql proxy and needs no GraphQL env.
-# Only gorchain is injected here — Solana is provided by the public Hyperlane
-# registry the UI loads, so it needs no override.
+# Renders /public/gorbagana-chains.json so the frontend treats gorchain + solana
+# as fully-configured (non-PI) chains. Without metadata + a mailbox the explorer
+# hides them from the feed, shows the destination as "unknown", and reports
+# "PI chains require a config" instead of resolving delivery.
+#
+# Each chain's core addresses (mailbox, IGP, ISM, validatorAnnounce,
+# merkleTreeHook) + domain/chain ids live only in the deployer's
+# agent-config.json (mounted like the scraper's), so the whole chain object is
+# taken from there. Only the browser-facing fields are overridden from env:
+# rpcUrls (agent-config carries placeholder rpcUrls — generated state is
+# secret-free — so the real gorchain RPC must come from GORCHAIN_RPC_URL), plus
+# nativeToken/blocks (completed for the schema) and displayName/isTestnet.
+# The JSON object keys must match the scraper's domain.name values.
 missing=""
-for var in GORCHAIN_DOMAIN_ID GORCHAIN_CHAIN_ID GORCHAIN_RPC_URL HASURA_GRAPHQL_URL; do
+for var in GORCHAIN_RPC_URL HASURA_GRAPHQL_URL; do
   eval "val=\${$var:-}"
   [ -z "$val" ] && missing="$missing $var"
 done
@@ -16,25 +24,57 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
+AGENT_CONFIG="${CONFIG_FILES:-/config/agent-config.json}"
 PUBLIC_DIR="/app/public"
 
-# gorchain metadata, merged over the registry by loadChainMetadata at runtime.
-# The JSON object name must match the scraper's domain.name (gorchain).
-cat > "$PUBLIC_DIR/gorbagana-chains.json" <<EOF
-{
-  "${GORCHAIN_CHAIN_NAME:-gorchain}": {
-    "protocol": "sealevel",
-    "chainId": ${GORCHAIN_CHAIN_ID},
-    "domainId": ${GORCHAIN_DOMAIN_ID},
-    "name": "${GORCHAIN_CHAIN_NAME:-gorchain}",
-    "displayName": "${GORCHAIN_DISPLAY_NAME:-Gorbagana}",
-    "rpcUrls": [{ "http": "${GORCHAIN_RPC_URL}" }],
-    "nativeToken": { "name": "${GORCHAIN_NATIVE_TOKEN_NAME:-GOR}", "symbol": "${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}", "decimals": ${GORCHAIN_NATIVE_TOKEN_DECIMALS:-9} },
-    "blocks": { "confirmations": 1, "estimateBlockTime": 1, "reorgPeriod": 0 }
+AGENT_CONFIG="$AGENT_CONFIG" PUBLIC_DIR="$PUBLIC_DIR" node -e '
+const fs = require("fs");
+const e = process.env;
+
+const cfg = JSON.parse(fs.readFileSync(e.AGENT_CONFIG, "utf8"));
+const chains = cfg.chains || cfg;
+
+// Keep every field agent-config provides (mailbox + all core addresses + domain
+// ids + protocol), overriding only the browser-facing presentation fields.
+function render(name, defaultDisplay, rpcUrl, prefix) {
+  const c = chains[name];
+  if (!c) {
+    console.error("agent-config.json has no chain:", name);
+    process.exit(1);
   }
+  if (!c.mailbox) {
+    console.error("agent-config.json missing mailbox for chain:", name);
+    process.exit(1);
+  }
+  return {
+    ...c,
+    name,
+    displayName: e[prefix + "_DISPLAY_NAME"] || defaultDisplay,
+    isTestnet: (e[prefix + "_IS_TESTNET"] || "true") === "true",
+    rpcUrls: [{ http: rpcUrl }],
+    nativeToken: {
+      name: e[prefix + "_NATIVE_TOKEN_NAME"] || e[prefix + "_NATIVE_TOKEN_SYMBOL"] || defaultDisplay,
+      symbol: e[prefix + "_NATIVE_TOKEN_SYMBOL"] || name.slice(0, 3).toUpperCase(),
+      decimals: Number(e[prefix + "_NATIVE_TOKEN_DECIMALS"] || 9),
+    },
+    blocks: { confirmations: 1, estimateBlockTime: 1, reorgPeriod: 0 },
+  };
 }
-EOF
-echo "Rendered gorbagana-chains.json"
+
+const gorchain = e.GORCHAIN_CHAIN_NAME || "gorchain";
+const solana = e.SOLANA_CHAIN_NAME || "solana";
+
+const out = {};
+// gorchain RPC is a non-secret public endpoint, safe to serve to the browser.
+out[gorchain] = render(gorchain, "Gorbagana", e.GORCHAIN_RPC_URL, "GORCHAIN");
+// The browser never calls Solana RPC (data flows through /api/graphql; delivery
+// status comes from the scraper DB), so ship a placeholder rather than wiring a
+// real (possibly key-bearing) Solana endpoint into browser-served metadata.
+out[solana] = render(solana, "Solana", "http://rpc-placeholder.invalid", "SOLANA");
+
+fs.writeFileSync(e.PUBLIC_DIR + "/gorbagana-chains.json", JSON.stringify(out, null, 2));
+console.log("Rendered gorbagana-chains.json for:", Object.keys(out).join(", "));
+'
 
 echo "Starting Next.js standalone server..."
 exec node server.js

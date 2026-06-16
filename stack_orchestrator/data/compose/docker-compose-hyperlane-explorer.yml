@@ -92,14 +92,24 @@ services:
       # Server-side only (the browser uses the relative /api/graphql proxy).
       # 'hasura' resolves to localhost in-pod.
       HASURA_GRAPHQL_URL: http://hasura:8080/v1/graphql
-      # Chain metadata for the frontend. Only gorchain is injected; Solana comes
-      # from the public registry the UI loads.
+      # The entrypoint renders gorbagana-chains.json for BOTH chains: core
+      # addresses (mailbox, etc.) + domain ids come from the mounted
+      # agent-config.json; these env values supply the browser-facing fields.
+      # gorchain's RPC is public (browser-safe); Solana's is omitted (the browser
+      # never calls it) — the entrypoint ships a placeholder for Solana.
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
-      GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
-      GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
       GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
+      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solana}
+      GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
+      SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
+      GORCHAIN_NATIVE_TOKEN_SYMBOL: ${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}
+      SOLANA_NATIVE_TOKEN_SYMBOL: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
       # Standalone server must bind all interfaces for k8s Service routing.
       HOSTNAME: "0.0.0.0"
+    volumes:
+      # Deployer output (mailbox + core addresses + domain ids); same ConfigMap
+      # the scraper mounts. The entrypoint reads chain metadata from it.
+      - agent-config:/config:ro
     ports:
       - "3000"
     healthcheck:
