@@ -50,3 +50,19 @@
             _prod_validators | map(attribute='hostname')
             | select('search', '\.bridge\.gorbagana\.wtf$') | list | length == 2
         quiet: true
+
+    - name: Topology + S3 endpoint + external-services are topology-aware (MinIO only)
+      ansible.builtin.assert:
+        that:
+          # prod single-host is derived from minio/relayer co-location
+          - "topology == 'single'"
+          # single-host prod reaches MinIO in-cluster, not via the public Caddy URL
+          - "spec_token_renders.__S3_ENDPOINT__ == 'http://hyperlane-minio:9000'"
+          # validators + relayer get a single-host external-services block...
+          - "'hyperlane-validator' in single_host_external_services"
+          - "'hyperlane-relayer' in single_host_external_services"
+          # ...and that block is MinIO-only (chains stay external/public — never tunneled)
+          - "'hyperlane-minio' in single_host_external_services['hyperlane-relayer']"
+          - "'gorchain-rpc' not in single_host_external_services['hyperlane-relayer']"
+          - "'solana-rpc' not in single_host_external_services['hyperlane-relayer']"
+        quiet: true

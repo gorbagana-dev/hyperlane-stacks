@@ -19,10 +19,10 @@ deployment_root: "{{ repo_root }}/{{ deployment_subdir }}"
 ansible_user: "{{ deploy_user | default(lookup('env', 'USER')) }}"
 
 # --- Topology / DNS mode ---
-# 'single' is the local-only mkcert/no-DNS mode. Prod is always Cloudflare DNS
-# + Let's Encrypt, whatever the host count — so 'multi', stated explicitly (the
-# env contract rejects inventories that leave these to role defaults).
-topology: multi
+# Single-host by default (all bridge services co-located); add a separate
+# relayer/minio host to flip to multi. Unlike local, prod's topology switches ONLY
+# the MinIO endpoint — chains are external mainnet/Helius and DNS is always real.
+topology: "{{ 'single' if (groups['minio_hosts'][0] == groups['relayer_hosts'][0]) else 'multi' }}"
 manage_dns: true
 # SSH by public_ip from host_vars (aliases like bridge-host-1 are not DNS names).
 # Defaults match no-ansible_host behavior; NOT default(omit) — omit only works for
@@ -62,6 +62,25 @@ dns_records:
 spec_token_renders:
   # from deployment-config.yml ("" disables WalletConnect)
   REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
+  # single-host reaches MinIO in-cluster (no Caddy hairpin / 308); multi uses the
+  # public S3 Caddy front. Chains are NOT tokenized — they stay public literals.
+  __S3_ENDPOINT__: "{{ 'http://hyperlane-minio:9000' if topology == 'single' else 'https://s3.' ~ base_domain }}"
+
+# Single-host external-services: each consumer gets a headless Service backed by
+# the MinIO pods' Endpoints (cross-namespace, plain HTTP) so it reaches MinIO at
+# http://hyperlane-minio:9000 without Caddy/public DNS. render_spec injects this
+# at the `# __SINGLE_HOST_EXTERNAL_SERVICES__` marker on single-host and strips it
+# otherwise. MinIO only: prod chains are external in every topology.
+_xs_minio: |
+  external-services:
+    hyperlane-minio:
+      selector:
+        app.kubernetes.io/stack: hyperlane-minio
+      namespace: laconic-hyperlane-minio
+
+single_host_external_services:
+  hyperlane-validator: "{{ _xs_minio }}"
+  hyperlane-relayer: "{{ _xs_minio }}"
 
 # --- Secret-env values ---
 # SO writes a spec's config: VERBATIM (no ${VAR} expansion), so chain RPCs, domain

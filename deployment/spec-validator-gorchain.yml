@@ -29,8 +29,10 @@ config:
   CHECKPOINT_BUCKET: hyperlane-validator-gorchain-primary
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
-  # MinIO via Caddy — public DNS resolves to the Caddy ingress.
-  AWS_ENDPOINT_URL_S3: "https://s3.bridge.gorbagana.wtf"
+  # MinIO endpoint is topology-aware (ops __S3_ENDPOINT__): in-cluster on
+  # single-host, the public Caddy URL on multi-host.
+  AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"
+# __SINGLE_HOST_EXTERNAL_SERVICES__
 configmaps:
   agent-config: ./configmaps/agent-config
 # Before deploying, place the keyfile on the host:
