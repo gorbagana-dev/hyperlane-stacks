@@ -1437,19 +1437,20 @@ PROMETHEUS_URL = f"https://{PROMETHEUS_HOSTNAME}"
 def _build_watches(keypairs: KeypairSet) -> tuple[dict, list[str]]:
     """Build a watches.json doc for e2e and return (doc, low_labels).
 
-    Uses keypairs funded during setup. The igp-beneficiary is left UNFUNDED in
-    setup, so it is the deliberate low-balance watch that must trigger a Slack
-    alert; the deployer (funded) watch must stay quiet.
+    Uses keypairs funded during setup. The igp-beneficiary holds only ~1 SOL
+    (airdropped in setup), far below its deliberately-huge threshold, so it is the
+    watch guaranteed to breach and fire a Slack alert; the deployer watches sit far
+    above their tiny thresholds and must stay quiet.
     """
-    high, low = "1.0", "1000000.0"  # low threshold = quiet; high = guaranteed breach
+    quiet_threshold, breach_threshold = "1.0", "1000000.0"  # funded wallets clear 1.0; nothing clears 1e6
     watches = {
         "watches": [
             {"chain": "gorchain", "label": "relayer", "address": keypairs.deployer_pubkey,
-             "tokens": [{"symbol": "GOR", "mint": "native", "threshold": high}]},
+             "tokens": [{"symbol": "GOR", "mint": "native", "threshold": quiet_threshold}]},
             {"chain": "solana", "label": "relayer", "address": keypairs.deployer_pubkey,
-             "tokens": [{"symbol": "SOL", "mint": "native", "threshold": high}]},
+             "tokens": [{"symbol": "SOL", "mint": "native", "threshold": quiet_threshold}]},
             {"chain": "solana", "label": "igp-beneficiary", "address": keypairs.igp_beneficiary_pubkey,
-             "tokens": [{"symbol": "SOL", "mint": "native", "threshold": low}]},
+             "tokens": [{"symbol": "SOL", "mint": "native", "threshold": breach_threshold}]},
         ]
     }
     return watches, ["igp-beneficiary"]
@@ -1496,7 +1497,6 @@ def monitoring_deployment(
     keypairs: KeypairSet,
     host_prep: None,
     monitoring_images: None,
-    bridge_state_loader: BridgeStateLoader,
     request: pytest.FixtureRequest,
 ) -> Generator[dict, None, None]:
     """Deploy the hyperlane-monitoring stack and wait for metrics flow."""
@@ -1542,8 +1542,8 @@ def monitoring_deployment(
         deployment_id="monitoring",
     )
 
-    # Write the watch file into the runtime configmap dir (monitoring has no
-    # bridge_state_loader populate mapping — the watch doc is built here).
+    # Write the watch file into the runtime configmap dir (the watch doc is
+    # built here rather than populated from deployer state).
     watch_dir = deploy_info.deploy_dir / "configmaps" / "balance-monitor-config"
     watch_dir.mkdir(parents=True, exist_ok=True)
     (watch_dir / "watches.json").write_text(json.dumps(watches_doc))
