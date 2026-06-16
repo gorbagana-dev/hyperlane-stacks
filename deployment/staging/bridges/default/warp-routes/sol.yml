@@ -1,0 +1,23 @@
+# Warp route: native SOL (Solana) <-> gorchain synthetic.
+# Chain endpoints live in spec-warp-deployer.yml, not here.
+name: SOL-solana-gorchain
+origin:
+  chain: solana
+  type: native
+  name: "Solana"
+  symbol: "SOL"
+  decimals: 9
+remote:
+  chain: gorchain
+  type: synthetic
+  name: "Solana"
+  symbol: "SOL"
+  decimals: 9
+# Native SOL: no collateral token, and no Token-2022 metadata for the gorchain
+# synthetic — leave the on-chain metadata URI empty (the deployer only validates it
+# when set).
+metadataUri: ""
+# Token logo shown in the warp-UI (applied to both sides). Separate from
+# metadataUri: the UI reads warpRoutes.yaml, not the on-chain Token-2022 metadata.
+# Canonical wrapped-SOL logo asset — a public URL, nothing to host.
+logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
