@@ -159,14 +159,25 @@ the flag for unattended re-runs.
 
 ## 4. Verify
 
-- Warp UI at `https://bridge.gorbagana.wtf` loads and shows the token routes.
-- MinIO console at `https://minio-console.bridge.gorbagana.wtf` (log in with
-  `minio_root_user` / `minio_root_password`, generated into `deployment-config.yml` by
-  `setup-all`): checkpoint objects appear under both validator buckets.
-- Grafana at `https://grafana.bridge.gorbagana.wtf` (`admin` / `grafana_admin_password`
-  from the same file): relayer + validator dashboards report.
-- Relayer metrics at `https://relayer.bridge.gorbagana.wtf/metrics` answer.
-- Explorer at `https://explorer.bridge.gorbagana.wtf`.
+The deployment serves these endpoints (all under `bridge.gorbagana.wtf`, Let's Encrypt TLS):
+
+| Service | URL | Credentials |
+|---|---|---|
+| Warp UI (the bridge) | https://bridge.gorbagana.wtf | — |
+| Relayer metrics | https://relayer.bridge.gorbagana.wtf/metrics | — |
+| Grafana | https://grafana.bridge.gorbagana.wtf | `admin` / `grafana_admin_password` |
+| Prometheus | https://prometheus.bridge.gorbagana.wtf | — |
+| MinIO console | https://minio-console.bridge.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
+| MinIO S3 API | https://s3.bridge.gorbagana.wtf | validator IAM (per-validator) |
+
+`grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
+The block explorer (`https://explorer.bridge.gorbagana.wtf`) and gorchain RPC
+(`https://rpc.gorbagana.wtf`) are **external** — not served by this deployment.
+
+- Warp UI loads and shows the token routes.
+- MinIO console: checkpoint objects appear under both validator buckets.
+- Grafana: relayer + validator dashboards report.
+- Relayer metrics endpoint answers.
 
 ## 5. Try the bridge (Backpack)
 
@@ -203,13 +214,43 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/retire-deployer-key.yml
   -e treasury_address=<BASE58> -e confirm_retire=true
 ```
 
-The play drains the deployer balance to `treasury_address`, archives the keyfile to
-`.deployer-key-archive/` on your operator machine (gitignored), and removes it on-box.
+The play drains the deployer balance to `treasury_address` (confirming each transfer), then
+deletes the keyfile on-box. No copy is kept — a drained key has no value.
 
-**Re-deploying additional warp routes later** requires a funded deployer key again — import
-the archived keyfile back onto the host first.
+**Deploying additional warp routes later** needs a funded deployer key again: re-run
+`prepare-prod.yml` (it regenerates the deleted keyfile), fund the new address, then run the
+warp deployer.
+
+## Updating a stack
+
+To apply a committed change to one stack (spec edit, image bump, mounted script/config)
+without a full redeploy — preserving the cluster and data volumes — use `restart-stack.yml`.
+It drives `laconic-so deployment restart`, which re-renders the on-host spec from
+`deploy_branch` and rolling-restarts the pods:
+
+```bash
+# a singleton stack (name the inventory host group via target_hosts):
+ansible-playbook -i inventories/prod/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-warp-ui -e target_hosts=warp_ui_hosts -e deploy_branch=<branch>
+
+# both validators (no target_hosts — they run per-entry from validators.yaml):
+ansible-playbook -i inventories/prod/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-validator -e deploy_branch=<branch>
+```
+
+`deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name` values
+are the keys of the `stacks` map in `inventories/prod/group_vars/all.yml` (e.g.
+`hyperlane-relayer` → `relayer_hosts`, `hyperlane-gas-oracle` → `gas_oracle_hosts`,
+`hyperlane-monitoring` → `monitoring_hosts`, `hyperlane-warp-ui` → `warp_ui_hosts`).
 
 ## 7. Reset
+
+> ⚠️ **This stops a live production bridge.** `stop-all` halts message delivery — in-flight
+> transfers are not relayed until the stack is back up. `-e destroy_cluster=true` is
+> **destructive**: it wipes the kind cluster and all in-cluster state (including the
+> generated MinIO/Grafana secrets and validator checkpoints). Rebuilding means re-running
+> `setup-all` → `prepare-prod` → `deploy-all`. Only the external gorchain chain history is
+> safe — it lives off this host.
 
 Stop all stacks (chain state is external — nothing chain-side to reset):
 
