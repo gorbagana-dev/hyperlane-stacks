@@ -22,10 +22,12 @@
   delegate_to: "{{ item }}"
   delegate_facts: true
   loop: "{{ ([_relayer_host] + (validators | map(attribute='host') | list)) | unique }}"
+  loop_control:
+    label: "{{ item }}"
 
 - name: Read the relayer signer .pub files (non-secret addresses)
   ansible.builtin.slurp:
-    src: "{{ hostvars[_relayer_host].ansible_env.HOME }}/.credentials/hyperlane/{{ item }}"
+    src: "{{ hostvars[_relayer_host].credentials_dir }}/{{ item }}"
   register: _relayer_pubs
   delegate_to: "{{ _relayer_host }}"
   loop:
@@ -36,14 +38,14 @@
   ansible.builtin.command:
     cmd: >-
       {{ hostvars[_relayer_host].ansible_env.HOME }}/.local/share/solana/install/active_release/bin/solana-keygen
-      pubkey {{ hostvars[_relayer_host].ansible_env.HOME }}/.credentials/hyperlane/relayer-fee-claim.json
+      pubkey {{ hostvars[_relayer_host].credentials_dir }}/relayer-fee-claim.json
   register: _fee_claim_pub
   delegate_to: "{{ _relayer_host }}"
   changed_when: false
 
 - name: Read each validator's .pub (non-secret address)
   ansible.builtin.slurp:
-    src: "{{ hostvars[item.host].ansible_env.HOME }}/.credentials/hyperlane/validator-{{ item.chain }}.key.pub"
+    src: "{{ hostvars[item.host].credentials_dir }}/validator-{{ item.chain }}.key.pub"
   register: _validator_pubs
   delegate_to: "{{ item.host }}"
   loop: "{{ validators }}"
