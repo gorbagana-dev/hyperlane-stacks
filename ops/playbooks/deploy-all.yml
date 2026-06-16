@@ -272,6 +272,11 @@
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-monitoring
+    # build_watches runs as the pre-start hook (after deploy create makes the dir,
+    # before start mounts it). deploy_dir is play-scoped so the hook and stack_deploy
+    # resolve the same dir (same pattern as the Relayer/Warp-UI plays).
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-monitoring"
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/build_watches/tasks/main.yml"
   roles:
     - fetch_stack
     - stack_deploy

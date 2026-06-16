@@ -1,0 +1,92 @@
+---
+# Render balance-monitor's watches.json from the bridge's own signers, with
+# per-role thresholds from deployment-config (balance_monitor.*). Runs as the
+# monitoring stack's pre-start hook: deploy create has made the configmaps dir,
+# start has not yet mounted it. Multi-machine safe — addresses are non-secret .pub
+# material gathered via delegation (the controller reaches every host); the secret
+# RPC URLs stay in the spec's secret env and never enter this file.
+#
+# Auto-watched: relayer (both chains), fee-claim (both chains), igp-oracle (both
+# chains), each validator (its chain). The IGP beneficiary is a fee sink and is
+# intentionally excluded. Operators add extra/SPL watches by editing the generated
+# watches.json on this host and `laconic-so deployment <dir> restart`.
+- name: Load the validator set
+  ansible.builtin.include_tasks: ../common/tasks/load_validators.yml
+
+- name: Resolve the relayer host
+  ansible.builtin.set_fact:
+    _relayer_host: "{{ groups['relayer_hosts'][0] }}"
+
+- name: Gather min facts for the relayer + validator hosts (for HOME/credentials_dir)
+  ansible.builtin.setup:
+    gather_subset: ["!all", "min"]
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  loop: "{{ ([_relayer_host] + (validators | map(attribute='host') | list)) | unique }}"
+
+- name: Read the relayer signer .pub files (non-secret addresses)
+  ansible.builtin.slurp:
+    src: "{{ hostvars[_relayer_host].ansible_env.HOME }}/.credentials/hyperlane/{{ item }}"
+  register: _relayer_pubs
+  delegate_to: "{{ _relayer_host }}"
+  loop:
+    - relayer-gorchain.key.pub
+    - relayer-solana.key.pub
+
+- name: Derive the fee-claim address from its keypair
+  ansible.builtin.command:
+    cmd: >-
+      {{ hostvars[_relayer_host].ansible_env.HOME }}/.local/share/solana/install/active_release/bin/solana-keygen
+      pubkey {{ hostvars[_relayer_host].ansible_env.HOME }}/.credentials/hyperlane/relayer-fee-claim.json
+  register: _fee_claim_pub
+  delegate_to: "{{ _relayer_host }}"
+  changed_when: false
+
+- name: Read each validator's .pub (non-secret address)
+  ansible.builtin.slurp:
+    src: "{{ hostvars[item.host].ansible_env.HOME }}/.credentials/hyperlane/validator-{{ item.chain }}.key.pub"
+  register: _validator_pubs
+  delegate_to: "{{ item.host }}"
+  loop: "{{ validators }}"
+  loop_control:
+    label: "{{ item.label }}"
+
+- name: Assemble the watch list
+  ansible.builtin.set_fact:
+    _watches: >-
+      {%- set thr = balance_monitor.thresholds | default({}) -%}
+      {%- set dflt = balance_monitor.default_threshold | default(1.0) -%}
+      {%- set sym = {'gorchain': 'GOR', 'solana': 'SOL'} -%}
+      {%- set rg = _relayer_pubs.results[0].content | b64decode | trim -%}
+      {%- set rs = _relayer_pubs.results[1].content | b64decode | trim -%}
+      {%- set fc = _fee_claim_pub.stdout | trim -%}
+      {%- set out = [] -%}
+      {%- set _ = out.append({'chain': 'gorchain', 'label': 'relayer', 'address': rg,
+            'tokens': [{'symbol': sym.gorchain, 'mint': 'native', 'threshold': thr.relayer | default(dflt)}]}) -%}
+      {%- set _ = out.append({'chain': 'solana', 'label': 'relayer', 'address': rs,
+            'tokens': [{'symbol': sym.solana, 'mint': 'native', 'threshold': thr.relayer | default(dflt)}]}) -%}
+      {%- for ch in ['gorchain', 'solana'] -%}
+        {%- set _ = out.append({'chain': ch, 'label': 'fee-claim', 'address': fc,
+              'tokens': [{'symbol': sym[ch], 'mint': 'native', 'threshold': thr['fee-claim'] | default(dflt)}]}) -%}
+        {%- set _ = out.append({'chain': ch, 'label': 'igp-oracle', 'address': igp_oracle_pubkey,
+              'tokens': [{'symbol': sym[ch], 'mint': 'native', 'threshold': thr['igp-oracle'] | default(dflt)}]}) -%}
+      {%- endfor -%}
+      {%- for vp in _validator_pubs.results -%}
+        {%- set _ = out.append({'chain': vp.item.chain, 'label': vp.item.label,
+              'address': vp.content | b64decode | trim,
+              'tokens': [{'symbol': sym[vp.item.chain], 'mint': 'native',
+                'threshold': thr.validator | default(dflt)}]}) -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Ensure the balance-monitor-config dir exists
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}/configmaps/balance-monitor-config"
+    state: directory
+    mode: "0755"
+
+- name: Render watches.json
+  ansible.builtin.copy:
+    dest: "{{ deploy_dir }}/configmaps/balance-monitor-config/watches.json"
+    mode: "0644"
+    content: "{{ {'watches': _watches} | to_nice_json }}"
