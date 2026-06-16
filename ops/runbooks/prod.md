@@ -25,7 +25,7 @@ flowchart TD
     S2 --> S3
     S3 --> S4[4 - Verify<br/>warp-UI / Grafana / MinIO]
     S4 --> S5[5 - Try the bridge<br/>Backpack transfer]
-    S5 --> S6[6 - Retire the deployer key<br/>retire-deployer-key.yml]
+    S5 --> S6[6 - Retire keys / reclaim funds<br/>retire-keys.yml]
 ```
 
 Each numbered step below is one command. Steps 0 (prerequisites: VM, Privy, secrets) are
@@ -158,20 +158,20 @@ the flag for unattended re-runs.
 
 The deployment serves these endpoints (all under `bridge.gorbagana.wtf`, Let's Encrypt TLS):
 
-| Service | URL | Credentials |
+| Service | URL | Credentials / notes |
 |---|---|---|
 | Warp UI (the bridge) | https://bridge.gorbagana.wtf | — |
 | Grafana | https://grafana.bridge.gorbagana.wtf | `admin` / `grafana_admin_password` |
 | Prometheus | https://prometheus.bridge.gorbagana.wtf | — |
 | MinIO console | https://minio-console.bridge.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
 | MinIO S3 API | https://s3.bridge.gorbagana.wtf | validator IAM (per-validator) |
+| Relayer | https://relayer.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Gorchain validator | https://validator-gorchain.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Solana validator | https://validator-solana.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
 
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
 The block explorer (`https://explorer.bridge.gorbagana.wtf`) and gorchain RPC
 (`https://rpc.gorbagana.wtf`) are **external** — not served by this deployment.
-The relayer and each validator also serve raw Prometheus `/metrics`
-(`relayer.bridge.gorbagana.wtf`, `validator-gorchain.bridge.gorbagana.wtf`,
-`validator-solana.bridge.gorbagana.wtf`) — these feed Grafana, so read them there, not directly.
 
 - Warp UI loads and shows the token routes.
 - MinIO console: checkpoint objects appear under both validator buckets.
@@ -201,24 +201,27 @@ Use a throwaway test wallet — never the deployer account.
    the relayer delivers the message. The UI updates on its own and shows a "Recipient
    has received funds" popup at that moment.
 
-## 6. Retire the deployer key
+## 6. Retire keys (reclaim funds)
 
-Once deployment is complete, drain and remove the deployer key on-box. The deployer is a
-completed Job; removing its keyfile does not affect the running relayer or validators
-(their keyfiles stay — deployment restart re-reads them).
+Once deployment is complete, reclaim funds from the spent/idle signers back to a treasury:
 
 ```bash
-ansible-playbook -i inventories/prod/hosts.yml playbooks/retire-deployer-key.yml \
+ansible-playbook -i inventories/prod/hosts.yml playbooks/retire-keys.yml \
   -e treasury_address=<BASE58> -e confirm_retire=true
 ```
 
-The play drains the deployer balance to `treasury_address` (confirming each transfer), then
-deletes the keyfile on-box. No copy is kept — a drained key has no value.
+What it does (confirming each transfer):
 
-Only the deployer key is retired. The relayer keys sign every message delivery and fee claim
-for the bridge's lifetime, so they stay funded and in place; the validators' announce keys are
-low-value and still read on restart (checkpoints are signed via the Privy KMS, not an on-chain
-key). The deployer key is the only one that is both one-shot and heavily funded.
+- **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains, then
+  the keyfile is **deleted** (a completed Job; nothing reads it at runtime).
+- **Validator announce keys** — idle after the one-time announce (checkpoints are signed via
+  the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
+  keyfile is **kept** (the running validator re-reads it on restart; a re-announce — e.g. an S3
+  location change — would need a top-up).
+
+Left funded: the **relayer's** per-chain signer keys and the **IGP fee-claim** key — they sign
+deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (already-drained
+accounts report "nothing to drain").
 
 **Deploying additional warp routes later** needs a funded deployer key again: re-run
 `prepare-prod.yml` (it regenerates the deleted keyfile), fund the new address, then run the

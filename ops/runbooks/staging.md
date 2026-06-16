@@ -25,7 +25,7 @@ flowchart TD
     S2 --> S3[3 - Deploy bridge on a branch<br/>deploy-all.yml -e state_review=true]
     S3 --> S4[4 - Verify<br/>RPC / MinIO / Grafana]
     S4 --> S5[5 - Try the bridge<br/>Backpack transfer]
-    S5 --> S6[6 - Retire the deployer key<br/>retire-deployer-key.yml]
+    S5 --> S6[6 - Retire keys / reclaim funds<br/>retire-keys.yml]
 ```
 
 Each numbered step below is one command. Steps 0 (prerequisites: droplets,
@@ -188,7 +188,7 @@ outside a full deploy.
 
 The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's Encrypt TLS):
 
-| Service | URL | Credentials |
+| Service | URL | Credentials / notes |
 |---|---|---|
 | Warp UI (the bridge) | https://staging.gorbagana.wtf | — |
 | Grafana | https://grafana.staging.gorbagana.wtf | `admin` / `grafana_admin_password` |
@@ -196,12 +196,12 @@ The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's 
 | MinIO console | https://minio-console.staging.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
 | MinIO S3 API | https://s3.staging.gorbagana.wtf | validator IAM (per-validator) |
 | Gorchain RPC | https://rpc.staging.gorbagana.wtf | — (Caddy TLS front on the chain host) |
+| Relayer | https://relayer.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Gorchain validator | https://validator-gorchain.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Solana validator | https://validator-solana.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
 
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
 The block explorer (`https://explorer.staging.gorbagana.wtf`) is external — not served by this deployment.
-The relayer and each validator also serve raw Prometheus `/metrics`
-(`relayer.staging.gorbagana.wtf`, `validator-gorchain.staging.gorbagana.wtf`,
-`validator-solana.staging.gorbagana.wtf`) — these feed Grafana, so read them there, not directly.
 
 - `https://rpc.staging.gorbagana.wtf/health` answers `ok` and slots advance.
 - MinIO console: checkpoint objects appear under both validator buckets.
@@ -253,27 +253,30 @@ Use a throwaway test wallet — never the deployer account.
    "Recipient has received funds" popup at that moment. To see the
    destination balance in Backpack too, switch the RPC per step 3.
 
-## 6. Retire the deployer key
+## 6. Retire keys (reclaim funds)
 
-Exercise this on staging before running it in prod. Once deployment is complete, drain and
-remove the deployer key on-box. The deployer is a completed Job; removing its keyfile does
-not affect the running relayer or validators (their keyfiles stay — deployment restart
-re-reads them).
+Exercise this on staging before running it in prod. Once deployment is complete, reclaim funds
+from the spent/idle signers back to a treasury:
 
 ```bash
-ansible-playbook -i inventories/staging/hosts.yml playbooks/retire-deployer-key.yml \
+ansible-playbook -i inventories/staging/hosts.yml playbooks/retire-keys.yml \
   -e treasury_address=<BASE58> -e confirm_retire=true
 ```
 
-The play drains the deployer balance to `treasury_address` (confirming each transfer), then
-deletes the keyfile on-box. No copy is kept — a drained key has no value. Deploying
-additional warp routes later needs a funded deployer key again: re-run `prepare-gorchain.yml`
-(it regenerates the deleted keyfile), fund the new address, then run the warp deployer.
+What it does (confirming each transfer):
 
-Only the deployer key is retired. The relayer keys sign every message delivery and fee claim
-for the bridge's lifetime, so they stay funded and in place; the validators' announce keys are
-low-value and still read on restart (checkpoints are signed via the Privy KMS, not an on-chain
-key). The deployer key is the only one that is both one-shot and heavily funded.
+- **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains, then
+  the keyfile is **deleted** (a completed Job; nothing reads it at runtime).
+- **Validator announce keys** — idle after the one-time announce (checkpoints are signed via
+  the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
+  keyfile is **kept** (the running validator re-reads it on restart; a re-announce — e.g. an S3
+  location change — would need a top-up).
+
+Left funded: the **relayer's** per-chain signer keys and the **IGP fee-claim** key — they sign
+deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (already-drained
+accounts report "nothing to drain"). Deploying additional warp routes later needs a funded
+deployer key again: re-run `prepare-gorchain.yml` (it regenerates the deleted keyfile), fund
+the new address, then run the warp deployer.
 
 ## Updating a stack
 
