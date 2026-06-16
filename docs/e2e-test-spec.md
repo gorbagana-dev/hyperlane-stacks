@@ -687,7 +687,7 @@ Prerequisites:
 - `test_balance_monitor_started` — Parse balance-monitor container logs. Confirm the
   monitor started and reports the expected watch counts (number of watches/accounts
   loaded from `watches.json`).
-- `test_balance_alert_fires` — Query the mock Slack webhook's captured payloads.
+- `test_balance_monitor_alerts_low_wallet` — Query the mock Slack webhook's captured payloads.
   Assert a low-balance alert was posted for the deliberately-underfunded watch, and
   that the funded signers did not trigger an alert.
 
