@@ -31,9 +31,9 @@ drain() {  # <rpc> <label>
   echo "  transferring ${amount} SOL to ${TREASURY_ADDRESS}"
   solana transfer "$TREASURY_ADDRESS" "$amount" \
     --from "$DEPLOYER_KEYFILE" --fee-payer "$DEPLOYER_KEYFILE" \
-    --url "$rpc" --allow-unfunded-recipient --no-wait
+    --url "$rpc" --allow-unfunded-recipient
 }
 
 drain "$GORCHAIN_RPC" "gorchain"
 drain "$SOLANA_RPC"   "solana"
-echo "Drain submitted on both chains."
+echo "Drain confirmed on both chains."

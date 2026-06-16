@@ -44,7 +44,7 @@
         GORCHAIN_RPC: "{{ gorchain_rpc_url | default('https://rpc.gorbagana.wtf') }}"
         SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
       register: _drain
-      changed_when: true
+      changed_when: "'transferring' in _drain.stdout"
     - name: Show the drain result
       ansible.builtin.debug:
         var: _drain.stdout_lines
@@ -57,7 +57,7 @@
     - name: Archive the deployer keyfile to the operator machine
       ansible.builtin.fetch:
         src: "{{ credentials_dir }}/deployer-keypair.json"
-        dest: "{{ archive_dir }}/deployer-keypair.json"
+        dest: "{{ archive_dir }}/deployer-keypair-{{ ansible_date_time.iso8601_basic_short }}.json"
         flat: true
     - name: Remove the deployer keyfile on-box (Job is complete; pods unaffected)
       ansible.builtin.file:
