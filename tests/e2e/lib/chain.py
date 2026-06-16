@@ -93,6 +93,12 @@ def start_solana_test_validator(
             str(gossip_port),
             "--dynamic-port-range",
             dynamic_port_range,
+            # Keep the full ledger: the default purges old root slots, so the
+            # scraper (which backfills solana from the start) can't reach blocks
+            # that still hold dispatch/delivery events, leaving messages stuck
+            # "Pending". A large shred cap retains history for a short test run.
+            "--limit-ledger-size",
+            "100000000",
             "--quiet",
         ],
         stdout=subprocess.DEVNULL,
