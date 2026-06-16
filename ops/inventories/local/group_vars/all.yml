@@ -189,8 +189,6 @@ SLACK_WEBHOOK_URL: "{{ slack_webhook_url | default('') }}"
 GHCR_PAT: "{{ ghcr_pat }}"
 MINIO_ROOT_USER: "{{ minio_root_user }}"
 MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
-POSTGRES_PASSWORD: "{{ explorer_db_password }}"
-HASURA_GRAPHQL_ADMIN_SECRET: "{{ explorer_hasura_admin_secret }}"
 # Not a secret locally (own Solana chain) — exported only so the specs'
 # HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL } keys resolve.
 SOLANA_RPC_URL: "{{ 'http://solana-rpc:18899' if topology == 'single' else solana_rpc_url }}"
@@ -242,8 +240,6 @@ stack_env_vars:
     - GHCR_PAT
   hyperlane-explorer:
     - SOLANA_RPC_URL
-    - POSTGRES_PASSWORD
-    - HASURA_GRAPHQL_ADMIN_SECRET
     - GHCR_PAT
 
 # --- Per-stack static metadata ---

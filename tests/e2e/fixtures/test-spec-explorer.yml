@@ -35,9 +35,10 @@ config:
   SOLANA_CHAIN_NAME: "solana"
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
-  # Test-only credentials (Postgres + Hasura are cluster-internal in e2e).
-  POSTGRES_PASSWORD: "e2e-postgres-password"
-  HASURA_GRAPHQL_ADMIN_SECRET: "e2e-hasura-admin-secret"
+  # Generated into the deployment's k8s secret (injected via envFrom): DB password
+  # (built into the DSN at runtime) + Hasura admin secret (enforces anon role).
+  POSTGRES_PASSWORD: $generate:hex:32$
+  HASURA_GRAPHQL_ADMIN_SECRET: $generate:hex:32$
 configmaps:
   agent-config: ./configmaps/agent-config
 image-pull-secret:
@@ -50,7 +51,7 @@ image-overrides:
   hasura: REPLACE_HASURA_IMAGE
 resources:
   containers:
-    postgres:
+    db:
       reservations:
         cpus: "0.25"
         memory: 256M

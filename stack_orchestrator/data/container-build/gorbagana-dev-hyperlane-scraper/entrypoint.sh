@@ -1,12 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 
-# Required env (DB DSN + per-chain seed values). HYP_DB and DATABASE_URL are the
-# same DSN under the two names the scraper (HYP_DB) and init-db (DATABASE_URL) read.
-: "${DATABASE_URL:?DATABASE_URL required}"
-: "${HYP_DB:?HYP_DB required}"
+# Build the DB DSN at runtime from the injected password (POSTGRES_PASSWORD comes
+# from the generated k8s secret via envFrom — it isn't available to compose-time
+# substitution). init-db reads DATABASE_URL; the scraper reads HYP_DB — same DSN.
+: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}"
 : "${GORCHAIN_DOMAIN_ID:?}" "${GORCHAIN_CHAIN_ID:?}"
 : "${SOLANA_DOMAIN_ID:?}"  "${SOLANA_CHAIN_ID:?}"
+
+DATABASE_URL="postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${DB_HOST:-localhost}:5432/${POSTGRES_DB:-postgres}"
+export DATABASE_URL
+export HYP_DB="${DATABASE_URL}"
 
 GORCHAIN_NAME="${GORCHAIN_CHAIN_NAME:-gorchain}"
 SOLANA_NAME="${SOLANA_CHAIN_NAME:-solana}"
