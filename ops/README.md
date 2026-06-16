@@ -124,7 +124,7 @@ the chain name (`chainId == domainId`) — `1399811149`/`1198486093` for solana/
 gorchain on prod, `…1151`/`…6095` on staging (devnet). They're **immutable once
 deployed** and live as committed `config:` literals in the per-env specs. Full
 derivation (the name+network-byte math) is in
-[`specs/stack-specifications.md`](../specs/stack-specifications.md) → Stack 1 →
+[`docs/stack-specifications.md`](../docs/stack-specifications.md) → Stack 1 →
 Domain / chain IDs.
 
 ## Inventory + topology

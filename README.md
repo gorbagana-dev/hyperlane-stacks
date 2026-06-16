@@ -50,8 +50,7 @@ Each stack has its own README with deployment instructions.
 - `deployment/` — Per-environment deployment specs and warp-route menus (prod at the root, `staging/`, `local/`)
 - `ops/` — Ansible deploy layer (inventories, playbooks, roles) and operator [`runbooks/`](ops/runbooks/)
 - `tests/` — Test suites (`e2e/` pytest, `unit/`)
-- `specs/` — Stack specifications
-- `docs/` — Architecture decisions
+- `docs/` — Architecture decisions, stack specifications, ops/e2e specs
 - `hyperlane-kms-proxy/` — Privy KMS proxy sidecar (Go)
 - `hyperlane-gas-oracle/` — Gas oracle service (Node.js)
 
@@ -59,5 +58,5 @@ Each stack has its own README with deployment instructions.
 
 - [Operator runbooks](ops/runbooks/) — from-zero deployment guides per environment
 - [ops/ deploy layer](ops/README.md) — ansible mechanics reference
-- [Stack Specifications](specs/stack-specifications.md) — detailed per-stack specs
+- [Stack Specifications](docs/stack-specifications.md) — detailed per-stack specs
 - [Architecture Decisions](docs/architecture-decisions.md) — design rationale and build strategy
