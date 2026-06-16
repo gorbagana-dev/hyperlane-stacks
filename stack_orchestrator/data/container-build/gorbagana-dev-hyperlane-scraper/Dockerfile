@@ -42,18 +42,17 @@ COPY rust/main/Cargo.toml ./
 COPY rust/main/Cargo.lock ./
 COPY rust/sealevel ../sealevel
 
-# Build the scraper (rust/main workspace member) and the init-db migrator (a
-# standalone crate under agents/scraper/migration — NOT a workspace member, so
-# build it from its own dir).
+# Build the scraper and the init-db migrator. The migration crate is a workspace
+# member (a path dependency of the scraper crate), so build it with -p from the
+# workspace root; both binaries land in the shared target dir.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     RUSTFLAGS="--cfg tokio_unstable" cargo build --release --bin scraper && \
-    (cd agents/scraper/migration && \
-     RUSTFLAGS="--cfg tokio_unstable" cargo build --release --bin init-db) && \
+    RUSTFLAGS="--cfg tokio_unstable" cargo build --release -p migration --bin init-db && \
     mkdir -p /release && \
     cp target/release/scraper /release && \
-    cp agents/scraper/migration/target/release/init-db /release
+    cp target/release/init-db /release
 
 # ============================================================
 # Stage 2: Runtime — minimal image with binaries + db client

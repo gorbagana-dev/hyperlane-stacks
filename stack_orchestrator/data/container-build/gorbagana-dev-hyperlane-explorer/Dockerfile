@@ -10,8 +10,10 @@ RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
 
 WORKDIR /app
 
-# Copy only dependency files first — pnpm install is cached until these change.
-COPY package.json pnpm-lock.yaml ./
+# Copy dependency + pnpm config files first — install is cached until these change.
+# pnpm-workspace.yaml holds the fork's overrides, minimumReleaseAge, and
+# build-script allowlist; without it a frozen install mismatches the lockfile.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install dependencies (cached layer — only reruns when package.json/lockfile change)
 RUN pnpm install --frozen-lockfile || pnpm install
