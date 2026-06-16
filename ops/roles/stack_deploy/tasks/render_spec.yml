@@ -61,11 +61,13 @@
         replace: "{{ _whitelist_render_raw.content | b64decode | from_json | to_json }}"
 
 # Single-host reaches host-run chains via external-services ip: -> the kind gateway.
-# Only chain-consumers need it; stacks not in the map are skipped.
+# Only chain-consumers whose block actually carries __KIND_GATEWAY_IP__ need it (local
+# ip-mode); prod's selector-mode MinIO block has no placeholder, so skip the inspect.
 - name: Detect kind-network gateway IP (single-host chain reachability)
   when:
     - topology | default('') == 'single'
     - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
+    - "'__KIND_GATEWAY_IP__' in (single_host_external_services[stack_env_map_key | default(stack_name)] | default(''))"
   block:
     - name: Inspect the kind network IPAM config
       ansible.builtin.command:
@@ -95,7 +97,7 @@
     regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
     replace: >-
       {{ single_host_external_services[stack_env_map_key | default(stack_name)]
-         | replace('__KIND_GATEWAY_IP__', kind_gateway_ip) }}
+         | replace('__KIND_GATEWAY_IP__', kind_gateway_ip | default('')) }}
   when:
     - spec_token_renders is defined
     - topology | default('') == 'single'
