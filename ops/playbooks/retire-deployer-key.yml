@@ -1,0 +1,65 @@
+---
+# Post-deploy: retire the one-shot deployer key. Drains its balance to a treasury,
+# archives the keyfile to the operator's machine, and removes it on-box. The
+# deployer is a completed Job, so removing its keyfile does not affect running pods
+# (relayer/validator keyfiles MUST stay — deployment restart re-reads them).
+# Re-deploying additional warp routes later needs a funded deployer key again, so
+# re-import the archived file first.
+#
+#   ansible-playbook -i inventories/prod/hosts.yml playbooks/retire-deployer-key.yml \
+#     -e treasury_address=<BASE58> -e confirm_retire=true
+- name: Retire the deployer key
+  hosts: deployer_hosts
+  gather_facts: true
+  vars:
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    archive_dir: "{{ playbook_dir }}/../.deployer-key-archive"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+    - name: Require an explicit treasury + confirm
+      ansible.builtin.assert:
+        that:
+          - treasury_address is defined and (treasury_address | length) > 0
+          - confirm_retire | default(false) | bool
+        fail_msg: >-
+          Pass -e treasury_address=<BASE58> -e confirm_retire=true. This drains the
+          deployer key and removes it on-box.
+        quiet: true
+  tasks:
+    - name: Ship the drain script
+      ansible.builtin.copy:
+        src: "../scripts/drain-deployer-key.sh"
+        dest: "{{ scripts_dst }}/drain-deployer-key.sh"
+        mode: "0755"
+    - name: Drain the deployer balance to the treasury
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/drain-deployer-key.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        DEPLOYER_KEYFILE: "{{ credentials_dir }}/deployer-keypair.json"
+        TREASURY_ADDRESS: "{{ treasury_address }}"
+        GORCHAIN_RPC: "{{ gorchain_rpc_url | default('https://rpc.gorbagana.wtf') }}"
+        SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
+      register: _drain
+      changed_when: true
+    - name: Show the drain result
+      ansible.builtin.debug:
+        var: _drain.stdout_lines
+    - name: Ensure the local archive dir exists (gitignored)
+      ansible.builtin.file:
+        path: "{{ archive_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+    - name: Archive the deployer keyfile to the operator machine
+      ansible.builtin.fetch:
+        src: "{{ credentials_dir }}/deployer-keypair.json"
+        dest: "{{ archive_dir }}/deployer-keypair.json"
+        flat: true
+    - name: Remove the deployer keyfile on-box (Job is complete; pods unaffected)
+      ansible.builtin.file:
+        path: "{{ credentials_dir }}/deployer-keypair.json"
+        state: absent
