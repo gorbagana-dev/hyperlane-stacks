@@ -1,5 +1,5 @@
 # Hyperlane Monitoring - LOCAL (own-chains) deployment spec
-# Prometheus, Grafana, pushgateway, and balance monitoring. Fronted by Caddy + LE
+# Prometheus, Grafana, and balance monitoring (Slack alerts). Fronted by Caddy + LE
 # like prod; scrapes validators/relayer over the public DNS endpoints (works across
 # hosts in the multi-host topology). __BASE_DOMAIN__ is rendered on the host.
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
@@ -23,11 +23,8 @@ volumes:
 config:
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
   SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
-  # Wallet format: label:address or label:address:threshold
-  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  BALANCE_THRESHOLD_SOL: "1.0"
   BALANCE_CHECK_INTERVAL: "300"
+  ALERT_REPEAT_SECONDS: "21600"  # re-alert cadence while a balance stays low (6 h)
   # Rendered per topology: single -> in-cluster names + http; multi -> <zone>:443 + https.
   PROMETHEUS_VALIDATOR_TARGETS: "__PROM_VALIDATOR_TARGETS__"
   PROMETHEUS_RELAYER_TARGETS: "__PROM_RELAYER_TARGETS__"
@@ -38,12 +35,14 @@ configmaps:
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
   grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
+  balance-monitor-config: ./configmaps/balance-monitor-config
 # Before deploying, export this env var in the shell that runs `laconic-so`:
 #   GF_SECURITY_ADMIN_PASSWORD
 secrets:
   hyperlane-monitoring-secrets:
     keys:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
+      SLACK_WEBHOOK_URL:          { env: SLACK_WEBHOOK_URL }
 # Single-host only: Prometheus scrapes validators/relayer cross-NS in-cluster. Rendered
 # to an external-services: block on single-host, removed on multi-host.
 # __SINGLE_HOST_EXTERNAL_SERVICES__
