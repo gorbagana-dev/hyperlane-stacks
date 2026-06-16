@@ -191,7 +191,6 @@ The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's 
 | Service | URL | Credentials |
 |---|---|---|
 | Warp UI (the bridge) | https://staging.gorbagana.wtf | — |
-| Relayer metrics | https://relayer.staging.gorbagana.wtf/metrics | — |
 | Grafana | https://grafana.staging.gorbagana.wtf | `admin` / `grafana_admin_password` |
 | Prometheus | https://prometheus.staging.gorbagana.wtf | — |
 | MinIO console | https://minio-console.staging.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
@@ -200,6 +199,9 @@ The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's 
 
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
 The block explorer (`https://explorer.staging.gorbagana.wtf`) is external — not served by this deployment.
+The relayer and each validator also serve raw Prometheus `/metrics`
+(`relayer.staging.gorbagana.wtf`, `validator-gorchain.staging.gorbagana.wtf`,
+`validator-solana.staging.gorbagana.wtf`) — these feed Grafana, so read them there, not directly.
 
 - `https://rpc.staging.gorbagana.wtf/health` answers `ok` and slots advance.
 - MinIO console: checkpoint objects appear under both validator buckets.
@@ -268,6 +270,11 @@ deletes the keyfile on-box. No copy is kept — a drained key has no value. Depl
 additional warp routes later needs a funded deployer key again: re-run `prepare-gorchain.yml`
 (it regenerates the deleted keyfile), fund the new address, then run the warp deployer.
 
+Only the deployer key is retired. The relayer keys sign every message delivery and fee claim
+for the bridge's lifetime, so they stay funded and in place; the validators' announce keys are
+low-value and still read on restart (checkpoints are signed via the Privy KMS, not an on-chain
+key). The deployer key is the only one that is both one-shot and heavily funded.
+
 ## Updating a stack
 
 To apply a committed change to one stack (spec edit, image bump, mounted script/config)
@@ -291,22 +298,24 @@ are the keys of the `stacks` map in `inventories/staging/group_vars/all.yml`.
 ## 7. Reset
 
 > ⚠️ **`stop-all` halts the bridge** — message delivery stops until the stack is back up.
-> `-e destroy_cluster=true` additionally **wipes the kind cluster and all in-cluster state**
-> (generated MinIO/Grafana secrets, validator checkpoints). The persistent gorchain chain
-> state under `~/chains/gorchain` is removed **only** if you delete it by hand — no playbook
-> destroys it.
 
-Stacks only (chain + state survive):
+Stacks only (cluster, persisted data, and chain all survive):
 
 ```bash
 ansible-playbook -i inventories/staging/hosts.yml playbooks/stop-all.yml
 ```
 
-Full host reset before a bootstrap rehearsal additionally destroys the kind
-cluster (`-e destroy_cluster=true`) and, **only if intentionally resetting
-chain state**, removes `~/chains/gorchain` + the `gorchain-rpc-caddy`
-container on staging-gorchain by hand. Chain state is deliberately never
-destroyed by a playbook.
+Optional teardown flags (combine as needed):
+
+- `-e destroy_cluster=true` — delete the kind cluster and its in-cluster k8s objects
+  (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
+- `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
+  (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+
+The persistent gorchain chain state under `~/chains/gorchain` is **never** touched by any
+playbook (not even `wipe_data`). To reset chain state, remove `~/chains/gorchain` + the
+`gorchain-rpc-caddy` container on staging-gorchain by hand.
 
 Scorched earth — destroy the VMs themselves (chain state and all): see
 [staging-droplets.md → Teardown](staging-droplets.md#teardown).

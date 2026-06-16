@@ -161,7 +161,6 @@ The deployment serves these endpoints (all under `bridge.gorbagana.wtf`, Let's E
 | Service | URL | Credentials |
 |---|---|---|
 | Warp UI (the bridge) | https://bridge.gorbagana.wtf | — |
-| Relayer metrics | https://relayer.bridge.gorbagana.wtf/metrics | — |
 | Grafana | https://grafana.bridge.gorbagana.wtf | `admin` / `grafana_admin_password` |
 | Prometheus | https://prometheus.bridge.gorbagana.wtf | — |
 | MinIO console | https://minio-console.bridge.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
@@ -170,11 +169,13 @@ The deployment serves these endpoints (all under `bridge.gorbagana.wtf`, Let's E
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
 The block explorer (`https://explorer.bridge.gorbagana.wtf`) and gorchain RPC
 (`https://rpc.gorbagana.wtf`) are **external** — not served by this deployment.
+The relayer and each validator also serve raw Prometheus `/metrics`
+(`relayer.bridge.gorbagana.wtf`, `validator-gorchain.bridge.gorbagana.wtf`,
+`validator-solana.bridge.gorbagana.wtf`) — these feed Grafana, so read them there, not directly.
 
 - Warp UI loads and shows the token routes.
 - MinIO console: checkpoint objects appear under both validator buckets.
-- Grafana: relayer + validator dashboards report.
-- Relayer metrics endpoint answers.
+- Grafana: the relayer and both validators report.
 
 ## 5. Try the bridge (Backpack)
 
@@ -214,6 +215,11 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/retire-deployer-key.yml
 The play drains the deployer balance to `treasury_address` (confirming each transfer), then
 deletes the keyfile on-box. No copy is kept — a drained key has no value.
 
+Only the deployer key is retired. The relayer keys sign every message delivery and fee claim
+for the bridge's lifetime, so they stay funded and in place; the validators' announce keys are
+low-value and still read on restart (checkpoints are signed via the Privy KMS, not an on-chain
+key). The deployer key is the only one that is both one-shot and heavily funded.
+
 **Deploying additional warp routes later** needs a funded deployer key again: re-run
 `prepare-prod.yml` (it regenerates the deleted keyfile), fund the new address, then run the
 warp deployer.
@@ -243,17 +249,22 @@ are the keys of the `stacks` map in `inventories/prod/group_vars/all.yml` (e.g.
 ## 7. Reset
 
 > ⚠️ **This stops a live production bridge.** `stop-all` halts message delivery — in-flight
-> transfers are not relayed until the stack is back up. `-e destroy_cluster=true` is
-> **destructive**: it wipes the kind cluster and all in-cluster state (including the
-> generated MinIO/Grafana secrets and validator checkpoints). Rebuilding means re-running
-> `setup-all` → `prepare-prod` → `deploy-all`. Only the external gorchain chain history is
-> safe — it lives off this host.
+> transfers are not relayed until the stack is back up.
 
-Stop all stacks (chain state is external — nothing chain-side to reset):
+Stop all stacks (cluster and persisted data preserved):
 
 ```bash
 ansible-playbook -i inventories/prod/hosts.yml playbooks/stop-all.yml
 ```
 
-Full host reset additionally destroys the kind cluster (`-e destroy_cluster=true`). Chain
-state and gorchain block history are external and unaffected by any playbook.
+Optional teardown flags (combine as needed):
+
+- `-e destroy_cluster=true` — delete the kind cluster and its in-cluster k8s objects
+  (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
+- `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
+  (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+
+A full wipe is `-e destroy_cluster=true -e wipe_data=true`; rebuilding then means
+`setup-all` → `prepare-prod` → `deploy-all`. The external gorchain chain history lives off
+this host and no playbook touches it.
