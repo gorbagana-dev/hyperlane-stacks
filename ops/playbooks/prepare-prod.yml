@@ -1,0 +1,134 @@
+---
+# Prod key prep — generate the hot signing keys on the deploy host(s), distribute
+# each keyfile to the host whose spec reads it, then run the funding gate (report
+# only; mainnet has no faucet). Run AFTER setup-all.yml, BEFORE deploy-all.yml.
+# Idempotent: existing keyfiles are never overwritten; funding is balance-checked.
+#
+#   ansible-playbook -i inventories/prod/hosts.yml playbooks/prepare-prod.yml
+#
+# Unlike staging's prepare-gorchain, prod stands up NO chain (gorchain is external
+# mainnet) and fronts NO RPC — it only mints + places keys and checks funding.
+- name: Prepare prod hot signing keys + funding gate
+  hosts: deployer_hosts
+  gather_facts: true
+  vars:
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+  tasks:
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ship the key-gen + funding-verification scripts
+      ansible.builtin.copy:
+        src: "../scripts/{{ item }}"
+        dest: "{{ scripts_dst }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - gen-local-keys.sh
+        - verify-signer-funding.sh
+        - fund-test-wallets.sh
+
+    - name: Generate the hot signing keys (existing files are never overwritten)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/gen-local-keys.sh --yes"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+      register: keys_out
+      changed_when: true
+
+    # Carry each keyfile to the host whose spec reads it (the `file:` refs in
+    # deployment/spec-*.yml). On single-host every consumer IS this host, so
+    # _key_dist is empty and the copy loop is a no-op.
+    - name: Derive the validator hosts (validators.yaml)
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+
+    - name: Map each keyfile to its consumer host
+      ansible.builtin.set_fact:
+        _key_dist: >-
+          {%- set pairs = [] -%}
+          {%- for grp, files in _group_keyfiles.items() -%}
+            {%- for host in groups[grp] | default([]) | unique -%}
+              {%- for f in files -%}
+                {%- if pairs.append({'host': host, 'file': f}) -%}{%- endif -%}
+              {%- endfor -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {%- for v in validators -%}
+            {%- if pairs.append({'host': v.host, 'file': 'validator-' ~ v.chain ~ '.key'}) -%}{%- endif -%}
+          {%- endfor -%}
+          {{ pairs | rejectattr('host', 'eq', inventory_hostname) | list }}
+      vars:
+        _group_keyfiles:
+          relayer_hosts: [relayer-gorchain.key, relayer-solana.key, relayer-fee-claim.json]
+
+    - name: Gather the consumer hosts' facts (credentials_dir derives from their HOME)
+      ansible.builtin.setup:
+      delegate_to: "{{ item }}"
+      delegate_facts: true
+      loop: "{{ _key_dist | map(attribute='host') | unique | list }}"
+
+    - name: Ensure the credentials dir on each consumer host
+      ansible.builtin.file:
+        path: "{{ hostvars[item].credentials_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: "{{ item }}"
+      loop: "{{ _key_dist | map(attribute='host') | unique | list }}"
+
+    - name: Read the generated keyfiles
+      ansible.builtin.slurp:
+        src: "{{ credentials_dir }}/{{ item.file }}"
+      register: _key_blobs
+      loop: "{{ _key_dist }}"
+      no_log: true
+
+    - name: Carry each keyfile to its consumer host
+      ansible.builtin.copy:
+        content: "{{ item.content | b64decode }}"
+        dest: "{{ hostvars[item.item.host].credentials_dir }}/{{ item.item.file }}"
+        mode: "0600"
+      delegate_to: "{{ item.item.host }}"
+      loop: "{{ _key_blobs.results }}"
+      no_log: true
+
+    - name: Verify funding (report-only; fails listing shortfalls)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/verify-signer-funding.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+        GORCHAIN_RPC: "{{ gorchain_rpc_url | default('https://rpc.gorbagana.wtf') }}"
+        SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
+        ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+      register: fund_out
+      changed_when: false
+      failed_when: false
+
+    - name: Show generated key addresses + funding results
+      ansible.builtin.debug:
+        msg: "{{ keys_out.stdout_lines + fund_out.stdout_lines }}"
+
+    - name: Every signer reached its target balance
+      ansible.builtin.assert:
+        that: fund_out.rc == 0
+        fail_msg: >-
+          Some signers are underfunded (listed above) — fund them from a treasury
+          wallet (mainnet has no faucet), then re-run; funding is balance-checked.
+        quiet: true
