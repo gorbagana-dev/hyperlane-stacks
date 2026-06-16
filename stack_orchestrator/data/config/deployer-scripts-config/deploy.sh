@@ -25,7 +25,7 @@ fi
 # Tee all subsequent stdout+stderr to a timestamped log so it survives
 # cluster tear-down.
 LOG_FILE="${LOGS_DIR}/svm-deployer-$(date -u +%Y%m%dT%H%M%SZ).log"
-exec > >(tee -a "${LOG_FILE}") 2>&1
+exec > >(stdbuf -o0 sed -E "s/api-key=[A-Za-z0-9_-]+/api-key=<REDACTED>/g" | tee -a "${LOG_FILE}") 2>&1
 echo "Logging to ${LOG_FILE}"
 
 # -------------------------------------------------------
