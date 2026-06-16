@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Generate hot signing keys for the hot-key-signer environments: `local` and
-# `staging` (per the staging design, staging signs from key files for fast
-# iteration). NEVER run this against a prod credentials dir.
+# Generate hot signing keys for the hot-key-signer environments (local, staging,
+# and prod). Prod hot signers (deployer, relayer x3, validator announce x2) are
+# generated on the deploy host by prepare-prod.yml — they are hot keys in every
+# env and must live in the on-host credentials dir for laconic-so to read them.
 #
 # Writes the ed25519 keyfiles the local stack consumes into the operator
 # credentials dir, prints the addresses to fund, and exports them to
@@ -47,10 +48,9 @@ fi
 
 cat <<BANNER
 ============================================================
- gen-local-keys — hot signing keys (local / staging environments)
+ gen-local-keys — hot signing keys (local / staging / prod)
  Target dir: $CRED_DIR
- Hot keys only. Do NOT use for prod.
- Existing files are never overwritten.
+ Existing keyfiles are never overwritten.
 ============================================================
 BANNER
 

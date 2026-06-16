@@ -1,0 +1,68 @@
+---
+# Layer-0: prod wiring — single-host Cloudflare env, external mainnet gorchain
+# (no chain host), specs under deployment/. Reads the prod files directly. Run
+# with -i inventories/prod/hosts.yml so the derived topology sees prod groups.
+- name: Prod wiring
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_env:
+      HOME: /home/op
+  tasks:
+    - name: Load prod env wiring
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../inventories/prod/group_vars/all.yml"
+
+    - name: Parse the prod hosts file
+      ansible.builtin.set_fact:
+        _prod_inv: >-
+          {{ lookup('ansible.builtin.file',
+                    playbook_dir ~ '/../inventories/prod/hosts.yml') | from_yaml }}
+
+    # topology + S3 endpoint are asserted in Task 5 (they depend on the group_vars
+    # derivation added there). Task 4 only asserts the static prod wiring it adds.
+    - name: Prod env resolves as designed (external chains, real DNS, validators inventoried)
+      ansible.builtin.assert:
+        that:
+          - "manage_dns | bool"
+          - "deployment_subdir == 'deployment'"
+          - "base_domain == 'bridge.gorbagana.wtf'"
+          # prod runs no chain host (gorchain is external mainnet)
+          - "'chain_hosts' not in _prod_inv.all.children"
+          # validators are inventoried so bootstrap covers them
+          - "_prod_inv.all.children.validator_hosts.hosts.keys() | list == ['bridge-host-1']"
+        quiet: true
+
+    - name: Parse the prod validators file
+      ansible.builtin.set_fact:
+        _prod_validators: >-
+          {{ (lookup('ansible.builtin.file',
+                     playbook_dir ~ '/../../deployment/bridges/default/operator/validators.yaml')
+              | from_yaml)['validators'] }}
+
+    - name: Prod validators are the prod-shaped 1-of-1 pair on the single host
+      ansible.builtin.assert:
+        that:
+          - "_prod_validators | map(attribute='label') | list == ['gorchain-primary', 'solana-primary']"
+          - "_prod_validators | map(attribute='host') | unique | list == ['bridge-host-1']"
+          - >-
+            _prod_validators | map(attribute='hostname')
+            | select('search', '\.bridge\.gorbagana\.wtf$') | list | length == 2
+        quiet: true
+
+    - name: Topology + S3 endpoint + external-services are topology-aware (MinIO only)
+      ansible.builtin.assert:
+        that:
+          # prod single-host is derived from minio/relayer co-location
+          - "topology == 'single'"
+          # single-host prod reaches MinIO in-cluster, not via the public Caddy URL
+          - "spec_token_renders.__S3_ENDPOINT__ == 'http://hyperlane-minio:9000'"
+          # validators + relayer get a single-host external-services block...
+          - "'hyperlane-validator' in single_host_external_services"
+          - "'hyperlane-relayer' in single_host_external_services"
+          # ...and that block is MinIO-only (chains stay external/public — never tunneled)
+          - "'hyperlane-minio' in single_host_external_services['hyperlane-relayer']"
+          - "'gorchain-rpc' not in single_host_external_services['hyperlane-relayer']"
+          - "'solana-rpc' not in single_host_external_services['hyperlane-relayer']"
+        quiet: true

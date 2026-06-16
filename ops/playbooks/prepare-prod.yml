@@ -1,39 +1,24 @@
 ---
-# Staging chain play — stand up the PERSISTENT single-node gorchain on the
-# chain host, front its RPC with Caddy + Let's Encrypt at rpc.<base_domain>, and
-# generate the hot signing keys. Deliberately NOT part of setup-all/deploy-all
-# (same isolation as the local prepare-chains.yml): chains are pre-deploy.
+# Prod key prep — generate the hot signing keys on the deploy host(s), distribute
+# each keyfile to the host whose spec reads it, then run the funding gate (report
+# only; mainnet has no faucet). Run AFTER setup-all.yml, BEFORE deploy-all.yml.
+# Idempotent: existing keyfiles are never overwritten; funding is balance-checked.
 #
-#   ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml
+#   ansible-playbook -i inventories/prod/hosts.yml playbooks/prepare-prod.yml
 #
-# Run AFTER setup-all.yml: bootstrap installs docker/laconic-so, and
-# configure-dns must have created rpc.<base_domain> before Caddy can pass the
-# ACME challenge. Re-runs preserve the chain (GORCHAIN_PRESERVE) — state under
-# ~/chains/gorchain survives until an operator destroys it deliberately.
-#
-# Solana is Helius devnet — nothing to stand up. Generated keys are copied to
-# the hosts whose specs read them, and the on-chain signers are funded to their
-# target balances (gorchain: own faucet; devnet: rate-limited best effort that
-# fails the play listing any shortfall — top up and re-run, funding is
-# balance-driven and idempotent).
-- name: Prepare the staging gorchain chain + RPC TLS front + hot keys
-  hosts: chain_hosts
+# Unlike staging's prepare-gorchain, prod stands up NO chain (gorchain is external
+# mainnet) and fronts NO RPC — it only mints + places keys and checks funding.
+- name: Prepare prod hot signing keys + funding gate
+  hosts: deployer_hosts
   gather_facts: true
   vars:
-    chains_dir: "{{ ansible_env.HOME }}/chains"
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
-    caddy_dir: "{{ ansible_env.HOME }}/gorchain-rpc-caddy"
     solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     solana_version: "v3.1.9"
   pre_tasks:
     - name: Load the deployment config
-      ansible.builtin.include_tasks: ../../roles/common/tasks/load_deployment_config.yml
-
-    - name: GHCR PAT must be set (private gorchain images)
-      ansible.builtin.assert:
-        that: "(ghcr_pat | default('') | length) > 0"
-        fail_msg: "Set ghcr_pat in deployment-config.yml for the private gorchain images."
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   tasks:
     - name: Install the Solana CLI (Anza) if missing
       ansible.builtin.shell:  # noqa: command-instead-of-module
@@ -49,28 +34,14 @@
         state: directory
         mode: "0755"
 
-    - name: Ship the setup scripts
+    - name: Ship the key-gen + funding-verification scripts
       ansible.builtin.copy:
-        src: "../../scripts/{{ item }}"
+        src: "../scripts/{{ item }}"
         dest: "{{ scripts_dst }}/{{ item }}"
         mode: "0755"
       loop:
-        - setup-chains.sh
         - gen-local-keys.sh
-        - fund-staging-signers.sh
-
-    - name: Stand up gorchain (persistent — preserved across re-runs)
-      ansible.builtin.command:
-        cmd: "{{ scripts_dst }}/setup-chains.sh"
-      environment:
-        PATH: "{{ tool_path }}"
-        CHAINS_DIR: "{{ chains_dir }}"
-        GHCR_USER: "{{ ghcr_user | default('gorbagana-dev') }}"
-        GHCR_PAT: "{{ ghcr_pat }}"
-        SKIP_SOLANA: "1"
-        GORCHAIN_PRESERVE: "1"
-      register: chain_out
-      changed_when: true
+        - verify-signer-funding.sh
 
     - name: Generate the hot signing keys (existing files are never overwritten)
       ansible.builtin.command:
@@ -82,10 +53,10 @@
       changed_when: "'created:' in keys_out.stdout"
 
     # Carry each keyfile to the host whose spec reads it (the `file:` refs in
-    # deployment/staging/spec-*.yml): deployer/relayer keys to the bridge-ops
-    # host, validator keys to their validators.yaml hosts.
+    # deployment/spec-*.yml). On single-host every consumer IS this host, so
+    # _key_dist is empty and the copy loop is a no-op.
     - name: Derive the validator hosts (validators.yaml)
-      ansible.builtin.include_tasks: ../../roles/common/tasks/load_validators.yml
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
 
     - name: Map each keyfile to its consumer host
       ansible.builtin.set_fact:
@@ -107,7 +78,6 @@
         # Validator keys are HexKeys; retire-keys' drain reconstructs the keypair from
         # the seed + the cached .pub, so the .pub must travel to the validator host too.
         _group_keyfiles:
-          deployer_hosts: [deployer-keypair.json]
           relayer_hosts: [relayer-gorchain.key, relayer-solana.key, relayer-fee-claim.json]
 
     - name: Gather the consumer hosts' facts (credentials_dir derives from their HOME)
@@ -140,51 +110,17 @@
       loop: "{{ _key_blobs.results }}"
       no_log: true
 
-    - name: Caddy config dir
-      ansible.builtin.file:
-        path: "{{ caddy_dir }}"
-        state: directory
-        mode: "0755"
-
-    # WS upgrades route to agave's pubsub port: web3.js confirms transactions via
-    # signatureSubscribe over wss derived from the RPC URL, so an HTTP-only front
-    # makes every gorchain-origin warp transfer "time out" in the UI despite landing.
-    # (Agent-side WS indexing is still hyp-d34 — this is just the wallet/UI path.)
-    - name: Render the Caddyfile (TLS front for the gorchain RPC)
-      ansible.builtin.copy:
-        dest: "{{ caddy_dir }}/Caddyfile"
-        mode: "0644"
-        content: |
-          rpc.{{ base_domain }} {
-            @websocket {
-              header Connection *Upgrade*
-              header Upgrade websocket
-            }
-            reverse_proxy @websocket 127.0.0.1:8900
-            reverse_proxy 127.0.0.1:8899
-          }
-      register: _caddyfile
-
-    - name: Run the Caddy RPC front (host network; certs persist in the volume)
-      community.docker.docker_container:
-        name: gorchain-rpc-caddy
-        image: caddy:2
-        restart_policy: unless-stopped
-        network_mode: host
-        recreate: "{{ _caddyfile is changed }}"
-        volumes:
-          - "{{ caddy_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro"
-          - gorchain-rpc-caddy-data:/data
-
-    - name: Fund the on-chain signers to their target balances
+    - name: Verify funding (report-only; fails listing shortfalls)
       ansible.builtin.command:
-        cmd: "{{ scripts_dst }}/fund-staging-signers.sh"
+        cmd: "{{ scripts_dst }}/verify-signer-funding.sh"
       environment:
         PATH: "{{ tool_path }}"
         CRED_DIR: "{{ credentials_dir }}"
+        GORCHAIN_RPC: "{{ gorchain_rpc_url }}"
+        SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
         ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
       register: fund_out
-      changed_when: true
+      changed_when: false
       failed_when: false
 
     - name: Show generated key addresses + funding results
@@ -195,7 +131,6 @@
       ansible.builtin.assert:
         that: fund_out.rc == 0
         fail_msg: >-
-          Some signers are underfunded (listed above) — top them up from an
-          operator devnet wallet or https://faucet.solana.com, then re-run;
-          funding is balance-driven and only adds the gap.
+          Some signers are underfunded (listed above) — fund them from a treasury
+          wallet (mainnet has no faucet), then re-run; funding is balance-checked.
         quiet: true

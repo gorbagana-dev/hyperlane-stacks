@@ -345,7 +345,13 @@ MinIO endpoint uses the static hostname `hyperlane-minio` — a k8s Service with
 
 ### Compose Environment (hardcoded in compose, not in spec)
 - `AWS_ENDPOINT_URL_KMS=http://localhost:9999` — routes to sidecar
-- `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000` — routes to MinIO k8s Service
+- `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000` — routes to MinIO k8s Service.
+  In prod this endpoint is topology-aware: on single-host the `hyperlane-minio`
+  Service is a selector-mode `external-services:` entry backed by the MinIO pod
+  (in-cluster, plain HTTP — no Caddy hairpin); on multi-host, specs render
+  `AWS_ENDPOINT_URL_S3` to `https://s3.<base_domain>` instead. The compose
+  literal is always `http://hyperlane-minio:9000`; `render_spec` swaps the target
+  at deploy time.
 - `CONFIG_FILES=/config/agent-config.json`
 
 ### ConfigMaps
@@ -396,7 +402,9 @@ Script at `stack_orchestrator/data/config/igp-fee-claim-scripts-config/claim-fee
 
 ### Compose Environment (hardcoded in compose)
 - `HYP_GASPAYMENTENFORCEMENT='[{"type": "none"}]'` — disabled (Sealevel returns hardcoded zeros)
-- `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000`
+- `AWS_ENDPOINT_URL_S3=http://hyperlane-minio:9000` — topology-aware in prod (same
+  as the validator: in-cluster selector-mode Service on single-host,
+  `https://s3.<base_domain>` on multi-host)
 
 ---
 
@@ -414,6 +422,13 @@ S3-compatible storage for validator checkpoints. Replaces shared PVCs (RWX) with
 ### Buckets Created
 - `hyperlane-validator-gorchain`
 - `hyperlane-validator-solana`
+
+### Prod topology note
+MinIO itself is always accessed at `http://hyperlane-minio:9000` by validator and relayer
+pods. In prod, `AWS_ENDPOINT_URL_S3` is topology-aware: on single-host, `render_spec`
+injects a selector-mode `external-services:` block so the `hyperlane-minio` hostname
+resolves in-cluster (no Caddy loopback); on multi-host it renders to the public
+`https://s3.<base_domain>` Caddy front instead.
 
 ---
 
@@ -537,9 +552,9 @@ staging runbook); mainnet wallets default to reliable infrastructure.
 
 ---
 
-## Ops Directory (Archived — Not a Stack)
+## Ops Directory (Removed — Not a Stack)
 
-**Archived** (`deployment/ops-archive/`). These unsigned-tx k8s Jobs are superseded:
+**Removed** (formerly at `deployment/ops-archive/`, since deleted). These unsigned-tx k8s Jobs are superseded:
 maintenance ops will be rebuilt as operator-layer playbooks (epic `hyp-564`)
 signing with the Privy bridge-owner wallet — the bridge owner is a Privy server
 wallet (`BRIDGE_OWNER_PUBKEY`), not a hardware wallet.

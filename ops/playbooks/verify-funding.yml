@@ -1,0 +1,40 @@
+---
+# Standalone prod funding gate — verify every hot signer is funded to its target on
+# both chains. Report-only (mainnet has no faucet): fails listing shortfalls. Run
+# after prepare-prod.yml (which generates keys + addresses.env), before deploy-all.
+# Also imported as a pre-deploy gate by deploy-all.yml on prod.
+#
+#   ansible-playbook -i inventories/prod/hosts.yml playbooks/verify-funding.yml
+- name: Verify prod signer funding
+  hosts: deployer_hosts
+  gather_facts: true
+  vars:
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+  tasks:
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+    - name: Ship the funding-verification script
+      ansible.builtin.copy:
+        src: "../scripts/verify-signer-funding.sh"
+        dest: "{{ scripts_dst }}/verify-signer-funding.sh"
+        mode: "0755"
+    - name: Verify funding (report-only; fails listing shortfalls)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/verify-signer-funding.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        CRED_DIR: "{{ credentials_dir }}"
+        GORCHAIN_RPC: "{{ gorchain_rpc_url }}"
+        SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
+        ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
+      register: _funding
+      changed_when: false
+      failed_when: _funding.rc != 0

@@ -1,4 +1,4 @@
-# Runbook — `local` single-host (Layer 1)
+# Runbook — `local` single-host
 
 Bring the whole bridge up against **self-run chains on one VM** to test the deploy-side
 ansible end to end. Every stack, both hyperlane validators, and both SVM chains run on a

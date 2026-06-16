@@ -6,7 +6,7 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 
 ## Stack Decomposition
 
-**8 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `specs/stack-specifications.md` for detailed per-stack specs):
+**8 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `docs/stack-specifications.md` for detailed per-stack specs):
 
 | Stack | Type | Purpose |
 |-------|------|---------|

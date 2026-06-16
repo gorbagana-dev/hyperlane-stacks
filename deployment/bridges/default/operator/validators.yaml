@@ -1,0 +1,17 @@
+---
+# Prod validator set — 1-of-1 per chain, single-host default (both on bridge-host-1;
+# gorchain is external mainnet, so there is no chain-host 80/443 conflict to dodge).
+# Labels are load-bearing: the committed validator specs hardcode the derived MinIO
+# IAM env names (GORCHAIN_PRIMARY_KEY_ID, SOLANA_PRIMARY_KEY_ID, ...). Pure topology:
+# each validator's Privy wallet id comes from the operator's deployment-config
+# (privy_validator_wallet_ids, keyed by label). For multi-host prod, move a
+# validator's `host:` to a second host and add that host to the inventory.
+validators:
+  - label: gorchain-primary
+    chain: gorchain
+    host: bridge-host-1
+    hostname: validator-gorchain.bridge.gorbagana.wtf
+  - label: solana-primary
+    chain: solana
+    host: bridge-host-1
+    hostname: validator-solana.bridge.gorbagana.wtf

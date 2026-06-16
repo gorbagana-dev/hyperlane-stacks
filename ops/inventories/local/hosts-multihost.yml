@@ -1,5 +1,5 @@
 ---
-# Multi-host (Layer 2) local topology — maximizes cross-host routing. Shares
+# Multi-host local topology — maximizes cross-host routing. Shares
 # group_vars/ and host_vars/ with the single-host hosts.yml in this directory.
 #
 # Run with (note the multi-host validators file, option a):

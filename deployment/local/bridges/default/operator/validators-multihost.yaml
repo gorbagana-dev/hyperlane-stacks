@@ -1,5 +1,5 @@
 ---
-# Multi-host (Layer 2) validator set — both hyperlane validators on the local-agents
+# Multi-host validator set — both hyperlane validators on the local-agents
 # host (off the chain test validators, so validator -> chain RPC is cross-host). Used
 # via -e validators_file=$PWD/deployment/local/bridges/default/operator/validators-multihost.yaml
 # Pure topology: wallet ids come from deployment-config (privy_validator_wallet_ids),

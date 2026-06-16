@@ -3,8 +3,7 @@
 Ansible layer that brings a Hyperlane SVM bridge up across machines with **zero
 on-chain signing**. Two phases: provision the fleet (`setup-all.yml`), then
 deploy the stacks (`deploy-all.yml`). Operator-attended signing/lifecycle
-playbooks (kill-switch, restore, ISM update, teardown) are **sub-project 3** and
-not here.
+playbooks (kill-switch, restore, ISM update, teardown) are out of scope here.
 
 > **All commands in this README run from the `ops/` directory.** From the repo
 > root: `cd ops`. (Paths like `inventories/…`, `playbooks/…`, `requirements.yml`
@@ -124,7 +123,7 @@ the chain name (`chainId == domainId`) — `1399811149`/`1198486093` for solana/
 gorchain on prod, `…1151`/`…6095` on staging (devnet). They're **immutable once
 deployed** and live as committed `config:` literals in the per-env specs. Full
 derivation (the name+network-byte math) is in
-[`specs/stack-specifications.md`](../specs/stack-specifications.md) → Stack 1 →
+[`docs/stack-specifications.md`](../docs/stack-specifications.md) → Stack 1 →
 Domain / chain IDs.
 
 ## Inventory + topology
@@ -223,7 +222,7 @@ State flows deployer-host → git → consumer-hosts: `publish-bridge-state.yml`
 brings them down, and `state_distribute` copies the `agent-config` ConfigMap from
 the clone into each stack's `configmaps/`.
 
-## Linting (Layer 0)
+## Linting
 
 ```bash
 yamllint .

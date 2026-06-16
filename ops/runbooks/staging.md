@@ -25,6 +25,7 @@ flowchart TD
     S2 --> S3[3 - Deploy bridge on a branch<br/>deploy-all.yml -e state_review=true]
     S3 --> S4[4 - Verify<br/>RPC / MinIO / Grafana]
     S4 --> S5[5 - Try the bridge<br/>Backpack transfer]
+    S5 --> S6[6 - Retire keys / reclaim funds<br/>retire-keys.yml]
 ```
 
 Each numbered step below is one command. Steps 0 (prerequisites: droplets,
@@ -185,16 +186,28 @@ outside a full deploy.
 
 ## 4. Verify
 
+The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's Encrypt TLS):
+
+| Service | URL | Credentials / notes |
+|---|---|---|
+| Warp UI (the bridge) | https://staging.gorbagana.wtf | — |
+| Grafana | https://grafana.staging.gorbagana.wtf | `admin` / `grafana_admin_password` |
+| Prometheus | https://prometheus.staging.gorbagana.wtf | — |
+| MinIO console | https://minio-console.staging.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
+| MinIO S3 API | https://s3.staging.gorbagana.wtf | validator IAM (per-validator) |
+| Gorchain RPC | https://rpc.staging.gorbagana.wtf | — (Caddy TLS front on the chain host) |
+| Relayer | https://relayer.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Gorchain validator | https://validator-gorchain.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Solana validator | https://validator-solana.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+
+`grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
+The block explorer (`https://explorer.staging.gorbagana.wtf`) is external — not served by this deployment.
+
 - `https://rpc.staging.gorbagana.wtf/health` answers `ok` and slots advance.
-- MinIO (`https://minio-console.staging.gorbagana.wtf` — log in with
-  `minio_root_user` / `minio_root_password`, generated into the inventory's
-  `deployment-config.yml` by setup-all): checkpoint objects appear under both
-  validator buckets.
-- Grafana (`https://grafana.staging.gorbagana.wtf` — `admin` /
-  `grafana_admin_password` from the same file): relayer + validator
-  dashboards report.
-- `https://staging.gorbagana.wtf`: run a devnet-USDC transfer
-  solana → gorchain and back — see the next section.
+- MinIO console: checkpoint objects appear under both validator buckets.
+- Grafana: relayer + validator dashboards report.
+- Warp UI loads and shows the token routes — run a devnet-USDC transfer
+  solana → gorchain and back (see the next section).
 
 ## 5. Try the bridge (Backpack)
 
@@ -240,19 +253,80 @@ Use a throwaway test wallet — never the deployer account.
    "Recipient has received funds" popup at that moment. To see the
    destination balance in Backpack too, switch the RPC per step 3.
 
-## 6. Reset
+## 6. Retire keys (reclaim funds)
 
-Stacks only (chain + state survive):
+Exercise this on staging before running it in prod. Once deployment is complete, reclaim funds
+from the spent/idle signers back to a treasury:
+
+```bash
+ansible-playbook -i inventories/staging/hosts.yml playbooks/retire-keys.yml \
+  -e treasury_address=<BASE58> -e confirm_retire=true
+```
+
+What it does (confirming each transfer):
+
+- **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains; the
+  (now zero-balance) keyfile is **kept** so a later warp-route deploy can re-fund the same
+  address (see [Adding a warp route](#adding-a-warp-route)).
+- **Validator announce keys** — idle after the one-time announce (checkpoints are signed via
+  the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
+  keyfile is **kept** (the running validator re-reads it on restart; a re-announce — e.g. an S3
+  location change — would need a top-up).
+
+Left funded: the **relayer's** per-chain signer keys and the **IGP fee-claim** key — they sign
+deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (already-drained
+accounts report "nothing to drain"). Deploying additional warp routes later needs a funded
+deployer key again — see [Adding a warp route](#adding-a-warp-route).
+
+## Updating a stack
+
+To apply a committed change to one stack (spec edit, image bump, mounted script/config)
+without a full redeploy — preserving the cluster and data volumes — use `restart-stack.yml`.
+It drives `laconic-so deployment restart`, which re-renders the on-host spec from
+`deploy_branch` and rolling-restarts the pods:
+
+```bash
+# a singleton stack (name the inventory host group via target_hosts):
+ansible-playbook -i inventories/staging/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-warp-ui -e target_hosts=warp_ui_hosts -e deploy_branch=<branch>
+
+# both validators (no target_hosts — they run per-entry from validators.yaml):
+ansible-playbook -i inventories/staging/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-validator -e deploy_branch=<branch>
+```
+
+`deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name` values
+are the keys of the `stacks` map in `inventories/staging/group_vars/all.yml`.
+
+## Adding a warp route
+
+To add a warp route to a running bridge — without a full redeploy — edit
+`WARP_ROUTES` in `deployment/staging/spec-warp-deployer.yml`, commit + push, and run
+`update-warp-routes.yml`. The staging menu already ships a native-SOL route (`sol`)
+ready to select. Full steps, the route-file schema, and a worked SOL example are in
+[warp-routes.md](warp-routes.md).
+
+## 7. Reset
+
+> ⚠️ **`stop-all` halts the bridge** — message delivery stops until the stack is back up.
+
+Stacks only (cluster, persisted data, and chain all survive):
 
 ```bash
 ansible-playbook -i inventories/staging/hosts.yml playbooks/stop-all.yml
 ```
 
-Full host reset before a bootstrap rehearsal additionally destroys the kind
-cluster (`-e destroy_cluster=true`) and, **only if intentionally resetting
-chain state**, removes `~/chains/gorchain` + the `gorchain-rpc-caddy`
-container on staging-gorchain by hand. Chain state is deliberately never
-destroyed by a playbook.
+Optional teardown flags (combine as needed):
+
+- `-e destroy_cluster=true` — delete the kind cluster and its in-cluster k8s objects
+  (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
+- `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
+  (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+
+The persistent gorchain chain state under `~/chains/gorchain` is **never** touched by any
+playbook (not even `wipe_data`). To reset chain state, remove `~/chains/gorchain` + the
+`gorchain-rpc-caddy` container on staging-gorchain by hand.
 
 Scorched earth — destroy the VMs themselves (chain state and all): see
 [staging-droplets.md → Teardown](staging-droplets.md#teardown).

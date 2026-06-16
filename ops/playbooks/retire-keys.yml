@@ -1,0 +1,125 @@
+---
+# Post-deploy: reclaim funds from drainable signers back to a treasury.
+#
+# Drained:
+#   - Deployer key — one-shot (deploy + ownership handoff done): drained on BOTH chains;
+#     the (now zero-balance) keyfile is KEPT so a later warp-route deploy can re-fund the
+#     same address (gen-local-keys won't overwrite it) instead of minting a new deployer.
+#   - Validator announce keys — idle after the one-time announce (checkpoints are signed via
+#     the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
+#     keyfile is KEPT (the running validator re-reads it on restart; a re-announce, e.g. an
+#     S3 location change, would need a top-up).
+# NOT drained (lifetime signers): the relayer's per-chain signer keys and the IGP fee-claim
+# key — they sign deliveries/claims for as long as the bridge runs.
+#
+#   ansible-playbook -i inventories/<env>/hosts.yml playbooks/retire-keys.yml \
+#     -e treasury_address=<BASE58> -e confirm_retire=true
+- name: Reclaim the deployer key (drain both chains; keyfile kept)
+  hosts: deployer_hosts
+  gather_facts: true
+  vars:
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+    - name: Require an explicit treasury + confirm
+      ansible.builtin.assert:
+        that:
+          - treasury_address is defined and (treasury_address | length) > 0
+          - confirm_retire | default(false) | bool
+        fail_msg: >-
+          Pass -e treasury_address=<BASE58> -e confirm_retire=true. This drains the
+          listed keys to the treasury.
+        quiet: true
+  tasks:
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+    - name: Ship the drain script
+      ansible.builtin.copy:
+        src: "../scripts/drain-key.sh"
+        dest: "{{ scripts_dst }}/drain-key.sh"
+        mode: "0755"
+    # Drain-only: the keyfile stays, so a re-run just re-drains an already-empty key —
+    # drain-key.sh reports "nothing to drain" and the play stays idempotent.
+    - name: Drain the deployer key on gorchain
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/drain-key.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        KEYFILE: "{{ credentials_dir }}/deployer-keypair.json"
+        RPC_URL: "{{ gorchain_rpc_url }}"
+        TREASURY_ADDRESS: "{{ treasury_address }}"
+      register: _drain_gorchain
+      changed_when: "'transferring' in _drain_gorchain.stdout"
+    - name: Drain the deployer key on solana
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/drain-key.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        KEYFILE: "{{ credentials_dir }}/deployer-keypair.json"
+        RPC_URL: "{{ SOLANA_RPC_URL }}"
+        TREASURY_ADDRESS: "{{ treasury_address }}"
+      register: _drain_solana
+      changed_when: "'transferring' in _drain_solana.stdout"
+    - name: Show the deployer drain result
+      ansible.builtin.debug:
+        msg: "{{ _drain_gorchain.stdout_lines + _drain_solana.stdout_lines }}"
+
+- name: Drain the validator announce keys (kept — running validators re-read them)
+  hosts: validator_hosts
+  gather_facts: true
+  vars:
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    solana_version: "v3.1.9"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+    - name: Load the validator set
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
+    - name: Require an explicit treasury + confirm
+      ansible.builtin.assert:
+        that:
+          - treasury_address is defined and (treasury_address | length) > 0
+          - confirm_retire | default(false) | bool
+        fail_msg: "Pass -e treasury_address=<BASE58> -e confirm_retire=true."
+        quiet: true
+  tasks:
+    - name: Install the Solana CLI (Anza) if missing
+      ansible.builtin.shell:  # noqa: command-instead-of-module
+        cmd: |
+          set -o pipefail
+          curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
+        executable: /bin/bash
+        creates: "{{ solana_bin }}/solana"
+    - name: Ship the drain script
+      ansible.builtin.copy:
+        src: "../scripts/drain-key.sh"
+        dest: "{{ scripts_dst }}/drain-key.sh"
+        mode: "0755"
+    - name: Drain each validator announce key on this host (on its origin chain)
+      ansible.builtin.command:
+        cmd: "{{ scripts_dst }}/drain-key.sh"
+      environment:
+        PATH: "{{ tool_path }}"
+        KEYFILE: "{{ credentials_dir }}/validator-{{ item.chain }}.key"
+        RPC_URL: "{{ gorchain_rpc_url if item.chain == 'gorchain' else SOLANA_RPC_URL }}"
+        TREASURY_ADDRESS: "{{ treasury_address }}"
+      loop: "{{ validators | selectattr('host', 'eq', inventory_hostname) | list }}"
+      loop_control:
+        label: "{{ item.label }}"
+      register: _vdrain
+      changed_when: false
+    - name: Show the validator drain results
+      ansible.builtin.debug:
+        msg: "{{ _vdrain.results | map(attribute='stdout_lines') | list }}"
+      when: _vdrain.results | default([]) | length > 0

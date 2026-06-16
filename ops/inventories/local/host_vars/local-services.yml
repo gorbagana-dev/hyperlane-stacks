@@ -1,5 +1,5 @@
 ---
-# Multi-host (Layer 2): the services host — MinIO, monitoring, gas-oracle, warp-ui,
+# Multi-host: the services host — MinIO, monitoring, gas-oracle, warp-ui,
 # deployer. Serves s3/minio-console/grafana/prometheus/warp-ui under base_domain, so its
 # public_ip backs those A records and inbound 80/443 (Let's Encrypt) + 22 must be open.
 # deploy_user = unprivileged account that runs laconic-so, and the SSH/connection user

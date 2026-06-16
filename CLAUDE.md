@@ -24,8 +24,7 @@ tests/e2e/             # Python + pytest E2E tests
   fixtures/            # Kind config, test specs, k8s manifests
   lib/                 # Shared test utilities (cluster, chain, deploy, keygen)
 
-docs/                  # Architecture decisions, ops decisions, security, gaps
-specs/                 # Detailed specifications (stacks, e2e tests, ansible)
+docs/                  # Architecture decisions, ops decisions, security, gaps; stack/e2e/ansible specs
 
 hyperlane-gas-oracle/  # Node.js gas oracle service
 hyperlane-kms-proxy/   # Go KMS proxy sidecar
@@ -72,8 +71,8 @@ in its `environment:` block (and the spec must include it in `config:`).
 ### 4. Documentation
 
 When making structural changes, update:
-- `specs/stack-specifications.md` — detailed per-stack specs
-- `specs/e2e-test-spec.md` — E2E test plan and infrastructure
+- `docs/stack-specifications.md` — detailed per-stack specs
+- `docs/e2e-test-spec.md` — E2E test plan and infrastructure
 - `docs/architecture-decisions.md` — if architectural patterns change
 
 ## Config patterns

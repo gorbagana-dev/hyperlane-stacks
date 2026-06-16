@@ -1,4 +1,4 @@
-# Runbook — `local` multi-host (Layer 2)
+# Runbook — `local` multi-host
 
 > **Untested.** This runbook has not been run end-to-end. The single-host
 > ([local-single-host.md](local-single-host.md)) and staging
