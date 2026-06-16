@@ -46,6 +46,12 @@
         src: "../scripts/drain-key.sh"
         dest: "{{ scripts_dst }}/drain-key.sh"
         mode: "0755"
+    # Already retired? On a clean re-run the keyfile is gone — skip the drains (and
+    # their debug) so the play is idempotent instead of erroring on a missing key.
+    - name: Check whether the deployer key is still present
+      ansible.builtin.stat:
+        path: "{{ credentials_dir }}/deployer-keypair.json"
+      register: _deployer_key
     - name: Drain the deployer key on gorchain
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/drain-key.sh"
@@ -56,6 +62,7 @@
         TREASURY_ADDRESS: "{{ treasury_address }}"
       register: _drain_gorchain
       changed_when: "'transferring' in _drain_gorchain.stdout"
+      when: _deployer_key.stat.exists
     - name: Drain the deployer key on solana
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/drain-key.sh"
@@ -66,9 +73,11 @@
         TREASURY_ADDRESS: "{{ treasury_address }}"
       register: _drain_solana
       changed_when: "'transferring' in _drain_solana.stdout"
+      when: _deployer_key.stat.exists
     - name: Show the deployer drain result
       ansible.builtin.debug:
         msg: "{{ _drain_gorchain.stdout_lines + _drain_solana.stdout_lines }}"
+      when: _deployer_key.stat.exists
     - name: Delete the deployer keyfile on-box (Job is complete; pods unaffected)
       ansible.builtin.file:
         path: "{{ credentials_dir }}/deployer-keypair.json"
