@@ -20,7 +20,26 @@ RENT_BUFFER_SOL="${RENT_BUFFER_SOL:-0.01}"
 
 command -v solana >/dev/null || { echo "ERROR: solana CLI not found"; exit 1; }
 command -v solana-keygen >/dev/null || { echo "ERROR: solana-keygen not found"; exit 1; }
+command -v python3 >/dev/null || { echo "ERROR: python3 not found"; exit 1; }
 [ -f "$KEYFILE" ] || { echo "ERROR: $KEYFILE not found"; exit 1; }
+
+# Validate the treasury is a real base58 32-byte pubkey — a valid-format typo with
+# --allow-unfunded-recipient would otherwise black-hole funds into a dead address.
+python3 - "$TREASURY_ADDRESS" <<'PY' || { echo "ERROR: TREASURY_ADDRESS is not a valid base58 32-byte address"; exit 1; }
+import sys
+ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+s = sys.argv[1].strip()
+if not s:
+    sys.exit(1)
+n = 0
+for c in s:
+    if c not in ALPHABET:
+        sys.exit(1)
+    n = n * 58 + ALPHABET.index(c)
+raw = n.to_bytes((n.bit_length() + 7) // 8, 'big') if n else b''
+pad = len(s) - len(s.lstrip('1'))
+sys.exit(0 if len(b'\x00' * pad + raw) == 32 else 1)
+PY
 
 TMP_KP=""
 cleanup() {
@@ -50,14 +69,18 @@ pub = (b'\x00' * pad + raw).rjust(32, b'\x00')
 assert len(pub) == 32, "expected 32-byte pubkey, got %d" % len(pub)
 json.dump(list(seed) + list(pub), open(out, 'w'))
 PY
-  GOT=$(solana-keygen pubkey "$TMP_KP")
+  GOT=$(solana-keygen pubkey "$TMP_KP" 2>/dev/null) || GOT=""
   [ "$GOT" = "$PUB" ] || { echo "ERROR: reconstructed address ($GOT) != cached ($PUB) — aborting, no funds moved"; exit 1; }
   SIGNER="$TMP_KP"
 else
   SIGNER="$KEYFILE"
 fi
 
-bal=$(solana balance "$SIGNER" --url "$RPC_URL" 2>/dev/null | awk '{print $1}') || bal=0
+# Gate on RPC reachability first: a transient RPC failure must not read as a zero
+# balance (which would silently "drain nothing" while reporting success).
+solana cluster-version --url "$RPC_URL" >/dev/null 2>&1 || { echo "ERROR: RPC $RPC_URL unreachable — refusing to assume an empty balance"; exit 1; }
+bal_raw=$(solana balance "$SIGNER" --url "$RPC_URL" 2>/dev/null) || { echo "ERROR: balance query failed for $(basename "$KEYFILE") on $RPC_URL"; exit 1; }
+bal=$(echo "$bal_raw" | awk '{print $1}')
 [ -n "$bal" ] || bal=0
 echo "$(basename "$KEYFILE") on $RPC_URL: balance ${bal} SOL"
 awk -v b="$bal" -v r="$RENT_BUFFER_SOL" 'BEGIN{exit !(b>r+0.001)}' || { echo "  nothing to drain"; exit 0; }
