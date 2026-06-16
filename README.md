@@ -13,7 +13,7 @@ copy-runnable guide:
 |---|---|---|
 | **staging** | [ops/runbooks/staging.md](ops/runbooks/staging.md) | Prod rehearsal: Solana devnet + a persistent single-node gorchain, real DNS/TLS, on three VMs |
 | **local (single-host)** | [ops/runbooks/local-single-host.md](ops/runbooks/local-single-host.md) | Whole bridge + both chains on one VM, self-trusted certs |
-| **prod** | [ops/runbooks/prod.md](ops/runbooks/prod.md) | Mainnet (runbook in progress) |
+| **prod** | [ops/runbooks/prod.md](ops/runbooks/prod.md) | Mainnet: external gorchain + Helius mainnet, single host under bridge.gorbagana.wtf |
 
 [**ops/README.md**](ops/README.md) is the mechanics reference behind the runbooks
 (configuration model, inventory/topology, how a stack gets deployed). The

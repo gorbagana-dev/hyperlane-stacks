@@ -9,7 +9,7 @@ DNS/TLS, secrets).
 |---|---|---|---|
 | [local-single-host.md](local-single-host.md) | Own-chains, one VM (Layer 1) | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) |
 | [staging.md](staging.md) | Devnet rehearsal (Layer 3), three VMs | persistent self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt |
-| [prod.md](prod.md) | Production (placeholder — guide still to be written) | mainnet gorchain + Helius mainnet | Cloudflare + Let's Encrypt |
+| [prod.md](prod.md) | Production (mainnet) | mainnet gorchain (external) + Helius mainnet | Cloudflare + Let's Encrypt |
 
 **Shared reference** (mechanics behind every runbook): `ops/README.md` — the
 environment/inventory model, the secret-vs-config model, `fetch-stack`, and how a
