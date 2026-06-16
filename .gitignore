@@ -9,4 +9,6 @@ node_modules/
 ops/collections/
 
 # ops: per-env operator config + generated secrets (never commit).
+# secrets.yml is the pre-rename name — keep ignoring operators' existing files.
 ops/inventories/*/deployment-config.yml
+ops/inventories/*/secrets.yml
