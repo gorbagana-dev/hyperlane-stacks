@@ -21,8 +21,9 @@ volumes:
   explorer-postgres-data: /tmp/hyperlane-bridge-e2e/explorer/postgres
 config:
   # In-cluster RPCs for the scraper (the explorer's browser never calls them).
+  # gorchain is also injected into the browser metadata; solana resolves from the
+  # registry, so only the scraper needs the in-cluster solana RPC (below).
   GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
-  SOLANA_RPC_URL: "http://solana-rpc:18899"
   # The compose wires the scraper's solana RPC via a secret; for e2e inject it
   # directly as the in-cluster URL.
   HYP_CHAINS_SOLANA_CUSTOMRPCURLS: "http://solana-rpc:18899"

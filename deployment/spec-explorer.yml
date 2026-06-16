@@ -14,10 +14,9 @@ network:
 volumes:
   explorer-postgres-data: /srv/kind/hyperlane/explorer/postgres
 config:
-  # Public, non-secret RPCs for the injected chain metadata (the explorer never
-  # calls them for its read path). The scraper's keyed solana RPC is a secret below.
+  # gorchain RPC — used by the scraper (HYP_CHAINS_GORCHAIN_*) and injected into
+  # the frontend chain metadata. The Solana RPC is the SOLANA_RPC_URL secret below.
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
-  SOLANA_RPC_URL: "https://api.mainnet-beta.solana.com"
   GORCHAIN_DOMAIN_ID: "1198486093"
   SOLANA_DOMAIN_ID: "1399811149"
   GORCHAIN_CHAIN_ID: "1198486093"
@@ -36,7 +35,7 @@ configmaps:
 secrets:
   hyperlane-explorer-secrets:
     keys:
-      # Keyed solana RPC for the SCRAPER (overrides the agent-config placeholder).
+      # Solana RPC for the scraper (overrides the agent-config placeholder).
       HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
       POSTGRES_PASSWORD: { env: POSTGRES_PASSWORD }
       HASURA_GRAPHQL_ADMIN_SECRET: { env: HASURA_GRAPHQL_ADMIN_SECRET }

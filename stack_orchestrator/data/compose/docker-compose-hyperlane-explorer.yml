@@ -66,7 +66,7 @@ services:
     ports:
       - "8080"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -80,16 +80,12 @@ services:
     environment:
       # Server-side only (the browser uses the relative /api/graphql proxy).
       HASURA_GRAPHQL_URL: http://hasura:8080/v1/graphql
-      # Public, non-secret RPCs — only embedded into the injected chain-metadata
-      # file; the explorer's read path never calls them.
+      # Chain metadata for the frontend. Only gorchain is injected; Solana comes
+      # from the public registry the UI loads.
       GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
-      SOLANA_RPC_URL: ${SOLANA_RPC_URL}
       GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
-      SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
       GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
-      SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
       GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
-      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solana}
       # Standalone server must bind all interfaces for k8s Service routing.
       HOSTNAME: "0.0.0.0"
     ports:

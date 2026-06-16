@@ -24,7 +24,6 @@ volumes:
   explorer-postgres-data: /srv/kind/hyperlane/explorer/postgres
 config:
   GORCHAIN_RPC_URL: "__GORCHAIN_RPC_URL__"
-  SOLANA_RPC_URL: "__SOLANA_RPC_URL__"
   GORCHAIN_DOMAIN_ID: "1198486095"
   SOLANA_DOMAIN_ID: "1399811151"
   GORCHAIN_CHAIN_ID: "1198486095"
@@ -38,7 +37,7 @@ configmaps:
 secrets:
   hyperlane-explorer-secrets:
     keys:
-      # Keyed solana RPC for the SCRAPER (overrides the agent-config placeholder).
+      # Solana RPC for the scraper (overrides the agent-config placeholder).
       HYP_CHAINS_SOLANA_CUSTOMRPCURLS: { env: SOLANA_RPC_URL }
       POSTGRES_PASSWORD: { env: POSTGRES_PASSWORD }
       HASURA_GRAPHQL_ADMIN_SECRET: { env: HASURA_GRAPHQL_ADMIN_SECRET }
