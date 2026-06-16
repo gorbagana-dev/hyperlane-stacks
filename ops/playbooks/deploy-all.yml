@@ -59,7 +59,7 @@
           environment:
             PATH: "{{ tool_path }}"
             CRED_DIR: "{{ credentials_dir }}"
-            GORCHAIN_RPC: "{{ gorchain_rpc_url | default('https://rpc.gorbagana.wtf') }}"
+            GORCHAIN_RPC: "{{ gorchain_rpc_url }}"
             SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
             ORACLE_PUBKEY: "{{ igp_oracle_pubkey }}"
           register: _funding_gate

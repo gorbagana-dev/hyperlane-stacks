@@ -42,6 +42,8 @@ credentials_dir: "{{ ansible_env.HOME }}/.credentials/hyperlane"
 # spec-*.yml, then re-run configure-dns.yml.
 base_domain: staging.gorbagana.wtf
 cloudflare_zone: gorbagana.wtf      # the registered CF zone; base_domain nests under it
+# Gorchain RPC for ops tooling (funding/drain checks). The spec carries its own GORCHAIN_RPC_URL literal.
+gorchain_rpc_url: "https://rpc.staging.gorbagana.wtf"
 dns_record_ttl: 300
 dns_records:
   - name: s3
