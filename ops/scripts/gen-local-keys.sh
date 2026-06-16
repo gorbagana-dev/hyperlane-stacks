@@ -3,7 +3,6 @@
 # and prod). Prod hot signers (deployer, relayer x3, validator announce x2) are
 # generated on the deploy host by prepare-prod.yml — they are hot keys in every
 # env and must live in the on-host credentials dir for laconic-so to read them.
-# It refuses to overwrite existing files, so it cannot clobber funded keys.
 #
 # Writes the ed25519 keyfiles the local stack consumes into the operator
 # credentials dir, prints the addresses to fund, and exports them to
@@ -51,7 +50,7 @@ cat <<BANNER
 ============================================================
  gen-local-keys — hot signing keys (local / staging / prod)
  Target dir: $CRED_DIR
- Existing files are never touched.
+ Existing keyfiles are never overwritten.
 ============================================================
 BANNER
 

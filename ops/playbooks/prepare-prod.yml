@@ -42,7 +42,6 @@
       loop:
         - gen-local-keys.sh
         - verify-signer-funding.sh
-        - fund-test-wallets.sh
 
     - name: Generate the hot signing keys (existing files are never overwritten)
       ansible.builtin.command:
