@@ -108,7 +108,12 @@
         # the seed + the cached .pub, so the .pub must travel to the validator host too.
         _group_keyfiles:
           deployer_hosts: [deployer-keypair.json]
-          relayer_hosts: [relayer-gorchain.key, relayer-solana.key, relayer-fee-claim.json]
+          relayer_hosts:
+            - relayer-gorchain.key
+            - relayer-gorchain.key.pub
+            - relayer-solana.key
+            - relayer-solana.key.pub
+            - relayer-fee-claim.json
 
     - name: Gather the consumer hosts' facts (credentials_dir derives from their HOME)
       ansible.builtin.setup:
