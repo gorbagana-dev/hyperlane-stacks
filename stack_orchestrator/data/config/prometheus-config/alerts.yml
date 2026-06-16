@@ -30,16 +30,6 @@ groups:
           summary: "Hyperlane relayer failing to submit messages on {{ $labels.chain }}"
           description: "Relayer has been failing to deliver messages for 5 minutes."
 
-      # Wallet balance low (from balance monitor pushing to pushgateway).
-      - alert: WalletBalanceLow
-        expr: hyperlane_wallet_balance_sol < 1
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Wallet {{ $labels.wallet }} on {{ $labels.chain }} balance low"
-          description: "Balance is {{ $value }} SOL, below threshold."
-
       # Agent pod restart.
       # TODO: Requires kube-state-metrics to be deployed in the cluster.
       # Without it this alert is inert — kube_pod_container_status_restarts_total

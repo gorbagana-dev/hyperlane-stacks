@@ -11,12 +11,6 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # Pushgateway (balance monitor metrics)
-  - job_name: pushgateway
-    honor_labels: true
-    static_configs:
-      - targets: ["localhost:9091"]
-
   # Validator metrics — scraped cross-host over public DNS via each validator's
   # Caddy hostname. The container entrypoint (run.sh) renders the
   # target list from PROMETHEUS_VALIDATOR_TARGETS into validators.yml on start.
