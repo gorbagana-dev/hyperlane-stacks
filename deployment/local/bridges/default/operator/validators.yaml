@@ -1,6 +1,6 @@
 ---
-# Local own-chains validator set. Single-host (Layer 1): both on local-1. For the
-# multi-host split (Layer 2) move a validator's `host` to local-2 etc. Pure
+# Local own-chains validator set. Single-host: both on local-1. For the
+# multi-host split move a validator's `host` to local-2 etc. Pure
 # topology: wallet ids come from deployment-config (privy_validator_wallet_ids).
 # Hostnames match the group_vars base_domain (load_validators derives the DNS
 # record name by stripping base_domain off the hostname).

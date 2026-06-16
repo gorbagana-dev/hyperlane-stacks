@@ -1,5 +1,5 @@
 ---
-# All-in-one host for single-host (Layer 1) runs. For multi-host, copy to
+# All-in-one host for single-host runs. For multi-host, copy to
 # host_vars/local-2.yml etc. and split the groups in hosts.yml.
 # public_ip is this host's public IPv4 — the Cloudflare A records for the stacks
 # it serves point here, and the deploy preflight checks the served hostnames

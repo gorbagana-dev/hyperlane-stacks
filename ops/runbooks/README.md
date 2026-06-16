@@ -7,8 +7,8 @@ DNS/TLS, secrets).
 
 | Runbook | Environment | Chains | DNS / TLS |
 |---|---|---|---|
-| [local-single-host.md](local-single-host.md) | Own-chains, one VM (Layer 1) | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) |
-| [staging.md](staging.md) | Devnet rehearsal (Layer 3), three VMs | persistent self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt |
+| [local-single-host.md](local-single-host.md) | Own-chains, one VM | self-run gorchain + solana-test-validator, on the VM | mkcert (no DNS provider) |
+| [staging.md](staging.md) | Devnet rehearsal, three VMs | persistent self-run gorchain + Helius devnet | Cloudflare + Let's Encrypt |
 | [prod.md](prod.md) | Production (mainnet) | mainnet gorchain (external) + Helius mainnet | Cloudflare + Let's Encrypt |
 
 **Shared reference** (mechanics behind every runbook): `ops/README.md` — the
@@ -22,8 +22,3 @@ to fill.
 **Shared:** Adding a warp route to a running bridge is the same flow in every
 environment — see [warp-routes.md](warp-routes.md) (edit `WARP_ROUTES`, then
 `update-warp-routes.yml`). Each runbook links there from its "Adding a warp route" section.
-
-**Adding a new environment runbook:** copy the structure of `local-single-host.md`
-(Networking model → Prerequisites → Privy wallets → Inventory → Deployment config →
-Chains & keys → Deploy → Access → Reset → Limitations) and call out only what that
-environment changes. Add a row above.
