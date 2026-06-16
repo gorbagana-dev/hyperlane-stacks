@@ -1,7 +1,8 @@
 """E2E tests for the hyperlane-monitoring stack.
 
-Verifies Prometheus scraping, Grafana provisioning, Pushgateway metrics flow,
-and balance monitor operation with real wallet addresses.
+Verifies Prometheus scraping, Grafana provisioning, and balance monitor
+operation: the underfunded watch fires a Slack alert (captured by a host-side
+mock endpoint) while funded watches stay quiet.
 
 Grafana and Prometheus are accessed via TLS ingress (grafana.test,
 prometheus.test) using mkcert-trusted certificates (matches the prod Caddy
@@ -80,9 +81,9 @@ def _get_container_logs(
 class TestMonitoring:
     """Monitoring stack tests.
 
-    The monitoring_deployment fixture deploys Prometheus, Grafana, Pushgateway,
-    and a balance monitor. Tests verify each component is operational and that
-    the full metrics pipeline works end-to-end.
+    The monitoring_deployment fixture deploys Prometheus, Grafana, and a
+    balance monitor. Tests verify each component is operational and that the
+    balance monitor alerts Slack on the underfunded watch.
     """
 
     def test_prometheus_healthy(self, monitoring_deployment: dict) -> None:
@@ -113,34 +114,6 @@ class TestMonitoring:
             f"Prometheus self-scrape target is down (value={value})"
         )
         log.info("Prometheus self-scrape target is up")
-
-    def test_prometheus_pushgateway_target(self, monitoring_deployment: dict) -> None:
-        """Verify Pushgateway scrape target is up."""
-        prom_url = monitoring_deployment["prometheus_url"]
-
-        results = _prometheus_query(prom_url, 'up{job="pushgateway"}')
-        assert len(results) > 0, "No results for up{job='pushgateway'}"
-
-        value = results[0]["value"][1]
-        assert value == "1", (
-            f"Pushgateway scrape target is down (value={value})"
-        )
-        log.info("Pushgateway scrape target is up")
-
-    def test_prometheus_has_balance_metrics(self, monitoring_deployment: dict) -> None:
-        """Verify balance monitor metrics are flowing through Pushgateway."""
-        prom_url = monitoring_deployment["prometheus_url"]
-
-        results = _prometheus_query(
-            prom_url, 'hyperlane_wallet_balance_sol{chain="gorchain"}',
-        )
-        assert len(results) > 0, (
-            "No balance metrics found for gorchain — balance monitor may not "
-            "have pushed to Pushgateway yet"
-        )
-        log.info(
-            "Found %d balance metric(s) for gorchain", len(results),
-        )
 
     def test_grafana_healthy(self, monitoring_deployment: dict) -> None:
         """Verify Grafana health endpoint returns successfully."""
@@ -202,56 +175,24 @@ class TestMonitoring:
         )
         log.info("All %d expected dashboards provisioned", len(expected_uids))
 
-    def test_balance_monitor_wallets_checked(self, monitoring_deployment: dict) -> None:
-        """Verify balance monitor checked all configured wallets."""
+    def test_balance_monitor_started(self, monitoring_deployment: dict) -> None:
+        """Balance monitor started and reported its watch counts."""
         ns = monitoring_deployment["namespace"]
         pod = monitoring_deployment["pod_name"]
-
         logs = _get_container_logs(ns, pod, "balance-monitor")
-        assert "[balance-monitor] Starting" in logs, (
-            "Balance monitor did not start — check container logs"
-        )
+        assert "[balance-monitor] Starting" in logs, "balance monitor did not start"
+        assert "account(s)," in logs, "balance monitor did not report watch counts"
+        log.info("Balance monitor started and reported watches")
 
-        # Verify wallet counts reported in startup log
-        assert "Gorchain wallets:" in logs, (
-            "Balance monitor did not report Gorchain wallets"
-        )
-        assert "Solana wallets:" in logs, (
-            "Balance monitor did not report Solana wallets"
-        )
-        log.info("Balance monitor started and reported wallet counts")
-
-    def test_balance_metrics_have_correct_labels(
-        self, monitoring_deployment: dict,
-    ) -> None:
-        """Verify balance metrics have correct chain, wallet, address labels."""
-        prom_url = monitoring_deployment["prometheus_url"]
-        expected_wallets = monitoring_deployment["expected_wallet_labels"]
-
-        for chain in ("gorchain", "solana"):
-            results = _prometheus_query(
-                prom_url,
-                f'hyperlane_wallet_balance_sol{{chain="{chain}"}}',
-            )
-            assert len(results) > 0, (
-                f"No balance metrics for chain={chain}"
-            )
-
-            found_labels = {r["metric"].get("wallet") for r in results}
-            for label in expected_wallets:
-                assert label in found_labels, (
-                    f"Wallet label '{label}' not found in {chain} metrics. "
-                    f"Found: {found_labels}"
-                )
-
-            # Verify address label is present (non-empty)
-            for r in results:
-                assert r["metric"].get("address"), (
-                    f"Missing address label for wallet={r['metric'].get('wallet')} "
-                    f"on chain={chain}"
-                )
-
-        log.info("Balance metrics have correct labels on both chains")
+    def test_balance_monitor_alerts_low_wallet(self, monitoring_deployment: dict) -> None:
+        """The underfunded watch produced a Slack alert; funded ones stayed quiet."""
+        payloads = monitoring_deployment["slack_payloads"]
+        assert payloads, "no Slack alert captured for the underfunded wallet"
+        text = "\n".join(p.get("text", "") for p in payloads)
+        for label in monitoring_deployment["low_labels"]:
+            assert label in text, f"alert missing low wallet {label!r}: {text}"
+        assert "relayer" not in text, f"funded relayer should not alert: {text}"
+        log.info("Slack alert fired for: %s", monitoring_deployment["low_labels"])
 
     def test_validator_targets_up(self, monitoring_deployment: dict) -> None:
         """Both validators are scraped cross-host (up == 1 per instance)."""

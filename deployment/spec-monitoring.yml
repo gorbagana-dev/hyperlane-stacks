@@ -1,5 +1,5 @@
 # Hyperlane Monitoring - deployment spec
-# Prometheus, Grafana, pushgateway, and balance monitoring.
+# Prometheus, Grafana, and balance monitoring (Slack alerts).
 stack: stack_orchestrator/data/stacks/hyperlane-monitoring
 deploy-to: k8s-kind
 kind-cluster-name: hyperlane
@@ -20,12 +20,8 @@ volumes:
   grafana-data: /srv/kind/hyperlane/monitoring/grafana
 config:
   GORCHAIN_RPC_URL: "https://rpc.gorbagana.wtf"
-  # Wallet format: label:address or label:address:threshold
-  # Per-wallet threshold overrides BALANCE_THRESHOLD_SOL (the fallback).
-  MONITORED_WALLETS_GORCHAIN: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  MONITORED_WALLETS_SOLANA: "relayer:ADDR:5.0,igp-oracle:ADDR:2.0"
-  BALANCE_THRESHOLD_SOL: "1.0"  # fallback for wallets without explicit threshold
   BALANCE_CHECK_INTERVAL: "300"
+  ALERT_REPEAT_SECONDS: "21600"  # re-alert cadence while a balance stays low (6 h)
   # Prometheus scrape targets, rendered to file_sd by the prometheus container's
   # entrypoint on each start. Format: comma-separated instance_label=host:port,
   # one entry per instance. Add an instance here and restart the stack to pick
@@ -38,6 +34,7 @@ configmaps:
   grafana-dashboard-config: ./configmaps/grafana-dashboard-config
   grafana-dashboards-config: ./configmaps/grafana-dashboards-config
   balance-monitor-scripts-config: ./configmaps/balance-monitor-scripts-config
+  balance-monitor-config: ./configmaps/balance-monitor-config
 # Before deploying, export this env var in the shell that runs `laconic-so`:
 #   GF_SECURITY_ADMIN_PASSWORD
 secrets:
@@ -45,6 +42,7 @@ secrets:
     keys:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
       SOLANA_RPC_URL:             { env: SOLANA_RPC_URL }
+      SLACK_WEBHOOK_URL:          { env: SLACK_WEBHOOK_URL }
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   prometheus: prom/prometheus:v2.53.0

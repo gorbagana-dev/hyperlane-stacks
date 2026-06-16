@@ -68,6 +68,10 @@ dns_records:
 spec_token_renders:
   # from deployment-config.yml ("" disables WalletConnect)
   REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
+  # Gas-oracle loop interval (ms); operator override, default 15 min.
+  __GAS_ORACLE_INTERVAL_MS__: "{{ gas_oracle_interval_ms | default('900000') }}"
+  # IGP fee-claim interval (seconds); operator override, default 6 h.
+  __CLAIM_INTERVAL_SECONDS__: "{{ fee_claim_interval_seconds | default('21600') }}"
 
 # --- Secret-env values ---
 # See the prod group_vars for the full rationale. Staging differences: Solana uses
@@ -83,6 +87,7 @@ PRIVY_APP_ID: "{{ privy_app_id }}"
 PRIVY_APP_SECRET: "{{ privy_app_secret }}"
 PRIVY_ORACLE_WALLET_ID: "{{ privy_oracle_wallet_id }}"
 GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+SLACK_WEBHOOK_URL: "{{ slack_webhook_url | default('') }}"
 GHCR_PAT: "{{ ghcr_pat }}"
 MINIO_ROOT_USER: "{{ minio_root_user }}"
 MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
@@ -116,6 +121,7 @@ stack_env_vars:
   hyperlane-monitoring:
     - GF_SECURITY_ADMIN_PASSWORD
     - SOLANA_RPC_URL
+    - SLACK_WEBHOOK_URL
   hyperlane-warp-ui:
     - SOLANA_RPC_URL
     - GHCR_PAT

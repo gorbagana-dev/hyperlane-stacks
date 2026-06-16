@@ -22,7 +22,7 @@ config:
   SOLANA_DOMAIN_ID: "1399811151"
 
   # How often the oracle re-fetches prices and submits new configs (ms).
-  GAS_ORACLE_INTERVAL_MS: "900000"
+  GAS_ORACLE_INTERVAL_MS: "__GAS_ORACLE_INTERVAL_MS__"
 
   # --- Gas oracle parameters (see deployment/spec-gas-oracle.yml for the rationale) ---
   GAS_PRICE: "0.000000001"

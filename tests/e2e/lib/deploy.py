@@ -15,7 +15,7 @@ from .common import E2E_DIR, REPO_ROOT, fail_exit, force_rmtree, log_info, run_c
 DEPLOY_DIR = E2E_DIR / ".deployments"
 DEPLOY_DIR.mkdir(parents=True, exist_ok=True)
 
-# TODO: Pin remaining third-party images (prom/prometheus, prom/pushgateway,
+# TODO: Pin remaining third-party images (prom/prometheus,
 # grafana/grafana) to specific versions to avoid Docker Hub rate limits and
 # imagePullPolicy: Always on :latest tags. ghcr.io/gorbagana-dev/* images are
 # fine as :latest — we control that registry.
@@ -233,7 +233,6 @@ def prefetch_gas_oracle_image() -> None:
 
 # Monitoring stack images (all public — no GHCR auth needed)
 PROMETHEUS_IMAGE = "prom/prometheus:latest"
-PUSHGATEWAY_IMAGE = "prom/pushgateway:latest"
 GRAFANA_IMAGE = "grafana/grafana:latest"
 BALANCE_MONITOR_IMAGE = "python:3.12-alpine"
 
@@ -243,7 +242,7 @@ def prefetch_monitoring_images() -> None:
 
     SO preloads them into the kind cluster at deploy_start via image-overrides:.
     """
-    for image in (PROMETHEUS_IMAGE, PUSHGATEWAY_IMAGE, GRAFANA_IMAGE, BALANCE_MONITOR_IMAGE):
+    for image in (PROMETHEUS_IMAGE, GRAFANA_IMAGE, BALANCE_MONITOR_IMAGE):
         log_info(f"Pulling {image}...")
         run_cmd(["docker", "pull", image])
     log_info("Pulled monitoring images to host Docker")

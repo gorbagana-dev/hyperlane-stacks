@@ -23,7 +23,7 @@ config:
   # --- Update frequency ---
   # How often the oracle re-fetches prices and submits new configs (ms).
   # Default: 900000 (15 minutes).
-  GAS_ORACLE_INTERVAL_MS: "900000"
+  GAS_ORACLE_INTERVAL_MS: "__GAS_ORACLE_INTERVAL_MS__"
 
   # --- Privy API URL ---
   # Override for testing (e.g. mock server). Staging uses the default.

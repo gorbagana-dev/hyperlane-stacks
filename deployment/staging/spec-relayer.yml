@@ -27,7 +27,7 @@ config:
   SOLANA_IGP_ACCOUNT: "__SOLANA_IGP_ACCOUNT__"
   # Rendered at deploy time from relayer-whitelist.json (stack_deploy).
   HYP_WHITELIST: '__RELAYER_WHITELIST__'
-  # CLAIM_INTERVAL_SECONDS: "21600"  # IGP fee claim interval (default: 6h)
+  CLAIM_INTERVAL_SECONDS: "__CLAIM_INTERVAL_SECONDS__"  # IGP fee claim interval (default 6h)
   # MinIO via Caddy — public DNS resolves to the Caddy ingress.
   AWS_ENDPOINT_URL_S3: "https://s3.staging.gorbagana.wtf"
 configmaps:

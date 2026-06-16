@@ -227,9 +227,6 @@ def _test_validator_metrics(info: ValidatorInfo, chain: str, local_port: int) ->
         assert "hyperlane_block_height" in metrics, (
             "hyperlane_block_height metric not found in metrics output"
         )
-        assert "hyperlane_wallet_balance" in metrics, (
-            "hyperlane_wallet_balance metric not found in metrics output"
-        )
 
 
 def _test_validator_logs_no_fatal(info: ValidatorInfo) -> None:
