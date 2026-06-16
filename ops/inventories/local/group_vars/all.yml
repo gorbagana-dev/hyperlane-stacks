@@ -185,6 +185,7 @@ PRIVY_APP_ID: "{{ privy_app_id }}"
 PRIVY_APP_SECRET: "{{ privy_app_secret }}"
 PRIVY_ORACLE_WALLET_ID: "{{ privy_oracle_wallet_id }}"
 GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+SLACK_WEBHOOK_URL: "{{ slack_webhook_url | default('') }}"
 GHCR_PAT: "{{ ghcr_pat }}"
 MINIO_ROOT_USER: "{{ minio_root_user }}"
 MINIO_ROOT_PASSWORD: "{{ minio_root_password }}"
@@ -229,6 +230,7 @@ stack_env_vars:
     - GHCR_PAT
   hyperlane-monitoring:
     - GF_SECURITY_ADMIN_PASSWORD
+    - SLACK_WEBHOOK_URL
   hyperlane-warp-ui:
     - GHCR_PAT
   hyperlane-validator:

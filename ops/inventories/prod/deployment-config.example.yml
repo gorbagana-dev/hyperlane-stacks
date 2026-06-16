@@ -11,6 +11,7 @@ privy_app_secret: ""
 privy_oracle_wallet_id: ""      # gas-oracle wallet `id` (oracle.json)
 helius_api_key: ""              # Helius MAINNET API key — builds SOLANA_RPC_URL
 ghcr_pat: ""                    # GitHub PAT (packages:read) for private GHCR images
+slack_webhook_url: ""           # Slack incoming-webhook URL; empty disables balance alerts
 
 # --- Bridge identity (not sensitive — env-specific values from your Privy
 #     wallets; runbooks/privy-wallets.md Step 4 maps each output here) ---
@@ -30,6 +31,18 @@ privy_validator_wallet_ids:
 # refuses an empty id; a dummy value works (Backpack and other injected wallets
 # don't use it).
 wallet_connect_id: ""
+
+# --- Balance monitoring (optional; defaults shown) ---
+# Auto-watched signers: relayer (both chains), fee-claim, igp-oracle, validators.
+# Add extra/SPL watches post-deploy by editing the generated watches.json on the
+# monitoring host and `laconic-so deployment <dir> restart` (see runbooks).
+balance_monitor:
+  default_threshold: 1.0        # native-balance floor for any signer without a role entry
+  thresholds:
+    relayer: 5.0
+    fee-claim: 2.0
+    igp-oracle: 2.0
+    validator: 1.0
 
 # --- Tuning (optional; defaults shown) ---
 # gas_oracle_interval_ms: "900000"     # gas-oracle price-update loop interval (15 min)
