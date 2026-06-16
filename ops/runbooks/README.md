@@ -19,6 +19,10 @@ stack gets deployed. Each runbook links into it rather than repeating it.
 [privy-wallets.md](privy-wallets.md). Each runbook links there and then says which vars
 to fill.
 
+**Shared:** Adding a warp route to a running bridge is the same flow in every
+environment — see [warp-routes.md](warp-routes.md) (edit `WARP_ROUTES`, then
+`update-warp-routes.yml`). Each runbook links there from its "Adding a warp route" section.
+
 **Adding a new environment runbook:** copy the structure of `local-single-host.md`
 (Networking model → Prerequisites → Privy wallets → Inventory → Deployment config →
 Chains & keys → Deploy → Access → Reset → Limitations) and call out only what that

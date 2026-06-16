@@ -275,8 +275,7 @@ What it does (confirming each transfer):
 Left funded: the **relayer's** per-chain signer keys and the **IGP fee-claim** key — they sign
 deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (already-drained
 accounts report "nothing to drain"). Deploying additional warp routes later needs a funded
-deployer key again: re-run `prepare-gorchain.yml` (it regenerates the deleted keyfile), fund
-the new address, then run the warp deployer.
+deployer key again — see [Adding a warp route](#adding-a-warp-route).
 
 ## Updating a stack
 
@@ -297,6 +296,14 @@ ansible-playbook -i inventories/staging/hosts.yml playbooks/restart-stack.yml \
 
 `deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name` values
 are the keys of the `stacks` map in `inventories/staging/group_vars/all.yml`.
+
+## Adding a warp route
+
+To add a warp route to a running bridge — without a full redeploy — edit
+`WARP_ROUTES` in `deployment/staging/spec-warp-deployer.yml`, commit + push, and run
+`update-warp-routes.yml`. The staging menu already ships a native-SOL route (`sol`)
+ready to select. Full steps, the route-file schema, and a worked SOL example are in
+[warp-routes.md](warp-routes.md).
 
 ## 7. Reset
 

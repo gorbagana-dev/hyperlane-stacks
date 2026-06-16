@@ -223,9 +223,8 @@ Left funded: the **relayer's** per-chain signer keys and the **IGP fee-claim** k
 deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (already-drained
 accounts report "nothing to drain").
 
-**Deploying additional warp routes later** needs a funded deployer key again: re-run
-`prepare-prod.yml` (it regenerates the deleted keyfile), fund the new address, then run the
-warp deployer.
+**Deploying additional warp routes later** needs a funded deployer key again — see
+[Adding a warp route](#adding-a-warp-route).
 
 ## Updating a stack
 
@@ -248,6 +247,13 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/restart-stack.yml \
 are the keys of the `stacks` map in `inventories/prod/group_vars/all.yml` (e.g.
 `hyperlane-relayer` → `relayer_hosts`, `hyperlane-gas-oracle` → `gas_oracle_hosts`,
 `hyperlane-monitoring` → `monitoring_hosts`, `hyperlane-warp-ui` → `warp_ui_hosts`).
+
+## Adding a warp route
+
+To add a warp route to a running bridge — without a full redeploy — edit
+`WARP_ROUTES` in `deployment/spec-warp-deployer.yml`, commit + push to `main` (prod's
+default deploy branch), and run `update-warp-routes.yml`. Full steps, the route-file
+schema, and a worked example are in [warp-routes.md](warp-routes.md).
 
 ## 7. Reset
 
