@@ -10,9 +10,8 @@
 # chains), each validator (its chain). The IGP beneficiary is a fee sink and is
 # intentionally excluded. Operators add extra/SPL watches by editing the generated
 # watches.json on this host and `laconic-so deployment <dir> restart`.
-- name: Load the validator set
-  ansible.builtin.include_tasks: ../common/tasks/load_validators.yml
-
+#
+# Expects the `validators` fact to be set by the calling play (load_validators).
 - name: Resolve the relayer host
   ansible.builtin.set_fact:
     _relayer_host: "{{ groups['relayer_hosts'][0] }}"
