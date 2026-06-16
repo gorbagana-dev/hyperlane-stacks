@@ -77,6 +77,7 @@ _xs_minio: |
       selector:
         app.kubernetes.io/stack: hyperlane-minio
       namespace: laconic-hyperlane-minio
+      port: 9000
 
 single_host_external_services:
   hyperlane-validator: "{{ _xs_minio }}"
