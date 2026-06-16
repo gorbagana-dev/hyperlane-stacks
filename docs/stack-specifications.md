@@ -552,9 +552,9 @@ staging runbook); mainnet wallets default to reliable infrastructure.
 
 ---
 
-## Ops Directory (Archived — Not a Stack)
+## Ops Directory (Removed — Not a Stack)
 
-**Archived** (`deployment/ops-archive/`). These unsigned-tx k8s Jobs are superseded:
+**Removed** (formerly at `deployment/ops-archive/`, since deleted). These unsigned-tx k8s Jobs are superseded:
 maintenance ops will be rebuilt as operator-layer playbooks (epic `hyp-564`)
 signing with the Privy bridge-owner wallet — the bridge owner is a Privy server
 wallet (`BRIDGE_OWNER_PUBKEY`), not a hardware wallet.

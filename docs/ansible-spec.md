@@ -1,7 +1,7 @@
 # Ops Ansible Playbooks — Implementation Spec
 
-> **Superseded.** This spec describes the archived unsigned-tx Job model
-> (`deployment/ops-archive/`). Maintenance ops will instead be operator-layer
+> **Superseded.** This spec describes the removed unsigned-tx Job model
+> (formerly at `deployment/ops-archive/`, since deleted). Maintenance ops will instead be operator-layer
 > playbooks (epic `hyp-564`) signing with the **Privy bridge-owner wallet**
 > (`BRIDGE_OWNER_PUBKEY`) — no hardware wallet, no unsigned-tx hand-off.
 > Kept as a historical reference for the Job/ConfigMap mechanics.
