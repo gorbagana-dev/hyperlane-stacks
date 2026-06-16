@@ -68,6 +68,8 @@ dns_records:
 spec_token_renders:
   # from deployment-config.yml ("" disables WalletConnect)
   REPLACE_WITH_WALLETCONNECT_PROJECT_ID: "{{ wallet_connect_id }}"
+  # Gas-oracle loop interval (ms); operator override, default 15 min.
+  __GAS_ORACLE_INTERVAL_MS__: "{{ gas_oracle_interval_ms | default('900000') }}"
 
 # --- Secret-env values ---
 # See the prod group_vars for the full rationale. Staging differences: Solana uses
