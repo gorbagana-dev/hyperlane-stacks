@@ -1832,6 +1832,10 @@ WARP_UI_URL = f"https://{WARP_UI_HOSTNAME}"
 
 EXPLORER_HOSTNAME = "explorer.test"
 EXPLORER_URL = f"https://{EXPLORER_HOSTNAME}"
+# Throwaway DB password + Hasura admin secret (real flows generate these via the
+# credentials role); injected via the spec's secrets: { env: NAME } block.
+EXPLORER_DB_PASSWORD = "testdbpassword"
+EXPLORER_HASURA_ADMIN_SECRET = "testhasuraadmin"
 
 @pytest.fixture(scope="session")
 def warp_ui_image(request: pytest.FixtureRequest, host_prep: None) -> None:
@@ -1998,6 +2002,10 @@ def explorer_deployment(
 
     # agent-config.json (mailboxes/domain ids) → the agent-config ConfigMap dir.
     bridge_state_loader.populate("hyperlane-explorer", deploy_info.deploy_dir)
+
+    # DB password + Hasura admin secret resolve from the spec's secrets: block.
+    os.environ["POSTGRES_PASSWORD"] = EXPLORER_DB_PASSWORD
+    os.environ["HASURA_GRAPHQL_ADMIN_SECRET"] = EXPLORER_HASURA_ADMIN_SECRET
 
     log.info("Starting explorer stack...")
     deploy_start(deploy_info.deploy_dir)

@@ -35,12 +35,15 @@ config:
   SOLANA_CHAIN_NAME: "solana"
   GORCHAIN_IS_TESTNET: "true"
   SOLANA_IS_TESTNET: "true"
-  # Generated into the deployment's k8s secret (injected via envFrom): DB password
-  # (built into the DSN at runtime) + Hasura admin secret (enforces anon role).
-  POSTGRES_PASSWORD: $generate:hex:32$
-  HASURA_GRAPHQL_ADMIN_SECRET: $generate:hex:32$
 configmaps:
   agent-config: ./configmaps/agent-config
+# Throwaway DB password + Hasura admin secret for the e2e cluster; conftest sets
+# the env values before deploy_start (the real flows generate them via ops).
+secrets:
+  hyperlane-explorer-secrets:
+    keys:
+      POSTGRES_PASSWORD: { env: POSTGRES_PASSWORD }
+      HASURA_GRAPHQL_ADMIN_SECRET: { env: HASURA_GRAPHQL_ADMIN_SECRET }
 image-pull-secret:
   server: ghcr.io
   username: gorbagana-dev
