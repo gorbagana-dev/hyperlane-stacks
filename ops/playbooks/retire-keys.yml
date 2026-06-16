@@ -2,8 +2,9 @@
 # Post-deploy: reclaim funds from drainable signers back to a treasury.
 #
 # Drained:
-#   - Deployer key — one-shot (deploy + ownership handoff done): drained on BOTH chains,
-#     then the keyfile is DELETED (a completed Job; nothing reads it at runtime).
+#   - Deployer key — one-shot (deploy + ownership handoff done): drained on BOTH chains;
+#     the (now zero-balance) keyfile is KEPT so a later warp-route deploy can re-fund the
+#     same address (gen-local-keys won't overwrite it) instead of minting a new deployer.
 #   - Validator announce keys — idle after the one-time announce (checkpoints are signed via
 #     the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
 #     keyfile is KEPT (the running validator re-reads it on restart; a re-announce, e.g. an
@@ -13,7 +14,7 @@
 #
 #   ansible-playbook -i inventories/<env>/hosts.yml playbooks/retire-keys.yml \
 #     -e treasury_address=<BASE58> -e confirm_retire=true
-- name: Reclaim the deployer key (drain both chains, then delete)
+- name: Reclaim the deployer key (drain both chains; keyfile kept)
   hosts: deployer_hosts
   gather_facts: true
   vars:
@@ -30,8 +31,8 @@
           - treasury_address is defined and (treasury_address | length) > 0
           - confirm_retire | default(false) | bool
         fail_msg: >-
-          Pass -e treasury_address=<BASE58> -e confirm_retire=true. This drains keys to the
-          treasury and deletes the deployer key on-box.
+          Pass -e treasury_address=<BASE58> -e confirm_retire=true. This drains the
+          listed keys to the treasury.
         quiet: true
   tasks:
     - name: Install the Solana CLI (Anza) if missing
@@ -46,12 +47,8 @@
         src: "../scripts/drain-key.sh"
         dest: "{{ scripts_dst }}/drain-key.sh"
         mode: "0755"
-    # Already retired? On a clean re-run the keyfile is gone — skip the drains (and
-    # their debug) so the play is idempotent instead of erroring on a missing key.
-    - name: Check whether the deployer key is still present
-      ansible.builtin.stat:
-        path: "{{ credentials_dir }}/deployer-keypair.json"
-      register: _deployer_key
+    # Drain-only: the keyfile stays, so a re-run just re-drains an already-empty key —
+    # drain-key.sh reports "nothing to drain" and the play stays idempotent.
     - name: Drain the deployer key on gorchain
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/drain-key.sh"
@@ -62,7 +59,6 @@
         TREASURY_ADDRESS: "{{ treasury_address }}"
       register: _drain_gorchain
       changed_when: "'transferring' in _drain_gorchain.stdout"
-      when: _deployer_key.stat.exists
     - name: Drain the deployer key on solana
       ansible.builtin.command:
         cmd: "{{ scripts_dst }}/drain-key.sh"
@@ -73,15 +69,9 @@
         TREASURY_ADDRESS: "{{ treasury_address }}"
       register: _drain_solana
       changed_when: "'transferring' in _drain_solana.stdout"
-      when: _deployer_key.stat.exists
     - name: Show the deployer drain result
       ansible.builtin.debug:
         msg: "{{ _drain_gorchain.stdout_lines + _drain_solana.stdout_lines }}"
-      when: _deployer_key.stat.exists
-    - name: Delete the deployer keyfile on-box (Job is complete; pods unaffected)
-      ansible.builtin.file:
-        path: "{{ credentials_dir }}/deployer-keypair.json"
-        state: absent
 
 - name: Drain the validator announce keys (kept — running validators re-read them)
   hosts: validator_hosts

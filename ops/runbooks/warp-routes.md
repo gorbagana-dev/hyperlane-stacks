@@ -89,14 +89,16 @@ git push           # prod: main; staging: your deploy branch
 
 ### 4. Make sure the deployer key is funded
 
-The warp deployer signs the route deployment with the deployer key. If you've already
-run `retire-keys.yml`, that key was drained and deleted — re-provision and fund it
-first:
+The warp deployer signs the route deployment with the deployer key. `retire-keys.yml`
+drains that key but **keeps the file**, so you only need to re-fund the same address —
+no regeneration:
 
-- **prod** — `ansible-playbook -i inventories/prod/hosts.yml playbooks/prepare-prod.yml`
-  (regenerates the keyfile), then fund the printed address.
-- **staging** — `ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml`
-  (regenerates + funds; top up the devnet side by hand as in the staging runbook).
+- **prod** — fund the deployer address (`solana-keygen pubkey
+  ~/.credentials/hyperlane/deployer-keypair.json` on the deployer host) on both chains,
+  enough to cover the route deploy.
+- **staging** — re-run `ansible-playbook -i inventories/staging/hosts.yml playbooks/staging/prepare-gorchain.yml`:
+  funding is balance-driven, so it tops the existing deployer back up (top up the devnet
+  side by hand as in the staging runbook).
 
 If you haven't retired keys yet (e.g. right after the initial deploy), the deployer is
 already funded — skip this step.

@@ -212,8 +212,9 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/retire-keys.yml \
 
 What it does (confirming each transfer):
 
-- **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains, then
-  the keyfile is **deleted** (a completed Job; nothing reads it at runtime).
+- **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains; the
+  (now zero-balance) keyfile is **kept** so a later warp-route deploy can re-fund the same
+  address (see [Adding a warp route](#adding-a-warp-route)).
 - **Validator announce keys** — idle after the one-time announce (checkpoints are signed via
   the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
   keyfile is **kept** (the running validator re-reads it on restart; a re-announce — e.g. an S3
