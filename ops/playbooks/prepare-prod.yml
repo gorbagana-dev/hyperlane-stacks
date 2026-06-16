@@ -50,7 +50,7 @@
         PATH: "{{ tool_path }}"
         CRED_DIR: "{{ credentials_dir }}"
       register: keys_out
-      changed_when: true
+      changed_when: "'created:' in keys_out.stdout"
 
     # Carry each keyfile to the host whose spec reads it (the `file:` refs in
     # deployment/spec-*.yml). On single-host every consumer IS this host, so
@@ -71,9 +71,12 @@
           {%- endfor -%}
           {%- for v in validators -%}
             {%- if pairs.append({'host': v.host, 'file': 'validator-' ~ v.chain ~ '.key'}) -%}{%- endif -%}
+            {%- if pairs.append({'host': v.host, 'file': 'validator-' ~ v.chain ~ '.key.pub'}) -%}{%- endif -%}
           {%- endfor -%}
           {{ pairs | rejectattr('host', 'eq', inventory_hostname) | list }}
       vars:
+        # Validator keys are HexKeys; retire-keys' drain reconstructs the keypair from
+        # the seed + the cached .pub, so the .pub must travel to the validator host too.
         _group_keyfiles:
           relayer_hosts: [relayer-gorchain.key, relayer-solana.key, relayer-fee-claim.json]
 
