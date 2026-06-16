@@ -71,10 +71,10 @@ resources:
     hasura:
       reservations:
         cpus: "0.1"
-        memory: 128M
+        memory: 256M
       limits:
         cpus: "0.25"
-        memory: 256M
+        memory: 512M
     explorer:
       reservations:
         cpus: "0.1"

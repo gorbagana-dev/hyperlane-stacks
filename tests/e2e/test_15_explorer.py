@@ -7,6 +7,7 @@ domain). A full bridge-message → message_view assertion is left to a follow-up
 """
 
 import subprocess
+import time
 
 import pytest
 
@@ -42,14 +43,22 @@ class TestExplorer:
         """The same-origin /api/graphql proxy reaches Hasura and the domain table.
 
         The scraper seeds gorchain + solana domain rows, so the domain query
-        returns them once Hasura has tracked the table.
+        returns them once Hasura has tracked the table. Hasura settles after the
+        frontend ingress comes up (it restarts until the scraper creates the
+        schema), so poll rather than asserting on a single request.
         """
         url = explorer_deployment["url"]
-        result = subprocess.run(
-            ["curl", "-fsS", url + "/api/graphql",
-             "-H", "content-type: application/json",
-             "-d", '{"query":"{ domain { id name } }"}'],
-            capture_output=True, text=True, check=False,
-        )
-        assert result.returncode == 0, f"curl failed: {result.stderr}"
-        assert '"domain"' in result.stdout, f"unexpected GraphQL response: {result.stdout}"
+        deadline = time.monotonic() + 120
+        last = ""
+        while time.monotonic() < deadline:
+            result = subprocess.run(
+                ["curl", "-fsS", url + "/api/graphql",
+                 "-H", "content-type: application/json",
+                 "-d", '{"query":"{ domain { id name } }"}'],
+                capture_output=True, text=True, check=False,
+            )
+            if result.returncode == 0 and '"domain"' in result.stdout:
+                return
+            last = result.stderr or result.stdout
+            time.sleep(5)
+        pytest.fail(f"/api/graphql did not resolve domain within 120s; last: {last}")
