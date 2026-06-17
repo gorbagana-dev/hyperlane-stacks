@@ -154,7 +154,6 @@ start_solana() {
       --faucet-port "$SOLANA_FAUCET_PORT" \
       --gossip-port "$SOLANA_GOSSIP_PORT" \
       --dynamic-port-range 19050-19075 \
-      --limit-ledger-size 100000000 \
       --quiet >"$CHAINS_DIR/data/solana-validator.log" 2>&1 < /dev/null &
     disown || true
   fi
