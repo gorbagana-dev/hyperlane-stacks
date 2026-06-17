@@ -56,7 +56,7 @@
   ansible.builtin.set_fact:
     _watches: >-
       {%- set thr = balance_monitor.thresholds | default({}) -%}
-      {%- set dflt = balance_monitor.default_threshold | default(1.0) -%}
+      {%- set dflt = balance_monitor.default_threshold | default(0.1) -%}
       {%- set sym = {'gorchain': 'GOR', 'solana': 'SOL'} -%}
       {%- set rg = _relayer_pubs.results[0].content | b64decode | trim -%}
       {%- set rs = _relayer_pubs.results[1].content | b64decode | trim -%}
