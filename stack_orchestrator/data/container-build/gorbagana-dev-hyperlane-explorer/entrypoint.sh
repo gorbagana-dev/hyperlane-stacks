@@ -36,7 +36,7 @@ const chains = cfg.chains || cfg;
 
 // Keep every field agent-config provides (mailbox + all core addresses + domain
 // ids + protocol), overriding only the browser-facing presentation fields.
-function render(name, defaultDisplay, rpcUrl, prefix) {
+function render(name, defaultDisplay, rpcUrl, prefix, defaultLogo) {
   const c = chains[name];
   if (!c) {
     console.error("agent-config.json has no chain:", name);
@@ -50,6 +50,7 @@ function render(name, defaultDisplay, rpcUrl, prefix) {
     ...c,
     name,
     displayName: e[prefix + "_DISPLAY_NAME"] || defaultDisplay,
+    logoURI: e[prefix + "_LOGO_URI"] || defaultLogo,
     isTestnet: (e[prefix + "_IS_TESTNET"] || "true") === "true",
     rpcUrls: [{ http: rpcUrl }],
     nativeToken: {
@@ -66,11 +67,11 @@ const solana = e.SOLANA_CHAIN_NAME || "solana";
 
 const out = {};
 // gorchain RPC is a non-secret public endpoint, safe to serve to the browser.
-out[gorchain] = render(gorchain, "Gorbagana", e.GORCHAIN_RPC_URL, "GORCHAIN");
+out[gorchain] = render(gorchain, "Gorbagana", e.GORCHAIN_RPC_URL, "GORCHAIN", "/gorbagana-logo.jpg");
 // The browser never calls Solana RPC (data flows through /api/graphql; delivery
 // status comes from the scraper DB), so ship a placeholder rather than wiring a
 // real (possibly key-bearing) Solana endpoint into browser-served metadata.
-out[solana] = render(solana, "Solana", "http://rpc-placeholder.invalid", "SOLANA");
+out[solana] = render(solana, "Solana", "http://rpc-placeholder.invalid", "SOLANA", "/solana-logo.png");
 
 fs.writeFileSync(e.PUBLIC_DIR + "/gorbagana-chains.json", JSON.stringify(out, null, 2));
 console.log("Rendered gorbagana-chains.json for:", Object.keys(out).join(", "));
