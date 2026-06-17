@@ -29,7 +29,7 @@ jobs:
       - name: yamllint
         run: yamllint .
       - name: ansible-lint
-        run: ansible-lint .
+        run: ansible-lint
       - name: syntax-check playbooks + tests
         run: |
           shopt -s nullglob
