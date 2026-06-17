@@ -26,7 +26,9 @@ laconic-so --stack hyperlane-explorer setup-repositories
 laconic-so --stack hyperlane-explorer build-containers
 ```
 
-Builds `gorbagana-dev/hyperlane-explorer:local`, `gorbagana-dev/hyperlane-scraper:local`, and `gorbagana-dev/hyperlane-hasura:local`.
+Builds `gorbagana-dev/hyperlane-explorer:local` and `gorbagana-dev/hyperlane-scraper:local`.
+Hasura runs the upstream `hasura/graphql-engine` image (wired via the `hasura-config`
+configmap), so it isn't built here.
 
 ## 2. Create deployment
 

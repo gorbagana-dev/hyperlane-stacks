@@ -52,8 +52,6 @@ from lib.deploy import (
     EXPLORER_IMAGE,
     EXPLORER_IMAGE_LOCAL,
     GAS_ORACLE_IMAGE,
-    HASURA_IMAGE,
-    HASURA_IMAGE_LOCAL,
     KMS_PROXY_IMAGE,
     KMS_PROXY_IMAGE_LOCAL,
     SCRAPER_IMAGE,
@@ -161,7 +159,6 @@ def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
             "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
             "REPLACE_EXPLORER_IMAGE": EXPLORER_IMAGE_LOCAL,
             "REPLACE_SCRAPER_IMAGE": SCRAPER_IMAGE_LOCAL,
-            "REPLACE_HASURA_IMAGE": HASURA_IMAGE_LOCAL,
         }
     return {
         "REPLACE_DEPLOYER_IMAGE": DEPLOYER_IMAGE,
@@ -171,7 +168,6 @@ def _resolve_image_refs(build_from_source: bool) -> dict[str, str]:
         "REPLACE_GAS_ORACLE_IMAGE": GAS_ORACLE_IMAGE,
         "REPLACE_EXPLORER_IMAGE": EXPLORER_IMAGE,
         "REPLACE_SCRAPER_IMAGE": SCRAPER_IMAGE,
-        "REPLACE_HASURA_IMAGE": HASURA_IMAGE,
     }
 
 

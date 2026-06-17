@@ -59,13 +59,17 @@ services:
       start_period: 60s
 
   hasura:
-    image: ghcr.io/gorbagana-dev/hyperlane-hasura:latest
-    # image: gorbagana-dev/hyperlane-hasura:local
+    # Upstream image, no custom build: the hasura-config configmap supplies the
+    # entrypoint (builds the DB URL from POSTGRES_PASSWORD and rebuilds the
+    # metadata tree) and the metadata the cli-migrations entrypoint applies on boot.
+    image: hasura/graphql-engine:v2.36.0.cli-migrations-v3
     restart: unless-stopped
     hostname: hasura
+    entrypoint: ["/bin/sh", "/hasura-config/entrypoint.sh"]
+    command: ["graphql-engine", "serve"]
     environment:
-      # The image's entrypoint wrapper builds HASURA_GRAPHQL_DATABASE_URL from
-      # POSTGRES_PASSWORD (envFrom) + these parts. 'db' resolves to localhost in-pod.
+      # 'db' resolves to localhost in-pod; the entrypoint builds the DSN from
+      # these + POSTGRES_PASSWORD (envFrom).
       DB_HOST: db
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
@@ -74,6 +78,8 @@ services:
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
       HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
       HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
+    volumes:
+      - hasura-config:/hasura-config:ro
     ports:
       - "8080"
     healthcheck:
@@ -122,4 +128,6 @@ services:
 volumes:
   # agent-config: ConfigMap volume sourced from state_distribute at deploy-create.
   agent-config:
+  # hasura-config: ConfigMap (entrypoint + flattened metadata) from data/config/.
+  hasura-config:
   explorer-postgres-data:

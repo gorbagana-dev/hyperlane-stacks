@@ -28,8 +28,9 @@ WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
 GAS_ORACLE_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest"
 EXPLORER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-explorer:latest"
 SCRAPER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-scraper:latest"
-HASURA_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-hasura:latest"
-# Stock Postgres for the explorer stack (compose default, not an image-override).
+# Hasura + Postgres are upstream images (compose defaults, not image-overrides);
+# hasura is configured via the hasura-config configmap, not a custom build.
+HASURA_UPSTREAM_IMAGE = "hasura/graphql-engine:v2.36.0.cli-migrations-v3"
 POSTGRES_IMAGE = "postgres:15"
 
 # Local build tags (used by build-from-source path)
@@ -38,7 +39,6 @@ KMS_PROXY_IMAGE_LOCAL = "gorbagana-dev/hyperlane-kms-proxy:local"
 WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
 EXPLORER_IMAGE_LOCAL = "gorbagana-dev/hyperlane-explorer:local"
 SCRAPER_IMAGE_LOCAL = "gorbagana-dev/hyperlane-scraper:local"
-HASURA_IMAGE_LOCAL = "gorbagana-dev/hyperlane-hasura:local"
 
 
 def ensure_ghcr_pat() -> None:
@@ -219,27 +219,29 @@ def prefetch_warp_ui_image() -> None:
 
 
 def build_explorer_images(stack_name: str = "hyperlane-explorer") -> None:
-    """Build the explorer frontend + scraper + hasura images via laconic-so.
+    """Build the explorer frontend + scraper images via laconic-so.
 
-    SO preloads them into the kind cluster at deploy_start via image-overrides:.
+    Hasura is the upstream image (configured via the hasura-config configmap), so
+    only the two custom images are built. SO preloads them into the kind cluster
+    at deploy_start via image-overrides:.
     """
     stack_path = resolve_stack_path(stack_name)
 
     log_info("Setting up repositories for explorer build...")
     run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories", "--git-ssh"])
 
-    log_info("Building explorer container images (frontend + scraper + hasura)...")
-    run_cmd(["laconic-so", "--stack", str(stack_path), "build-containers"])
+    log_info("Building explorer container images (frontend + scraper)...")
+    run_cmd([
+        "laconic-so", "--stack", str(stack_path), "build-containers",
+        "--include", "gorbagana-dev/hyperlane-explorer,gorbagana-dev/hyperlane-scraper",
+    ])
 
     log_info("Explorer images built into host Docker")
 
 
 def prefetch_explorer_images() -> None:
-    """Pull the published explorer frontend + scraper + hasura images to host Docker.
-
-    SO preloads them into the kind cluster at deploy_start via image-overrides:.
-    """
-    for image in (EXPLORER_IMAGE, SCRAPER_IMAGE, HASURA_IMAGE, POSTGRES_IMAGE):
+    """Pull the published explorer frontend + scraper + upstream hasura/postgres."""
+    for image in (EXPLORER_IMAGE, SCRAPER_IMAGE, HASURA_UPSTREAM_IMAGE, POSTGRES_IMAGE):
         log_info(f"Pulling {image}...")
         run_cmd(["docker", "pull", image])
     log_info("Pulled explorer images to host Docker")

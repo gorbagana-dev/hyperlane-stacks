@@ -10,9 +10,9 @@ repos:
   - github.com/gorbagana-dev/hyperlane-monorepo@gorbagana
 # containers is commented out so deploy-start won't kind-load the images;
 # k8s pulls them from the registry instead. Uncomment for local builds.
+# (hasura is the upstream image, wired via the hasura-config configmap — not built.)
 # containers:
 #   - gorbagana-dev/hyperlane-explorer
 #   - gorbagana-dev/hyperlane-scraper
-#   - gorbagana-dev/hyperlane-hasura
 pods:
   - hyperlane-explorer

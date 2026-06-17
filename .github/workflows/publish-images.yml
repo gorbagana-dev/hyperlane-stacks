@@ -12,7 +12,6 @@ on:
       - '.github/trigger-publish-gas-oracle.txt'
       - '.github/trigger-publish-explorer.txt'
       - '.github/trigger-publish-scraper.txt'
-      - '.github/trigger-publish-hasura.txt'
   workflow_dispatch:
 
 env:
@@ -31,7 +30,6 @@ jobs:
       gas-oracle: ${{ steps.check.outputs.gas-oracle }}
       explorer: ${{ steps.check.outputs.explorer }}
       scraper: ${{ steps.check.outputs.scraper }}
-      hasura: ${{ steps.check.outputs.hasura }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +44,6 @@ jobs:
           echo "gas-oracle=$(echo "$CHANGED" | grep -qF trigger-publish-gas-oracle.txt && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "explorer=$(echo "$CHANGED" | grep -qF trigger-publish-explorer.txt && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "scraper=$(echo "$CHANGED" | grep -qF trigger-publish-scraper.txt && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "hasura=$(echo "$CHANGED" | grep -qF trigger-publish-hasura.txt && echo true || echo false)" >> $GITHUB_OUTPUT
 
   build-deployer:
     needs: changes
@@ -465,77 +462,6 @@ jobs:
 
       - name: Build scraper image
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-explorer build-containers --include gorbagana-dev/hyperlane-scraper
-
-      - name: Generate image tag
-        id: tag
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-
-      - name: Tag and push image
-        run: |
-          REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
-          REMOTE_LATEST="${REMOTE_IMAGE}:latest"
-
-          docker tag "${LOCAL_IMAGE}" "${REMOTE_TAG}"
-          docker tag "${LOCAL_IMAGE}" "${REMOTE_LATEST}"
-
-          docker push "${REMOTE_TAG}"
-          docker push "${REMOTE_LATEST}"
-
-          echo "Published: ${REMOTE_TAG}"
-          echo "Published: ${REMOTE_LATEST}"
-
-  build-hasura:
-    needs: changes
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      needs.changes.outputs.hasura == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    env:
-      LOCAL_IMAGE: gorbagana-dev/hyperlane-hasura:local
-      REMOTE_IMAGE: ghcr.io/${{ github.repository_owner }}/hyperlane-hasura
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install laconic-so
-        run: |
-          mkdir -p ~/bin
-          curl -L -o ~/bin/laconic-so https://github.com/cerc-io/stack-orchestrator/releases/download/${{ env.LACONIC_SO_VERSION }}/laconic-so
-          chmod +x ~/bin/laconic-so
-          echo "$HOME/bin" >> $GITHUB_PATH
-
-      - name: Enable containers in stack.yml for building
-        run: |
-          STACK_YML="$(pwd)/stack_orchestrator/data/stacks/hyperlane-explorer/stack.yml"
-          sed -i 's/^# containers:/containers:/' "$STACK_YML"
-          sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
-
-      # The hasura image is built from committed files (no upstream repo), but the
-      # explorer stack lists the private fork; authenticate so setup-repositories
-      # can resolve the stack's repos before the build step.
-      - name: Authenticate clones to private gorbagana-dev repos
-        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN_TEMP }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
-
-      - name: Setup repositories
-        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-explorer setup-repositories
-
-      - name: Build hasura image
-        run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-explorer build-containers --include gorbagana-dev/hyperlane-hasura
 
       - name: Generate image tag
         id: tag
