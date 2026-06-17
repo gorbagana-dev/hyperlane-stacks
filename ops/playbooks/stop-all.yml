@@ -9,7 +9,13 @@
 # persisted host-path volumes under kind_mount_root (keeping caddy-cert-backup so
 # setup-all needn't re-run). Combine with destroy_cluster. The chains under
 # ~/chains are never touched.
-- name: Stop stacks
+#
+# Privilege: the stop/destroy work and the deployment-dir removal run as the
+# unprivileged deploy_user (Docker group + deploy_user-owned dirs — no sudo). Only
+# the kind-written, root-owned host-path data needs root, so that is the second
+# play below, run as privileged_user. It stays a single invocation: -e wipe_data=true
+# triggers the privileged play; add -K if privileged_user lacks passwordless sudo.
+- name: Stop stacks (deploy_user — no sudo)
   hosts: all:!controller
   gather_facts: true
   vars:
@@ -54,34 +60,45 @@
       changed_when: true
       when: destroy_cluster | bool
 
-    # Wipe persisted state on request. Runs last, after the deployments are stopped
-    # (and the cluster optionally destroyed), so nothing is writing to these paths.
-    - name: Wipe persisted data + deployment dirs on request
+    # deploy_user owns ~/deployments, so this needs no escalation.
+    - name: Remove the discovered deployment dirs (wipe)
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ _deployments.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
       when: wipe_data | bool
-      become: true
-      block:
-        - name: Remove the discovered deployment dirs
-          ansible.builtin.file:
-            path: "{{ item.path }}"
-            state: absent
-          loop: "{{ _deployments.files }}"
-          loop_control:
-            label: "{{ item.path | basename }}"
 
-        # Single mkcert cert backup lives here too — keep it so local_tls/setup-all
-        # needn't re-run. Everything else under the mount root is regenerable data.
-        - name: Find persisted host-path data under kind_mount_root
-          ansible.builtin.find:
-            paths: "{{ kind_mount_root }}"
-            file_type: any
-            excludes: "caddy-cert-backup"
-            recurse: false
-          register: _persisted
+# kind writes the host-path data as root, so removing it is the one teardown step
+# that needs sudo — done as privileged_user to keep the deploy account sudo-free.
+# A plain stop ends at the meta task below and never connects here.
+- name: Wipe root-owned host-path data on request (privileged_user)
+  hosts: all:!controller
+  gather_facts: false
+  become: true
+  vars:
+    wipe_data: false
+    ansible_user: "{{ privileged_user }}"
+  tasks:
+    - name: Nothing to wipe unless requested
+      ansible.builtin.meta: end_play
+      when: not (wipe_data | bool)
 
-        - name: Remove the persisted host-path data (keep caddy-cert-backup)
-          ansible.builtin.file:
-            path: "{{ item.path }}"
-            state: absent
-          loop: "{{ _persisted.files }}"
-          loop_control:
-            label: "{{ item.path | basename }}"
+    # Single mkcert cert backup lives here too — keep it so local_tls/setup-all
+    # needn't re-run. Everything else under the mount root is regenerable data.
+    - name: Find persisted host-path data under kind_mount_root
+      ansible.builtin.find:
+        paths: "{{ kind_mount_root }}"
+        file_type: any
+        excludes: "caddy-cert-backup"
+        recurse: false
+      register: _persisted
+
+    - name: Remove the persisted host-path data (keep caddy-cert-backup)
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ _persisted.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
