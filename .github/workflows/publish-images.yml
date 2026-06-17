@@ -165,13 +165,15 @@ jobs:
           # (sealevel-vX.Y.Z-gorbagana.N) so deployment specs can pin it.
           REF=$(grep -oP 'gorbagana-dev/hyperlane-monorepo@\K\S+' \
             stack_orchestrator/data/stacks/hyperlane-validator/stack.yml)
-          if [[ "$REF" =~ ^sealevel-v[0-9] ]]; then
+          if [[ "$REF" =~ ^sealevel-v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
             echo "ref_tag=${REF}" >> $GITHUB_OUTPUT
           else
             echo "ref_tag=" >> $GITHUB_OUTPUT
           fi
 
       - name: Tag and push agent image
+        env:
+          REF_TAG: ${{ steps.tag.outputs.ref_tag }}
         run: |
           REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
           REMOTE_LATEST="${REMOTE_IMAGE}:latest"
@@ -185,7 +187,6 @@ jobs:
           echo "Published: ${REMOTE_TAG}"
           echo "Published: ${REMOTE_LATEST}"
 
-          REF_TAG="${{ steps.tag.outputs.ref_tag }}"
           if [ -n "${REF_TAG}" ]; then
             docker tag "${LOCAL_IMAGE}" "${REMOTE_IMAGE}:${REF_TAG}"
             docker push "${REMOTE_IMAGE}:${REF_TAG}"
@@ -323,6 +324,8 @@ jobs:
           fi
 
       - name: Tag and push image
+        env:
+          REF_TAG: ${{ steps.tag.outputs.ref_tag }}
         run: |
           REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
           REMOTE_LATEST="${REMOTE_IMAGE}:latest"
@@ -336,7 +339,6 @@ jobs:
           echo "Published: ${REMOTE_TAG}"
           echo "Published: ${REMOTE_LATEST}"
 
-          REF_TAG="${{ steps.tag.outputs.ref_tag }}"
           if [ -n "${REF_TAG}" ]; then
             docker tag "${LOCAL_IMAGE}" "${REMOTE_IMAGE}:${REF_TAG}"
             docker push "${REMOTE_IMAGE}:${REF_TAG}"
@@ -410,6 +412,8 @@ jobs:
           fi
 
       - name: Tag and push image
+        env:
+          REF_TAG: ${{ steps.tag.outputs.ref_tag }}
         run: |
           REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
           REMOTE_LATEST="${REMOTE_IMAGE}:latest"
@@ -423,7 +427,6 @@ jobs:
           echo "Published: ${REMOTE_TAG}"
           echo "Published: ${REMOTE_LATEST}"
 
-          REF_TAG="${{ steps.tag.outputs.ref_tag }}"
           if [ -n "${REF_TAG}" ]; then
             docker tag "${LOCAL_IMAGE}" "${REMOTE_IMAGE}:${REF_TAG}"
             docker push "${REMOTE_IMAGE}:${REF_TAG}"
@@ -489,13 +492,15 @@ jobs:
           # (sealevel-vX.Y.Z-gorbagana.N) so deployment specs can pin it.
           REF=$(grep -oP 'gorbagana-dev/hyperlane-monorepo@\K\S+' \
             stack_orchestrator/data/stacks/hyperlane-explorer/stack.yml)
-          if [[ "$REF" =~ ^sealevel-v[0-9] ]]; then
+          if [[ "$REF" =~ ^sealevel-v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
             echo "ref_tag=${REF}" >> $GITHUB_OUTPUT
           else
             echo "ref_tag=" >> $GITHUB_OUTPUT
           fi
 
       - name: Tag and push image
+        env:
+          REF_TAG: ${{ steps.tag.outputs.ref_tag }}
         run: |
           REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
           REMOTE_LATEST="${REMOTE_IMAGE}:latest"
@@ -509,7 +514,6 @@ jobs:
           echo "Published: ${REMOTE_TAG}"
           echo "Published: ${REMOTE_LATEST}"
 
-          REF_TAG="${{ steps.tag.outputs.ref_tag }}"
           if [ -n "${REF_TAG}" ]; then
             docker tag "${LOCAL_IMAGE}" "${REMOTE_IMAGE}:${REF_TAG}"
             docker push "${REMOTE_IMAGE}:${REF_TAG}"
