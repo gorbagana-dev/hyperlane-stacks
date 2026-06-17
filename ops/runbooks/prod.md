@@ -1,9 +1,8 @@
 # Production — from-zero deployment
 
-Production runs the bridge against **external mainnet gorchain** (`https://rpc.gorbagana.wtf`)
-and **Helius mainnet**, under `bridge.gorbagana.wtf` (Cloudflare + Let's Encrypt TLS). The
-operator does **not** run a chain — gorchain is an external network. A single VM (`bridge-host-1`)
-runs everything by default, including both validators.
+Production runs the bridge against mainnet gorchain (`https://rpc.gorbagana.wtf`) and Helius
+mainnet, under `bridge.gorbagana.wtf` (Cloudflare + Let's Encrypt TLS). A single VM
+(`bridge-host-1`) runs everything by default, including both validators.
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec |
 |---|---|---|
@@ -54,9 +53,8 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
 
 ### Host accounts
 
-Unlike the staging droplets (cloud-init creates a passwordless-sudo `dev` for you), a
-bring-your-own prod host needs two accounts set up **before** you run anything, both with the
-operator's SSH key in `authorized_keys`:
+A bring-your-own prod host needs two accounts set up **before** you run anything, both with
+the operator's SSH key in `authorized_keys`:
 
 - **`privileged_user`** — an account with **sudo**. Used only by the one-time bootstrap
   (`setup-all.yml`) to install Docker/kind/kubectl/laconic-so and create `kind_mount_root`.
@@ -114,7 +112,7 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/setup-all.yml
 
 Bootstraps the host (Docker, kind, kubectl, laconic-so), reconciles DNS (all
 `bridge.gorbagana.wtf` subdomains point to `bridge-host-1`), and generates + distributes
-credentials. No chain is started — gorchain is external mainnet.
+credentials.
 
 ## 2. Key prep + funding
 
@@ -138,7 +136,7 @@ funding gate — prints each signer's address + balance gap and **fails listing 
 | Privy IGP oracle | 1 | 1 |
 | Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
-**Mainnet has no faucet.** Fund each listed address from a treasury wallet:
+Fund each listed address from a treasury wallet:
 
 1. Run the play. It prints addresses and the balance gap for each underfunded signer, then
    fails.
@@ -161,10 +159,9 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/deploy-all.yml -e state
 
 `deploy-all.yml` publishes the deployer-generated bridge state (program IDs, agent-config —
 secret-free) mid-flight to `deploy_branch`, which for prod **defaults to `main`** (set in
-`inventories/prod/group_vars/all.yml`): `main` is the canonical home for production state, so
-no throwaway branch is needed — that's a staging/rehearsal practice. Deploy from `main` (make
-sure it's the intended revision and the host can push to it). To deploy a variant off main,
-override with `-e deploy_branch=<branch>`.
+`inventories/prod/group_vars/all.yml`). Deploy from `main` — make sure it's the intended
+revision and the host can push to it. To deploy a variant off main, override with
+`-e deploy_branch=<branch>`.
 
 A **prod funding gate** runs first (before any stack starts) and aborts the deploy if any
 signer is underfunded — same check as `prepare-prod.yml`, but now a hard blocker.
@@ -296,5 +293,4 @@ Optional teardown flags (combine as needed):
   slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
 
 A full wipe is `-e destroy_cluster=true -e wipe_data=true`; rebuilding then means
-`setup-all` → `prepare-prod` → `deploy-all`. The external gorchain chain history lives off
-this host and no playbook touches it.
+`setup-all` → `prepare-prod` → `deploy-all`.

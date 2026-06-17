@@ -117,11 +117,9 @@ no SSH-ing anywhere:
 | `staging-bridge-ops` | `deployer-keypair.json`, `relayer-gorchain.key`, `relayer-solana.key`, `relayer-fee-claim.json` |
 | `staging-hyperlane-validators` | `validator-gorchain.key`, `validator-solana.key` |
 
-Staging signs from generated throwaway key files; prod signs from
-operator-provisioned key files. The bridge owner is not a keyfile on any env:
-at the end of the deploy, program upgrade authority and mailbox/ISM/route
-ownership transfer to `BRIDGE_OWNER_PUBKEY` — the Privy bridge-owner wallet,
-which signs nothing during deployment.
+The bridge owner is not a keyfile: at the end of the deploy, program upgrade
+authority and mailbox/ISM/route ownership transfer to `BRIDGE_OWNER_PUBKEY` —
+the Privy bridge-owner wallet, which signs nothing during deployment.
 
 ### Funding the signers (expect to do the devnet side by hand)
 
