@@ -11,6 +11,16 @@ Solana is devnet and gorchain is the operator's own faucet chain, so token there
 is free; on **prod** both are mainnet, so this is real money — budget the Solana
 (Helius mainnet) leg in particular.
 
+**Does the devnet measurement map to mainnet? Yes, 1-1.** Rent is the bulk of the
+cost and it's a fixed function of account size: `getMinimumBalanceForRentExemption`
+returns identical values on devnet, mainnet-beta, and gorchain (the per-byte rate
+works out to the same 6960 lamports/byte on all three). It does **not** vary with
+SOL price or network congestion. Congestion only touches transaction fees — base
+fee is a flat 5000 lamports/signature, and *priority* fees (0 on the staging
+deploy) may be needed to land deploy txs on a busy mainnet. That adds at most
+~0.1, not whole SOL, so keep a small buffer but the SOL figures carry over. The
+only thing that really changes is fiat: mainnet SOL costs real money.
+
 ## TL;DR — recommended funding per chain
 
 | Account | Fund (1 route) | Why |
