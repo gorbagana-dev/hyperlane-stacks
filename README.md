@@ -92,6 +92,68 @@ State flows from the deployer Jobs (which write JSON to a host `/state` path) in
 each downstream stack's ConfigMaps at deploy time. The mechanics are in
 [docs/architecture-decisions.md](docs/architecture-decisions.md) and `CLAUDE.md`.
 
+## How the components interact
+
+The deployer Jobs run first and seed contract addresses/config; once the
+long-running stacks are up, they interact at runtime as below. The two chains and
+the external services (Privy for signing, Slack for alerts) sit outside the
+cluster; everything else is a stack in this repo.
+
+```mermaid
+flowchart TB
+    user(["User / wallet"])
+
+    subgraph cluster ["Bridge stacks (k8s)"]
+        ui["warp-ui"]
+        vg["validator · gorchain"]
+        vs["validator · solana"]
+        rel["relayer"]
+        go["gas-oracle"]
+        mon["monitoring"]
+        minio[("MinIO<br/>checkpoints")]
+    end
+
+    gor[("Gorchain")]
+    sol[("Solana")]
+    privy{{"Privy server wallet"}}
+    slack{{"Slack"}}
+    exp["explorer"]
+
+    user -->|bridge transfer| ui
+    ui -->|submit tx| gor
+    ui -->|submit tx · server RPC proxy| sol
+    ui -.->|message status link| exp
+
+    vg -->|watch mailbox| gor
+    vs -->|watch mailbox| sol
+    vg -->|signed checkpoints| minio
+    vs -->|signed checkpoints| minio
+    rel -->|read checkpoints| minio
+    rel -->|deliver messages| gor
+    rel -->|deliver messages| sol
+    go -->|update IGP configs| gor
+    go -->|update IGP configs| sol
+
+    vg --> privy
+    vs --> privy
+    rel --> privy
+    go --> privy
+
+    mon -->|scrape metrics| vg
+    mon -->|scrape metrics| vs
+    mon -->|scrape metrics| rel
+    mon -->|balance checks| gor
+    mon -->|balance checks| sol
+    mon -.->|low-balance alerts| slack
+```
+
+In short: validators watch each chain's mailbox and write signed checkpoints to
+MinIO; the relayer reads those checkpoints and delivers messages to the
+destination chain; the gas oracle keeps IGP fee configs current; the warp UI is
+the user-facing entry to all of it; and monitoring scrapes agent metrics and
+watches signer balances. Every on-chain signer signs through the Privy server
+wallet.
+
 ## How deployments work
 
 Deployments are **declarative**. The unit of truth for a deployment is its
@@ -134,8 +196,8 @@ copy-runnable guide:
 
 | Environment | Runbook | What it is |
 |---|---|---|
-| **staging** | [ops/runbooks/staging.md](ops/runbooks/staging.md) | Prod rehearsal: Solana devnet + a persistent single-node gorchain, real DNS/TLS, on three VMs |
 | **prod** | [ops/runbooks/prod.md](ops/runbooks/prod.md) | Mainnet: external gorchain + Helius mainnet, single host under `bridge.gorbagana.wtf` |
+| **staging** | [ops/runbooks/staging.md](ops/runbooks/staging.md) | Prod rehearsal: Solana devnet + a persistent single-node gorchain, real DNS/TLS, on three VMs |
 | **local (single-host)** | [ops/runbooks/local-single-host.md](ops/runbooks/local-single-host.md) | Whole bridge + both chains on one VM, self-trusted certs |
 
 Operational tasks have their own runbooks:
