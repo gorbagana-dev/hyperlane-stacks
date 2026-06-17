@@ -86,9 +86,9 @@ PDAs/fees ~0.06 ≈ **8.2**. gorchain mirrors this (~8.1).
 
 ## What you actually spend vs. get back
 
-- **Locked for the bridge's life (~7.1/chain):** program rent. Recoverable only
-  by *closing* the programs, and the upgrade authority was handed to the bridge
-  owner at deploy — so in practice it stays locked.
+- **Locked for the bridge's life (~7.1/chain):** program rent. Reclaimable only by
+  closing the programs on permanent decommission (see below); stays locked while
+  the bridge runs.
 - **Operational reserve (~1.0/route/chain):** sits in the ATA-payer PDA, still
   usable.
 - **Reclaimable (~1.9):** the deployer's leftover, drained back to a treasury by
@@ -97,6 +97,29 @@ PDAs/fees ~0.06 ≈ **8.2**. gorchain mirrors this (~8.1).
 
 So a single-route bridge ties up **~8 per chain** semi-permanently, plus the
 small operational reserves on the other signers.
+
+### Reclaiming rent if you decommission
+
+If you permanently shut the bridge down, the program rent — the ~7.1/chain bulk —
+comes back via:
+
+```
+solana program close <program_id> --recipient <treasury>
+```
+
+- **Who signs:** the **upgrade authority**, which is the **bridge owner**
+  (`BRIDGE_OWNER_PUBKEY` — the Privy server wallet; `AUiSJK…` on staging). The
+  deployer can't — it handed authority off at deploy. There's no playbook for it
+  (`retire-keys.yml` only drains the hot signer keyfiles), so it's a manual close
+  tx signed through Privy, one per program.
+- **Irreversible:** closing burns the program ID (you can't redeploy to it) and
+  bricks the bridge — only do it after draining escrowed collateral and letting
+  in-flight messages settle.
+- **Not recovered this way:** the smaller deposits — state PDAs, the ~1/route
+  ATA-payer PDAs, the synthetic mint. They're owned by the programs with no admin
+  "close-all" path, so treat them as sunk (~1+/chain).
+
+Net: on teardown you can claw ~7/chain back to a treasury; the rest stays locked.
 
 ## Cutting the cost (the 2× lever)
 
