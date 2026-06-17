@@ -137,6 +137,10 @@ funding gate — prints each signer's address + balance gap and **fails listing 
 | Privy IGP oracle | 1 | 1 |
 | Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
+Where these numbers come from — measured per-account consumption, the program-rent
+breakdown behind the deployer's spend, and the +~3.3/chain cost of each extra warp
+route — is in [funding-estimate.md](funding-estimate.md).
+
 Fund each listed address from a treasury wallet:
 
 1. Run the play. It prints addresses and the balance gap for each underfunded signer, then
