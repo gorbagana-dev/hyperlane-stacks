@@ -52,12 +52,31 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
   server-wallet per validator — follow [privy-wallets.md](privy-wallets.md). Mint these now
   and keep the outputs handy; paste them in when you fill `deployment-config.yml` below.
 
+### Host accounts
+
+Unlike the staging droplets (cloud-init creates a passwordless-sudo `dev` for you), a
+bring-your-own prod host needs two accounts set up **before** you run anything, both with the
+operator's SSH key in `authorized_keys`:
+
+- **`privileged_user`** — an account with **sudo**. Used only by the one-time bootstrap
+  (`setup-all.yml`) to install Docker/kind/kubectl/laconic-so and create `kind_mount_root`.
+  Passwordless sudo (`<user> ALL=(ALL) NOPASSWD:ALL` in `/etc/sudoers.d/`) lets the playbooks
+  run unattended; otherwise pass `-K` (see step 1).
+- **`deploy_user`** — an **unprivileged** account (no sudo required) that runs `laconic-so`
+  and every steady-state playbook (deploy/publish/retire). Bootstrap adds it to the `docker`
+  group; it needs nothing more. The two can be the same account, but they don't have to be —
+  the split exists precisely so the day-to-day deploy account never needs sudo.
+
+The only later command that needs sudo is teardown (`stop-all.yml -e wipe_data=true`, removes
+root-owned host-path state) — run that as `privileged_user` (or with `-K`).
+
 ### Configure inventory + secrets
 
 Fill in exactly two things:
 
-1. `ops/inventories/prod/host_vars/bridge-host-1.yml`: set `public_ip` to the VM's IP
-   (`privileged_user` and `deploy_user` are already `dev`).
+1. `ops/inventories/prod/host_vars/bridge-host-1.yml`: set `public_ip` to the VM's IP, and
+   set `privileged_user` / `deploy_user` to the accounts from "Host accounts" above (both
+   default to `dev`).
 2. The one operator file — every secret and identity value lives here:
 
    ```bash
@@ -90,6 +109,7 @@ cd ops   # from the repo root
 
 ```bash
 ansible-playbook -i inventories/prod/hosts.yml playbooks/setup-all.yml
+# add -K if privileged_user does NOT have passwordless sudo (prompts once for its sudo password)
 ```
 
 Bootstraps the host (Docker, kind, kubectl, laconic-so), reconciles DNS (all
