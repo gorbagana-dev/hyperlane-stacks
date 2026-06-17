@@ -76,8 +76,8 @@ When making structural changes, update:
 - `docs/architecture-decisions.md` — if architectural patterns change
 - `docs/development.md` — if the image change/release/publish/deploy flow changes
   (source pins, trigger files, version scheme, image-overrides)
-- `README.md` — repo overview / handoff doc: live endpoints, repos↔images table,
-  stacks, how deployments work; keep it current when these change
+- `README.md` — repo overview: live endpoints, repos↔images table, stacks, how
+  deployments work; keep it current when these change
 
 ## Config patterns
 

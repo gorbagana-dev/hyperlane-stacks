@@ -2,10 +2,9 @@
 
 This guide covers the full lifecycle of a change to any of the container images
 the stacks run: from a code edit, through a release and image publish, to it
-running in a deployment. It is written generally so the same flow applies to the
-warp UI, the explorer, the agents, or the in-repo services — the worked example
-throughout is **reskinning the warp UI** (and, identically, the explorer) from
-Hyperlane branding to Gorbagana, because that is the most common task.
+running in a deployment. The same flow applies to the warp UI, the explorer, the
+agents, and the in-repo services; reskinning the warp UI (or the explorer) from
+Hyperlane branding to Gorbagana is used as the worked example.
 
 ## Where each image comes from
 
@@ -14,10 +13,10 @@ patterns, and which one you are dealing with decides the first few steps:
 
 | Image | Source pattern | Where the source lives |
 |---|---|---|
-| `hyperlane-warp-ui` | **fork** | `gorbagana-dev/hyperlane-warp-ui-template`, pinned in `stack.yml` by release tag |
+| `hyperlane-warp-ui` | **fork** | [`hyperlane-warp-ui-template`](https://github.com/gorbagana-dev/hyperlane-warp-ui-template), pinned in `stack.yml` by release tag |
 | explorer | **fork** (in progress) | its own `gorbagana-dev/…` repo, pinned by release tag |
-| `hyperlane-agent`, `hyperlane-svm-deployer` | **upstream pin** | `hyperlane-xyz/hyperlane-monorepo`, pinned in `stack.yml` by commit |
-| `hyperlane-kms-proxy`, `hyperlane-gas-oracle` | **in-repo** | `hyperlane-kms-proxy/`, `hyperlane-gas-oracle/` in this repository |
+| `hyperlane-agent`, `hyperlane-svm-deployer` | **upstream pin** | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo), pinned in `stack.yml` by commit |
+| `hyperlane-kms-proxy`, `hyperlane-gas-oracle` | **in-repo** | [`hyperlane-kms-proxy/`](../hyperlane-kms-proxy/), [`hyperlane-gas-oracle/`](../hyperlane-gas-oracle/) in this repository |
 
 - **Fork** — we maintain our own branded/modified source in a `gorbagana-dev`
   repo and pin a release tag. Use this when the change is substantial and ongoing

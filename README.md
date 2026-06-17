@@ -5,65 +5,64 @@ cross-chain token bridge between **Gorchain** and **Solana**: contract deployers
 validators, relayer, gas oracle, monitoring, and a browser-based bridge UI — all
 packaged for `k8s-kind` deployment and driven from an ansible ops layer.
 
-This README is the entry point for anyone taking over the deployment: it explains
-the repository, the components, how deployments work, and how to operate and
-change them. Each section links to the deeper reference docs and runbooks.
+## Live endpoints (production)
 
-## Live endpoints
-
-| | Production | Staging |
-|---|---|---|
-| Bridge UI | https://bridge.gorbagana.wtf | https://staging.gorbagana.wtf |
-| Explorer¹ | https://explorer.bridge.gorbagana.wtf | https://explorer.staging.gorbagana.wtf |
-| Grafana | https://grafana.bridge.gorbagana.wtf | https://grafana.staging.gorbagana.wtf |
-| Prometheus | https://prometheus.bridge.gorbagana.wtf | https://prometheus.staging.gorbagana.wtf |
-| Gorchain RPC | https://rpc.gorbagana.wtf | https://rpc.staging.gorbagana.wtf |
+- Bridge UI — https://bridge.gorbagana.wtf
+- Explorer¹ — https://explorer.bridge.gorbagana.wtf
+- Grafana — https://grafana.bridge.gorbagana.wtf
+- Prometheus — https://prometheus.bridge.gorbagana.wtf
+- Gorchain RPC — https://rpc.gorbagana.wtf
 
 ¹ The explorer is a separate application under active development in its own
-repository; the deployment stack and these URLs are placeholders to be wired up
+repository; the deployment stack and this URL are placeholders to be wired up
 when it lands.
 
 ## Repository layout
 
-- `stack_orchestrator/` — the stacks themselves: stack definitions (`data/stacks/`),
-  compose files (`data/compose/`, `data/compose-jobs/`), config sources
-  (`data/config/`), and container builds (`data/container-build/`)
-- `deployment/` — per-environment deployment **specs** and warp-route menus
-  (prod at the root, `staging/`, `local/`). These are the declarative inputs that
-  describe each deployment.
-- `ops/` — the ansible deploy layer (`inventories/`, `playbooks/`, `roles/`,
-  `scripts/`) and the operator [`runbooks/`](ops/runbooks/). This is how a bridge
-  is actually brought up and operated.
-- `hyperlane-kms-proxy/` — Privy KMS proxy sidecar (Go), source for the
-  `hyperlane-kms-proxy` image
-- `hyperlane-gas-oracle/` — gas oracle service (Node.js), source for the
-  `hyperlane-gas-oracle` image
-- `tests/` — test suites (`e2e/` pytest, `unit/`)
-- `docs/` — architecture decisions, stack/ops specifications, and the
-  [development guide](docs/development.md) for changing and releasing the app images
-- `CLAUDE.md` — machine-readable map of the repo and its keep-in-sync rules;
-  read it first when using an AI assistant to make changes here
+```
+hyperlane-stacks/
+├── stack_orchestrator/        # the stacks themselves
+│   └── data/
+│       ├── stacks/            #   stack definitions (stack.yml per stack)
+│       ├── compose/           #   compose files for long-running pods
+│       ├── compose-jobs/      #   compose files for one-shot deployer jobs
+│       ├── config/            #   config sources (scripts, templates)
+│       └── container-build/   #   Dockerfiles + build scripts
+├── deployment/                # per-env deployment specs + warp-route menus
+│   ├── spec-*.yml             #   prod specs (declarative inputs per stack)
+│   ├── staging/               #   staging overrides
+│   └── local/                 #   local overrides
+├── ops/                       # ansible deploy layer — how a bridge is brought up
+│   ├── inventories/           #   per-env hosts, group_vars, deployment-config
+│   ├── playbooks/             #   setup-all, deploy-all + per-step plays
+│   ├── roles/                 #   building blocks (stack_deploy, credentials, …)
+│   ├── scripts/               #   host-side helpers (chain setup, keys, funding)
+│   └── runbooks/              #   from-zero operator guides — start here
+├── hyperlane-kms-proxy/       # Privy KMS proxy sidecar (Go) → kms-proxy image
+├── hyperlane-gas-oracle/      # gas oracle service (Node.js) → gas-oracle image
+├── tests/                     # e2e (pytest) + unit suites
+├── docs/                      # architecture/stack/ops specs + development guide
+└── CLAUDE.md                  # repo map + keep-in-sync rules
+```
 
 ## Repos and images
 
-The stacks run container images published to `ghcr.io/gorbagana-dev/`. Some are
-built from upstream Hyperlane sources pinned by commit; one is built from our own
-fork; two are built from services that live in this repo.
+The stacks run container images published to `ghcr.io/gorbagana-dev/`. Each is
+built either from an upstream Hyperlane source, from our own fork, or from a
+service in this repo. The exact pins (fork release tags, upstream commits) live
+in each stack's `stack_orchestrator/data/stacks/<stack>/stack.yml`.
 
-| Image (`ghcr.io/gorbagana-dev/…`) | Built from | Kind | Used by |
+| Image | Built from | Kind | Used by |
 |---|---|---|---|
-| `hyperlane-agent` | `hyperlane-xyz/hyperlane-monorepo` @ pinned commit | upstream pin | validator, relayer |
-| `hyperlane-svm-deployer` | `hyperlane-xyz/hyperlane-monorepo` @ pinned commit + `hyperlane-xyz/solana-program-library` | upstream pin | svm-deployer, warp-deployer |
-| `hyperlane-kms-proxy` | `hyperlane-kms-proxy/` (this repo) | in-repo | validator, relayer (sidecar) |
-| `hyperlane-gas-oracle` | `hyperlane-gas-oracle/` (this repo) | in-repo | gas-oracle |
-| `hyperlane-warp-ui` | `gorbagana-dev/hyperlane-warp-ui-template` @ `vX.Y.Z-gorbagana.N` | **our fork** | warp-ui |
+| [`hyperlane-agent`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-agent) | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo) | upstream | validator, relayer |
+| [`hyperlane-svm-deployer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-svm-deployer) | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo) + [`solana-program-library`](https://github.com/hyperlane-xyz/solana-program-library) | upstream | svm-deployer, warp-deployer |
+| [`hyperlane-kms-proxy`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-kms-proxy) | [`hyperlane-kms-proxy/`](hyperlane-kms-proxy/) | in-repo | validator, relayer (sidecar) |
+| [`hyperlane-gas-oracle`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-gas-oracle) | [`hyperlane-gas-oracle/`](hyperlane-gas-oracle/) | in-repo | gas-oracle |
+| [`hyperlane-warp-ui`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-warp-ui) | [`hyperlane-warp-ui-template`](https://github.com/gorbagana-dev/hyperlane-warp-ui-template) | our fork | warp-ui |
 | explorer | separate repo (in progress) | placeholder | explorer |
 
-The exact pins live in each stack's `stack_orchestrator/data/stacks/<stack>/stack.yml`
-(`repos:` for upstream/fork sources). Images are built and published by CI —
-see the [development guide](docs/development.md) for the full change → release →
-publish → deploy flow (this is the path you follow to reskin the warp UI or the
-explorer from Hyperlane branding to Gorbagana).
+Building and publishing these images, and rolling a new one into a deployment, is
+covered in the [development guide](docs/development.md).
 
 ## Stacks
 
@@ -138,7 +137,6 @@ copy-runnable guide:
 | **staging** | [ops/runbooks/staging.md](ops/runbooks/staging.md) | Prod rehearsal: Solana devnet + a persistent single-node gorchain, real DNS/TLS, on three VMs |
 | **prod** | [ops/runbooks/prod.md](ops/runbooks/prod.md) | Mainnet: external gorchain + Helius mainnet, single host under `bridge.gorbagana.wtf` |
 | **local (single-host)** | [ops/runbooks/local-single-host.md](ops/runbooks/local-single-host.md) | Whole bridge + both chains on one VM, self-trusted certs |
-| **local (multi-host)** | [ops/runbooks/local-multi-host.md](ops/runbooks/local-multi-host.md) | Multi-VM local topology |
 
 Operational tasks have their own runbooks:
 
