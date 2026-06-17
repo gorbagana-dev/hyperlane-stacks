@@ -74,6 +74,10 @@ When making structural changes, update:
 - `docs/stack-specifications.md` — detailed per-stack specs
 - `docs/e2e-test-spec.md` — E2E test plan and infrastructure
 - `docs/architecture-decisions.md` — if architectural patterns change
+- `docs/development.md` — if the image change/release/publish/deploy flow changes
+  (source pins, trigger files, version scheme, image-overrides)
+- `README.md` — repo overview / handoff doc: live endpoints, repos↔images table,
+  stacks, how deployments work; keep it current when these change
 
 ## Config patterns
 
