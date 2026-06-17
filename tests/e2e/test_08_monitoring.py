@@ -185,14 +185,40 @@ class TestMonitoring:
         log.info("Balance monitor started and reported watches")
 
     def test_balance_monitor_alerts_low_wallet(self, monitoring_deployment: dict) -> None:
-        """The underfunded watch produced a Slack alert; funded ones stayed quiet."""
+        """The underfunded watch alerts; funded ones stay quiet.
+
+        Fresh deploy: assert the alert POST captured by the mock Slack webhook
+        (end-to-end delivery). On reuse (--skip-monitoring-deploy) the one-shot
+        alert already fired and can't be recaptured, so verify the monitor's
+        persisted [WARNING] breach logs instead.
+        """
+        low_labels = monitoring_deployment["low_labels"]
+
+        if monitoring_deployment.get("reused"):
+            logs = _get_container_logs(
+                monitoring_deployment["namespace"],
+                monitoring_deployment["pod_name"],
+                "balance-monitor",
+            )
+            warnings = "\n".join(
+                ln for ln in logs.splitlines() if "[WARNING]" in ln
+            )
+            assert warnings, "no low-balance WARNING in balance-monitor logs"
+            for label in low_labels:
+                assert label in warnings, f"no breach logged for {label!r}: {warnings}"
+            assert "relayer" not in warnings, (
+                f"funded relayer should not breach: {warnings}"
+            )
+            log.info("Balance monitor logged breaches for: %s", low_labels)
+            return
+
         payloads = monitoring_deployment["slack_payloads"]
         assert payloads, "no Slack alert captured for the underfunded wallet"
         text = "\n".join(p.get("text", "") for p in payloads)
-        for label in monitoring_deployment["low_labels"]:
+        for label in low_labels:
             assert label in text, f"alert missing low wallet {label!r}: {text}"
         assert "relayer" not in text, f"funded relayer should not alert: {text}"
-        log.info("Slack alert fired for: %s", monitoring_deployment["low_labels"])
+        log.info("Slack alert fired for: %s", low_labels)
 
     def test_validator_targets_up(self, monitoring_deployment: dict) -> None:
         """Both validators are scraped cross-host (up == 1 per instance)."""

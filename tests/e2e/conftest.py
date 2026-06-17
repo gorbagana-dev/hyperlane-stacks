@@ -1491,6 +1491,34 @@ class _SlackCapture:
         self._server.shutdown()
 
 
+def _wait_for_prometheus_scrape(prometheus_url: str, timeout: int = 90) -> None:
+    """Block until Prometheus has completed its first scrape cycle.
+
+    The scrape-dependent tests (self-scrape, validator/relayer targets up, agent
+    metrics) query `up`/agent series that only exist after Prometheus's first 15s
+    scrape tick. Poll its self-scrape series so the tests don't race that tick.
+    """
+    from urllib.parse import quote
+
+    query = quote('up{job="prometheus"}')
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        probe = subprocess.run(
+            ["curl", "-s", f"{prometheus_url}/api/v1/query?query={query}"],
+            capture_output=True, text=True, check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            try:
+                data = json.loads(probe.stdout)
+            except ValueError:
+                data = {}
+            if data.get("status") == "success" and data.get("data", {}).get("result"):
+                log.info("Prometheus has completed its first scrape cycle")
+                return
+        time.sleep(3)
+    log.warning("Prometheus self-scrape not visible after %ss", timeout)
+
+
 @pytest.fixture(scope="session")
 def monitoring_deployment(
     deployer_deployment: DeploymentInfo,
@@ -1518,14 +1546,19 @@ def monitoring_deployment(
             ).stdout.strip()
             assert pod_name, "Monitoring pod not found — cannot reuse deployment"
             log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
+            # The low-balance alert is a one-shot POST that already fired on the
+            # original deploy and can't be recaptured here; reused=True tells the
+            # alert test to verify the monitor's persisted breach logs instead.
+            _, low_labels = _build_watches(keypairs)
             yield {
                 "deployment": DeploymentInfo(
                     deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
                 ),
                 "namespace": namespace,
                 "pod_name": pod_name,
-                "low_labels": [],
+                "low_labels": low_labels,
                 "slack_payloads": [],
+                "reused": True,
                 "grafana_url": GRAFANA_URL,
                 "prometheus_url": PROMETHEUS_URL,
             }
@@ -1599,12 +1632,17 @@ def monitoring_deployment(
                 log.warning("%s not returning 200 after 60s", url)
             log.info("Ingress ready at %s", url)
 
+        # Scrape-dependent tests need Prometheus to have completed a scrape cycle.
+        log.info("Waiting for Prometheus to complete its first scrape...")
+        _wait_for_prometheus_scrape(PROMETHEUS_URL)
+
         yield {
             "deployment": deploy_info,
             "namespace": namespace,
             "pod_name": pod_name,
             "low_labels": low_labels,
             "slack_payloads": list(slack.payloads),
+            "reused": False,
             "grafana_url": GRAFANA_URL,
             "prometheus_url": PROMETHEUS_URL,
         }
