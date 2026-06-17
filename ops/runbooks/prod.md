@@ -65,8 +65,9 @@ the operator's SSH key in `authorized_keys`:
   group; it needs nothing more. The two can be the same account, but they don't have to be —
   the split exists precisely so the day-to-day deploy account never needs sudo.
 
-The only later command that needs sudo is teardown (`stop-all.yml -e wipe_data=true`, removes
-root-owned host-path state) — run that as `privileged_user` (or with `-K`).
+The only later command that needs sudo is the teardown wipe (`stop-all.yml -e wipe_data=true`):
+it removes root-owned host-path state, so the playbook runs that step as `privileged_user` —
+add `-K` if it lacks passwordless sudo.
 
 ### Configure inventory + secrets
 
@@ -290,7 +291,8 @@ Optional teardown flags (combine as needed):
   (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
 - `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
   (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
-  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run. This data is root-owned, so
+  the wipe runs as `privileged_user` — add `-K` if it lacks passwordless sudo.
 
 A full wipe is `-e destroy_cluster=true -e wipe_data=true`; rebuilding then means
 `setup-all` → `prepare-prod` → `deploy-all`.

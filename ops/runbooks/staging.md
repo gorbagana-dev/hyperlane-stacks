@@ -320,7 +320,8 @@ Optional teardown flags (combine as needed):
   (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
 - `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
   (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
-  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run. This data is root-owned, so
+  the wipe runs as `privileged_user` — add `-K` if it lacks passwordless sudo.
 
 The persistent gorchain chain state under `~/chains/gorchain` is **never** touched by any
 playbook (not even `wipe_data`). To reset chain state, remove `~/chains/gorchain` + the
