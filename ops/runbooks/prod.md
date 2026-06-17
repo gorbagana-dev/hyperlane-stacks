@@ -133,8 +133,8 @@ funding gate — prints each signer's address + balance gap and **fails listing 
 | solana validator | — | 0.1 |
 | relayer gorchain signer | 1 | — |
 | relayer solana signer | — | 1 |
-| IGP fee-claim | 1 | 1 |
-| Privy IGP oracle | 1 | 1 |
+| IGP fee-claim | 0.5 | 0.5 |
+| Privy IGP oracle | 0.5 | 0.5 |
 | Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
 Where these numbers come from — measured per-account consumption, the program-rent

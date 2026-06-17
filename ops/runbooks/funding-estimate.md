@@ -35,9 +35,12 @@ only thing that really changes is fiat: mainnet SOL costs real money.
 **Per additional warp route: +~3.3 per chain on the deployer** (one warp program
 + one prefunded ATA-payer PDA). Nothing else changes.
 
-The prod funding table ([prod.md](prod.md) step 2) currently targets the gorchain
-deployer at **100** — well above the ~8 deployment need, as conservative margin.
-The Solana deployer target (10) matches the estimate above.
+The deployer target is **route-dependent** (~8 + ~3.3 per warp route) and the key
+is drained back to a treasury after deploy, so over-funding isn't lost. The prod
+table sets Solana to **10** (a one-route baseline) and gorchain to **100** (extra
+headroom for multiple routes / retries). Size it to your planned route count: the
+funding gate checks the *target*, not the actual per-route need, so an under-set
+target can run out mid-deploy.
 
 > Watch these balances in production with the balance-monitor (see
 > [monitoring.md](monitoring.md)) — the relayer is the one that drains over time.
