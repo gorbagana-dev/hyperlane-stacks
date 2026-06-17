@@ -32,32 +32,39 @@ for v in DEPLOYER_KEYPAIR_ADDR VALIDATOR_GORCHAIN_ADDR VALIDATOR_SOLANA_ADDR \
   [ -n "${!v:-}" ] || { echo "ERROR: $v missing from $ADDR_FILE — regenerate that key (see gen-local-keys.sh output) and re-run"; exit 1; }
 done
 
-balance_sol() {  # <addr> <rpc> — whole SOL rounded down; 0 if account absent
+# Work in integer lamports so sub-SOL targets (e.g. the validator's 0.1) compare
+# exactly; targets and chunks are written in SOL for readability and converted here.
+to_lamports() { awk -v s="$1" 'BEGIN{printf "%d", s * 1000000000}'; }
+fmt_sol()     { awk -v l="$1" 'BEGIN{printf "%.4f", l / 1000000000}'; }
+balance_lamports() {  # <addr> <rpc> — integer lamports; 0 if account absent
   local out
-  out=$(solana balance "$1" --url "$2" 2>/dev/null) || { echo 0; return; }
-  echo "$out" | awk '{print int($1)}'
+  out=$(solana balance "$1" --url "$2" --lamports 2>/dev/null) || { echo 0; return; }
+  echo "$out" | awk '{print $1 + 0}'
 }
 
 SHORTFALLS=()
-top_up() {  # <label> <addr> <target_sol> <rpc> <chunk> <max_retries>
+top_up() {  # <label> <addr> <target_sol> <rpc> <chunk_sol> <max_retries>
   # Progress is measured by re-reading the balance, never by airdrop exit codes:
   # the gorchain faucet returns success while silently transferring nothing for
   # refused requests. max_retries bounds consecutive no-progress attempts.
-  local label=$1 addr=$2 target=$3 rpc=$4 chunk=$5 max_retries=$6 have prev amount fails=0
-  have=$(balance_sol "$addr" "$rpc")
+  local label=$1 addr=$2 target_sol=$3 rpc=$4 chunk_sol=$5 max_retries=$6
+  local target chunk have prev amount_l amount fails=0
+  target=$(to_lamports "$target_sol"); chunk=$(to_lamports "$chunk_sol")
+  have=$(balance_lamports "$addr" "$rpc")
   while [ "$have" -lt "$target" ] && [ "$fails" -lt "$max_retries" ]; do
-    amount=$(( (target - have) < chunk ? (target - have) : chunk ))
+    amount_l=$(( (target - have) < chunk ? (target - have) : chunk ))
+    amount=$(fmt_sol "$amount_l")
     solana airdrop "$amount" "$addr" --url "$rpc" >/dev/null 2>&1 || true
     sleep 3
     prev=$have
-    have=$(balance_sol "$addr" "$rpc")
+    have=$(balance_lamports "$addr" "$rpc")
     if [ "$have" -gt "$prev" ]; then fails=0; else fails=$(( fails + 1 )); fi
   done
   if [ "$have" -ge "$target" ]; then
-    echo "  ✓ $label $addr: $have SOL (>= $target)"
+    echo "  ✓ $label $addr: $(fmt_sol "$have") SOL (>= $target_sol)"
   else
-    echo "  ✗ $label $addr: have $have SOL, want $target"
-    SHORTFALLS+=("$addr needs $(( target - have )) more SOL ($label)")
+    echo "  ✗ $label $addr: have $(fmt_sol "$have") SOL, want $target_sol"
+    SHORTFALLS+=("$addr needs $(fmt_sol "$(( target - have ))") more SOL ($label)")
     return 1
   fi
 }
@@ -67,17 +74,17 @@ echo "Funding on gorchain ($GORCHAIN_RPC)..."
 solana cluster-version --url "$GORCHAIN_RPC" >/dev/null 2>&1 \
   || { echo "ERROR: gorchain RPC unreachable — is the chain running?"; exit 1; }
 top_up "deployer"          "$DEPLOYER_KEYPAIR_ADDR"   100 "$GORCHAIN_RPC" 10 5 || rc=1
-top_up "gorchain validator" "$VALIDATOR_GORCHAIN_ADDR"  1 "$GORCHAIN_RPC" 10 5 || rc=1
+top_up "gorchain validator" "$VALIDATOR_GORCHAIN_ADDR" 0.1 "$GORCHAIN_RPC" 10 5 || rc=1
 top_up "relayer gorchain"  "$RELAYER_GORCHAIN_ADDR"     1 "$GORCHAIN_RPC" 10 5 || rc=1
-top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"    1 "$GORCHAIN_RPC" 10 5 || rc=1
-top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"             1 "$GORCHAIN_RPC" 10 5 || rc=1
+top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"   0.5 "$GORCHAIN_RPC" 10 5 || rc=1
+top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"            0.5 "$GORCHAIN_RPC" 10 5 || rc=1
 
 echo "Funding on solana devnet ($DEVNET_RPC)..."
 top_up "deployer"          "$DEPLOYER_KEYPAIR_ADDR"    10 "$DEVNET_RPC" 2 3 || rc=1
-top_up "solana validator"  "$VALIDATOR_SOLANA_ADDR"     1 "$DEVNET_RPC" 2 3 || rc=1
+top_up "solana validator"  "$VALIDATOR_SOLANA_ADDR"    0.1 "$DEVNET_RPC" 2 3 || rc=1
 top_up "relayer solana"    "$RELAYER_SOLANA_ADDR"       1 "$DEVNET_RPC" 2 3 || rc=1
-top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"    1 "$DEVNET_RPC" 2 3 || rc=1
-top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"             1 "$DEVNET_RPC" 2 3 || rc=1
+top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"   0.5 "$DEVNET_RPC" 2 3 || rc=1
+top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"            0.5 "$DEVNET_RPC" 2 3 || rc=1
 
 if [ "$rc" -ne 0 ]; then
   echo ""

@@ -44,12 +44,15 @@ local_warp_token_mint: ""        # WARP_TOKEN_MINT printed by the chains-box SPL
 # Add extra/SPL watches post-deploy by editing the generated watches.json on the
 # monitoring host and `laconic-so deployment <dir> restart` (see runbooks).
 balance_monitor:
-  default_threshold: 1.0        # native-balance floor for any signer without a role entry
+  # Alert when a signer's native balance drops below its floor. Operational signers
+  # are funded ~1 each and burn little (see runbooks/funding-estimate.md), so floors
+  # sit below 1 — warn ahead of a top-up without firing on a freshly-funded bridge.
+  default_threshold: 0.1        # any signer without a role entry
   thresholds:
-    relayer: 5.0
-    fee-claim: 2.0
-    igp-oracle: 2.0
-    validator: 1.0
+    relayer: 0.5                # active spender + critical path (delivery halts if dry)
+    fee-claim: 0.2              # periodic claim txs only
+    igp-oracle: 0.2             # periodic gas-oracle posts only
+    # validator keys are not watched — drained by retire-keys after the one-time announce
 
 # --- Tuning (optional; defaults shown) ---
 # gas_oracle_interval_ms: "900000"     # gas-oracle price-update loop interval (15 min)

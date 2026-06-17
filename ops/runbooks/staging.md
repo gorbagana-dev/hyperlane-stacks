@@ -117,11 +117,9 @@ no SSH-ing anywhere:
 | `staging-bridge-ops` | `deployer-keypair.json`, `relayer-gorchain.key`, `relayer-solana.key`, `relayer-fee-claim.json` |
 | `staging-hyperlane-validators` | `validator-gorchain.key`, `validator-solana.key` |
 
-Staging signs from generated throwaway key files; prod signs from
-operator-provisioned key files. The bridge owner is not a keyfile on any env:
-at the end of the deploy, program upgrade authority and mailbox/ISM/route
-ownership transfer to `BRIDGE_OWNER_PUBKEY` — the Privy bridge-owner wallet,
-which signs nothing during deployment.
+The bridge owner is not a keyfile: at the end of the deploy, program upgrade
+authority and mailbox/ISM/route ownership transfer to `BRIDGE_OWNER_PUBKEY` —
+the Privy bridge-owner wallet, which signs nothing during deployment.
 
 ### Funding the signers (expect to do the devnet side by hand)
 
@@ -132,12 +130,12 @@ deployment-config). Balance-driven and idempotent — re-runs only top up:
 | Signer | gorchain (SOL) | solana devnet (SOL) |
 |---|---|---|
 | deployer | 100 | 10 |
-| gorchain validator | 1 | — |
-| solana validator | — | 1 |
+| gorchain validator | 0.1 | — |
+| solana validator | — | 0.1 |
 | relayer gorchain signer | 1 | — |
 | relayer solana signer | — | 1 |
-| IGP fee-claim | 1 | 1 |
-| Privy IGP oracle | 1 | 1 |
+| IGP fee-claim | 0.5 | 0.5 |
+| Privy IGP oracle | 0.5 | 0.5 |
 | Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
 The gorchain side funds from gorchain's own faucet automatically. **The Solana
@@ -322,7 +320,8 @@ Optional teardown flags (combine as needed):
   (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
 - `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
   (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
-  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run. This data is root-owned, so
+  the wipe runs as `privileged_user` — add `-K` if it lacks passwordless sudo.
 
 The persistent gorchain chain state under `~/chains/gorchain` is **never** touched by any
 playbook (not even `wipe_data`). To reset chain state, remove `~/chains/gorchain` + the

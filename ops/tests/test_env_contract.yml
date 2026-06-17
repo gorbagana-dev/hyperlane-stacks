@@ -11,7 +11,7 @@
     - name: Assert the env contract
       ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml
 
-- name: load_deployment_config rejects a config missing wallet_connect_id
+- name: Assert load_deployment_config rejects a config missing wallet_connect_id
   hosts: localhost
   connection: local
   gather_facts: false

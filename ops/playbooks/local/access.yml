@@ -47,13 +47,7 @@
         content: "{{ _root_ca.content | b64decode }}"
         dest: /usr/local/share/ca-certificates/hyperlane-local.crt
         mode: "0644"
-      register: _ca_installed
-
-    - name: Refresh the CA bundle
-      become: true
-      ansible.builtin.command: update-ca-certificates
-      when: _ca_installed.changed
-      changed_when: true
+      notify: Refresh the CA bundle
 
     # Chrome/Chromium read the user's NSS db (~/.pki/nssdb), not the system CA bundle.
     - name: Ensure certutil is available
@@ -86,3 +80,9 @@
           {% for h in _access_hosts %}
           {{ _host_ip }} {{ h }}
           {% endfor %}
+
+  handlers:
+    - name: Refresh the CA bundle
+      become: true
+      ansible.builtin.command: update-ca-certificates
+      changed_when: true

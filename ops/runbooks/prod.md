@@ -1,9 +1,8 @@
 # Production — from-zero deployment
 
-Production runs the bridge against **external mainnet gorchain** (`https://rpc.gorbagana.wtf`)
-and **Helius mainnet**, under `bridge.gorbagana.wtf` (Cloudflare + Let's Encrypt TLS). The
-operator does **not** run a chain — gorchain is an external network. A single VM (`bridge-host-1`)
-runs everything by default, including both validators.
+Production runs the bridge against mainnet gorchain (`https://rpc.gorbagana.wtf`) and Helius
+mainnet, under `bridge.gorbagana.wtf` (Cloudflare + Let's Encrypt TLS). A single VM
+(`bridge-host-1`) runs everything by default, including both validators.
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec |
 |---|---|---|
@@ -52,12 +51,31 @@ ansible-galaxy collection install -r requirements.yml -p ./collections
   server-wallet per validator — follow [privy-wallets.md](privy-wallets.md). Mint these now
   and keep the outputs handy; paste them in when you fill `deployment-config.yml` below.
 
+### Host accounts
+
+A bring-your-own prod host needs two accounts set up **before** you run anything, both with
+the operator's SSH key in `authorized_keys`:
+
+- **`privileged_user`** — an account with **sudo**. Used only by the one-time bootstrap
+  (`setup-all.yml`) to install Docker/kind/kubectl/laconic-so and create `kind_mount_root`.
+  Passwordless sudo (`<user> ALL=(ALL) NOPASSWD:ALL` in `/etc/sudoers.d/`) lets the playbooks
+  run unattended; otherwise pass `-K` (see step 1).
+- **`deploy_user`** — an **unprivileged** account (no sudo required) that runs `laconic-so`
+  and every steady-state playbook (deploy/publish/retire). Bootstrap adds it to the `docker`
+  group; it needs nothing more. The two can be the same account, but they don't have to be —
+  the split exists precisely so the day-to-day deploy account never needs sudo.
+
+The only later command that needs sudo is the teardown wipe (`stop-all.yml -e wipe_data=true`):
+it removes root-owned host-path state, so the playbook runs that step as `privileged_user` —
+add `-K` if it lacks passwordless sudo.
+
 ### Configure inventory + secrets
 
 Fill in exactly two things:
 
-1. `ops/inventories/prod/host_vars/bridge-host-1.yml`: set `public_ip` to the VM's IP
-   (`privileged_user` and `deploy_user` are already `dev`).
+1. `ops/inventories/prod/host_vars/bridge-host-1.yml`: set `public_ip` to the VM's IP, and
+   set `privileged_user` / `deploy_user` to the accounts from "Host accounts" above (both
+   default to `dev`).
 2. The one operator file — every secret and identity value lives here:
 
    ```bash
@@ -90,11 +108,12 @@ cd ops   # from the repo root
 
 ```bash
 ansible-playbook -i inventories/prod/hosts.yml playbooks/setup-all.yml
+# add -K if privileged_user does NOT have passwordless sudo (prompts once for its sudo password)
 ```
 
 Bootstraps the host (Docker, kind, kubectl, laconic-so), reconciles DNS (all
 `bridge.gorbagana.wtf` subdomains point to `bridge-host-1`), and generates + distributes
-credentials. No chain is started — gorchain is external mainnet.
+credentials.
 
 ## 2. Key prep + funding
 
@@ -110,15 +129,19 @@ funding gate — prints each signer's address + balance gap and **fails listing 
 | Signer | gorchain (SOL) | solana mainnet (SOL) |
 |---|---|---|
 | deployer | 100 | 10 |
-| gorchain validator | 1 | — |
-| solana validator | — | 1 |
+| gorchain validator | 0.1 | — |
+| solana validator | — | 0.1 |
 | relayer gorchain signer | 1 | — |
 | relayer solana signer | — | 1 |
-| IGP fee-claim | 1 | 1 |
-| Privy IGP oracle | 1 | 1 |
+| IGP fee-claim | 0.5 | 0.5 |
+| Privy IGP oracle | 0.5 | 0.5 |
 | Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
-**Mainnet has no faucet.** Fund each listed address from a treasury wallet:
+Where these numbers come from — measured per-account consumption, the program-rent
+breakdown behind the deployer's spend, and the +~3.3/chain cost of each extra warp
+route — is in [funding-estimate.md](funding-estimate.md).
+
+Fund each listed address from a treasury wallet:
 
 1. Run the play. It prints addresses and the balance gap for each underfunded signer, then
    fails.
@@ -141,10 +164,9 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/deploy-all.yml -e state
 
 `deploy-all.yml` publishes the deployer-generated bridge state (program IDs, agent-config —
 secret-free) mid-flight to `deploy_branch`, which for prod **defaults to `main`** (set in
-`inventories/prod/group_vars/all.yml`): `main` is the canonical home for production state, so
-no throwaway branch is needed — that's a staging/rehearsal practice. Deploy from `main` (make
-sure it's the intended revision and the host can push to it). To deploy a variant off main,
-override with `-e deploy_branch=<branch>`.
+`inventories/prod/group_vars/all.yml`). Deploy from `main` — make sure it's the intended
+revision and the host can push to it. To deploy a variant off main, override with
+`-e deploy_branch=<branch>`.
 
 A **prod funding gate** runs first (before any stack starts) and aborts the deploy if any
 signer is underfunded — same check as `prepare-prod.yml`, but now a hard blocker.
@@ -273,8 +295,8 @@ Optional teardown flags (combine as needed):
   (Deployments, Services, Secrets, ConfigMaps). Persisted host-path data **survives**.
 - `-e wipe_data=true` — remove the persisted host-path volumes under `/srv/kind/hyperlane`
   (MinIO objects + validator checkpoints, agent data) and the deployment dirs, for a clean
-  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run.
+  slate. Keeps `caddy-cert-backup` so `setup-all` needn't re-run. This data is root-owned, so
+  the wipe runs as `privileged_user` — add `-K` if it lacks passwordless sudo.
 
 A full wipe is `-e destroy_cluster=true -e wipe_data=true`; rebuilding then means
-`setup-all` → `prepare-prod` → `deploy-all`. The external gorchain chain history lives off
-this host and no playbook touches it.
+`setup-all` → `prepare-prod` → `deploy-all`.

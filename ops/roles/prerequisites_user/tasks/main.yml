@@ -1,47 +1,9 @@
 ---
-- name: Ensure ~/bin exists
-  ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/bin"
-    state: directory
-    mode: "0755"
-
-# force: the release ships no checksum, so without this get_url keeps any existing
-# binary and a bumped laconic_so_version would never land. Re-download to replace it.
-- name: Install laconic-so release binary (replace on version bump)
-  ansible.builtin.get_url:
-    url: "{{ laconic_so_release_base_url }}/{{ laconic_so_version }}/laconic-so"
-    dest: "{{ ansible_env.HOME }}/bin/laconic-so"
-    mode: "0755"
-    force: true
-
-# ~/bin isn't on PATH for ansible's non-login shell (.profile isn't sourced), so
-# every `command: laconic-so ...` task — and the setup scripts that call it by name —
-# would fail to find it. Symlink it into /usr/local/bin, which IS on the default PATH.
-- name: Symlink laconic-so into /usr/local/bin (PATH for non-login shells)
-  ansible.builtin.file:
-    src: "{{ ansible_env.HOME }}/bin/laconic-so"
-    dest: /usr/local/bin/laconic-so
-    state: link
-  become: true
-
-- name: Ensure ~/bin on PATH for interactive operator shells
-  ansible.builtin.lineinfile:
-    path: "{{ ansible_env.HOME }}/.profile"
-    line: 'export PATH="$HOME/bin:$PATH"'
-    create: true
-    mode: "0644"
-
+# Everything here runs as deploy_user with NO sudo: the laconic-so binary and
+# kind_mount_root are installed by the privileged play (prerequisites_privileged),
+# so the deploy account never needs to be in sudoers.
 - name: Create credentials dir (0700)
   ansible.builtin.file:
     path: "{{ credentials_dir }}"
     state: directory
     mode: "0700"
-
-- name: Create kind_mount_root owned by deploy_user
-  ansible.builtin.file:
-    path: "{{ kind_mount_root }}"
-    state: directory
-    mode: "0755"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
-  become: true

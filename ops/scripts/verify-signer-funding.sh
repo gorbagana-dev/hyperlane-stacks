@@ -26,21 +26,26 @@ for v in DEPLOYER_KEYPAIR_ADDR VALIDATOR_GORCHAIN_ADDR VALIDATOR_SOLANA_ADDR \
   [ -n "${!v:-}" ] || { echo "ERROR: $v missing from $ADDR_FILE — regenerate that key and re-run"; exit 1; }
 done
 
-balance_sol() {  # <addr> <rpc> — whole SOL rounded down; 0 if account absent
+# Work in integer lamports so sub-SOL targets (e.g. the validator's 0.1) compare
+# exactly; targets are written in SOL for readability and converted here.
+to_lamports() { awk -v s="$1" 'BEGIN{printf "%d", s * 1000000000}'; }
+fmt_sol()     { awk -v l="$1" 'BEGIN{printf "%.4f", l / 1000000000}'; }
+balance_lamports() {  # <addr> <rpc> — integer lamports; 0 if account absent
   local out
-  out=$(solana balance "$1" --url "$2" 2>/dev/null) || { echo 0; return; }
-  echo "$out" | awk '{print int($1)}'
+  out=$(solana balance "$1" --url "$2" --lamports 2>/dev/null) || { echo 0; return; }
+  echo "$out" | awk '{print $1 + 0}'
 }
 
 SHORTFALLS=()
 check() {  # <label> <addr> <target_sol> <rpc>
-  local label=$1 addr=$2 target=$3 rpc=$4 have
-  have=$(balance_sol "$addr" "$rpc")
+  local label=$1 addr=$2 target_sol=$3 rpc=$4 target have
+  target=$(to_lamports "$target_sol")
+  have=$(balance_lamports "$addr" "$rpc")
   if [ "$have" -ge "$target" ]; then
-    echo "  ✓ $label $addr: $have SOL (>= $target)"
+    echo "  ✓ $label $addr: $(fmt_sol "$have") SOL (>= $target_sol)"
   else
-    echo "  ✗ $label $addr: have $have SOL, want $target"
-    SHORTFALLS+=("$addr needs $(( target - have )) more SOL ($label)")
+    echo "  ✗ $label $addr: have $(fmt_sol "$have") SOL, want $target_sol"
+    SHORTFALLS+=("$addr needs $(fmt_sol "$(( target - have ))") more SOL ($label)")
   fi
 }
 
@@ -48,19 +53,19 @@ echo "Checking funding on gorchain ($GORCHAIN_RPC)..."
 solana cluster-version --url "$GORCHAIN_RPC" >/dev/null 2>&1 \
   || { echo "ERROR: gorchain RPC unreachable"; exit 1; }
 check "deployer"           "$DEPLOYER_KEYPAIR_ADDR"  100 "$GORCHAIN_RPC"
-check "gorchain validator" "$VALIDATOR_GORCHAIN_ADDR"  1 "$GORCHAIN_RPC"
+check "gorchain validator" "$VALIDATOR_GORCHAIN_ADDR" 0.1 "$GORCHAIN_RPC"
 check "relayer gorchain"   "$RELAYER_GORCHAIN_ADDR"    1 "$GORCHAIN_RPC"
-check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"   1 "$GORCHAIN_RPC"
-check "Privy IGP oracle"   "$ORACLE_PUBKEY"            1 "$GORCHAIN_RPC"
+check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"  0.5 "$GORCHAIN_RPC"
+check "Privy IGP oracle"   "$ORACLE_PUBKEY"           0.5 "$GORCHAIN_RPC"
 
 echo "Checking funding on solana mainnet..."
 solana cluster-version --url "$SOLANA_RPC" >/dev/null 2>&1 \
   || { echo "ERROR: solana RPC unreachable"; exit 1; }
 check "deployer"           "$DEPLOYER_KEYPAIR_ADDR"   10 "$SOLANA_RPC"
-check "solana validator"   "$VALIDATOR_SOLANA_ADDR"    1 "$SOLANA_RPC"
+check "solana validator"   "$VALIDATOR_SOLANA_ADDR"   0.1 "$SOLANA_RPC"
 check "relayer solana"     "$RELAYER_SOLANA_ADDR"      1 "$SOLANA_RPC"
-check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"   1 "$SOLANA_RPC"
-check "Privy IGP oracle"   "$ORACLE_PUBKEY"            1 "$SOLANA_RPC"
+check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"  0.5 "$SOLANA_RPC"
+check "Privy IGP oracle"   "$ORACLE_PUBKEY"           0.5 "$SOLANA_RPC"
 
 if [ "${#SHORTFALLS[@]}" -ne 0 ]; then
   echo ""

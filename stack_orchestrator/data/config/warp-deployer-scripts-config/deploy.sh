@@ -6,7 +6,7 @@ LOGS_DIR="${LOGS_OUTPUT_DIR:-/logs}"
 mkdir -p "${STATE_DIR}" "${LOGS_DIR}"
 
 LOG_FILE="${LOGS_DIR}/svm-warp-deployer-$(date -u +%Y%m%dT%H%M%SZ).log"
-exec > >(tee -a "${LOG_FILE}") 2>&1
+exec > >(stdbuf -o0 sed -E "s/api-key=[A-Za-z0-9_-]+/api-key=<REDACTED>/g" | tee -a "${LOG_FILE}") 2>&1
 echo "Logging to ${LOG_FILE}"
 
 echo "=== Hyperlane SVM Warp Route Deployer ==="

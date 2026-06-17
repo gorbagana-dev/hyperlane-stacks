@@ -227,7 +227,9 @@ ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml
   -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
   -e destroy_cluster=true
 # clean slate — also remove the deployment dirs and persisted host-path data under
-# each host's kind_mount_root (keeps caddy-cert-backup; the out-of-band chains box untouched):
+# each host's kind_mount_root (keeps caddy-cert-backup; the out-of-band chains box untouched).
+# The host-path data is root-owned, so the wipe runs as privileged_user — add -K if it
+# lacks passwordless sudo:
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
   -e validators_file=$PWD/../deployment/local/bridges/default/operator/validators-multihost.yaml \
   -e destroy_cluster=true -e wipe_data=true

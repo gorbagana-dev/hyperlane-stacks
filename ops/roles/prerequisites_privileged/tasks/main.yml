@@ -81,3 +81,23 @@
     dest: /usr/local/bin/kubectl
     mode: "0755"
   become: true
+
+# Installed system-wide (not deploy_user's ~/bin) so the deploy account needs no sudo
+# at any point — all root work lives in this privileged play. force: the release ships
+# no checksum, so without it a bumped laconic_so_version would never replace the binary.
+- name: Install laconic-so release binary (replace on version bump)
+  ansible.builtin.get_url:
+    url: "{{ laconic_so_release_base_url }}/{{ laconic_so_version }}/laconic-so"
+    dest: /usr/local/bin/laconic-so
+    mode: "0755"
+    force: true
+  become: true
+
+- name: Create kind_mount_root owned by deploy_user
+  ansible.builtin.file:
+    path: "{{ kind_mount_root }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ deploy_user }}"
+    group: "{{ deploy_user }}"
+  become: true
