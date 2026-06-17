@@ -1546,14 +1546,19 @@ def monitoring_deployment(
             ).stdout.strip()
             assert pod_name, "Monitoring pod not found — cannot reuse deployment"
             log.info("Reusing existing monitoring deployment (namespace: %s)", namespace)
+            # The low-balance alert is a one-shot POST that already fired on the
+            # original deploy and can't be recaptured here; reused=True tells the
+            # alert test to verify the monitor's persisted breach logs instead.
+            _, low_labels = _build_watches(keypairs)
             yield {
                 "deployment": DeploymentInfo(
                     deploy_dir=deploy_dir, deployment_id=deployment_id, namespace=namespace,
                 ),
                 "namespace": namespace,
                 "pod_name": pod_name,
-                "low_labels": [],
+                "low_labels": low_labels,
                 "slack_payloads": [],
+                "reused": True,
                 "grafana_url": GRAFANA_URL,
                 "prometheus_url": PROMETHEUS_URL,
             }
@@ -1637,6 +1642,7 @@ def monitoring_deployment(
             "pod_name": pod_name,
             "low_labels": low_labels,
             "slack_payloads": list(slack.payloads),
+            "reused": False,
             "grafana_url": GRAFANA_URL,
             "prometheus_url": PROMETHEUS_URL,
         }
