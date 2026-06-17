@@ -3,11 +3,11 @@ name: hyperlane-explorer
 description: "Hyperlane Explorer — self-hosted message indexer + search UI (frontend + scraper + Postgres + Hasura)"
 repos:
   - github.com/gorbagana-dev/hyperlane-explorer@add-explorer-stack
-  # Scraper is built from the gorbagana fork (carries best-effort indexing on
-  # pruned slots). The fork is on agents v2.2.0; the deployer/on-chain programs
-  # are on 16c056a — verify Sealevel account layouts are compatible when
-  # validating. Repin to an immutable SHA before the prod merge.
-  - github.com/gorbagana-dev/hyperlane-monorepo@gorbagana
+  # Scraper is built from the gorbagana monorepo fork (indexing tolerant of
+  # pruned slots), pinned to the published release tag. The fork is on agents
+  # v2.2.0; the deployer/on-chain programs are on 16c056a — verify Sealevel
+  # account layouts are compatible when validating.
+  - github.com/gorbagana-dev/hyperlane-monorepo@sealevel-v1.0.0-gorbagana.2
 # containers is commented out so deploy-start won't kind-load the images;
 # k8s pulls them from the registry instead. Uncomment for local builds.
 # (hasura is the upstream image, wired via the hasura-config configmap — not built.)

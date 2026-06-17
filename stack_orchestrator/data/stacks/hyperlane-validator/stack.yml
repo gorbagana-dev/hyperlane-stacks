@@ -3,9 +3,9 @@ name: hyperlane-validator
 description: "Hyperlane validator with Privy KMS proxy sidecar (one deployment per chain)"
 repos:
   # agents v2.2.0 from the gorbagana fork (AWS_ENDPOINT_URL_KMS + S3 path-style
-  # absorbed as commits — no build-time patches). Repin to an immutable SHA
-  # before the prod merge.
-  - github.com/gorbagana-dev/hyperlane-monorepo@gorbagana
+  # absorbed as commits — no build-time patches), pinned to the published
+  # release tag.
+  - github.com/gorbagana-dev/hyperlane-monorepo@sealevel-v1.0.0-gorbagana.2
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:
