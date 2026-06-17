@@ -27,7 +27,7 @@ only thing that really changes is fiat: mainnet SOL costs real money.
 |---|--:|---|
 | **deployer** | **~10** | Pays every deploy tx; needs the full ~8.2 up front (see breakdown). ~1.9 is reclaimable afterwards via `retire-keys.yml`. |
 | relayer (per-chain signer) | 1–2 | Only signer with ongoing burn (delivery txs); scales with message volume. |
-| validator (announce key) | 0.5 | One announce tx + a small PDA; checkpoints are signed via Privy KMS, not on-chain. |
+| validator (announce key) | 0.1 | One-time announce only (~0.002 measured); drained by `retire-keys` after, so funded minimally and **not** balance-monitored. |
 | IGP fee-claim | 0.5 | Periodic claim txs (fees only). |
 | Privy IGP oracle | 0.5 | Periodic gas-oracle posts (fees only). |
 | Privy bridge owner | 0.5 | Receives ownership; pays only occasional admin txs. |

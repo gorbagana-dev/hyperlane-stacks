@@ -129,8 +129,8 @@ funding gate — prints each signer's address + balance gap and **fails listing 
 | Signer | gorchain (SOL) | solana mainnet (SOL) |
 |---|---|---|
 | deployer | 100 | 10 |
-| gorchain validator | 1 | — |
-| solana validator | — | 1 |
+| gorchain validator | 0.1 | — |
+| solana validator | — | 0.1 |
 | relayer gorchain signer | 1 | — |
 | relayer solana signer | — | 1 |
 | IGP fee-claim | 1 | 1 |
