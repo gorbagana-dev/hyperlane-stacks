@@ -1491,6 +1491,34 @@ class _SlackCapture:
         self._server.shutdown()
 
 
+def _wait_for_prometheus_scrape(prometheus_url: str, timeout: int = 90) -> None:
+    """Block until Prometheus has completed its first scrape cycle.
+
+    The scrape-dependent tests (self-scrape, validator/relayer targets up, agent
+    metrics) query `up`/agent series that only exist after Prometheus's first 15s
+    scrape tick. Poll its self-scrape series so the tests don't race that tick.
+    """
+    from urllib.parse import quote
+
+    query = quote('up{job="prometheus"}')
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        probe = subprocess.run(
+            ["curl", "-s", f"{prometheus_url}/api/v1/query?query={query}"],
+            capture_output=True, text=True, check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            try:
+                data = json.loads(probe.stdout)
+            except ValueError:
+                data = {}
+            if data.get("status") == "success" and data.get("data", {}).get("result"):
+                log.info("Prometheus has completed its first scrape cycle")
+                return
+        time.sleep(3)
+    log.warning("Prometheus self-scrape not visible after %ss", timeout)
+
+
 @pytest.fixture(scope="session")
 def monitoring_deployment(
     deployer_deployment: DeploymentInfo,
@@ -1598,6 +1626,10 @@ def monitoring_deployment(
             else:
                 log.warning("%s not returning 200 after 60s", url)
             log.info("Ingress ready at %s", url)
+
+        # Scrape-dependent tests need Prometheus to have completed a scrape cycle.
+        log.info("Waiting for Prometheus to complete its first scrape...")
+        _wait_for_prometheus_scrape(PROMETHEUS_URL)
 
         yield {
             "deployment": deploy_info,
