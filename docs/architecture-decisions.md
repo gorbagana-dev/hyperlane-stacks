@@ -87,7 +87,7 @@ The patched agent image is used by both the validator and relayer stacks. Publis
 
 #### 3. Warp UI — Custom fork, runtime config
 
-Built from the fork **`github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.1`** (pinned in `stack.yml`), which sits on upstream `v2.0.0` and uses `@hyperlane-xyz/sdk@25.5.0`. The fork carries the gorbagana customizations natively: an empty `warpRouteWhitelist` (so only injected routes show, not the published registry), gorbagana default/featured tokens, a `SolanaWalletContext` that sources its RPC from the loaded chain metadata at runtime, and a runtime config loader. It adds no multi-route UI logic — the template's token selector already handles many routes; it just needs to be *fed* the deployed routes.
+Built from the fork **`github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6`** (pinned in `stack.yml`), which sits on upstream `v2.0.0` and uses `@hyperlane-xyz/sdk@25.5.0`. The fork carries the gorbagana customizations natively: an empty `warpRouteWhitelist` (so only injected routes show, not the published registry), gorbagana default/featured tokens, a `SolanaWalletContext` that sources its RPC from the loaded chain metadata at runtime, a runtime config loader, and a slimmed client bundle (the SVM-only build drops the unused-protocol wallet SDKs and the EVM deploy/verify artifacts that otherwise ship in `_app`). It adds no multi-route UI logic — the template's token selector already handles many routes; it just needs to be *fed* the deployed routes.
 
 The image builds the full Next.js app once (`output: standalone`); per-deployment config is supplied at container start, not baked in. `entrypoint.sh` writes two files under `/app/public` (fetched by the app during init) and substitutes one build-time constant:
 
@@ -114,7 +114,7 @@ Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce
 | Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
 | Gas Oracle | `ghcr.io/gorbagana-dev/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
-| Warp UI | `ghcr.io/gorbagana-dev/hyperlane-warp-ui:local` | Custom build from the fork `gorbagana-dev/hyperlane-warp-ui-template` @ `v2.0.0-gorbagana.1` (`@hyperlane-xyz/sdk@25.5.0`) |
+| Warp UI | `ghcr.io/gorbagana-dev/hyperlane-warp-ui:local` | Custom build from the fork `gorbagana-dev/hyperlane-warp-ui-template` @ `v2.0.0-gorbagana.6` (`@hyperlane-xyz/sdk@25.5.0`) |
 | MinIO | `minio/minio` (upstream) | S3-compatible checkpoint storage |
 | Prometheus | `prom/prometheus` (upstream) | Metrics collection |
 | Grafana | `grafana/grafana` (upstream) | Dashboards and alerting |

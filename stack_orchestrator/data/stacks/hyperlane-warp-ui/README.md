@@ -2,7 +2,7 @@
 
 Browser-based bridge UI for cross-chain token transfers using Hyperlane warp routes. Serves a Next.js app with runtime-injected chain and token configuration.
 
-Built from the fork [gorbagana-dev/hyperlane-warp-ui-template](https://github.com/gorbagana-dev/hyperlane-warp-ui-template) at tag `v2.0.0-gorbagana.1`, which adds runtime route/chain config support.
+Built from the fork [gorbagana-dev/hyperlane-warp-ui-template](https://github.com/gorbagana-dev/hyperlane-warp-ui-template) at tag `v2.0.0-gorbagana.6`, which adds runtime route/chain config support and a slimmed client bundle (unused-protocol SDKs and EVM deploy artifacts dropped).
 
 ## Prerequisites
 
