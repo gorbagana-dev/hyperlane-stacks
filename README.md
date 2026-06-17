@@ -7,7 +7,7 @@ packaged for `k8s-kind` deployment and driven from an ansible ops layer.
 
 ## Live endpoints (production)
 
-- Bridge UI — https://bridge.gorbagana.wtf
+- Bridge UI — https://bridge.gorbagana.wtf ([how to bridge tokens](docs/using-the-bridge.md))
 - Explorer¹ — https://explorer.bridge.gorbagana.wtf
 - Grafana — https://grafana.bridge.gorbagana.wtf
 - Prometheus — https://prometheus.bridge.gorbagana.wtf
@@ -206,6 +206,7 @@ Operational tasks have their own runbooks:
 
 ## Documentation
 
+- [Using the bridge](docs/using-the-bridge.md) — end-user guide to bridging tokens in the UI
 - [Operator runbooks](ops/runbooks/) — from-zero deployment guides per environment
 - [ops/ deploy layer](ops/README.md) — ansible mechanics reference
 - [Development guide](docs/development.md) — changing, releasing, and publishing
