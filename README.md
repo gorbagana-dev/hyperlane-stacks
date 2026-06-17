@@ -95,64 +95,56 @@ each downstream stack's ConfigMaps at deploy time. The mechanics are in
 ## How the components interact
 
 The deployer Jobs run first and seed contract addresses/config; once the
-long-running stacks are up, they interact at runtime as below. The two chains and
-the external services (Privy for signing, Slack for alerts) sit outside the
-cluster; everything else is a stack in this repo.
+long-running stacks are up, three flows describe how they interact at runtime:
+the bridge message path, signing/fees, and monitoring.
+
+### 1. Bridging a transfer
+
+A transfer is submitted on the source chain through the UI; a validator observes
+it and writes a signed checkpoint to MinIO; the relayer reads the checkpoint and
+delivers the message on the destination chain.
 
 ```mermaid
-flowchart TB
-    user(["User / wallet"])
-
-    subgraph cluster ["Bridge stacks (k8s)"]
-        ui["warp-ui"]
-        vg["validator · gorchain"]
-        vs["validator · solana"]
-        rel["relayer"]
-        go["gas-oracle"]
-        mon["monitoring"]
-        minio[("MinIO<br/>checkpoints")]
-    end
-
-    gor[("Gorchain")]
-    sol[("Solana")]
-    privy{{"Privy server wallet"}}
-    slack{{"Slack"}}
-    exp["explorer"]
-
-    user -->|bridge transfer| ui
-    ui -->|submit tx| gor
-    ui -->|submit tx · server RPC proxy| sol
-    ui -.->|message status link| exp
-
-    vg -->|watch mailbox| gor
-    vs -->|watch mailbox| sol
-    vg -->|signed checkpoints| minio
-    vs -->|signed checkpoints| minio
-    rel -->|read checkpoints| minio
-    rel -->|deliver messages| gor
-    rel -->|deliver messages| sol
-    go -->|update IGP configs| gor
-    go -->|update IGP configs| sol
-
-    vg --> privy
-    vs --> privy
-    rel --> privy
-    go --> privy
-
-    mon -->|scrape metrics| vg
-    mon -->|scrape metrics| vs
-    mon -->|scrape metrics| rel
-    mon -->|balance checks| gor
-    mon -->|balance checks| sol
-    mon -.->|low-balance alerts| slack
+flowchart LR
+    user(["User / wallet"]) -->|transfer| ui["warp-ui"]
+    ui -->|submit tx| src[("source chain")]
+    src -->|observe mailbox| val["validator"]
+    val -->|signed checkpoint| minio[("MinIO")]
+    minio -->|read checkpoint| rel["relayer"]
+    rel -->|deliver message| dst[("destination chain")]
 ```
 
-In short: validators watch each chain's mailbox and write signed checkpoints to
-MinIO; the relayer reads those checkpoints and delivers messages to the
-destination chain; the gas oracle keeps IGP fee configs current; the warp UI is
-the user-facing entry to all of it; and monitoring scrapes agent metrics and
-watches signer balances. Every on-chain signer signs through the Privy server
-wallet.
+Gorchain and Solana each run their own validator, and bridging works both ways —
+"source" and "destination" swap with the direction of the transfer. The UI
+submits on Gorchain directly and on Solana through its own server-side RPC proxy,
+and links each transfer to the explorer for status.
+
+### 2. Signing and fees
+
+Every component that sends an on-chain transaction signs through the Privy server
+wallet. The gas oracle additionally refreshes the interchain gas payment (IGP)
+fee configs on both chains.
+
+```mermaid
+flowchart LR
+    vg["validator · gorchain"] --> privy{{"Privy server wallet"}}
+    vs["validator · solana"] --> privy
+    rel["relayer"] --> privy
+    go["gas-oracle"] --> privy
+    go -->|update IGP fee configs| chains[("Gorchain + Solana")]
+```
+
+### 3. Monitoring
+
+Monitoring scrapes Prometheus metrics from the agents and checks signer balances
+on-chain, posting low-balance alerts to Slack; Grafana visualizes the metrics.
+
+```mermaid
+flowchart LR
+    mon["monitoring"] -->|scrape metrics| agents["validators + relayer"]
+    mon -->|balance checks| chains[("Gorchain + Solana")]
+    mon -.->|low-balance alerts| slack{{"Slack"}}
+```
 
 ## How deployments work
 
