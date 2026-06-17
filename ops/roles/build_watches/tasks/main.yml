@@ -7,23 +7,19 @@
 # RPC URLs stay in the spec's secret env and never enter this file.
 #
 # Auto-watched: relayer (both chains), fee-claim (both chains), igp-oracle (both
-# chains), each validator (its chain). The IGP beneficiary is a fee sink and is
-# intentionally excluded. Operators add extra/SPL watches by editing the generated
-# watches.json on this host and `laconic-so deployment <dir> restart`.
-#
-# Expects the `validators` fact to be set by the calling play (load_validators).
+# chains). The IGP beneficiary (fee sink) and the validator announce keys (one-shot —
+# drained by retire-keys after the announce, so a low balance is expected, not an
+# alert) are intentionally excluded. Operators add extra/SPL watches by editing the
+# generated watches.json on this host and `laconic-so deployment <dir> restart`.
 - name: Resolve the relayer host
   ansible.builtin.set_fact:
     _relayer_host: "{{ groups['relayer_hosts'][0] }}"
 
-- name: Gather min facts for the relayer + validator hosts (for HOME/credentials_dir)
+- name: Gather min facts for the relayer host (for HOME/credentials_dir)
   ansible.builtin.setup:
     gather_subset: ["!all", "min"]
-  delegate_to: "{{ item }}"
+  delegate_to: "{{ _relayer_host }}"
   delegate_facts: true
-  loop: "{{ ([_relayer_host] + (validators | map(attribute='host') | list)) | unique }}"
-  loop_control:
-    label: "{{ item }}"
 
 - name: Read the relayer signer .pub files (non-secret addresses)
   ansible.builtin.slurp:
@@ -42,15 +38,6 @@
   register: _fee_claim_pub
   delegate_to: "{{ _relayer_host }}"
   changed_when: false
-
-- name: Read each validator's .pub (non-secret address)
-  ansible.builtin.slurp:
-    src: "{{ hostvars[item.host].credentials_dir }}/validator-{{ item.chain }}.key.pub"
-  register: _validator_pubs
-  delegate_to: "{{ item.host }}"
-  loop: "{{ validators }}"
-  loop_control:
-    label: "{{ item.label }}"
 
 - name: Assemble the watch list
   ansible.builtin.set_fact:
@@ -71,12 +58,6 @@
               'tokens': [{'symbol': sym[ch], 'mint': 'native', 'threshold': thr['fee-claim'] | default(dflt)}]}) -%}
         {%- set _ = out.append({'chain': ch, 'label': 'igp-oracle', 'address': igp_oracle_pubkey,
               'tokens': [{'symbol': sym[ch], 'mint': 'native', 'threshold': thr['igp-oracle'] | default(dflt)}]}) -%}
-      {%- endfor -%}
-      {%- for vp in _validator_pubs.results -%}
-        {%- set _ = out.append({'chain': vp.item.chain, 'label': vp.item.label,
-              'address': vp.content | b64decode | trim,
-              'tokens': [{'symbol': sym[vp.item.chain], 'mint': 'native',
-                'threshold': thr.validator | default(dflt)}]}) -%}
       {%- endfor -%}
       {{ out }}
 

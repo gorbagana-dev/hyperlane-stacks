@@ -270,9 +270,6 @@
   pre_tasks:
     - name: Load the deployment config
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
-
-    - name: Load validators
-      ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
   vars:
     stack_name: hyperlane-monitoring
     # build_watches runs as the pre-start hook (after deploy create makes the dir,

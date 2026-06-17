@@ -52,7 +52,7 @@ balance_monitor:
     relayer: 0.5                # active spender + critical path (delivery halts if dry)
     fee-claim: 0.2              # periodic claim txs only
     igp-oracle: 0.2             # periodic gas-oracle posts only
-    validator: 0.1              # idle after announce (checkpoints sign via Privy KMS)
+    # validator keys are not watched — drained by retire-keys after the one-time announce
 
 # --- Tuning (optional; defaults shown) ---
 # gas_oracle_interval_ms: "900000"     # gas-oracle price-update loop interval (15 min)
