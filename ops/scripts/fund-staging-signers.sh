@@ -76,15 +76,15 @@ solana cluster-version --url "$GORCHAIN_RPC" >/dev/null 2>&1 \
 top_up "deployer"          "$DEPLOYER_KEYPAIR_ADDR"   100 "$GORCHAIN_RPC" 10 5 || rc=1
 top_up "gorchain validator" "$VALIDATOR_GORCHAIN_ADDR" 0.1 "$GORCHAIN_RPC" 10 5 || rc=1
 top_up "relayer gorchain"  "$RELAYER_GORCHAIN_ADDR"     1 "$GORCHAIN_RPC" 10 5 || rc=1
-top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"    1 "$GORCHAIN_RPC" 10 5 || rc=1
-top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"             1 "$GORCHAIN_RPC" 10 5 || rc=1
+top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"   0.5 "$GORCHAIN_RPC" 10 5 || rc=1
+top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"            0.5 "$GORCHAIN_RPC" 10 5 || rc=1
 
 echo "Funding on solana devnet ($DEVNET_RPC)..."
 top_up "deployer"          "$DEPLOYER_KEYPAIR_ADDR"    10 "$DEVNET_RPC" 2 3 || rc=1
 top_up "solana validator"  "$VALIDATOR_SOLANA_ADDR"    0.1 "$DEVNET_RPC" 2 3 || rc=1
 top_up "relayer solana"    "$RELAYER_SOLANA_ADDR"       1 "$DEVNET_RPC" 2 3 || rc=1
-top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"    1 "$DEVNET_RPC" 2 3 || rc=1
-top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"             1 "$DEVNET_RPC" 2 3 || rc=1
+top_up "IGP fee-claim"     "$RELAYER_FEE_CLAIM_ADDR"   0.5 "$DEVNET_RPC" 2 3 || rc=1
+top_up "Privy IGP oracle"  "$ORACLE_PUBKEY"            0.5 "$DEVNET_RPC" 2 3 || rc=1
 
 if [ "$rc" -ne 0 ]; then
   echo ""

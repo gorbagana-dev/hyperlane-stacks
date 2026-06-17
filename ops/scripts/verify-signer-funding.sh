@@ -55,8 +55,8 @@ solana cluster-version --url "$GORCHAIN_RPC" >/dev/null 2>&1 \
 check "deployer"           "$DEPLOYER_KEYPAIR_ADDR"  100 "$GORCHAIN_RPC"
 check "gorchain validator" "$VALIDATOR_GORCHAIN_ADDR" 0.1 "$GORCHAIN_RPC"
 check "relayer gorchain"   "$RELAYER_GORCHAIN_ADDR"    1 "$GORCHAIN_RPC"
-check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"   1 "$GORCHAIN_RPC"
-check "Privy IGP oracle"   "$ORACLE_PUBKEY"            1 "$GORCHAIN_RPC"
+check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"  0.5 "$GORCHAIN_RPC"
+check "Privy IGP oracle"   "$ORACLE_PUBKEY"           0.5 "$GORCHAIN_RPC"
 
 echo "Checking funding on solana mainnet..."
 solana cluster-version --url "$SOLANA_RPC" >/dev/null 2>&1 \
@@ -64,8 +64,8 @@ solana cluster-version --url "$SOLANA_RPC" >/dev/null 2>&1 \
 check "deployer"           "$DEPLOYER_KEYPAIR_ADDR"   10 "$SOLANA_RPC"
 check "solana validator"   "$VALIDATOR_SOLANA_ADDR"   0.1 "$SOLANA_RPC"
 check "relayer solana"     "$RELAYER_SOLANA_ADDR"      1 "$SOLANA_RPC"
-check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"   1 "$SOLANA_RPC"
-check "Privy IGP oracle"   "$ORACLE_PUBKEY"            1 "$SOLANA_RPC"
+check "IGP fee-claim"      "$RELAYER_FEE_CLAIM_ADDR"  0.5 "$SOLANA_RPC"
+check "Privy IGP oracle"   "$ORACLE_PUBKEY"           0.5 "$SOLANA_RPC"
 
 if [ "${#SHORTFALLS[@]}" -ne 0 ]; then
   echo ""
