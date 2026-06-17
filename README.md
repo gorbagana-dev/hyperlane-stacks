@@ -121,9 +121,10 @@ and links each transfer to the explorer for status.
 
 ### 2. Signing and fees
 
-Every component that sends an on-chain transaction signs through the Privy server
-wallet. The gas oracle additionally refreshes the interchain gas payment (IGP)
-fee configs on both chains.
+Every component that sends an on-chain transaction signs it through the Privy
+server wallet — the validators (checkpoint announcements), the relayer (message
+delivery and IGP fee claims), and the gas oracle (refreshing the interchain gas
+payment fee configs on both chains).
 
 ```mermaid
 flowchart LR
@@ -131,7 +132,6 @@ flowchart LR
     vs["validator · solana"] --> privy
     rel["relayer"] --> privy
     go["gas-oracle"] --> privy
-    go -->|update IGP fee configs| chains[("Gorchain + Solana")]
 ```
 
 ### 3. Monitoring
