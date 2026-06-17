@@ -42,16 +42,9 @@ COPY rust/main/Cargo.toml ./
 COPY rust/main/Cargo.lock ./
 COPY rust/sealevel ../sealevel
 
-# Apply patches:
-# 1. KMS endpoint — redirect rusoto KMS calls via AWS_ENDPOINT_URL_KMS
-# 2. S3 path-style — use path-style addressing for S3-compatible stores (MinIO)
-COPY stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-agent/kms-endpoint.patch /tmp/
-COPY stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-agent/s3-path-style.patch /tmp/
-RUN cd /usr/src && git apply /tmp/kms-endpoint.patch /tmp/s3-path-style.patch
-
 # Build validator and relayer
-# Note: we clear sccache before building to ensure patched sources are
-# recompiled (sccache may serve stale objects from prior unpatched builds).
+# (KMS endpoint + S3 path-style support are committed in the gorbagana fork.)
+# Note: we clear sccache before building to avoid stale objects from prior builds.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
