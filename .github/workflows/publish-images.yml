@@ -172,6 +172,12 @@ jobs:
           sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
           sed -i 's/^#   #/  #/' "$STACK_YML"
 
+      # The validator stack builds the agent from the private gorbagana-dev
+      # monorepo fork; authenticate clones so setup-repositories can resolve it.
+      # TODO: revert to CICD_REPO_TOKEN once its access to the fork is approved.
+      - name: Authenticate clones to private gorbagana-dev repos
+        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN_TEMP }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
+
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-validator setup-repositories
 

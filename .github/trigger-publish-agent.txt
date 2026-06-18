@@ -4,3 +4,4 @@ publish
 publish
 publish
 publish
+authenticate private-fork clone so the agent build resolves the monorepo (2026-06-18)
