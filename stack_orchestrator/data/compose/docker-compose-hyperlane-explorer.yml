@@ -25,6 +25,8 @@ services:
     # image: gorbagana-dev/hyperlane-scraper:local
     restart: unless-stopped
     hostname: scraper
+    # Entrypoint + seed SQL come from the scraper-config configmap, not the image.
+    entrypoint: ["tini", "--", "/bin/bash", "/scraper-config/entrypoint.sh"]
     environment:
       CONFIG_FILES: /config/agent-config.json
       # DB connection: the entrypoint builds DATABASE_URL/HYP_DB at runtime from
@@ -51,6 +53,7 @@ services:
       SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
     volumes:
       - agent-config:/config:ro
+      - scraper-config:/scraper-config:ro
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9090 || exit 1"]
       interval: 30s
@@ -130,4 +133,6 @@ volumes:
   agent-config:
   # hasura-config: ConfigMap (entrypoint + flattened metadata) from data/config/.
   hasura-config:
+  # scraper-config: ConfigMap (entrypoint + seed SQL) from data/config/.
+  scraper-config:
   explorer-postgres-data:

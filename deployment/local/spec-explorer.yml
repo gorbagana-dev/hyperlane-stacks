@@ -35,6 +35,7 @@ config:
 configmaps:
   agent-config: ./configmaps/agent-config
   hasura-config: ./configmaps/hasura-config
+  scraper-config: ./configmaps/scraper-config
 secrets:
   hyperlane-explorer-secrets:
     keys:

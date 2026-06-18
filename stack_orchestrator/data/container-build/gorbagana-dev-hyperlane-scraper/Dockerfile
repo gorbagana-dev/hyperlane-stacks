@@ -6,7 +6,8 @@
 #
 # Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)
 # Invoked via: docker build -f <this-file> ~/cerc/hyperlane-monorepo
-# Note: build.sh copies entrypoint.sh into the monorepo context before building.
+# The entrypoint + seed SQL are mounted at runtime from the scraper-config
+# configmap (data/config/scraper-config/), so nothing is copied into the context.
 
 # ============================================================
 # Stage 1: Builder — compile scraper + init-db
@@ -75,9 +76,8 @@ RUN apt-get update && \
 COPY rust/main/config /app/config
 
 COPY --from=builder /release/* /usr/local/bin/
-COPY stack_orchestrator/data/container-build/gorbagana-dev-hyperlane-scraper/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 ENV HOME=/home/hyperlane
 USER 1000
-ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
+# Entrypoint is supplied at runtime by the scraper-config configmap via the
+# compose entrypoint: override (tini -- /bin/bash /scraper-config/entrypoint.sh).

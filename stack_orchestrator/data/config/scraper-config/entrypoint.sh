@@ -23,15 +23,20 @@ echo "[scraper-init] Running init-db migrations (creates base tables + views)...
 init-db   # reads DATABASE_URL; idempotent (Migrator::up skips applied migrations)
 
 echo "[scraper-init] Seeding gorchain + solana domain rows (idempotent)..."
-# domain cols at this scraper version: id, time_created, time_updated, name,
-# native_token, chain_id, is_test_net, is_deprecated.
-psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<SQL
-INSERT INTO domain (id, time_created, time_updated, name, native_token, chain_id, is_test_net, is_deprecated)
-VALUES
-  (${GORCHAIN_DOMAIN_ID}, now(), now(), '${GORCHAIN_NAME}', '${GORCHAIN_TOKEN}', ${GORCHAIN_CHAIN_ID}, ${GORCHAIN_TESTNET}, false),
-  (${SOLANA_DOMAIN_ID},  now(), now(), '${SOLANA_NAME}',  '${SOLANA_TOKEN}',  ${SOLANA_CHAIN_ID},  ${SOLANA_TESTNET},  false)
-ON CONFLICT (id) DO NOTHING;
-SQL
+# Values pass to seed-domains.sql as psql variables (-v) so the SQL file carries
+# no shell interpolation; it quotes them via :var (numbers/bools) / :'var' (strings).
+psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 \
+  -v gorchain_domain_id="${GORCHAIN_DOMAIN_ID}" \
+  -v gorchain_name="${GORCHAIN_NAME}" \
+  -v gorchain_token="${GORCHAIN_TOKEN}" \
+  -v gorchain_chain_id="${GORCHAIN_CHAIN_ID}" \
+  -v gorchain_testnet="${GORCHAIN_TESTNET}" \
+  -v solana_domain_id="${SOLANA_DOMAIN_ID}" \
+  -v solana_name="${SOLANA_NAME}" \
+  -v solana_token="${SOLANA_TOKEN}" \
+  -v solana_chain_id="${SOLANA_CHAIN_ID}" \
+  -v solana_testnet="${SOLANA_TESTNET}" \
+  -f /scraper-config/seed-domains.sql
 
 echo "[scraper-init] Starting scraper..."
 exec scraper

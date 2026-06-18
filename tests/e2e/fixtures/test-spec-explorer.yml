@@ -38,6 +38,7 @@ config:
 configmaps:
   agent-config: ./configmaps/agent-config
   hasura-config: ./configmaps/hasura-config
+  scraper-config: ./configmaps/scraper-config
 # Throwaway DB password + Hasura admin secret for the e2e cluster; conftest sets
 # the env values before deploy_start (the real flows generate them via ops).
 secrets:

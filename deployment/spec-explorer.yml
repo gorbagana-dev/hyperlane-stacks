@@ -30,6 +30,7 @@ config:
 configmaps:
   agent-config: ./configmaps/agent-config
   hasura-config: ./configmaps/hasura-config
+  scraper-config: ./configmaps/scraper-config
 # Before deploying, export this env var in the shell that runs laconic-so:
 #   SOLANA_RPC_URL  (Helius RPC — embeds an API key; scraper-only)
 secrets:

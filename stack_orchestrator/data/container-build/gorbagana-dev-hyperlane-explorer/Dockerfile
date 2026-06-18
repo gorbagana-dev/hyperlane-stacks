@@ -42,8 +42,9 @@ COPY --from=builder --chown=explorer:explorer /app/.next/standalone ./
 COPY --from=builder --chown=explorer:explorer /app/.next/static .next/static
 COPY --from=builder --chown=explorer:explorer /app/public public
 
-# Copy entrypoint (placed into build context by build.sh)
+# Copy entrypoint + chain-render script (placed into build context by build.sh)
 COPY entrypoint.sh /entrypoint.sh
+COPY render-chains.js /app/render-chains.js
 RUN chmod +x /entrypoint.sh
 
 USER explorer
