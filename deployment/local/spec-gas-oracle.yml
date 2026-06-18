@@ -2,7 +2,7 @@
 # Periodically updates IGP gas oracle configurations on both chains. Internal only
 # (no ingress), same as prod.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host;
+# Local differences from prod: chain RPCs are placeholder tokens rendered on the host;
 # devnet domain IDs.
 stack: stack_orchestrator/data/stacks/hyperlane-gas-oracle
 deploy-to: k8s-kind

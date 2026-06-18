@@ -2,7 +2,7 @@
 # Deploys Hyperlane core contracts on both chains, writes artifacts to ConfigMaps.
 # Run ONCE before deploying agent stacks.
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host from
+# Local differences from prod: chain RPCs are placeholder tokens rendered on the host from
 # group_vars (own out-of-band chains); devnet domain/chain IDs.
 stack: stack_orchestrator/data/stacks/hyperlane-svm-deployer
 deploy-to: k8s-kind

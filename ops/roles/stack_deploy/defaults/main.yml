@@ -4,3 +4,12 @@
 # kind_mount_root (reserved for runtime host-path volume data).
 deploy_base: "{{ ansible_env.HOME }}/deployments"
 deployment_id: "{{ stack_name }}"
+
+# Secret envs allowed to be empty — the non-empty assert in deploy.yml skips these
+# (they are still rejected if they carry an unrendered {{ }} or REPLACE_WITH).
+# - IGP_BENEFICIARY_PUBKEY: deployer-scripts-config/deploy.sh defaults it to
+#   BRIDGE_OWNER_PUBKEY at runtime, so an empty value is valid.
+# - SLACK_WEBHOOK_URL: empty disables balance alerts (balance-monitor handles it).
+optional_secret_env:
+  - IGP_BENEFICIARY_PUBKEY
+  - SLACK_WEBHOOK_URL

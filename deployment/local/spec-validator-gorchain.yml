@@ -1,6 +1,6 @@
 # Hyperlane Validator (Gorchain) - LOCAL (own-chains) deployment spec
 # Fronted by Caddy + LE like prod; MinIO reached via the public s3.<zone> endpoint
-# (real cert, trusted by the Rust S3 client). __BASE_DOMAIN__ is rendered on the host.
+# (real cert, trusted by the Rust S3 client). the base domain is rendered on the host.
 stack: stack_orchestrator/data/stacks/hyperlane-validator
 deploy-to: k8s-kind
 # Per-chain namespace: both validators deploy from the hyperlane-validator stack,

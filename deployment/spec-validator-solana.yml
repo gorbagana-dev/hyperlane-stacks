@@ -28,7 +28,7 @@ config:
   ORIGIN_CHAIN_NAME: solana
   CHECKPOINT_BUCKET: hyperlane-validator-solana-primary
   PRIVY_WALLET_ID: "REPLACE_WITH_WALLET_ID"
-  # MinIO endpoint is topology-aware (ops __S3_ENDPOINT__): in-cluster on
+  # MinIO endpoint is topology-aware (rendered by ops): in-cluster on
   # single-host, the public Caddy URL on multi-host.
   AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"
 # __SINGLE_HOST_EXTERNAL_SERVICES__

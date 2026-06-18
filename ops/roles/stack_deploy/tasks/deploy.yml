@@ -31,10 +31,13 @@
 # never generated because distribute-credentials.yml / setup-all didn't complete. An
 # undefined source var doesn't always error — older ansible passes the literal
 # "{{ var }}" straight through — so also reject values that still contain `{{`.
+# Envs in optional_secret_env (e.g. IGP_BENEFICIARY_PUBKEY — defaulted by deploy.sh;
+# SLACK_WEBHOOK_URL — empty disables alerts) may be empty, but are still checked for
+# stray {{ }}/REPLACE_WITH placeholders.
 - name: Required secret env values for this stack are set and rendered
   ansible.builtin.assert:
     that:
-      - "stack_env[item] | default('', true) | string | length > 0"
+      - "item in optional_secret_env or (stack_env[item] | default('', true) | string | length > 0)"
       - "not (stack_env[item] | default('', true) | string is search('\\{\\{'))"
       - "not (stack_env[item] | default('', true) | string is search('REPLACE_WITH'))"
     fail_msg: >-

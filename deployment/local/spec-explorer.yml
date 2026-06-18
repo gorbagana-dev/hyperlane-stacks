@@ -1,7 +1,7 @@
 # Hyperlane Explorer - LOCAL (own-chains) deployment spec
 # Self-hosted message indexer + search UI (frontend + scraper + Postgres + Hasura).
 #
-# Local differences from prod: chain RPCs are __TOKENS__ rendered on the host. The
+# Local differences from prod: chain RPCs are placeholder tokens rendered on the host. The
 # scraper runs in-cluster and reaches the host chains via the single-host
 # external-services block. The explorer's browser never calls the chain RPCs
 # (read-only over the /api/graphql proxy), so the injected-metadata rpcUrls just

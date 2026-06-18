@@ -28,7 +28,7 @@ config:
   # Rendered at deploy time from relayer-whitelist.json (stack_deploy).
   HYP_WHITELIST: '__RELAYER_WHITELIST__'
   CLAIM_INTERVAL_SECONDS: "__CLAIM_INTERVAL_SECONDS__"  # IGP fee claim interval (default 6h)
-  # MinIO endpoint is topology-aware (ops __S3_ENDPOINT__): in-cluster on
+  # MinIO endpoint is topology-aware (rendered by ops): in-cluster on
   # single-host, the public Caddy URL on multi-host.
   AWS_ENDPOINT_URL_S3: "__S3_ENDPOINT__"
 # __SINGLE_HOST_EXTERNAL_SERVICES__
