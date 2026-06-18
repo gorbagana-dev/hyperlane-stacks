@@ -1,3 +1,4 @@
 # Edit this file to trigger the explorer (frontend) image publish workflow.
 # TODO: Replace this mechanism with a release-triggered workflow.
 publish
+bump explorer fork pin to v12.0.0-gorbagana.2 (2026-06-18)
