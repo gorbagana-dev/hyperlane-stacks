@@ -258,7 +258,7 @@ laconic-so --stack stack_orchestrator/data/stacks/hyperlane-svm-deployer setup-r
 ```
 
 This clones repos listed in `stack.yml` → `repos:` to `$CERC_REPO_BASE_DIR/`.
-For the deployer: `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` → `$CERC_REPO_BASE_DIR/hyperlane-monorepo/`.
+For the deployer: `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.2` → `$CERC_REPO_BASE_DIR/hyperlane-monorepo/`.
 
 ### 2. Build Container Images (once, ~30 min for deployer)
 
@@ -1351,8 +1351,9 @@ no assertion that a bridged message reaches `message_view`/Postgres — the `dom
 query passes even if message indexing is broken. Closing this gap requires a sent
 message plus a relay wait (the `test_13_warp_ui_bridge` pattern), and is tracked
 in pebble **hyp-277**. (The earlier concern that the scraper and deployer might
-decode different Sealevel account layouts was resolved by building both from the
-same fork tag, `v2.2.0-gorbagana.1`.)
+decode different Sealevel account layouts is moot: the deployer is on
+`v2.2.0-gorbagana.2` and the scraper on `.1`, which differ only by the deployer's
+`--arch v1` program build flag — same program logic and account layouts.)
 
 ### Test fixture (`tests/e2e/fixtures/test-spec-explorer.yml`)
 

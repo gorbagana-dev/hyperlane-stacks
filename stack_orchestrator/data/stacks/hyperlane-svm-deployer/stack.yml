@@ -2,10 +2,11 @@ version: "1.1"
 name: hyperlane-svm-deployer
 description: "Deploys Hyperlane core contracts on Gorchain and Solana SVM chains"
 repos:
-  # gorbagana monorepo fork, same release tag as the agents and scraper. The
-  # Sealevel client and on-chain programs are unchanged from the previous
-  # upstream 16c056a pin (verified by diff), so on-chain layouts stay compatible.
-  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1
+  # gorbagana monorepo fork. Pinned ahead of the agents/scraper (still .1) to .2,
+  # which builds the .so programs with --arch v1 (SBPFv1) so they deploy on Solana
+  # devnet/mainnet as well as gorchain. The agents and scraper don't build the
+  # programs, so their images are unaffected and stay on .1.
+  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.2
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:

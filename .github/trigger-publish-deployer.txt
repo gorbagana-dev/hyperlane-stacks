@@ -2,3 +2,4 @@
 # TODO: Replace this mechanism with release-triggered workflow.
 publish
 rebuild from gorbagana-dev monorepo fork v2.2.0-gorbagana.1 (2026-06-18)
+rebuild from v2.2.0-gorbagana.2 — SBPFv1 programs for Solana deploy (2026-06-18)

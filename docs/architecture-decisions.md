@@ -74,10 +74,10 @@ The patched agent image is used by both the validator and relayer stacks. Publis
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
-**No existing image.** Built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1` (the same release tag as the agents and scraper).
+**No existing image.** Built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.2` (the agents and scraper stay on `.1`).
 
 - Base image: Ubuntu 22.04
-- Source: gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1`; the Sealevel client and `.so` programs are unchanged from the previous upstream `16c056a` pin (verified by diff), so on-chain account layouts stay compatible with the scraper
+- Source: gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.2`; the `.so` programs are built with `--arch v1` (SBPFv1) so they deploy on Solana devnet/mainnet as well as gorchain (the platform-tools default emits SBPFv3, which Solana rejects). Program logic and account layouts are unchanged, so they stay compatible with the scraper
 - Multi-stage Docker build: builder stage compiles, runtime stage copies binaries
 - Produces: `hyperlane-sealevel-client` binary + `.so` program files (mailbox, IGP, ISM, validator announce, token, token-native, token-collateral)
 - Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 3.0.14
@@ -102,7 +102,7 @@ There is no `fix-numeric-types`/sentinel-everything machinery and no source over
 
 ### Version Pinning
 
-Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-gorbagana.1`** with Solana CLI **3.0.14** (the Sealevel client and `.so` programs are unchanged from the prior upstream `16c056a` pin). Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
+Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-gorbagana.2`** with Solana CLI **3.0.14**, building the `.so` programs with `--arch v1` (SBPFv1) for cross-cluster deploy (Solana devnet/mainnet + gorchain). Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
 
 **Registry:** `ghcr.io/gorbagana-dev` (GitHub Container Registry)
 
@@ -110,7 +110,7 @@ Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-
 |-----------|-------|--------|
 | Validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
 | Relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Same image as validator |
-| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Build from the gorbagana `hyperlane-monorepo` fork @ `v2.2.0-gorbagana.1`, Solana CLI 3.0.14 |
+| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Build from the gorbagana `hyperlane-monorepo` fork @ `v2.2.0-gorbagana.2`, Solana CLI 3.0.14, programs built `--arch v1` |
 | Warp Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |

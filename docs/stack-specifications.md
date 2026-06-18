@@ -65,8 +65,8 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 
 | # | Stack | repos: | containers: | pods: | jobs: |
 |---|-------|--------|-------------|-------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
+| 1 | `hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.2` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.2` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
 | 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-kms-proxy`, `gorbagana-dev/hyperlane-agent` | `hyperlane-validator` | — |
 | 4 | `hyperlane-relayer` | *(none)* | *(none)* — reuses `gorbagana-dev/hyperlane-agent` | `hyperlane-relayer` | — |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` | — |
@@ -79,7 +79,7 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
 - Stacks 1 and 2 share the same repo/container (deployer image) and are independently buildable. The relayer (stack 4) builds nothing — it reuses the `hyperlane-agent` image built by the validator stack.
 - Stack 7 balance-monitor will use a lightweight image (not the heavy deployer image).
-- The deployer image is built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1` — the same release tag as the agents and scraper. The Sealevel client and on-chain programs it builds are unchanged from the previous upstream `16c056a` pin (verified by diff), so on-chain account layouts remain compatible with the scraper.
+- The deployer image is built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.2` (the agents and scraper stay on `.1`; they don't build the programs). `.2` differs from `.1` only by building the `.so` programs with `--arch v1` (SBPFv1) so they deploy on Solana devnet/mainnet, not just gorchain — program logic and on-chain account layouts are unchanged, so they remain compatible with the scraper.
 - Stack 9 lists its `containers:` commented out so `deploy start` doesn't `kind load` them — k8s pulls `hyperlane-explorer`/`hyperlane-scraper` from the registry instead (hasura is the upstream image). Uncomment for local builds.
 
 ---
@@ -709,7 +709,7 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
+| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.2` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs (built `--arch v1` / SBPFv1) + `solana-verify`. Solana CLI 3.0.14. |
 | `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | TypeScript, source at `hyperlane-gas-oracle/`, uses `@hyperlane-xyz/sdk` |
 | `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | Next.js standalone build of the warp-ui fork; runtime config files + one WalletConnect sentinel |
