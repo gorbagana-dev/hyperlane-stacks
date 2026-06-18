@@ -46,8 +46,9 @@ image-pull-secret:
   username: gorbagana-dev
   token-env: GHCR_PAT
 # Optional: override container images (service name → full image ref)
-# image-overrides:
-#   warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-warp-deployer:v1.0.0
+image-overrides:
+  # warp-deployer runs the shared svm-deployer image, not a separate build
+  warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v2.2.0-gorbagana.1
 resources:
   containers:
     reservations:

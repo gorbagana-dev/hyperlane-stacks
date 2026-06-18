@@ -12,8 +12,8 @@ network:
         - path: /
           proxy-to: relayer:9091
 # Optional: override container images (service name → full image ref)
-# image-overrides:
-#   relayer: ghcr.io/gorbagana-dev/hyperlane-agent:v1.0.0
+image-overrides:
+  relayer: ghcr.io/gorbagana-dev/hyperlane-agent:v2.2.0-gorbagana.1
 annotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "9091"
