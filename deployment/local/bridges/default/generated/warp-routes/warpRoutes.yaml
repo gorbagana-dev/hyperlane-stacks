@@ -6,14 +6,14 @@
       "name": "USD Coin",
       "symbol": "USDC",
       "decimals": 6,
-      "addressOrDenom": "rAZHdi53PymEYQzqvadCwSayrf5W2kWcGxGC9FS4Lz8",
-      "mailbox": "8i6FfFYh21Rq7y8aAQtuMWXrpFbqxZHLNaYCvbzyjDUP",
+      "addressOrDenom": "GNFKJ6ZS1MweqxF543N1Cv7aPBuCdBNiWi3xWengabgr",
+      "mailbox": "BPKU1hMJLED7DriqLePXCeW4Uv6cF1zHeE49RYJwpttG",
       "connections": [
         {
-          "token": "sealevel|gorchain|6nbjLa95ZRDydJU4uoqVJVEtU3dRirEY913UpWRB4HN1"
+          "token": "sealevel|gorchain|9WR3An5HjR9HEsYhAiR17jyvgoevrzzDsR1u8WnjusXQ"
         }
       ],
-      "collateralAddressOrDenom": "A3GeVMqh3w18owQmUpm4rEwtJ8covwKHqAh9EaEwYkNM",
+      "collateralAddressOrDenom": "EDEappBGxV8nMRMMcng4DUUH5dUF2ZFiRubS7V9NYF9d",
       "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
     },
     {
@@ -22,14 +22,14 @@
       "name": "USD Coin",
       "symbol": "USDC",
       "decimals": 6,
-      "addressOrDenom": "6nbjLa95ZRDydJU4uoqVJVEtU3dRirEY913UpWRB4HN1",
-      "mailbox": "8WJj1Esy3qXDVTyhPa8LmfhGo27pJta4a6x28kuSjhFN",
+      "addressOrDenom": "9WR3An5HjR9HEsYhAiR17jyvgoevrzzDsR1u8WnjusXQ",
+      "mailbox": "4Fi8JUYanzpfaD9nc9DdNVDR1fc6QtNyRUX7TJmwbtER",
       "connections": [
         {
-          "token": "sealevel|solana|rAZHdi53PymEYQzqvadCwSayrf5W2kWcGxGC9FS4Lz8"
+          "token": "sealevel|solana|GNFKJ6ZS1MweqxF543N1Cv7aPBuCdBNiWi3xWengabgr"
         }
       ],
-      "collateralAddressOrDenom": "4QqLYxY5FUiRWJD5mMK4ah6H7pcnfXHeSUbCg4yVCd6n",
+      "collateralAddressOrDenom": "CVNq8NG9XmqmsyCJEUgwLv6W2ESjKFRMUDcsjjWWWStG",
       "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
     }
   ],

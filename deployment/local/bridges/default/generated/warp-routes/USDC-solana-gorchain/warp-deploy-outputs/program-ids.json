@@ -1,10 +1,10 @@
 {
-  "solana": {
-    "hex": "0x0c9843f187f0e05b832c47256763767ae728c1950d92d2144735fce7763878e5",
-    "base58": "rAZHdi53PymEYQzqvadCwSayrf5W2kWcGxGC9FS4Lz8"
-  },
   "gorchain": {
-    "hex": "0x55f8d71fa11250d8618fbefac5596e567cbb9151402274575681771ac55d30da",
-    "base58": "6nbjLa95ZRDydJU4uoqVJVEtU3dRirEY913UpWRB4HN1"
+    "hex": "0x7e66849e0b65316ab796a28b9e85b8d46a5d9367797a6a2cff874a6714723c8b",
+    "base58": "9WR3An5HjR9HEsYhAiR17jyvgoevrzzDsR1u8WnjusXQ"
+  },
+  "solana": {
+    "hex": "0xe450aff8d4372df91295accab32a513db312b258db84e2944cd9a8e67d5b3047",
+    "base58": "GNFKJ6ZS1MweqxF543N1Cv7aPBuCdBNiWi3xWengabgr"
   }
 }

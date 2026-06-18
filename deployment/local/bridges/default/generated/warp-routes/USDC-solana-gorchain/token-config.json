@@ -6,19 +6,19 @@
       "name": "USD Coin",
       "symbol": "USDC",
       "decimals": 6,
-      "interchainSecurityModule": "AsEr5fgLvD1haHnNm6Qjcum2eNbRb5uhY9mFsnF968k2",
-      "interchainGasPaymaster": "CS3EWj5T7bCwxiSLnM4UTWzX1QBvWJkVyL1WHkfvbEbH",
-      "token": "A3GeVMqh3w18owQmUpm4rEwtJ8covwKHqAh9EaEwYkNM"
+      "interchainSecurityModule": "2KYak4ttKa1juoSU9dj6qRnBBdCZBxV2zNwYMhsNvb51",
+      "interchainGasPaymaster": "6hm2tU5x6eriU1wXwcBtomCYTfwbrt9Tnr8nkAVRGTfT",
+      "token": "EDEappBGxV8nMRMMcng4DUUH5dUF2ZFiRubS7V9NYF9d"
     },
     "gorchain": {
       "type": "synthetic",
       "name": "USD Coin",
       "symbol": "USDC",
       "decimals": 6,
-      "interchainSecurityModule": "AHn2hhsmcawCzKMyELHw6tFrYi6vCvWCJ7eWGzdyd9FZ",
-      "interchainGasPaymaster": "5PL994PeZG3gF14tQ4CDqE8xEr4dRvSBfWsmPTxG3Cnd",
+      "interchainSecurityModule": "HvhRjUzs4r6G5Ci3p4efsFksXxFZ8h4Q56BvfszbywRT",
+      "interchainGasPaymaster": "FZC5U6v4t6GE4hbVXSrTbij1d84uh2bbad1zeCAEivw1",
       "uri": "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/c2c4abdc3d7b05866c00d95379983bca64d864a7/token-metadata.json",
-      "mint": "4QqLYxY5FUiRWJD5mMK4ah6H7pcnfXHeSUbCg4yVCd6n"
+      "mint": "CVNq8NG9XmqmsyCJEUgwLv6W2ESjKFRMUDcsjjWWWStG"
     }
   }
 }
