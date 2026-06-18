@@ -42,7 +42,7 @@ secrets:
   hyperlane-monitoring-secrets:
     keys:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
-      SLACK_WEBHOOK_URL:          { env: SLACK_WEBHOOK_URL }
+      SLACK_WEBHOOK_URL:          { env: SLACK_WEBHOOK_URL, optional: true }
 # Single-host only: Prometheus scrapes validators/relayer cross-NS in-cluster. Rendered
 # to an external-services: block on single-host, removed on multi-host.
 # __SINGLE_HOST_EXTERNAL_SERVICES__
