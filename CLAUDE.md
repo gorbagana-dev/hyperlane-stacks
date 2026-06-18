@@ -3,7 +3,7 @@
 ## Project overview
 
 Multi-component Hyperlane SVM bridge deployment system using laconic-so
-(stack-orchestrator). 8 stacks: 2 deployer Jobs, 6 long-running Pods.
+(stack-orchestrator). 9 stacks: 2 deployer Jobs, 7 long-running Pods.
 Two SVM chains: **Gorchain** (custom) and **Solana**.
 
 ## Repository layout
@@ -46,6 +46,7 @@ These groups of files must stay consistent. When changing one, update all:
 | `compose/docker-compose-hyperlane-monitoring.yml` | `deployment/spec-monitoring.yml` | — |
 | `compose/docker-compose-hyperlane-warp-ui.yml` | `deployment/spec-warp-ui.yml` | — |
 | `compose/docker-compose-hyperlane-minio.yml` | `deployment/spec-minio.yml` | — |
+| `compose/docker-compose-hyperlane-explorer.yml` | `deployment/spec-explorer.yml` (staging/local under `staging/`, `local/`) | `tests/e2e/fixtures/test-spec-explorer.yml` |
 
 When you add/remove/rename an env var or configmap in a compose file:
 - Update the corresponding `deployment/spec-*.yml`
@@ -128,6 +129,7 @@ When making structural changes, update:
 6. `hyperlane-gas-oracle` (env vars populated from state files via conftest)
 7. `hyperlane-monitoring` (anytime)
 8. `hyperlane-warp-ui` (env vars populated from state files via conftest)
+9. `hyperlane-explorer` (mounts agent-config CM; scraper indexes both chains → Postgres, Hasura serves read-only GraphQL, frontend proxies it same-origin)
 
 State flow: deployer Jobs write JSON files to `/state` (host-path via Kind `extraMounts`).
 Before each consumer's `deployment start`, `BridgeStateLoader.populate(stack, deploy_dir)`

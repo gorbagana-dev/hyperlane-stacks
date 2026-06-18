@@ -14,6 +14,7 @@ The test suite deploys all Hyperlane stacks on a kind cluster alongside a Gorcha
 | 2 | Contract verification | Program IDs exist on-chain, authorities correct, ConfigMaps populated |
 | 3 | Full bridge transfer | Warp route token transfer Gorchain→Solana and Solana→Gorchain |
 | 4 | Warp UI | UI deployment, sentinel substitution, browser-driven bridge transfers |
+| 5 | Explorer | Explorer deploys, serves over TLS ingress, GraphQL proxy reaches Hasura |
 
 ## Infrastructure
 
@@ -331,6 +332,7 @@ tests/
 │   ├── test_09_fee_claim.py          # IGP fee claim tests
 │   ├── test_10_warp_ui.py            # Warp UI deploy + verify TLS ingress
 │   ├── test_11_warp_ui_bridge.py     # Warp UI browser bridge tests (Playwright)
+│   ├── test_15_explorer.py           # Explorer deploy + verify TLS ingress + GraphQL proxy
 │   └── fixtures/
 │       ├── kind-config.yaml          # Kind cluster config with port mappings
 │       ├── cert-manager-issuer.yaml  # Self-signed ClusterIssuer for TLS
@@ -341,7 +343,8 @@ tests/
 │       ├── test-spec-validator-solana.yml    # Validator (Solana) test spec
 │       ├── test-spec-relayer.yml            # Relayer test spec
 │       ├── test-spec-gas-oracle.yml         # Gas oracle test spec
-│       └── test-spec-monitoring.yml        # Monitoring stack test spec
+│       ├── test-spec-monitoring.yml        # Monitoring stack test spec
+│       └── test-spec-explorer.yml          # Explorer stack test spec
 ```
 
 ## Phase 1: Deploy + Health
@@ -1276,6 +1279,128 @@ config:
   WARP_SYNTHETIC_ADDRESS: "REPLACE_AT_RUNTIME"
   WARP_TOKEN_MINT: "REPLACE_AT_RUNTIME"
 ```
+
+## Phase 5: Explorer
+
+Runs independently of the bridge-transfer phases. Deploys the `hyperlane-explorer`
+stack (frontend + scraper + Hasura + Postgres in a single pod) and smoke-checks
+that it comes up, serves over the TLS ingress, and that its same-origin GraphQL
+proxy reaches in-cluster Hasura.
+
+### Prerequisites
+
+- Core deployer completed (the scraper reads mailboxes + domain ids from the
+  `agent-config` ConfigMap)
+- Explorer container images built/pulled (`gorbagana-dev/hyperlane-explorer`,
+  `gorbagana-dev/hyperlane-scraper`; Hasura and Postgres are upstream images)
+- Explorer images loaded into the kind cluster (SO preloads them via
+  `image-overrides` at `deploy start`)
+
+Unlike Phase 3/4, the explorer fixture does **not** deploy the validators,
+relayer, or warp deployer, and does **not** send a bridge transfer. The scraper
+seeds the `domain` table from `agent-config.json` independently of message
+indexing, so the smoke tests pass without any cross-chain traffic.
+
+### Fixture: `explorer_deployment` (conftest.py)
+
+Session-scoped fixture that depends on `deployer_deployment`, `host_prep`,
+`bridge_state_loader`, and `explorer_image` (build/pull + `image-overrides`).
+
+**Setup steps:**
+
+1. **Prepare the explorer stack** from `test-spec-explorer.yml`, patching the
+   `REPLACE_EXPLORER_IMAGE` / `REPLACE_SCRAPER_IMAGE` `image-overrides`
+   placeholders and `REPLACE_HOST_IP` (Kind gateway) via `SPEC_REPLACEMENTS`
+2. **Populate `agent-config`** — `BridgeStateLoader.populate("hyperlane-explorer", …)`
+   copies the deployer-produced `agent-config.json` (mailboxes, domain ids) into the
+   `agent-config` ConfigMap dir; the scraper's entrypoint uses it to create the
+   schema and seed domains
+3. **Inject secrets via env** — set `POSTGRES_PASSWORD` and
+   `HASURA_GRAPHQL_ADMIN_SECRET` in `os.environ` (throwaway test values, like the
+   Grafana/MinIO secrets) so the spec's `secrets:` block resolves them
+4. **Start the explorer stack** via `deploy_start()`
+5. **Wait for the frontend ingress** — long-poll `GET https://explorer.test/`
+   for HTTP 200 (the frontend serves immediately; Hasura crash-restarts until the
+   scraper creates the schema, so the ingress is the user-facing readiness signal)
+6. **Yield** the `DeploymentInfo` and the `https://explorer.test` URL; on teardown
+   save scraper/hasura/explorer pod logs and stop the stack
+
+### Tests (`test_15_explorer.py`)
+
+All tests in `TestExplorer`, marked `@pytest.mark.slow`.
+
+**`test_explorer_pods_running`** — The explorer namespace has at least one pod in
+`Running` phase and none in `Failed`. Note: this checks pod **phase only** — it
+can pass during a Hasura `CrashLoopBackOff` (a restarting container still reports
+`Running`), so it is not a strong liveness signal on its own.
+
+**`test_explorer_serves_html`** — `GET https://explorer.test/` returns HTTP 200
+with HTML content via the Caddy TLS ingress.
+
+**`test_graphql_proxy_resolves_domain`** — The same-origin `/api/graphql` proxy
+reaches in-cluster Hasura and resolves a `{ domain { id name } }` query. The
+scraper's entrypoint seeds the gorchain + solana `domain` rows independently of
+message indexing, so this confirms the proxy + Hasura schema are live. Hasura
+settles only after the scraper has created the schema (it crash-restarts until
+then), so the test polls for up to 120s rather than asserting on a single request.
+
+### Coverage gap (deferred)
+
+These smoke tests deliberately do **not** verify the core indexing path. There is
+no assertion that a bridged message reaches `message_view`/Postgres — the `domain`
+query passes even if message indexing is broken. Closing this gap requires a sent
+message plus a relay wait (the `test_13_warp_ui_bridge` pattern), and is tracked
+in pebble **hyp-c17**, which also covers verifying the scraper (monorepo v2.2.0)
+decodes the deployer's (16c056a) Sealevel account layouts — if those layouts
+diverged, the scraper would silently mis-parse or skip messages.
+
+### Test fixture (`tests/e2e/fixtures/test-spec-explorer.yml`)
+
+```yaml
+stack: stack_orchestrator/data/stacks/hyperlane-explorer
+deploy-to: k8s-kind
+kind-cluster-name: hyperlane
+network:
+  acme-email: e2e@example.test
+  http-proxy:
+    - host-name: explorer.test
+      routes:
+        - path: /
+          proxy-to: explorer:3000
+external-services:
+  gorchain-rpc:
+    ip: REPLACE_HOST_IP
+    port: 8899
+  solana-rpc:
+    ip: REPLACE_HOST_IP
+    port: 18899
+config:
+  GORCHAIN_RPC_URL: "http://gorchain-rpc:8899"
+  # e2e injects the in-cluster solana RPC directly into config; prod wires it via
+  # the spec's secrets: (Helius URL with an embedded API key) — the documented
+  # secret-vs-config split.
+  HYP_CHAINS_SOLANA_CUSTOMRPCURLS: "http://solana-rpc:18899"
+  GORCHAIN_DOMAIN_ID: "99999"
+  SOLANA_DOMAIN_ID: "99998"
+  GORCHAIN_CHAIN_ID: "99999"
+  SOLANA_CHAIN_ID: "99998"
+configmaps:
+  agent-config: ./configmaps/agent-config
+  hasura-config: ./configmaps/hasura-config
+secrets:
+  hyperlane-explorer-secrets:
+    keys:
+      POSTGRES_PASSWORD: { env: POSTGRES_PASSWORD }
+      HASURA_GRAPHQL_ADMIN_SECRET: { env: HASURA_GRAPHQL_ADMIN_SECRET }
+image-overrides:
+  explorer: REPLACE_EXPLORER_IMAGE
+  scraper: REPLACE_SCRAPER_IMAGE
+```
+
+Note: the e2e fixture puts `HYP_CHAINS_SOLANA_CUSTOMRPCURLS` (in-cluster URL) in
+`config:`, whereas the prod spec keeps the real Helius URL under `secrets:`. The
+explorer uses the placeholder domain ids `99999`/`99998` and the `external-services`
+`ip: REPLACE_HOST_IP` pattern shared by the other test specs.
 
 ## Test Configuration
 
