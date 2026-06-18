@@ -65,21 +65,21 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 
 | # | Stack | repos: | containers: | pods: | jobs: |
 |---|-------|--------|-------------|-------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
-| 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-kms-proxy` | `hyperlane-validator` | — |
-| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
+| 1 | `hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
+| 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-kms-proxy`, `gorbagana-dev/hyperlane-agent` | `hyperlane-validator` | — |
+| 4 | `hyperlane-relayer` | *(none)* | *(none)* — reuses `gorbagana-dev/hyperlane-agent` | `hyperlane-relayer` | — |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` | — |
 | 6 | `hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` | — |
-| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `gorbagana-dev/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
+| 8 | `hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | `gorbagana-dev/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
 | 9 | `hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1`, `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-explorer`, `gorbagana-dev/hyperlane-scraper` | `hyperlane-explorer` | — |
 
 - Stacks 1 and 2 use `jobs:` (not `pods:`) because deployers are one-shot containers — k8s Jobs (restartPolicy: Never, backoffLimit: 0) prevent CrashLoopBackOff that occurs when Deployments restart completed containers. Their compose files live in `compose-jobs/` instead of `compose/`.
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
-- Stacks 1, 2, and 4 share the same repo/container (deployer image) and are independently buildable.
+- Stacks 1 and 2 share the same repo/container (deployer image) and are independently buildable. The relayer (stack 4) builds nothing — it reuses the `hyperlane-agent` image built by the validator stack.
 - Stack 7 balance-monitor will use a lightweight image (not the heavy deployer image).
-- The deployer image is built from `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`), not the older `agents-v2.0.0` tag.
+- The deployer image is built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1` — the same release tag as the agents and scraper. The Sealevel client and on-chain programs it builds are unchanged from the previous upstream `16c056a` pin (verified by diff), so on-chain account layouts remain compatible with the scraper.
 - Stack 9 lists its `containers:` commented out so `deploy start` doesn't `kind load` them — k8s pulls `hyperlane-explorer`/`hyperlane-scraper` from the registry instead (hasura is the upstream image). Uncomment for local builds.
 
 ---
@@ -666,15 +666,10 @@ Volume: `explorer-postgres-data` 20Gi.
   metadata the scraper indexes and the frontend renders)
 
 ### Known limitations
-- **Scraper / on-chain version skew.** The scraper is built from the monorepo
-  fork at `v2.2.0` while the on-chain programs were deployed from `16c056a`. The
-  Sealevel scraper decodes account layouts directly, so account-layout
-  compatibility must be verified on a test deploy — send a bridge transfer and
-  confirm a row lands in `message_view`. Tracked in pebble `hyp-c17`.
 - **E2E coverage is smoke-level only.** `tests/e2e/test_15_explorer.py` checks
   pods running, the frontend serving HTML, and the `/api/graphql` proxy resolving
   a `domain` query. There is no end-to-end "bridged message appears in
-  `message_view`" assertion yet.
+  `message_view`" assertion yet. Tracked in pebble `hyp-277`.
 - **Startup relies on crash-loop-until-schema-ready.** Neither the scraper nor
   the hasura entrypoint waits for DB readiness; both restart until Postgres and
   the schema are up.
@@ -707,10 +702,10 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
+| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
 | `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | TypeScript, source at `hyperlane-gas-oracle/`, uses `@hyperlane-xyz/sdk` |
-| `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
+| `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | Next.js standalone build of the warp-ui fork; runtime config files + one WalletConnect sentinel |
 | `gorbagana-dev/hyperlane-explorer` | `gorbagana-dev-hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1` | Next.js standalone build of the explorer fork |
 | `gorbagana-dev/hyperlane-scraper` | `gorbagana-dev-hyperlane-scraper` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Rust build of the Sealevel scraper agent from the monorepo fork |
 

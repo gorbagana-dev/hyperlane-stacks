@@ -258,7 +258,7 @@ laconic-so --stack stack_orchestrator/data/stacks/hyperlane-svm-deployer setup-r
 ```
 
 This clones repos listed in `stack.yml` → `repos:` to `$CERC_REPO_BASE_DIR/`.
-For the deployer: `github.com/hyperlane-xyz/hyperlane-monorepo@agents-v2.0.0` → `$CERC_REPO_BASE_DIR/hyperlane-monorepo/`.
+For the deployer: `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` → `$CERC_REPO_BASE_DIR/hyperlane-monorepo/`.
 
 ### 2. Build Container Images (once, ~30 min for deployer)
 
@@ -1350,9 +1350,9 @@ These smoke tests deliberately do **not** verify the core indexing path. There i
 no assertion that a bridged message reaches `message_view`/Postgres — the `domain`
 query passes even if message indexing is broken. Closing this gap requires a sent
 message plus a relay wait (the `test_13_warp_ui_bridge` pattern), and is tracked
-in pebble **hyp-c17**, which also covers verifying the scraper (monorepo v2.2.0)
-decodes the deployer's (16c056a) Sealevel account layouts — if those layouts
-diverged, the scraper would silently mis-parse or skip messages.
+in pebble **hyp-277**. (The earlier concern that the scraper and deployer might
+decode different Sealevel account layouts was resolved by building both from the
+same fork tag, `v2.2.0-gorbagana.1`.)
 
 ### Test fixture (`tests/e2e/fixtures/test-spec-explorer.yml`)
 

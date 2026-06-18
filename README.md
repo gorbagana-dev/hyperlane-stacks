@@ -45,14 +45,14 @@ hyperlane-stacks/
 ## Repos and images
 
 The stacks run container images published to `ghcr.io/gorbagana-dev/`. Each is
-built either from an upstream Hyperlane source, from our own fork, or from a
-service in this repo. The exact pins (fork release tags, upstream commits) live
-in each stack's `stack_orchestrator/data/stacks/<stack>/stack.yml`.
+built either from our own fork of a Hyperlane repo, or from a service in this
+repo. The exact pins (fork release tags) live in each stack's
+`stack_orchestrator/data/stacks/<stack>/stack.yml`.
 
 | Image | Built from | Kind | Used by |
 |---|---|---|---|
 | [`hyperlane-agent`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-agent) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) | our fork | validator, relayer |
-| [`hyperlane-svm-deployer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-svm-deployer) | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo) + [`solana-program-library`](https://github.com/hyperlane-xyz/solana-program-library) | upstream | svm-deployer, warp-deployer |
+| [`hyperlane-svm-deployer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-svm-deployer) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) + [`solana-program-library`](https://github.com/hyperlane-xyz/solana-program-library) | our fork | svm-deployer, warp-deployer |
 | [`hyperlane-kms-proxy`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-kms-proxy) | [`hyperlane-kms-proxy/`](hyperlane-kms-proxy/) | in-repo | validator, relayer (sidecar) |
 | [`hyperlane-gas-oracle`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-gas-oracle) | [`hyperlane-gas-oracle/`](hyperlane-gas-oracle/) | in-repo | gas-oracle |
 | [`hyperlane-warp-ui`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-warp-ui) | [`hyperlane-warp-ui-template`](https://github.com/gorbagana-dev/hyperlane-warp-ui-template) | our fork | warp-ui |
