@@ -1,3 +1,4 @@
 # Edit this file to trigger the deployer image publish workflow.
 # TODO: Replace this mechanism with release-triggered workflow.
-publish: rebuild from gorbagana-dev monorepo fork v2.2.0-gorbagana.1 (2026-06-18)
+publish
+rebuild from gorbagana-dev monorepo fork v2.2.0-gorbagana.1 (2026-06-18)
