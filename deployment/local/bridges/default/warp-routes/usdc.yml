@@ -17,4 +17,10 @@ remote:
   name: "USD Coin"
   symbol: "USDC"
   decimals: 6
-metadataUri: ""
+# Offchain metadata for the gorchain synthetic (Token-2022 metadata URI). The
+# deployer validates it: name/symbol must match remote.name/remote.symbol and
+# the image URL must serve. Revision-pinned gist raw URL.
+metadataUri: "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/c2c4abdc3d7b05866c00d95379983bca64d864a7/token-metadata.json"
+# Token logo shown in the warp-UI (applied to both sides). Separate from
+# metadataUri: the UI reads warpRoutes.yaml, not the on-chain Token-2022 metadata.
+logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
