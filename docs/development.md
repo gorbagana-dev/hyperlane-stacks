@@ -14,9 +14,13 @@ patterns, and which one you are dealing with decides the first few steps:
 | Image | Source pattern | Where the source lives |
 |---|---|---|
 | `hyperlane-warp-ui` | **fork** | [`hyperlane-warp-ui-template`](https://github.com/gorbagana-dev/hyperlane-warp-ui-template), pinned in `stack.yml` by release tag |
-| explorer | **fork** (in progress) | its own `gorbagana-dev/…` repo, pinned by release tag |
-| `hyperlane-agent`, `hyperlane-svm-deployer` | **upstream pin** | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo), pinned in `stack.yml` by commit |
+| `hyperlane-explorer` (frontend) | **fork** | [`hyperlane-explorer`](https://github.com/gorbagana-dev/hyperlane-explorer), pinned in `stack.yml` by release tag |
+| `hyperlane-agent`, `hyperlane-scraper` | **fork** | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo), pinned in `stack.yml` by release tag (carries KMS/S3 endpoint + pruned-slot fixes) |
+| `hyperlane-svm-deployer` | **upstream pin** | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo), pinned in `stack.yml` by commit (matches the on-chain programs) |
 | `hyperlane-kms-proxy`, `hyperlane-gas-oracle` | **in-repo** | [`hyperlane-kms-proxy/`](../hyperlane-kms-proxy/), [`hyperlane-gas-oracle/`](../hyperlane-gas-oracle/) in this repository |
+
+The explorer stack also runs Hasura (`hasura/graphql-engine`) and Postgres as
+plain upstream images — wired via config/spec, not built or pinned here.
 
 - **Fork** — we maintain our own branded/modified source in a `gorbagana-dev`
   repo and pin a release tag. Use this when the change is substantial and ongoing
@@ -116,6 +120,8 @@ when the matching trigger file changes on `main`, or via manual
 | `hyperlane-kms-proxy` | `.github/trigger-publish-kms-proxy.txt` |
 | `hyperlane-warp-ui` | `.github/trigger-publish-warp-ui.txt` |
 | `hyperlane-gas-oracle` | `.github/trigger-publish-gas-oracle.txt` |
+| `hyperlane-explorer` | `.github/trigger-publish-explorer.txt` |
+| `hyperlane-scraper` | `.github/trigger-publish-scraper.txt` |
 
 Append a dated line describing the change to the relevant trigger file and commit
 it together with the `stack.yml` pin, then push to `main`. CI builds **only** the
@@ -126,13 +132,14 @@ What CI publishes for each image:
 - `ghcr.io/gorbagana-dev/<image>:<timestamp>-<shortsha>` — the immutable build
 - `ghcr.io/gorbagana-dev/<image>:latest` — moving tag (local dev only; never pin
   a deployment to `latest`)
-- **warp-ui only:** also re-publishes the release tag from `stack.yml`
-  (`vX.Y.Z-gorbagana.N`) so specs can pin the human-readable version.
+- **fork-based images** (warp-ui, explorer, agent, scraper): also re-publishes the
+  release tag read from `stack.yml` (`vX.Y.Z-gorbagana.N`) so specs can pin the
+  human-readable version.
 
-> The warp-ui build clones the **private** `gorbagana-dev` fork, so its CI job
-> authenticates the clone with a repo token. If a new fork (e.g. the explorer) is
-> also private, its build job needs the same token wiring — see the
-> `build-warp-ui` job for the pattern.
+> Fork builds clone the **private** `gorbagana-dev` repos, so those CI jobs
+> authenticate the clone with a repo token (`insteadOf` rewrite). A new private
+> fork's build job needs the same wiring — see any of the `build-warp-ui` /
+> `build-explorer` / `build-scraper` jobs for the pattern.
 
 ## 4. Pin the image in the deployment spec
 
