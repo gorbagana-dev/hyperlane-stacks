@@ -73,7 +73,7 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 | 6 | `hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` | — |
 | 8 | `hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | `gorbagana-dev/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
-| 9 | `hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1`, `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-explorer`, `gorbagana-dev/hyperlane-scraper` | `hyperlane-explorer` | — |
+| 9 | `hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.2`, `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-explorer`, `gorbagana-dev/hyperlane-scraper` | `hyperlane-explorer` | — |
 
 - Stacks 1 and 2 use `jobs:` (not `pods:`) because deployers are one-shot containers — k8s Jobs (restartPolicy: Never, backoffLimit: 0) prevent CrashLoopBackOff that occurs when Deployments restart completed containers. Their compose files live in `compose-jobs/` instead of `compose/`.
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
@@ -592,7 +592,7 @@ One pod, four services:
 | db | `postgres:15` | Upstream image; persistent volume `explorer-postgres-data` (20Gi prod). Named `db` (not `postgres`) so SO's localhost-rewrite of sibling service names doesn't corrupt the word "postgres" in other services' env values. |
 | scraper | `ghcr.io/gorbagana-dev/hyperlane-scraper:latest` | Built from the gorbagana monorepo fork `@v2.2.0-gorbagana.1`; indexes both mailboxes into Postgres; metrics on :9090 |
 | hasura | `hasura/graphql-engine:v2.36.0.cli-migrations-v3` | Upstream image wired via the `hasura-config` ConfigMap (entrypoint + flattened metadata); GraphQL on :8080 |
-| explorer | `ghcr.io/gorbagana-dev/hyperlane-explorer:latest` | Next.js standalone from the `gorbagana-dev/hyperlane-explorer` fork `@v12.0.0-gorbagana.1`; UI + `/api/graphql` proxy on :3000; public ingress |
+| explorer | `ghcr.io/gorbagana-dev/hyperlane-explorer:latest` | Next.js standalone from the `gorbagana-dev/hyperlane-explorer` fork `@v12.0.0-gorbagana.2`; UI + `/api/graphql` proxy on :3000; public ingress |
 
 ### How It Works (data flow)
 1. The **scraper** reads `agent-config.json` (mailbox addresses, domain ids, IGP,
@@ -713,7 +713,7 @@ Summary of custom images and their SO build pipeline:
 | `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | TypeScript, source at `hyperlane-gas-oracle/`, uses `@hyperlane-xyz/sdk` |
 | `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | Next.js standalone build of the warp-ui fork; runtime config files + one WalletConnect sentinel |
-| `gorbagana-dev/hyperlane-explorer` | `gorbagana-dev-hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1` | Next.js standalone build of the explorer fork |
+| `gorbagana-dev/hyperlane-explorer` | `gorbagana-dev-hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.2` | Next.js standalone build of the explorer fork |
 | `gorbagana-dev/hyperlane-scraper` | `gorbagana-dev-hyperlane-scraper` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Rust build of the Sealevel scraper agent from the monorepo fork |
 
 Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-cloned repo in `~/cerc/` as build context. Build scripts must NOT use relative paths back to the repo tree — components may move to different repos.

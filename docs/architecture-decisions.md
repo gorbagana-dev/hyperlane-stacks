@@ -116,7 +116,7 @@ Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
 | Gas Oracle | `ghcr.io/gorbagana-dev/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
 | Warp UI | `ghcr.io/gorbagana-dev/hyperlane-warp-ui:local` | Custom build from the fork `gorbagana-dev/hyperlane-warp-ui-template` @ `v2.0.0-gorbagana.6` (`@hyperlane-xyz/sdk@25.5.0`) |
-| Explorer | `ghcr.io/gorbagana-dev/hyperlane-explorer:latest` | Custom build from the fork `gorbagana-dev/hyperlane-explorer` @ `v12.0.0-gorbagana.1` |
+| Explorer | `ghcr.io/gorbagana-dev/hyperlane-explorer:latest` | Custom build from the fork `gorbagana-dev/hyperlane-explorer` @ `v12.0.0-gorbagana.2` |
 | Scraper | `ghcr.io/gorbagana-dev/hyperlane-scraper:v2.2.0-gorbagana.1` | Custom build from the gorbagana `hyperlane-monorepo` fork (Sealevel indexing tolerant of pruned slots) |
 | Hasura | `hasura/graphql-engine:v2.36.0.cli-migrations-v3` (upstream) | GraphQL engine; wired via the `hasura-config` ConfigMap (not a custom build) |
 | Postgres | `postgres:15` (upstream) | Explorer message store |
