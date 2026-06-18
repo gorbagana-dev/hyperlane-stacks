@@ -63,6 +63,8 @@ The hyperlane-demo repo is a local development and testing toolkit. It covers co
 
 **Current state:** Documented in `gas.md` — the Sealevel `process_estimate_costs()` function returns hardcoded zeros, making the `OnChainFeeQuoting` relayer enforcement policy non-functional. The relayer accepts any message regardless of gas payment.
 
+**Observed in the explorer:** Enforcement is set to `[{"type": "none"}]` (`stack_orchestrator/data/compose/docker-compose-hyperlane-relayer.yml`), so messages deliver even when the sender paid no interchain gas. A bridged message shows **Status: Delivered** while its *Interchain Gas Payments* panel reads **Total paid: 0** and **Average price: –**: the IGP `GasPayment` event carries the quoted `gas_amount` but a `payment` of `0` (the on-chain IGP quote evaluates to 0 for the route's path). Expected for this bridge — not an explorer/scraper defect.
+
 **Production requirements:**
 - Upstream fix to `process_estimate_costs()` in `chains/hyperlane-sealevel/src/mailbox.rs:539` (currently a TODO in Hyperlane codebase)
 - Until fixed: use `Minimum` enforcement policy with carefully calculated minimum payment threshold

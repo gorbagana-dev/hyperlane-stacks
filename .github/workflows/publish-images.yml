@@ -162,10 +162,10 @@ jobs:
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
           # Also publish the monorepo release tag from stack.yml
-          # (sealevel-vX.Y.Z-gorbagana.N) so deployment specs can pin it.
+          # (vX.Y.Z-gorbagana.N) so deployment specs can pin it.
           REF=$(grep -oP 'gorbagana-dev/hyperlane-monorepo@\K\S+' \
             stack_orchestrator/data/stacks/hyperlane-validator/stack.yml)
-          if [[ "$REF" =~ ^sealevel-v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
+          if [[ "$REF" =~ ^v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
             echo "ref_tag=${REF}" >> $GITHUB_OUTPUT
           else
             echo "ref_tag=" >> $GITHUB_OUTPUT
@@ -489,10 +489,10 @@ jobs:
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
           # Also publish the monorepo release tag from stack.yml
-          # (sealevel-vX.Y.Z-gorbagana.N) so deployment specs can pin it.
+          # (vX.Y.Z-gorbagana.N) so deployment specs can pin it.
           REF=$(grep -oP 'gorbagana-dev/hyperlane-monorepo@\K\S+' \
             stack_orchestrator/data/stacks/hyperlane-explorer/stack.yml)
-          if [[ "$REF" =~ ^sealevel-v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
+          if [[ "$REF" =~ ^v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
             echo "ref_tag=${REF}" >> $GITHUB_OUTPUT
           else
             echo "ref_tag=" >> $GITHUB_OUTPUT

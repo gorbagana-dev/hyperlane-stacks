@@ -8,7 +8,7 @@ over a read-only Hasura GraphQL API. Four pods in one stack:
 |-----|------|
 | `postgres` | Indexed-message store (Postgres 15, persistent volume) |
 | `scraper` | Hyperlane Rust scraper. Its entrypoint runs `init-db` (creates base tables + `message_view`/`total_gas_payment` views) and seeds the gorchain/solana `domain` rows, then indexes the mailboxes. Built from the deployer monorepo pin. |
-| `hasura` | Read-only GraphQL over `message_view` + `domain` (anonymous role, aggregations on). Metadata baked into the image (cli-migrations). Internal only. |
+| `hasura` | Read-only GraphQL over `message_view` + `domain` (anonymous role, aggregations on). Upstream `hasura/graphql-engine` image; metadata applied at boot from the `hasura-config` configmap (cli-migrations). Internal only. |
 | `explorer` | Next.js frontend (fork). Serves the UI and a same-origin `/api/graphql` proxy to in-cluster Hasura; injects gorbagana chain metadata at runtime. |
 
 Built from the fork [gorbagana-dev/hyperlane-explorer](https://github.com/gorbagana-dev/hyperlane-explorer) plus the scraper/hasura images defined under `stack_orchestrator/data/container-build/`.
@@ -50,3 +50,11 @@ laconic-so deployment --dir explorer-deployment start
 
 The frontend is served at the configured ingress host; Hasura and Postgres are
 cluster-internal only.
+
+## Notes
+
+- **Interchain gas shows `Total paid: 0`.** This SVM bridge runs the relayer with
+  gas-payment enforcement disabled, so messages deliver without a real interchain
+  gas payment — the *Interchain Gas Payments* panel reads `Total paid: 0` /
+  `Average price: –` on a `Delivered` message. Expected, not an explorer defect;
+  see `docs/production-readiness-gaps.md` § 2.1.
