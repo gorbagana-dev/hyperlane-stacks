@@ -50,8 +50,11 @@ secrets:
 #   balance-monitor: ghcr.io/gorbagana-dev/hyperlane-balance-monitor:v1.0.0
 resources:
   containers:
+    # Applies to all 3 containers (prometheus, grafana, balance-monitor). 0.1 each
+    # (300m total) so the stack fits the shared single-host node alongside the
+    # explorer; these idle well under that and have no CPU limit, so they burst.
     reservations:
-      cpus: "0.25"
+      cpus: "0.1"
       memory: 512M
   volumes:
     prometheus-data:

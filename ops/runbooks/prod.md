@@ -6,7 +6,12 @@ mainnet, under `bridge.gorbagana.wtf` (Cloudflare + Let's Encrypt TLS). A single
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec |
 |---|---|---|
-| `bridge-host-1` | MinIO, deployer Jobs, both validators, relayer, gas-oracle, monitoring, warp-ui, explorer | 4 vCPU / 8 GB / 80 GB SSD or larger |
+| `bridge-host-1` | MinIO, deployer Jobs, both validators, relayer, gas-oracle, monitoring, warp-ui, explorer | 8 vCPU / 16 GB / 80 GB SSD or larger |
+
+> Single-host co-locates the whole bridge **plus both validators and the explorer** —
+> that does not fit 4 vCPU (CPU requests alone exceed it). Use ≥ 8 vCPU, or split a
+> validator/the explorer onto a second host (see multi-host opt-out below). Staging
+> omits the validators from its bridge-ops box, so it can run smaller.
 
 Multi-host opt-out: to move a validator to a second machine, change that validator's `host:`
 in `deployment/bridges/default/operator/validators.yaml`, add the host to

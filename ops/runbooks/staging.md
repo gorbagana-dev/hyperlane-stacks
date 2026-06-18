@@ -6,7 +6,7 @@ and Let's Encrypt TLS under `staging.gorbagana.wtf`.
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec | DO size slug |
 |---|---|---|---|
-| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui, explorer | 4 vCPU / 8 GB / 80 GB SSD | `s-4vcpu-8gb` |
+| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui, explorer | 8 vCPU / 16 GB / 80 GB SSD | `s-8vcpu-16gb` |
 | `staging-gorchain` | gorchain chain + Caddy RPC front | 8 vCPU / 32 GB / 500 GB NVMe SSD | `s-8vcpu-32gb-640gb-intel` |
 | `staging-hyperlane-validators` | both hyperlane validators | 4 vCPU / 8 GB / 60 GB SSD | `s-4vcpu-8gb` |
 

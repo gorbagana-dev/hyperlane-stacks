@@ -510,6 +510,13 @@ balance (summed, decimals from RPC).
 ### Prometheus Scrape Targets
 Uses `kubernetes_sd_configs` with pod annotation relabeling (`prometheus.io/scrape: "true"`) to discover validators/relayer in separate pods. Validator/relayer compose files should include prometheus annotations.
 
+### Resources
+All three containers reserve `0.1` CPU each (300m total) with no CPU limit, so they
+burst when needed. The reservations are deliberately small because these services
+idle low; the single-host node is sized for headroom rather than padded per-stack
+reservations (see `ops/runbooks/prod.md` — co-locating the full bridge + both
+validators + explorer needs ≥ 8 vCPU).
+
 ---
 
 ## Stack 8: hyperlane-warp-ui
