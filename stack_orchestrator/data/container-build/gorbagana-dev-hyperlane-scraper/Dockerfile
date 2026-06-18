@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
 # gorbagana-dev-hyperlane-scraper
-# Hyperlane scraper + sea-orm init-db migrator, built from the monorepo at the
-# DEPLOYER pin (16c056a) so it parses the same on-chain program accounts the
-# deployer published. No KMS/S3 patches (the scraper signs nothing, writes no S3).
+# Hyperlane scraper + sea-orm init-db migrator, built from the gorbagana
+# monorepo fork (pinned in the stack's stack.yml) whose indexing tolerates
+# pruned slots. No KMS/S3 patches (the scraper signs nothing, writes no S3).
 #
 # Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)
 # Invoked via: docker build -f <this-file> ~/cerc/hyperlane-monorepo

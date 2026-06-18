@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
 # gorbagana-dev-hyperlane-agent
-# Patched build of hyperlane agent with two fixes for S3-compatible / custom endpoints:
-# 1. KMS endpoint — rusoto_kms ignores AWS_ENDPOINT_URL_KMS; patch uses Region::Custom
-# 2. S3 path-style — force path-style addressing when AWS_ENDPOINT_URL is set (MinIO)
+# Hyperlane validator + relayer, built from the gorbagana monorepo fork. The
+# KMS custom-endpoint and S3 path-style fixes for MinIO-compatible storage are
+# committed in the fork (formerly applied here as build-time patches).
 #
 # Build context: ~/cerc/hyperlane-monorepo (or equivalent)
 # Invoked via: docker build -f <this-file> ~/cerc/hyperlane-monorepo
