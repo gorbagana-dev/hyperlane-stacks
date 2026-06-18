@@ -14,4 +14,8 @@ remote:
   name: "USD Coin"
   symbol: "USDC"
   decimals: 6
+# Empty on-chain Token-2022 metadata: e2e gains nothing from it and a non-empty
+# value makes the deployer fetch+validate the URL (an external network dependency).
 metadataUri: ""
+# Token logo shown in the warp-UI (applied to both sides).
+logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"

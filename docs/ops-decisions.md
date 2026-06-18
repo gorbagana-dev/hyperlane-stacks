@@ -361,7 +361,7 @@ Teardown is fundamentally a multi-step playbook — each step requires the hardw
 | 4 | Close orphan deploy buffer accounts (Ledger client) | Per-tx — operator confirms each |
 | 5 | Transfer remaining SOL from agent wallets (Ledger client) | Per-tx — operator confirms each |
 | 6 | Dispose of key material (operator-local, optional) | n/a |
-| 7 | Stop remaining stacks (`deployment stop`: minio, monitoring, warp-ui) | None |
+| 7 | Stop remaining stacks (`deployment stop`: minio, monitoring, warp-ui, explorer) | None |
 
 **Safety mechanisms:**
 

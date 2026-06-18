@@ -8,21 +8,21 @@ Hyperlane branding to Gorbagana is used as the worked example.
 
 ## Where each image comes from
 
-The stacks pull images from `ghcr.io/gorbagana-dev/`. There are three source
+The stacks pull images from `ghcr.io/gorbagana-dev/`. There are two source
 patterns, and which one you are dealing with decides the first few steps:
 
 | Image | Source pattern | Where the source lives |
 |---|---|---|
 | `hyperlane-warp-ui` | **fork** | [`hyperlane-warp-ui-template`](https://github.com/gorbagana-dev/hyperlane-warp-ui-template), pinned in `stack.yml` by release tag |
-| explorer | **fork** (in progress) | its own `gorbagana-dev/…` repo, pinned by release tag |
-| `hyperlane-agent`, `hyperlane-svm-deployer` | **upstream pin** | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo), pinned in `stack.yml` by commit |
+| `hyperlane-explorer` (frontend) | **fork** | [`hyperlane-explorer`](https://github.com/gorbagana-dev/hyperlane-explorer), pinned in `stack.yml` by release tag |
+| `hyperlane-agent`, `hyperlane-scraper` | **fork** | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo), pinned in `stack.yml` by release tag (carries KMS/S3 endpoint + pruned-slot fixes) |
+| `hyperlane-svm-deployer` | **fork** | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo), pinned in `stack.yml` by release tag (builds the Sealevel client + on-chain programs) |
 | `hyperlane-kms-proxy`, `hyperlane-gas-oracle` | **in-repo** | [`hyperlane-kms-proxy/`](../hyperlane-kms-proxy/), [`hyperlane-gas-oracle/`](../hyperlane-gas-oracle/) in this repository |
 
-- **Fork** — we maintain our own branded/modified source in a `gorbagana-dev`
-  repo and pin a release tag. Use this when the change is substantial and ongoing
-  (a reskin, custom features).
-- **Upstream pin** — we build an unmodified upstream commit. Bumping is just
-  changing the commit in `stack.yml`.
+- **Fork** — we build from our `gorbagana-dev` fork of a Hyperlane repo, pinned
+  to a release tag. Most fork images carry our own modifications (a reskin,
+  custom features); the svm-deployer tracks the fork's pinned base unmodified, on
+  the same tag as the agents so everything builds from one source.
 - **In-repo** — the service source is in this repository; editing it is a normal
   commit here, no external repo or release involved.
 
@@ -40,8 +40,7 @@ flowchart LR
 ```
 
 For **in-repo** images, skip the fork/release steps — edit the service source in
-this repo, then bump the trigger file. For **upstream pins**, skip the fork
-edit/release — just change the commit in `stack.yml`, then bump the trigger file.
+this repo, then bump the trigger file.
 
 ## 1. Make the code change
 
@@ -71,21 +70,15 @@ Edit the source under `hyperlane-kms-proxy/` or `hyperlane-gas-oracle/` in this
 repository and commit it like any other change. There is no separate release;
 the trigger-file bump in step 3 rebuilds the image from the committed source.
 
-### Upstream-pin image (agent / svm-deployer)
-
-No code edit here — only choose the upstream commit you want and set it in step 2.
-
 ## 2. Pin the source in `stack.yml`
 
-For fork and upstream-pin images, point the stack at the source you want to
-build. Edit `stack_orchestrator/data/stacks/<stack>/stack.yml`:
+For fork images, point the stack at the release tag you want to build. Edit
+`stack_orchestrator/data/stacks/<stack>/stack.yml`:
 
 ```yaml
 repos:
   # fork — pin the release tag cut in the GitHub UI:
   - github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6
-  # upstream pin — pin a commit:
-  # - github.com/hyperlane-xyz/hyperlane-monorepo@16c056a09af862b3ce9e14bd3b5b8034750af9d0
 ```
 
 **Cutting a fork release:** in the fork repo's GitHub **Releases → Draft a new
@@ -116,6 +109,8 @@ when the matching trigger file changes on `main`, or via manual
 | `hyperlane-kms-proxy` | `.github/trigger-publish-kms-proxy.txt` |
 | `hyperlane-warp-ui` | `.github/trigger-publish-warp-ui.txt` |
 | `hyperlane-gas-oracle` | `.github/trigger-publish-gas-oracle.txt` |
+| `hyperlane-explorer` | `.github/trigger-publish-explorer.txt` |
+| `hyperlane-scraper` | `.github/trigger-publish-scraper.txt` |
 
 Append a dated line describing the change to the relevant trigger file and commit
 it together with the `stack.yml` pin, then push to `main`. CI builds **only** the
@@ -126,13 +121,14 @@ What CI publishes for each image:
 - `ghcr.io/gorbagana-dev/<image>:<timestamp>-<shortsha>` — the immutable build
 - `ghcr.io/gorbagana-dev/<image>:latest` — moving tag (local dev only; never pin
   a deployment to `latest`)
-- **warp-ui only:** also re-publishes the release tag from `stack.yml`
-  (`vX.Y.Z-gorbagana.N`) so specs can pin the human-readable version.
+- **fork-based images** (warp-ui, explorer, agent, scraper): also re-publishes the
+  release tag read from `stack.yml` (`vX.Y.Z-gorbagana.N`) so specs can pin the
+  human-readable version.
 
-> The warp-ui build clones the **private** `gorbagana-dev` fork, so its CI job
-> authenticates the clone with a repo token. If a new fork (e.g. the explorer) is
-> also private, its build job needs the same token wiring — see the
-> `build-warp-ui` job for the pattern.
+> Fork builds clone the **private** `gorbagana-dev` repos, so those CI jobs
+> authenticate the clone with a repo token (`insteadOf` rewrite). A new private
+> fork's build job needs the same wiring — see any of the `build-warp-ui` /
+> `build-explorer` / `build-scraper` jobs for the pattern.
 
 ## 4. Pin the image in the deployment spec
 
@@ -171,7 +167,7 @@ You can build and run an image locally to test a change before cutting a release
 or pushing a trigger. From the repo root:
 
 ```bash
-laconic-so --stack <stack> setup-repositories   # clones the pinned fork/upstream
+laconic-so --stack <stack> setup-repositories   # clones the pinned fork repo
 laconic-so --stack <stack> build-containers     # builds gorbagana-dev/<image>:local
 ```
 

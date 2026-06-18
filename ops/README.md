@@ -130,7 +130,7 @@ Domain / chain IDs.
 
 `inventories/<env>/hosts.yml` declares one group per singleton stack
 (`deployer_hosts`, `minio_hosts`, `relayer_hosts`, `gas_oracle_hosts`,
-`monitoring_hosts`, `warp_ui_hosts`) plus `controller`. In a single-host run
+`monitoring_hosts`, `warp_ui_hosts`, `explorer_hosts`) plus `controller`. In a single-host run
 every group points at the same host. Validators are **not** in the inventory —
 they come from `deployment/[staging/]bridges/default/operator/validators.yaml`
 (pure topology: label, chain, host, hostname — each validator's Privy wallet id

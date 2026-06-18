@@ -17,6 +17,7 @@ TEST_HOSTNAMES: tuple[str, ...] = (
     "relayer.test",
     "minio-s3.test",
     "minio-console.test",
+    "explorer.test",
 )
 
 

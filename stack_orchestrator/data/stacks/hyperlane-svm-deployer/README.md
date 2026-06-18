@@ -13,7 +13,7 @@ Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce
 laconic-so --stack hyperlane-svm-deployer setup-repositories
 ```
 
-Clones `hyperlane-monorepo` at `@hyperlane-xyz/core@10.2.0` (`16c056a09`) to `~/cerc/hyperlane-monorepo`. This tag includes the Solana SDK v3.x migration, producing `.so` programs compatible with Agave 3.x runtimes (gorchain).
+Clones the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1` (same release tag as the agents and scraper) to `~/cerc/hyperlane-monorepo`. The Sealevel client and `.so` programs it builds are unchanged from the previous upstream `16c056a` pin; they include the Solana SDK v3.x migration, producing `.so` programs compatible with Agave 3.x runtimes (gorchain).
 
 ## 2. Build container (optional — for development only)
 

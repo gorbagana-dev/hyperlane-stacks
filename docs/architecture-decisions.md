@@ -6,7 +6,7 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 
 ## Stack Decomposition
 
-**8 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `docs/stack-specifications.md` for detailed per-stack specs):
+**9 stacks** (each stack = one k8s Pod or set of k8s Jobs, see `docs/stack-specifications.md` for detailed per-stack specs):
 
 | Stack | Type | Purpose |
 |-------|------|---------|
@@ -18,6 +18,7 @@ Decisions made during planning for the v1 laconic-so stacks. These inform the im
 | `hyperlane-gas-oracle` | Long-running | Automated IGP gas oracle updates via Privy. |
 | `hyperlane-monitoring` | Long-running | Prometheus + Grafana + balance monitor. |
 | `hyperlane-warp-ui` | Long-running (optional) | Browser-based bridge UI for token transfers. |
+| `hyperlane-explorer` | Long-running (optional, stateful) | Self-hosted message indexer + search UI. Single pod of four services (Postgres, scraper, Hasura, Next.js frontend); only the frontend is publicly exposed. See §Explorer. |
 
 **Rationale:** Stack-orchestrator maps all services in a stack to a single k8s Pod, so services needing independent lifecycles or restart must be separate stacks. Separating deployment from runtime allows re-running deployers independently, deploying multiple warp routes, and upgrading agents without redeploying contracts.
 
@@ -73,10 +74,10 @@ The patched agent image is used by both the validator and relayer stacks. Publis
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
-**No existing image.** Must build from hyperlane-monorepo at `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`).
+**No existing image.** Built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1` (the same release tag as the agents and scraper).
 
 - Base image: Ubuntu 22.04
-- Source: hyperlane-monorepo at commit `16c056a` (`@hyperlane-xyz/core@10.2.0`)
+- Source: gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1`; the Sealevel client and `.so` programs are unchanged from the previous upstream `16c056a` pin (verified by diff), so on-chain account layouts stay compatible with the scraper
 - Multi-stage Docker build: builder stage compiles, runtime stage copies binaries
 - Produces: `hyperlane-sealevel-client` binary + `.so` program files (mailbox, IGP, ISM, validator announce, token, token-native, token-collateral)
 - Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 3.0.14
@@ -101,7 +102,7 @@ There is no `fix-numeric-types`/sentinel-everything machinery and no source over
 
 ### Version Pinning
 
-Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`) with Solana CLI **3.0.14**. Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
+Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-gorbagana.1`** with Solana CLI **3.0.14** (the Sealevel client and `.so` programs are unchanged from the prior upstream `16c056a` pin). Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
 
 **Registry:** `ghcr.io/gorbagana-dev` (GitHub Container Registry)
 
@@ -109,12 +110,16 @@ Deployer image uses **`@hyperlane-xyz/core@10.2.0`** (commit `16c056a09af862b3ce
 |-----------|-------|--------|
 | Validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
 | Relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Same image as validator |
-| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Custom build from `@hyperlane-xyz/core@10.2.0` (commit `16c056a`), Solana CLI 3.0.14 |
+| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Build from the gorbagana `hyperlane-monorepo` fork @ `v2.2.0-gorbagana.1`, Solana CLI 3.0.14 |
 | Warp Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |
 | Gas Oracle | `ghcr.io/gorbagana-dev/hyperlane-gas-oracle:local` | Custom build — fetches prices, signs via Privy Solana wallet |
 | Warp UI | `ghcr.io/gorbagana-dev/hyperlane-warp-ui:local` | Custom build from the fork `gorbagana-dev/hyperlane-warp-ui-template` @ `v2.0.0-gorbagana.6` (`@hyperlane-xyz/sdk@25.5.0`) |
+| Explorer | `ghcr.io/gorbagana-dev/hyperlane-explorer:latest` | Custom build from the fork `gorbagana-dev/hyperlane-explorer` @ `v12.0.0-gorbagana.1` |
+| Scraper | `ghcr.io/gorbagana-dev/hyperlane-scraper:v2.2.0-gorbagana.1` | Custom build from the gorbagana `hyperlane-monorepo` fork (Sealevel indexing tolerant of pruned slots) |
+| Hasura | `hasura/graphql-engine:v2.36.0.cli-migrations-v3` (upstream) | GraphQL engine; wired via the `hasura-config` ConfigMap (not a custom build) |
+| Postgres | `postgres:15` (upstream) | Explorer message store |
 | MinIO | `minio/minio` (upstream) | S3-compatible checkpoint storage |
 | Prometheus | `prom/prometheus` (upstream) | Metrics collection |
 | Grafana | `grafana/grafana` (upstream) | Dashboards and alerting |
@@ -541,7 +546,7 @@ The dev path bypasses Caddy specifically to avoid Caddy v2's auto HTTP→HTTPS 3
 flowchart TD
     D["<b>(1) Deployer host</b><br/>laconic-so runs hyperlane-svm-deployer;<br/>Job writes state files to<br/>/srv/kind/hyperlane/bridge/generated/<br/>(agent-config.json, program-ids.json,<br/>gas-oracle-config.json, multisig-config.json,<br/>registry/metadata.yaml, ...)"]
     R["<b>Repo @ main</b><br/>deployment/bridges/&lt;bridge&gt;/generated/*.json"]
-    C["<b>Consumer host</b><br/>(validator, relayer, gas-oracle, warp-ui)<br/>laconic-so deployment start creates<br/>k8s ConfigMaps in the consumer's own<br/>namespace; pods mount them as normal volumes."]
+    C["<b>Consumer host</b><br/>(validator, relayer, gas-oracle, warp-ui, explorer)<br/>laconic-so deployment start creates<br/>k8s ConfigMaps in the consumer's own<br/>namespace; pods mount them as normal volumes."]
     D -- "(2) Operator runs commit-bridge-state.yml from<br/>controller (agent-forwarded SSH). Reviews diff,<br/>git push to main." --> R
     R -- "(3) On each consumer host: state_distribute<br/>role clones/pulls repo, copies state files into<br/>{deploy_dir}/configmaps/&lt;cm-name&gt;/" --> C
 ```
@@ -564,7 +569,7 @@ flowchart TD
 
 | State file | Contents | Produced by | Consumed by |
 |---|---|---|---|
-| `agent-config.json` | chain definitions, RPC URLs, deployed contract addresses | hyperlane-svm-deployer | validator (CM mount), relayer (CM mount) |
+| `agent-config.json` | chain definitions, RPC URLs, deployed contract addresses | hyperlane-svm-deployer | validator (CM mount), relayer (CM mount), explorer scraper + frontend (CM mount) |
 | `gas-oracle-config.json` | token exchange rates, gas prices, overhead | hyperlane-svm-deployer | gas-oracle (env-var injection) |
 | `multisig-config.json` | per-chain validator pubkeys + threshold | hyperlane-svm-deployer | conftest/ansible (env-var injection for monitoring, deployer ISM re-config) |
 | `program-ids.json` | per-chain deployed program addresses | hyperlane-svm-deployer | warp-deployer (direct disk read at runtime), all stacks (env-var injection) |
@@ -682,6 +687,7 @@ ansible playbook on the controller):
    - gas-oracle
    - monitoring
    - warp-ui (optional)
+   - explorer (optional)
 10. **On-chain ownership / ISM setup** — operator runs `ism-update.yml` ops playbook with the initial validator set + threshold, signing with the Privy bridge-owner wallet. See `ops-decisions.md`.
 
 Steps 4–9 are idempotent and can run from a single top-level `deploy-all.yml`
@@ -705,6 +711,7 @@ all:
     gas_oracle_hosts:              # hyperlane-gas-oracle
     monitoring_hosts:              # hyperlane-monitoring
     warp_ui_hosts:                 # hyperlane-warp-ui (optional)
+    explorer_hosts:                # hyperlane-explorer (optional)
     # validator_hosts is computed at runtime from validators.yaml
 ```
 
@@ -857,6 +864,7 @@ dns_records:
   - { name: grafana,             host: bridge-host-1 }
   - { name: prometheus,          host: bridge-host-1 }
   - { name: "@",                 host: bridge-host-1 }   # warp-ui at base_domain itself
+  - { name: explorer,            host: bridge-host-1 }
   - { name: relayer,             host: bridge-host-1 }
   # validator records auto-appended from validators.yaml at playbook time
 ```
@@ -945,6 +953,89 @@ Static, hardcoded in `group_vars/all.yml` as a list of `{name, host, label}` ent
 
 1. **Metrics authentication.** Caddy `basic_auth` on validator/relayer `/metrics` routes; file-injected shared credential mirrored on monitoring host's Prometheus scrape config.
 2. **Slack alerting.** Either Grafana alerts → Slack webhook, or Prometheus Alertmanager → Slack. Alert rules cover validator signing lag, relayer delivery failures, wallet balance thresholds, agent pod restarts.
+
+---
+
+## Explorer
+
+**Decision:** Self-hosted Hyperlane Explorer (message indexer + search UI) as an
+optional, **stateful** stack. Four services in one laconic-so pod; one public
+hostname; everything else cluster-internal.
+
+### Same-origin GraphQL proxy
+
+**Only the Next.js frontend is publicly exposed** (ingress `explorer.<domain>` →
+`explorer:3000`). The browser issues GraphQL at the relative path `/api/graphql`,
+which the frontend proxies to Hasura in-cluster (`hasura:8080`). Hasura (`:8080`),
+Postgres (`:5432`), and the scraper's metrics (`:9090`) are never exposed.
+
+**Why:** one public hostname (no second ingress, no extra ACME cert); Hasura and
+its admin secret stay off the public internet; and no build-time GraphQL-URL
+sentinel to substitute (the relative path is baked at build, the proxy target is
+server-side env).
+
+### Hasura: stock image + ConfigMap (NOT a baked-metadata image)
+
+Hasura runs the **stock upstream image** (`hasura/graphql-engine:*.cli-migrations-v3`)
+plus a `hasura-config` ConfigMap (`data/config/hasura-config/`): an `entrypoint.sh`
+that rebuilds the DB DSN from `POSTGRES_PASSWORD` and reconstructs the metadata
+directory tree, alongside flattened metadata YAML tracking the `message_view` and
+`domain` tables.
+
+This **deliberately diverges from the original design/plan**, which called for a
+custom-built image with metadata baked in. The implementation chose stock image +
+ConfigMap instead — so the design doc should not be trusted blindly here.
+
+### Scraper: gorbagana monorepo fork, reads agent-config
+
+The scraper is built from the gorbagana `hyperlane-monorepo` fork
+(`ghcr.io/gorbagana-dev/hyperlane-scraper`, pinned `v2.2.0-gorbagana.1`), whose
+Sealevel indexing **tolerates pruned slots** — our chain prunes ledger history
+like prod, which trips the upstream indexer.
+
+It reads the **same `agent-config.json` ConfigMap the relayer and validators use**
+(populated by `state_distribute` from deployer output) for mailbox addresses,
+domain IDs, IGP, and `index.from`. It indexes both the gorchain and solana
+mailboxes into Postgres, and its entrypoint **idempotently seeds the gorchain +
+solana `domain` rows** — a foreign-key requirement that the scraper itself does
+not upsert.
+
+### RPC provenance
+
+Mirrors the secret-free-generated-state pattern (see §Artifact Passing): the
+committed `agent-config.json` carries placeholder `rpcUrls`; real URLs arrive as
+env overrides.
+
+- **gorchain** via `GORCHAIN_RPC_URL` — public, and also injected into the
+  frontend's browser-facing chain metadata.
+- **Solana** via the secret `HYP_CHAINS_SOLANA_CUSTOMRPCURLS ← SOLANA_RPC_URL`
+  (the Helius URL, which embeds an API key) — **scraper-only, never sent to the
+  browser**.
+
+### Single-pod, crash-loop-tolerant startup
+
+laconic-so runs all four services in one pod (named `db`, `scraper`, `hasura`,
+`explorer` — `db` not `postgres` to avoid SO's sibling-service-name rewriting
+corrupting the word "postgres" in other services' env values). There is **no
+cross-service `depends_on`**; ordering is handled in-app: the scraper creates the
+schema idempotently, and Hasura restarts until `message_view`/`domain` exist.
+Postgres has a persistent host-path volume (`explorer-postgres-data`, 20Gi in
+prod), so the stack is **stateful** — unlike every other long-running stack.
+
+### Generated secrets and Hasura hardening
+
+`POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET` are generated by the ops
+credentials role (like the Grafana admin password) and injected via the spec's
+`secrets:` block. Hasura is hardened: an anonymous **select-only** role
+(aggregations enabled), console disabled, telemetry disabled.
+
+### Per-environment hostnames
+
+| Environment | Explorer hostname |
+|---|---|
+| Prod | `explorer.bridge.gorbagana.wtf` |
+| Staging | `explorer.staging.gorbagana.wtf` |
+| Local | `explorer.<base_domain>` |
 
 ---
 

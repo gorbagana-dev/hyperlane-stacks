@@ -12,4 +12,7 @@ remote:
   name: "Solana"
   symbol: "SOL"
   decimals: 9
+# Empty on-chain Token-2022 metadata (native SOL; e2e gains nothing from setting it).
 metadataUri: ""
+# Token logo shown in the warp-UI (applied to both sides).
+logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"

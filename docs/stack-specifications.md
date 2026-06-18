@@ -44,7 +44,7 @@ Stack-orchestrator (`laconic-so`) deploys containerized applications via three b
 
 ## Stack Decomposition
 
-SO's constraint that **all services in a stack = one k8s Pod** means services needing independent restart, scaling, or lifecycle must be separate stacks. This drives the 8-stack decomposition below.
+SO's constraint that **all services in a stack = one k8s Pod** means services needing independent restart, scaling, or lifecycle must be separate stacks. This drives the 9-stack decomposition below.
 
 ## Stack Inventory
 
@@ -58,26 +58,29 @@ SO's constraint that **all services in a stack = one k8s Pod** means services ne
 | 6 | `hyperlane-gas-oracle` | Long-running | gas-oracle | Periodic IGP gas oracle updates via Privy |
 | 7 | `hyperlane-monitoring` | Long-running | prometheus + grafana + balance-monitor | Metrics, dashboards, Slack balance alerts |
 | 8 | `hyperlane-warp-ui` | Long-running | warp-ui | Browser-based bridge UI |
+| 9 | `hyperlane-explorer` | Long-running | db + scraper + hasura + explorer | Self-hosted message indexer + search UI |
 | - | `ops/` | On-demand | kubectl Jobs | Kill switch, restore, teardown, ownership verify |
 
 ### stack.yml Summary
 
 | # | Stack | repos: | containers: | pods: | jobs: |
 |---|-------|--------|-------------|-------|-------|
-| 1 | `hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
-| 2 | `hyperlane-svm-warp-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
-| 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-kms-proxy` | `hyperlane-validator` | — |
-| 4 | `hyperlane-relayer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | `gorbagana-dev/hyperlane-svm-deployer` | `hyperlane-relayer` | — |
+| 1 | `hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-deployer` |
+| 2 | `hyperlane-svm-warp-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-svm-deployer` | — | `hyperlane-svm-warp-deployer` |
+| 3 | `hyperlane-validator` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-kms-proxy`, `gorbagana-dev/hyperlane-agent` | `hyperlane-validator` | — |
+| 4 | `hyperlane-relayer` | *(none)* | *(none)* — reuses `gorbagana-dev/hyperlane-agent` | `hyperlane-relayer` | — |
 | 5 | `hyperlane-minio` | *(none)* | *(none)* | `hyperlane-minio` | — |
 | 6 | `hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | `gorbagana-dev/hyperlane-gas-oracle` | `hyperlane-gas-oracle` | — |
 | 7 | `hyperlane-monitoring` | *(none)* | *(none)* | `hyperlane-monitoring` | — |
-| 8 | `hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | `gorbagana-dev/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
+| 8 | `hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | `gorbagana-dev/hyperlane-warp-ui` | `hyperlane-warp-ui` | — |
+| 9 | `hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1`, `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | `gorbagana-dev/hyperlane-explorer`, `gorbagana-dev/hyperlane-scraper` | `hyperlane-explorer` | — |
 
 - Stacks 1 and 2 use `jobs:` (not `pods:`) because deployers are one-shot containers — k8s Jobs (restartPolicy: Never, backoffLimit: 0) prevent CrashLoopBackOff that occurs when Deployments restart completed containers. Their compose files live in `compose-jobs/` instead of `compose/`.
 - Stacks 5 and 7 use only upstream images — no repos or containers needed.
-- Stacks 1, 2, and 4 share the same repo/container (deployer image) and are independently buildable.
+- Stacks 1 and 2 share the same repo/container (deployer image) and are independently buildable. The relayer (stack 4) builds nothing — it reuses the `hyperlane-agent` image built by the validator stack.
 - Stack 7 balance-monitor will use a lightweight image (not the heavy deployer image).
-- The deployer image is built from `@hyperlane-xyz/core@10.2.0` (commit `16c056a09af862b3ce9e14bd3b5b8034750af9d0`), not the older `agents-v2.0.0` tag.
+- The deployer image is built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.1` — the same release tag as the agents and scraper. The Sealevel client and on-chain programs it builds are unchanged from the previous upstream `16c056a` pin (verified by diff), so on-chain account layouts remain compatible with the scraper.
+- Stack 9 lists its `containers:` commented out so `deploy start` doesn't `kind load` them — k8s pulls `hyperlane-explorer`/`hyperlane-scraper` from the registry instead (hasura is the upstream image). Uncomment for local builds.
 
 ---
 
@@ -520,7 +523,7 @@ Browser-based bridge UI (Next.js) for cross-chain token transfers.
 | warp-ui | `gorbagana-dev/hyperlane-warp-ui:local` | Port 3000, sentinel placeholder substitution at startup |
 
 ### Ingress
-HTTP proxy routes host → warp-ui:3000 via nginx ingress controller with automatic ACME TLS.
+HTTP proxy routes host → warp-ui:3000 via Caddy (SO's ingress controller) with automatic ACME TLS.
 
 ### Solana RPC proxy (key protection)
 The browser-facing `chains.yaml` must not carry the keyed `SOLANA_RPC_URL` (the
@@ -565,6 +568,114 @@ staging runbook); mainnet wallets default to reliable infrastructure.
 
 ---
 
+## Stack 9: hyperlane-explorer
+
+### Purpose
+Self-hosted Hyperlane message explorer — indexes both chains' mailboxes into
+Postgres and serves a Next.js search UI for cross-chain messages. Replaces the
+hosted explorer.hyperlane.xyz, which does not know about the custom gorchain
+domain.
+
+### Compose: `docker-compose-hyperlane-explorer.yml`
+
+One pod, four services:
+
+| Service | Image | Notes |
+|---------|-------|-------|
+| db | `postgres:15` | Upstream image; persistent volume `explorer-postgres-data` (20Gi prod). Named `db` (not `postgres`) so SO's localhost-rewrite of sibling service names doesn't corrupt the word "postgres" in other services' env values. |
+| scraper | `ghcr.io/gorbagana-dev/hyperlane-scraper:latest` | Built from the gorbagana monorepo fork `@v2.2.0-gorbagana.1`; indexes both mailboxes into Postgres; metrics on :9090 |
+| hasura | `hasura/graphql-engine:v2.36.0.cli-migrations-v3` | Upstream image wired via the `hasura-config` ConfigMap (entrypoint + flattened metadata); GraphQL on :8080 |
+| explorer | `ghcr.io/gorbagana-dev/hyperlane-explorer:latest` | Next.js standalone from the `gorbagana-dev/hyperlane-explorer` fork `@v12.0.0-gorbagana.1`; UI + `/api/graphql` proxy on :3000; public ingress |
+
+### How It Works (data flow)
+1. The **scraper** reads `agent-config.json` (mailbox addresses, domain ids, IGP,
+   `index.from`) from the `agent-config` ConfigMap — the same ConfigMap the
+   relayer and validators mount, populated by `state_distribute` from the
+   deployer's output. It indexes both the gorchain and solana mailboxes into
+   Postgres (messages, deliveries, gas-payments, blocks, txs), and seeds the
+   gorchain + solana `domain` rows idempotently (`ON CONFLICT (id) DO NOTHING`)
+   in its entrypoint.
+2. **Hasura** serves read-only GraphQL over `message_view` (which carries
+   `total_gas_payment`) and `domain` to an anonymous, select-only role
+   (aggregations enabled).
+3. The **explorer** frontend serves the UI plus a same-origin `/api/graphql`
+   proxy. The browser only ever calls the frontend — never Hasura or Postgres
+   directly. The frontend renders chain metadata (core addresses + domain ids)
+   from the mounted `agent-config.json`; gorchain's RPC is public (browser-safe)
+   and Solana's is a placeholder (the browser never calls it).
+
+### Config (spec.yml)
+- `GORCHAIN_RPC_URL` — used by the scraper (`HYP_CHAINS_GORCHAIN_CUSTOMRPCURLS`)
+  and injected into the frontend chain metadata
+- `GORCHAIN_DOMAIN_ID`, `SOLANA_DOMAIN_ID`, `GORCHAIN_CHAIN_ID`, `SOLANA_CHAIN_ID`
+  — committed per-env literals; consumed by the scraper's domain-seed step
+- `GORCHAIN_CHAIN_NAME`, `SOLANA_CHAIN_NAME` (defaults `gorchain`/`solana`)
+- `GORCHAIN_IS_TESTNET`, `SOLANA_IS_TESTNET` — sets `domain.is_test_net`
+  (prod `false`; staging/local `true`)
+- `GORCHAIN_NATIVE_TOKEN_SYMBOL`, `SOLANA_NATIVE_TOKEN_SYMBOL` (defaults `GOR`/`SOL`)
+
+### Compose Environment (hardcoded in compose, not in spec)
+- scraper: `HYP_CHAINSTOSCRAPE="gorchain,solana"`, `HYP_METRICSPORT=9090`,
+  `CONFIG_FILES=/config/agent-config.json`
+- explorer: `HASURA_GRAPHQL_URL=http://hasura:8080/v1/graphql` (server-side only;
+  `hasura` resolves to localhost in-pod)
+
+### Secrets (injected separately)
+- `HYP_CHAINS_SOLANA_CUSTOMRPCURLS` ← `SOLANA_RPC_URL` (Helius URL embeds an API
+  key; scraper-only — the browser never sees it)
+- `POSTGRES_PASSWORD` — built into the DSN at runtime by the scraper/hasura
+  entrypoints
+- `HASURA_GRAPHQL_ADMIN_SECRET` — enforces the anonymous read-only role
+
+`POSTGRES_PASSWORD` and `HASURA_GRAPHQL_ADMIN_SECRET` are generated by the ops
+credentials role (like the Grafana admin password).
+
+### ConfigMaps
+- `agent-config` — agent-config.json; runtime-populated by `state_distribute`,
+  no `data/config/` source dir (same ConfigMap the relayer/validators mount)
+- `hasura-config` — Hasura entrypoint + flattened metadata; source dir
+  `data/config/hasura-config/`
+
+### Ingress
+HTTP proxy routes host → `explorer:3000` via Caddy (SO's ingress controller) with
+automatic ACME TLS. Per-env hostnames:
+
+| Environment | Host |
+|---|---|
+| prod | `explorer.bridge.gorbagana.wtf` |
+| staging | `explorer.staging.gorbagana.wtf` |
+| local | `explorer.<base_domain>` |
+
+### Image overrides
+`image-overrides:` currently pins `explorer` and `scraper` to `:latest` for the
+first bring-up; these are to be pinned to release tags once the images are
+published and tested.
+
+### Resources (prod)
+| Container | CPU (req/limit) | Memory (req/limit) |
+|---|---|---|
+| db | 0.5 / 2.0 | 1024M / 2048M |
+| scraper | 0.5 / 1.0 | 512M / 1024M |
+| hasura | 0.25 / 0.5 | 256M / 512M |
+| explorer | 0.25 / 0.5 | 256M / 512M |
+
+Volume: `explorer-postgres-data` 20Gi.
+
+### Cross-Stack Dependencies
+- Deployer stack must have run (`agent-config.json` carries the mailbox/domain
+  metadata the scraper indexes and the frontend renders)
+
+### Known limitations
+- **E2E coverage is smoke-level only.** `tests/e2e/test_15_explorer.py` checks
+  pods running, the frontend serving HTML, and the `/api/graphql` proxy resolving
+  a `domain` query. There is no end-to-end "bridged message appears in
+  `message_view`" assertion yet. Tracked in pebble `hyp-277`.
+- **Startup relies on crash-loop-until-schema-ready.** Neither the scraper nor
+  the hasura entrypoint waits for DB readiness; both restart until Postgres and
+  the schema are up.
+
+---
+
 ## Ops Directory (Removed — Not a Stack)
 
 **Removed** (formerly at `deployment/ops-archive/`, since deleted). These unsigned-tx k8s Jobs are superseded:
@@ -591,10 +702,12 @@ Summary of custom images and their SO build pipeline:
 
 | Container Name | Build Dir | repos: (cloned to ~/cerc/) | Source |
 |---------------|-----------|---------------------------|--------|
-| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/hyperlane-xyz/hyperlane-monorepo@16c056a` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
+| `gorbagana-dev/hyperlane-svm-deployer` | `gorbagana-dev-hyperlane-svm-deployer` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Multi-stage Rust build of `hyperlane-sealevel-client` + `.so` programs + `solana-verify`. Solana CLI 3.0.14. |
 | `gorbagana-dev/hyperlane-kms-proxy` | `gorbagana-dev-hyperlane-kms-proxy` | `github.com/gorbagana-dev/hyperlane-stacks` | Go service, source at `hyperlane-kms-proxy/` |
 | `gorbagana-dev/hyperlane-gas-oracle` | `gorbagana-dev-hyperlane-gas-oracle` | `github.com/gorbagana-dev/hyperlane-stacks` | TypeScript, source at `hyperlane-gas-oracle/`, uses `@hyperlane-xyz/sdk` |
-| `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/hyperlane-xyz/hyperlane-warp-ui-template` | Next.js with sentinel placeholders, runtime sed substitution |
+| `gorbagana-dev/hyperlane-warp-ui` | `gorbagana-dev-hyperlane-warp-ui` | `github.com/gorbagana-dev/hyperlane-warp-ui-template@v2.0.0-gorbagana.6` | Next.js standalone build of the warp-ui fork; runtime config files + one WalletConnect sentinel |
+| `gorbagana-dev/hyperlane-explorer` | `gorbagana-dev-hyperlane-explorer` | `github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1` | Next.js standalone build of the explorer fork |
+| `gorbagana-dev/hyperlane-scraper` | `gorbagana-dev-hyperlane-scraper` | `github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1` | Rust build of the Sealevel scraper agent from the monorepo fork |
 
 Each `build.sh` sources `build-base.sh` and runs `docker build` using the SO-cloned repo in `~/cerc/` as build context. Build scripts must NOT use relative paths back to the repo tree — components may move to different repos.
 
@@ -619,6 +732,16 @@ container-build/gorbagana-dev-hyperlane-kms-proxy/
 
 container-build/gorbagana-dev-hyperlane-gas-oracle/
   build.sh          # runs: docker build -t ...:local ~/cerc/hyperlane-stacks/hyperlane-gas-oracle
+
+container-build/gorbagana-dev-hyperlane-explorer/
+  build.sh          # runs: docker build -f Dockerfile -t ...:local ~/cerc/hyperlane-explorer
+  Dockerfile        # Next.js standalone build from ~/cerc/hyperlane-explorer
+  entrypoint.sh     # renders chain metadata, starts the standalone server
+
+container-build/gorbagana-dev-hyperlane-scraper/
+  build.sh          # runs: docker build -f Dockerfile -t ...:local ~/cerc/hyperlane-monorepo
+  Dockerfile        # Rust build of the Sealevel scraper from ~/cerc/hyperlane-monorepo
+  entrypoint.sh     # builds DSN, seeds domain rows, starts the scraper
 ```
 
 Dockerfiles for deployer and warp-ui use `~/cerc/` as build context (COPY from the SO-cloned repo), not internal `git clone`. The Dockerfile and entrypoint.sh are passed via `-f` flag from the build dir.
@@ -637,6 +760,7 @@ Dockerfiles for deployer and warp-ui use `~/cerc/` as build context (COPY from t
 5. hyperlane-gas-oracle               (needs IGP program IDs from step 2)
 6. hyperlane-monitoring               (can run anytime, discovers pods dynamically)
 7. hyperlane-warp-ui                  (needs warp route addresses from step 3)
+8. hyperlane-explorer                 (needs agent-config from step 2)
 ```
 
 Steps 4's two validator deployments use the same `hyperlane-validator` stack with different spec.yml files.
@@ -662,6 +786,7 @@ Steps 4's two validator deployments use the same `hyperlane-validator` stack wit
 | minio data | 10Gi | Stack 5 |
 | prometheus data | 10Gi | Stack 7 |
 | grafana data | 2Gi | Stack 7 |
+| explorer-postgres-data | 20Gi | Stack 9 |
 
 ### Host-Path Layout
 
@@ -683,6 +808,8 @@ All stacks share `kind-mount-root: /srv/kind/hyperlane`. Kind mounts this direct
   monitoring/
     prometheus/         ← Prometheus TSDB
     grafana/            ← Grafana database
+  explorer/
+    postgres/           ← Explorer Postgres data
 ```
 
 Tests use the same layout under `/tmp/hyperlane-bridge-e2e/`.
@@ -700,6 +827,7 @@ Tests use the same layout under `/tmp/hyperlane-bridge-e2e/`.
 | `spec-gas-oracle.yml` | `hyperlane-gas-oracle` |
 | `spec-monitoring.yml` | `hyperlane-monitoring` |
 | `spec-warp-ui.yml` | `hyperlane-warp-ui` |
+| `spec-explorer.yml` (staging: `staging/spec-explorer.yml`, local: `local/spec-explorer.yml`) | `hyperlane-explorer` |
 
 Both validator spec files reference the same stack (`stack_orchestrator/data/stacks/hyperlane-validator`) with different config values for `ORIGIN_CHAIN_NAME`, `CHECKPOINT_BUCKET`, `PRIVY_WALLET_ID`, etc.
 

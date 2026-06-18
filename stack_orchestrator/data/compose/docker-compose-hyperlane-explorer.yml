@@ -1,0 +1,138 @@
+services:
+  # Named 'db' (not 'postgres'): laconic runs all services in one pod and rewrites
+  # sibling service names to localhost in env values, so a service literally named
+  # 'postgres' would corrupt the word "postgres" in the other services' values.
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    hostname: db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      # POSTGRES_PASSWORD is generated ($generate in the spec config:) and injected
+      # via envFrom — not set here, so it isn't shadowed by an empty compose value.
+    volumes:
+      - explorer-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  scraper:
+    image: ghcr.io/gorbagana-dev/hyperlane-scraper:latest
+    # image: gorbagana-dev/hyperlane-scraper:local
+    restart: unless-stopped
+    hostname: scraper
+    # Entrypoint + seed SQL come from the scraper-config configmap, not the image.
+    entrypoint: ["tini", "--", "/bin/bash", "/scraper-config/entrypoint.sh"]
+    environment:
+      CONFIG_FILES: /config/agent-config.json
+      # DB connection: the entrypoint builds DATABASE_URL/HYP_DB at runtime from
+      # POSTGRES_PASSWORD (envFrom) + these parts. 'db' resolves to localhost in-pod.
+      DB_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      HYP_CHAINSTOSCRAPE: "gorchain,solana"
+      # agent-config.json carries placeholder rpcUrls; real URLs arrive here.
+      HYP_CHAINS_GORCHAIN_CUSTOMRPCURLS: ${GORCHAIN_RPC_URL:-http://rpc-placeholder.invalid}
+      # Solana (secret) is injected via secrets: as HYP_CHAINS_SOLANA_CUSTOMRPCURLS.
+      # Metrics server must bind an explicit free port (panics AddrInUse otherwise).
+      HYP_METRICSPORT: "9090"
+      # Domain-seed values consumed by the entrypoint.
+      GORCHAIN_DOMAIN_ID: ${GORCHAIN_DOMAIN_ID}
+      SOLANA_DOMAIN_ID: ${SOLANA_DOMAIN_ID}
+      GORCHAIN_CHAIN_ID: ${GORCHAIN_CHAIN_ID}
+      SOLANA_CHAIN_ID: ${SOLANA_CHAIN_ID}
+      GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
+      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solana}
+      GORCHAIN_NATIVE_TOKEN_SYMBOL: ${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}
+      SOLANA_NATIVE_TOKEN_SYMBOL: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
+      GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
+      SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
+    volumes:
+      - agent-config:/config:ro
+      - scraper-config:/scraper-config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9090 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  hasura:
+    # Upstream image, no custom build: the hasura-config configmap supplies the
+    # entrypoint (builds the DB URL from POSTGRES_PASSWORD and rebuilds the
+    # metadata tree) and the metadata the cli-migrations entrypoint applies on boot.
+    image: hasura/graphql-engine:v2.36.0.cli-migrations-v3
+    restart: unless-stopped
+    hostname: hasura
+    entrypoint: ["/bin/sh", "/hasura-config/entrypoint.sh"]
+    command: ["graphql-engine", "serve"]
+    environment:
+      # 'db' resolves to localhost in-pod; the entrypoint builds the DSN from
+      # these + POSTGRES_PASSWORD (envFrom).
+      DB_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      # HASURA_GRAPHQL_ADMIN_SECRET is generated ($generate in the spec config:) and
+      # injected via envFrom — required so the anonymous role's permissions apply.
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
+      HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
+    volumes:
+      - hasura-config:/hasura-config:ro
+    ports:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  explorer:
+    image: ghcr.io/gorbagana-dev/hyperlane-explorer:latest
+    # image: gorbagana-dev/hyperlane-explorer:local
+    restart: unless-stopped
+    hostname: explorer
+    environment:
+      # Server-side only (the browser uses the relative /api/graphql proxy).
+      # 'hasura' resolves to localhost in-pod.
+      HASURA_GRAPHQL_URL: http://hasura:8080/v1/graphql
+      # The entrypoint renders gorbagana-chains.json for BOTH chains: core
+      # addresses (mailbox, etc.) + domain ids come from the mounted
+      # agent-config.json; these env values supply the browser-facing fields.
+      # gorchain's RPC is public (browser-safe); Solana's is omitted (the browser
+      # never calls it) — the entrypoint ships a placeholder for Solana.
+      GORCHAIN_RPC_URL: ${GORCHAIN_RPC_URL}
+      GORCHAIN_CHAIN_NAME: ${GORCHAIN_CHAIN_NAME:-gorchain}
+      SOLANA_CHAIN_NAME: ${SOLANA_CHAIN_NAME:-solana}
+      GORCHAIN_IS_TESTNET: ${GORCHAIN_IS_TESTNET:-true}
+      SOLANA_IS_TESTNET: ${SOLANA_IS_TESTNET:-true}
+      GORCHAIN_NATIVE_TOKEN_SYMBOL: ${GORCHAIN_NATIVE_TOKEN_SYMBOL:-GOR}
+      SOLANA_NATIVE_TOKEN_SYMBOL: ${SOLANA_NATIVE_TOKEN_SYMBOL:-SOL}
+      # Standalone server must bind all interfaces for k8s Service routing.
+      HOSTNAME: "0.0.0.0"
+    volumes:
+      # Deployer output (mailbox + core addresses + domain ids); same ConfigMap
+      # the scraper mounts. The entrypoint reads chain metadata from it.
+      - agent-config:/config:ro
+    ports:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  # agent-config: ConfigMap volume sourced from state_distribute at deploy-create.
+  agent-config:
+  # hasura-config: ConfigMap (entrypoint + flattened metadata) from data/config/.
+  hasura-config:
+  # scraper-config: ConfigMap (entrypoint + seed SQL) from data/config/.
+  scraper-config:
+  explorer-postgres-data:

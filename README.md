@@ -2,20 +2,17 @@
 
 Stack-orchestrator (`laconic-so`) stacks for deploying and operating a Hyperlane
 cross-chain token bridge between **Gorchain** and **Solana**: contract deployers,
-validators, relayer, gas oracle, monitoring, and a browser-based bridge UI — all
-packaged for `k8s-kind` deployment and driven from an ansible ops layer.
+validators, relayer, gas oracle, monitoring, a message explorer, and a
+browser-based bridge UI — all packaged for `k8s-kind` deployment and driven from
+an ansible ops layer.
 
 ## Live endpoints (production)
 
 - Bridge UI — https://bridge.gorbagana.wtf ([how to bridge tokens](docs/using-the-bridge.md))
-- Explorer¹ — https://explorer.bridge.gorbagana.wtf
+- Explorer — https://explorer.bridge.gorbagana.wtf (bridge message search)
 - Grafana — https://grafana.bridge.gorbagana.wtf
 - Prometheus — https://prometheus.bridge.gorbagana.wtf
 - Gorchain RPC — https://rpc.gorbagana.wtf
-
-¹ The explorer is a separate application under active development in its own
-repository; the deployment stack and this URL are placeholders to be wired up
-when it lands.
 
 ## Repository layout
 
@@ -48,18 +45,19 @@ hyperlane-stacks/
 ## Repos and images
 
 The stacks run container images published to `ghcr.io/gorbagana-dev/`. Each is
-built either from an upstream Hyperlane source, from our own fork, or from a
-service in this repo. The exact pins (fork release tags, upstream commits) live
-in each stack's `stack_orchestrator/data/stacks/<stack>/stack.yml`.
+built either from our own fork of a Hyperlane repo, or from a service in this
+repo. The exact pins (fork release tags) live in each stack's
+`stack_orchestrator/data/stacks/<stack>/stack.yml`.
 
 | Image | Built from | Kind | Used by |
 |---|---|---|---|
-| [`hyperlane-agent`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-agent) | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo) | upstream | validator, relayer |
-| [`hyperlane-svm-deployer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-svm-deployer) | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo) + [`solana-program-library`](https://github.com/hyperlane-xyz/solana-program-library) | upstream | svm-deployer, warp-deployer |
+| [`hyperlane-agent`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-agent) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) | our fork | validator, relayer |
+| [`hyperlane-svm-deployer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-svm-deployer) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) + [`solana-program-library`](https://github.com/hyperlane-xyz/solana-program-library) | our fork | svm-deployer, warp-deployer |
 | [`hyperlane-kms-proxy`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-kms-proxy) | [`hyperlane-kms-proxy/`](hyperlane-kms-proxy/) | in-repo | validator, relayer (sidecar) |
 | [`hyperlane-gas-oracle`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-gas-oracle) | [`hyperlane-gas-oracle/`](hyperlane-gas-oracle/) | in-repo | gas-oracle |
 | [`hyperlane-warp-ui`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-warp-ui) | [`hyperlane-warp-ui-template`](https://github.com/gorbagana-dev/hyperlane-warp-ui-template) | our fork | warp-ui |
-| explorer | separate repo (in progress) | placeholder | explorer |
+| [`hyperlane-explorer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-explorer) | [`hyperlane-explorer`](https://github.com/gorbagana-dev/hyperlane-explorer) | our fork | explorer (frontend) |
+| [`hyperlane-scraper`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-scraper) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) | our fork | explorer (indexer) |
 
 Building and publishing these images, and rolling a new one into a deployment, is
 covered in the [development guide](docs/development.md).
@@ -78,6 +76,7 @@ Each stack has its own README under `stack_orchestrator/data/stacks/<stack>/`.
 | [hyperlane-gas-oracle](stack_orchestrator/data/stacks/hyperlane-gas-oracle/) | Periodically updates IGP gas oracle configs |
 | [hyperlane-monitoring](stack_orchestrator/data/stacks/hyperlane-monitoring/) | Prometheus, Grafana, pushgateway, balance monitor |
 | [hyperlane-warp-ui](stack_orchestrator/data/stacks/hyperlane-warp-ui/) | Browser-based bridge UI |
+| [hyperlane-explorer](stack_orchestrator/data/stacks/hyperlane-explorer/) | Message indexer + search UI (frontend, scraper, Hasura, Postgres) |
 
 ### Deployment order
 
@@ -86,7 +85,7 @@ Each stack has its own README under `stack_orchestrator/data/stacks/<stack>/`.
 3. `hyperlane-svm-warp-deployer` — warp route contracts
 4. `hyperlane-validator` (gorchain) + `hyperlane-validator` (solana) — one deployment per chain
 5. `hyperlane-relayer` — message delivery
-6. `hyperlane-gas-oracle`, `hyperlane-monitoring`, `hyperlane-warp-ui` — no ordering constraint
+6. `hyperlane-gas-oracle`, `hyperlane-monitoring`, `hyperlane-warp-ui`, `hyperlane-explorer` — no ordering constraint
 
 State flows from the deployer Jobs (which write JSON to a host `/state` path) into
 each downstream stack's ConfigMaps at deploy time. The mechanics are in
@@ -95,8 +94,8 @@ each downstream stack's ConfigMaps at deploy time. The mechanics are in
 ## How the components interact
 
 The deployer Jobs run first and seed contract addresses/config; once the
-long-running stacks are up, three flows describe how they interact at runtime:
-the bridge message path, signing/fees, and monitoring.
+long-running stacks are up, four flows describe how they interact at runtime:
+the bridge message path, signing and fees, monitoring, and message indexing.
 
 ### 1. Bridging a transfer
 
@@ -144,6 +143,23 @@ flowchart LR
     mon["monitoring"] -->|scrape metrics| agents["validators + relayer"]
     mon -->|balance checks| chains[("Gorchain + Solana")]
     mon -.->|low-balance alerts| slack{{"Slack"}}
+```
+
+### 4. Indexing and the explorer
+
+The scraper indexes both chains' mailboxes into Postgres; Hasura serves a
+read-only GraphQL API over the indexed data; the explorer frontend serves the
+search UI and proxies the browser's GraphQL at a same-origin `/api/graphql`, so
+Hasura and Postgres stay cluster-internal (only the frontend is public).
+
+```mermaid
+flowchart LR
+    gor[("Gorchain")] -->|index mailbox| scr["scraper"]
+    sol[("Solana")] -->|index mailbox| scr
+    scr -->|write messages| pg[("Postgres")]
+    user(["User / browser"]) -->|search| fe["explorer frontend"]
+    fe -->|"/api/graphql proxy"| hasura["Hasura"]
+    hasura -->|read| pg
 ```
 
 ## How deployments work

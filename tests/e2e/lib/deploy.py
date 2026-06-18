@@ -26,11 +26,19 @@ MINIO_IMAGE = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
 MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-08-13T08-35-41Z"
 WARP_UI_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-warp-ui:latest"
 GAS_ORACLE_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest"
+EXPLORER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-explorer:latest"
+SCRAPER_IMAGE = "ghcr.io/gorbagana-dev/hyperlane-scraper:latest"
+# Hasura + Postgres are upstream images (compose defaults, not image-overrides);
+# hasura is configured via the hasura-config configmap, not a custom build.
+HASURA_UPSTREAM_IMAGE = "hasura/graphql-engine:v2.36.0.cli-migrations-v3"
+POSTGRES_IMAGE = "postgres:15"
 
 # Local build tags (used by build-from-source path)
 AGENT_IMAGE_LOCAL = "gorbagana-dev/hyperlane-agent:local"
 KMS_PROXY_IMAGE_LOCAL = "gorbagana-dev/hyperlane-kms-proxy:local"
 WARP_UI_IMAGE_LOCAL = "gorbagana-dev/hyperlane-warp-ui:local"
+EXPLORER_IMAGE_LOCAL = "gorbagana-dev/hyperlane-explorer:local"
+SCRAPER_IMAGE_LOCAL = "gorbagana-dev/hyperlane-scraper:local"
 
 
 def ensure_ghcr_pat() -> None:
@@ -208,6 +216,35 @@ def prefetch_warp_ui_image() -> None:
     log_info(f"Pulling warp-ui image {WARP_UI_IMAGE}...")
     run_cmd(["docker", "pull", WARP_UI_IMAGE])
     log_info("Pulled warp-ui image to host Docker")
+
+
+def build_explorer_images(stack_name: str = "hyperlane-explorer") -> None:
+    """Build the explorer frontend + scraper images via laconic-so.
+
+    Hasura is the upstream image (configured via the hasura-config configmap), so
+    only the two custom images are built. SO preloads them into the kind cluster
+    at deploy_start via image-overrides:.
+    """
+    stack_path = resolve_stack_path(stack_name)
+
+    log_info("Setting up repositories for explorer build...")
+    run_cmd(["laconic-so", "--stack", str(stack_path), "setup-repositories", "--git-ssh"])
+
+    log_info("Building explorer container images (frontend + scraper)...")
+    run_cmd([
+        "laconic-so", "--stack", str(stack_path), "build-containers",
+        "--include", "gorbagana-dev/hyperlane-explorer,gorbagana-dev/hyperlane-scraper",
+    ])
+
+    log_info("Explorer images built into host Docker")
+
+
+def prefetch_explorer_images() -> None:
+    """Pull the published explorer frontend + scraper + upstream hasura/postgres."""
+    for image in (EXPLORER_IMAGE, SCRAPER_IMAGE, HASURA_UPSTREAM_IMAGE, POSTGRES_IMAGE):
+        log_info(f"Pulling {image}...")
+        run_cmd(["docker", "pull", image])
+    log_info("Pulled explorer images to host Docker")
 
 
 def prefetch_minio_images() -> None:

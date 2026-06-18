@@ -7,7 +7,7 @@ passwordless-sudo `dev` user with your SSH key, ports 80/443 reachable.
 
 | Droplet | Runs | DO size slug |
 |---|---|---|
-| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui | `s-4vcpu-8gb` |
+| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui, explorer | `s-4vcpu-8gb` |
 | `staging-gorchain` | gorchain chain + Caddy RPC front | `s-8vcpu-32gb-640gb-intel` |
 | `staging-hyperlane-validators` | both hyperlane validators | `s-4vcpu-8gb` |
 

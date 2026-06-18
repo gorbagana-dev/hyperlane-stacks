@@ -63,3 +63,5 @@ balance_monitor:
 # minio_root_password: ""
 # minio_iam: {}                 # { "<label>": { key_id, secret } }
 # grafana_admin_password: ""
+# explorer_db_password: ""
+# explorer_hasura_admin_secret: ""

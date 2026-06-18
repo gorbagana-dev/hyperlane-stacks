@@ -38,6 +38,10 @@ CONSUMER_STATE_FILES: dict[str, list[tuple[str, str]]] = {
     "hyperlane-warp-ui": [
         ("warp-routes/warpRoutes.yaml", "warp-ui-config"),
     ],
+    # explorer's scraper reads the full agent-config.json (mailboxes, domain ids):
+    "hyperlane-explorer": [
+        ("agent-config.json", "agent-config"),
+    ],
 }
 
 
