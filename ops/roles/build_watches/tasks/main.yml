@@ -30,11 +30,26 @@
     - relayer-gorchain.key.pub
     - relayer-solana.key.pub
 
+# relayer-fee-claim.json is a full Solana keypair (64-byte array = 32 seed + 32
+# pubkey), so the address is already in the file — base58-encode bytes [32:64] in
+# pure python. Avoids assuming the Solana CLI is installed on the relayer/monitoring
+# host (it is not, on a bridge-ops-only host), same alphabet as drain-key.sh.
 - name: Derive the fee-claim address from its keypair
   ansible.builtin.command:
-    cmd: >-
-      {{ hostvars[_relayer_host].ansible_env.HOME }}/.local/share/solana/install/active_release/bin/solana-keygen
-      pubkey {{ hostvars[_relayer_host].credentials_dir }}/relayer-fee-claim.json
+    argv:
+      - python3
+      - -c
+      - |
+        import json, sys
+        pub = bytes(json.load(open(sys.argv[1]))[32:64])
+        A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+        n = int.from_bytes(pub, 'big')
+        s = ''
+        while n > 0:
+            n, r = divmod(n, 58)
+            s = A[r] + s
+        print('1' * (len(pub) - len(pub.lstrip(b'\x00'))) + s)
+      - "{{ hostvars[_relayer_host].credentials_dir }}/relayer-fee-claim.json"
   register: _fee_claim_pub
   delegate_to: "{{ _relayer_host }}"
   changed_when: false
