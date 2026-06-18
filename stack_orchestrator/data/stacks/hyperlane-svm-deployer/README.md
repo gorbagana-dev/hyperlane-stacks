@@ -13,7 +13,7 @@ Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce
 laconic-so --stack hyperlane-svm-deployer setup-repositories
 ```
 
-Clones the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.2` to `~/cerc/hyperlane-monorepo` (the agents and scraper stay on `.1`; they don't build the on-chain programs). The `.so` programs are built with `cargo build-sbf --arch v1` (SBPFv1): the platform-tools default under Solana CLI 3.x emits SBPFv3, which gorchain accepts but Solana devnet/mainnet have not feature-activated, so a default build is rejected by the Solana BPF loader. SBPFv1 deploys on both chains.
+Clones the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.3` to `~/cerc/hyperlane-monorepo` (the agents and scraper stay on `.1`; they don't build the on-chain programs). The `.so` programs are built with `cargo build-sbf --arch v0` (SBPFv0): Solana devnet only enables v0 for deployment (v1 and v3 are feature-gated off), and gorchain accepts v0 too, so one build deploys on both chains.
 
 ## 2. Build container (optional — for development only)
 

@@ -1,5 +1,5 @@
 # hyperlane-svm-deployer
-# Multi-stage build from the gorbagana hyperlane-monorepo fork @ v2.2.0-gorbagana.2
+# Multi-stage build from the gorbagana hyperlane-monorepo fork @ v2.2.0-gorbagana.3
 # Produces: hyperlane-sealevel-client binary, .so program artifacts, solana-verify
 #
 # Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)

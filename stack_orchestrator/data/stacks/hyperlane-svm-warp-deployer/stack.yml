@@ -3,8 +3,8 @@ name: hyperlane-svm-warp-deployer
 description: "Deploys Hyperlane warp route contracts for a specific token pair"
 repos:
   # gorbagana monorepo fork. Reuses the hyperlane-svm-deployer image; pin kept in
-  # lockstep with that stack (v2.2.0-gorbagana.2 — SBPFv1 program build).
-  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.2
+  # lockstep with that stack (v2.2.0-gorbagana.3 — SBPFv0 program build).
+  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.3
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:
