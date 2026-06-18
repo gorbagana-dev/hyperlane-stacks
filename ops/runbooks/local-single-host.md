@@ -119,13 +119,11 @@ Notes:
   is left as-is. To run it by hand instead of via ansible, the same scripts live at
   `ops/scripts/{setup-chains,gen-local-keys,deploy-spl-token}.sh`.
 
-## 7. Fill the remaining vars
-
-Nothing left: the collateral mint was persisted in step 6 and is substituted
+The collateral mint is persisted and is substituted
 into the warp route automatically; every Privy ID/address already lives in
 `deployment-config.yml` (steps 2 + 4).
 
-## 8. Deploy
+## 7. Deploy
 
 `deploy-all.yml` commits + pushes the deployer-derived state mid-flight (see below), so
 deploy off a dedicated branch — **never `main`**. The hosts fetch the repo on that
@@ -147,7 +145,7 @@ deployer-derived values (IGP IDs/accounts, mailboxes, warp addresses/mints) into
 **local** specs and commits/pushes `deploy_branch`. Add `-e state_review=true` to review
 the diff before it commits.
 
-## 9. Access the stacks
+## 8. Access the stacks
 
 No public DNS, but Caddy listens on the host's public `:443`. The `local-access` playbook
 trusts the host's mkcert CA on your workstation and resolves the bridge hostnames to the
@@ -174,7 +172,7 @@ ssh -L 8899:localhost:8899 -L 8900:localhost:8900 \
     -L 18899:localhost:18899 -L 18900:localhost:18900 <host>
 ```
 
-## 10. Try the bridge (Backpack)
+## 9. Try the bridge (Backpack)
 
 Use a throwaway test wallet — never the deployer account.
 
@@ -190,7 +188,7 @@ Use a throwaway test wallet — never the deployer account.
 
 3. **Point Backpack at the transfer's ORIGIN chain** (Settings → your wallet →
    Solana → RPC connection → Custom). The chains are reached over your SSH
-   tunnel — use the four-port forward from step 9 (8899/8900 +
+   tunnel — use the four-port forward from step 8 (8899/8900 +
    18899/18900; the `+1` ports carry the WebSocket confirmations):
    - **forward** (solana → gorchain): `http://localhost:18899`
    - **reverse** (gorchain → solana): `http://localhost:8899`
@@ -204,11 +202,34 @@ Use a throwaway test wallet — never the deployer account.
    needed — the explorer reads from its own index via the in-cluster Hasura, not
    the chains.
 
+## 10. Update a stack (apply a committed change)
+
+To apply a committed change to one stack (spec edit, image bump, mounted
+script/config) without a full redeploy — preserving the cluster and data volumes —
+use `restart-stack.yml`. It drives `laconic-so deployment restart`, which re-renders
+the on-host spec from `deploy_branch` and rolling-restarts the pods:
+
+```bash
+BRANCH=<deploy-branch>   # the branch you deployed from
+
+# a singleton stack (name its inventory host group via target_hosts; every group
+# resolves to local-1 on single-host):
+ansible-playbook -i inventories/local/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-explorer -e target_hosts=explorer_hosts -e deploy_branch="$BRANCH"
+
+# both validators (no target_hosts — they run per-entry from validators.yaml):
+ansible-playbook -i inventories/local/hosts.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-validator -e deploy_branch="$BRANCH"
+```
+
+`deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name`
+values are the keys of the `stacks` map in `inventories/local/group_vars/all.yml`.
+
 ## 11. Update the warp routes (add a follow-on route)
 
 Edit `WARP_ROUTES` in `deployment/local/spec-warp-deployer.yml` (e.g. `"usdc,sol"` —
-the menu lives in `deployment/local/bridges/default/warp-routes/`), commit + push the
-deploy branch, then:
+the menu lives in `deployment/local/bridges/default/warp-routes/`; the route-file
+schema is in [warp-routes.md](warp-routes.md)), commit + push the deploy branch, then:
 
 ```bash
 BRANCH=<deploy-branch>   # the branch you deployed from
