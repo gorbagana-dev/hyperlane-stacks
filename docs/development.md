@@ -19,9 +19,6 @@ patterns, and which one you are dealing with decides the first few steps:
 | `hyperlane-svm-deployer` | **upstream pin** | [`hyperlane-monorepo`](https://github.com/hyperlane-xyz/hyperlane-monorepo), pinned in `stack.yml` by commit (matches the on-chain programs) |
 | `hyperlane-kms-proxy`, `hyperlane-gas-oracle` | **in-repo** | [`hyperlane-kms-proxy/`](../hyperlane-kms-proxy/), [`hyperlane-gas-oracle/`](../hyperlane-gas-oracle/) in this repository |
 
-The explorer stack also runs Hasura (`hasura/graphql-engine`) and Postgres as
-plain upstream images — wired via config/spec, not built or pinned here.
-
 - **Fork** — we maintain our own branded/modified source in a `gorbagana-dev`
   repo and pin a release tag. Use this when the change is substantial and ongoing
   (a reskin, custom features).

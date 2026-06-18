@@ -59,10 +59,8 @@ in each stack's `stack_orchestrator/data/stacks/<stack>/stack.yml`.
 | [`hyperlane-explorer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-explorer) | [`hyperlane-explorer`](https://github.com/gorbagana-dev/hyperlane-explorer) | our fork | explorer (frontend) |
 | [`hyperlane-scraper`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-scraper) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) | our fork | explorer (indexer) |
 
-The explorer additionally runs Hasura (`hasura/graphql-engine`) and Postgres as
-plain upstream images — pulled directly, not built here. Building and publishing
-the images above, and rolling a new one into a deployment, is covered in the
-[development guide](docs/development.md).
+Building and publishing these images, and rolling a new one into a deployment, is
+covered in the [development guide](docs/development.md).
 
 ## Stacks
 
