@@ -6,7 +6,7 @@ mainnet, under `bridge.gorbagana.wtf` (Cloudflare + Let's Encrypt TLS). A single
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec |
 |---|---|---|
-| `bridge-host-1` | MinIO, deployer Jobs, both validators, relayer, gas-oracle, monitoring, warp-ui | 4 vCPU / 8 GB / 80 GB SSD or larger |
+| `bridge-host-1` | MinIO, deployer Jobs, both validators, relayer, gas-oracle, monitoring, warp-ui, explorer | 4 vCPU / 8 GB / 80 GB SSD or larger |
 
 Multi-host opt-out: to move a validator to a second machine, change that validator's `host:`
 in `deployment/bridges/default/operator/validators.yaml`, add the host to
@@ -172,7 +172,7 @@ A **prod funding gate** runs first (before any stack starts) and aborts the depl
 signer is underfunded — same check as `prepare-prod.yml`, but now a hard blocker.
 
 MinIO → deployer Job → warp deployer → **publish bridge state** → relayer → gas-oracle →
-warp-ui → validators → monitoring, with deploy gates refusing any unfilled sentinel value.
+warp-ui → explorer → validators → monitoring, with deploy gates refusing any unfilled sentinel value.
 `state_review=true` pauses the publish to show the staged diff for attended review; drop
 the flag for unattended re-runs.
 
@@ -190,10 +190,11 @@ The deployment serves these endpoints (all under `bridge.gorbagana.wtf`, Let's E
 | Relayer | https://relayer.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
 | Gorchain validator | https://validator-gorchain.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
 | Solana validator | https://validator-solana.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Explorer | https://explorer.bridge.gorbagana.wtf | Message search UI (Hasura/Postgres stay internal) |
 
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
-The block explorer (`https://explorer.bridge.gorbagana.wtf`) and gorchain RPC
-(`https://rpc.gorbagana.wtf`) are **external** — not served by this deployment.
+The gorchain RPC (`https://rpc.gorbagana.wtf`) is **external** — not served by this
+deployment.
 
 - Warp UI loads and shows the token routes.
 - MinIO console: checkpoint objects appear under both validator buckets.
@@ -269,7 +270,8 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/restart-stack.yml \
 `deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name` values
 are the keys of the `stacks` map in `inventories/prod/group_vars/all.yml` (e.g.
 `hyperlane-relayer` → `relayer_hosts`, `hyperlane-gas-oracle` → `gas_oracle_hosts`,
-`hyperlane-monitoring` → `monitoring_hosts`, `hyperlane-warp-ui` → `warp_ui_hosts`).
+`hyperlane-monitoring` → `monitoring_hosts`, `hyperlane-warp-ui` → `warp_ui_hosts`,
+`hyperlane-explorer` → `explorer_hosts`).
 
 ## Adding a warp route
 

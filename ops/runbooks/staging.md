@@ -6,7 +6,7 @@ and Let's Encrypt TLS under `staging.gorbagana.wtf`.
 
 | Host (`host_vars/<host>.yml`) | Runs | Starting spec | DO size slug |
 |---|---|---|---|
-| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui | 4 vCPU / 8 GB / 80 GB SSD | `s-4vcpu-8gb` |
+| `staging-bridge-ops` | MinIO, deployer Jobs, relayer, gas-oracle, monitoring, warp-ui, explorer | 4 vCPU / 8 GB / 80 GB SSD | `s-4vcpu-8gb` |
 | `staging-gorchain` | gorchain chain + Caddy RPC front | 8 vCPU / 32 GB / 500 GB NVMe SSD | `s-8vcpu-32gb-640gb-intel` |
 | `staging-hyperlane-validators` | both hyperlane validators | 4 vCPU / 8 GB / 60 GB SSD | `s-4vcpu-8gb` |
 
@@ -174,7 +174,7 @@ ansible-playbook -i inventories/staging/hosts.yml playbooks/deploy-all.yml \
 ```
 
 MinIO → deployer Job → warp deployer → **publish bridge state** → relayer →
-gas-oracle → warp-ui → validators → monitoring, with the deploy gates
+gas-oracle → warp-ui → explorer → validators → monitoring, with the deploy gates
 refusing any unfilled placeholder. The publish (commit + push of the
 deployer-generated state to `deploy_branch`) happens mid-flight —
 `state_review=true` pauses it to show the staged diff for an attended review;
@@ -197,9 +197,9 @@ The deployment serves these endpoints (all under `staging.gorbagana.wtf`, Let's 
 | Relayer | https://relayer.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
 | Gorchain validator | https://validator-gorchain.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
 | Solana validator | https://validator-solana.staging.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
+| Explorer | https://explorer.staging.gorbagana.wtf | Message search UI (Hasura/Postgres stay internal) |
 
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
-The block explorer (`https://explorer.staging.gorbagana.wtf`) is external — not served by this deployment.
 
 - `https://rpc.staging.gorbagana.wtf/health` answers `ok` and slots advance.
 - MinIO console: checkpoint objects appear under both validator buckets.
