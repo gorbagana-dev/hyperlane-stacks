@@ -4,9 +4,8 @@ description: "Hyperlane Explorer — self-hosted message indexer + search UI (fr
 repos:
   - github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1
   # Scraper is built from the gorbagana monorepo fork (indexing tolerant of
-  # pruned slots), pinned to the published release tag. The fork is on agents
-  # v2.2.0; the deployer/on-chain programs are on 16c056a — verify Sealevel
-  # account layouts are compatible when validating.
+  # pruned slots), pinned to the same release tag as the deployer and agents so
+  # it decodes the on-chain programs' Sealevel account layouts consistently.
   - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.1
 # containers is commented out so deploy-start won't kind-load the images;
 # k8s pulls them from the registry instead. Uncomment for local builds.

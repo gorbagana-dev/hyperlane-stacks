@@ -83,6 +83,12 @@ jobs:
           sed -i 's/^# containers:/containers:/' "$STACK_YML"
           sed -i 's/^#   - gorbagana-dev/  - gorbagana-dev/' "$STACK_YML"
 
+      # The deployer stack builds from the private gorbagana-dev monorepo fork;
+      # authenticate clones so setup-repositories can resolve it.
+      # TODO: revert to CICD_REPO_TOKEN once its access to the fork is approved.
+      - name: Authenticate clones to private gorbagana-dev repos
+        run: git config --global url."https://x-access-token:${{ secrets.CICD_REPO_TOKEN_TEMP }}@github.com/gorbagana-dev/".insteadOf "https://github.com/gorbagana-dev/"
+
       - name: Setup repositories
         run: laconic-so --stack $(pwd)/stack_orchestrator/data/stacks/hyperlane-svm-deployer setup-repositories
 
@@ -95,8 +101,19 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
           echo "tag=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          # Also publish the monorepo release tag from stack.yml
+          # (vX.Y.Z-gorbagana.N) so deployment specs can pin it.
+          REF=$(grep -oP 'gorbagana-dev/hyperlane-monorepo@\K\S+' \
+            stack_orchestrator/data/stacks/hyperlane-svm-deployer/stack.yml)
+          if [[ "$REF" =~ ^v[0-9]+[0-9a-zA-Z._-]*$ ]]; then
+            echo "ref_tag=${REF}" >> $GITHUB_OUTPUT
+          else
+            echo "ref_tag=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Tag and push image
+        env:
+          REF_TAG: ${{ steps.tag.outputs.ref_tag }}
         run: |
           REMOTE_TAG="${REMOTE_IMAGE}:${{ steps.tag.outputs.tag }}"
           REMOTE_LATEST="${REMOTE_IMAGE}:latest"
@@ -109,6 +126,12 @@ jobs:
 
           echo "Published: ${REMOTE_TAG}"
           echo "Published: ${REMOTE_LATEST}"
+
+          if [ -n "${REF_TAG}" ]; then
+            docker tag "${LOCAL_IMAGE}" "${REMOTE_IMAGE}:${REF_TAG}"
+            docker push "${REMOTE_IMAGE}:${REF_TAG}"
+            echo "Published: ${REMOTE_IMAGE}:${REF_TAG}"
+          fi
 
   build-agent:
     needs: changes
