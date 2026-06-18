@@ -59,6 +59,8 @@ dns_records:
     host: staging-bridge-ops
   - name: relayer
     host: staging-bridge-ops
+  - name: explorer
+    host: staging-bridge-ops
   # gorchain RPC — Caddy TLS front on the chain host (prepare-gorchain.yml)
   - name: rpc
     host: staging-gorchain

@@ -58,6 +58,8 @@ dns_records:
     host: bridge-host-1
   - name: relayer
     host: bridge-host-1
+  - name: explorer
+    host: bridge-host-1
 
 # Deploy-time spec renders (render_spec.yml): operator values substituted into the
 # on-host spec copy — the committed spec keeps the sentinel.

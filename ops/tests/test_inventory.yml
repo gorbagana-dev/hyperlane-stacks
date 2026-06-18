@@ -12,6 +12,7 @@
       - gas_oracle_hosts
       - monitoring_hosts
       - warp_ui_hosts
+      - explorer_hosts
   tasks:
     - name: Every singleton group is defined
       ansible.builtin.assert:
@@ -26,11 +27,13 @@
       loop:
         - hyperlane-minio
         - hyperlane-svm-deployer
+        - hyperlane-svm-warp-deployer
         - hyperlane-relayer
         - hyperlane-gas-oracle
         - hyperlane-monitoring
         - hyperlane-warp-ui
         - hyperlane-validator
+        - hyperlane-explorer
 
     - name: Deploy hosts connect as the deploy_user; controller has neither var
       vars:

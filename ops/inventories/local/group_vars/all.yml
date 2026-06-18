@@ -61,6 +61,7 @@ dns_record_map:
   prometheus: monitoring_hosts
   warp-ui: warp_ui_hosts
   relayer: relayer_hosts
+  explorer: explorer_hosts
 
 # --- On-host spec token rendering ---
 # Operator-supplied values not known until the zone/chains exist are committed as
@@ -145,6 +146,7 @@ single_host_external_services:
   hyperlane-validator: "{{ _xs_chains_minio }}"
   hyperlane-relayer: "{{ _xs_chains_minio }}"
   hyperlane-monitoring: "{{ _xs_chains_prom }}"
+  hyperlane-explorer: "{{ _xs_chains_only }}"
 
 spec_token_renders:
   __BASE_DOMAIN__: "{{ base_domain }}"
