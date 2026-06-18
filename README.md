@@ -9,13 +9,10 @@ an ansible ops layer.
 ## Live endpoints (production)
 
 - Bridge UI — https://bridge.gorbagana.wtf ([how to bridge tokens](docs/using-the-bridge.md))
-- Explorer¹ — https://explorer.bridge.gorbagana.wtf
+- Explorer — https://explorer.bridge.gorbagana.wtf (bridge message search)
 - Grafana — https://grafana.bridge.gorbagana.wtf
 - Prometheus — https://prometheus.bridge.gorbagana.wtf
 - Gorchain RPC — https://rpc.gorbagana.wtf
-
-¹ The explorer is a self-hosted stack in this repo (a Hyperlane Explorer fork): it
-indexes bridge messages on both chains and serves the search UI.
 
 ## Repository layout
 
@@ -62,11 +59,9 @@ in each stack's `stack_orchestrator/data/stacks/<stack>/stack.yml`.
 | [`hyperlane-explorer`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-explorer) | [`hyperlane-explorer`](https://github.com/gorbagana-dev/hyperlane-explorer) | our fork | explorer (frontend) |
 | [`hyperlane-scraper`](https://github.com/orgs/gorbagana-dev/packages/container/package/hyperlane-scraper) | [`hyperlane-monorepo`](https://github.com/gorbagana-dev/hyperlane-monorepo) | our fork | explorer (indexer) |
 
-The explorer stack also runs two upstream images we don't build — Hasura
-(`hasura/graphql-engine`) and Postgres. The agent now builds from our monorepo
-fork (it carries the KMS/S3 endpoint fixes and pruned-slot indexing); the
-svm-deployer still builds from the pinned upstream commit. Building and publishing
-these images, and rolling a new one into a deployment, is covered in the
+The explorer additionally runs Hasura (`hasura/graphql-engine`) and Postgres as
+plain upstream images — pulled directly, not built here. Building and publishing
+the images above, and rolling a new one into a deployment, is covered in the
 [development guide](docs/development.md).
 
 ## Stacks
@@ -92,7 +87,7 @@ Each stack has its own README under `stack_orchestrator/data/stacks/<stack>/`.
 3. `hyperlane-svm-warp-deployer` — warp route contracts
 4. `hyperlane-validator` (gorchain) + `hyperlane-validator` (solana) — one deployment per chain
 5. `hyperlane-relayer` — message delivery
-6. `hyperlane-gas-oracle`, `hyperlane-monitoring`, `hyperlane-warp-ui`, `hyperlane-explorer` — no ordering constraint (each only needs the deployer's `agent-config`)
+6. `hyperlane-gas-oracle`, `hyperlane-monitoring`, `hyperlane-warp-ui`, `hyperlane-explorer` — no ordering constraint
 
 State flows from the deployer Jobs (which write JSON to a host `/state` path) into
 each downstream stack's ConfigMaps at deploy time. The mechanics are in
@@ -101,8 +96,8 @@ each downstream stack's ConfigMaps at deploy time. The mechanics are in
 ## How the components interact
 
 The deployer Jobs run first and seed contract addresses/config; once the
-long-running stacks are up, three flows describe how they interact at runtime:
-the bridge message path, signing/fees, and monitoring.
+long-running stacks are up, four flows describe how they interact at runtime:
+the bridge message path, signing and fees, monitoring, and message indexing.
 
 ### 1. Bridging a transfer
 
