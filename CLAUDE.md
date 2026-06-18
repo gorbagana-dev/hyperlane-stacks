@@ -115,9 +115,13 @@ When making structural changes, update:
 
 ### Secrets
 
-- Created by operator via `kubectl create secret generic`
-- Referenced in spec files under `secrets:`, injected as env vars
-- Never committed to the repo
+- Declared in spec files under `secrets:` (`{ env: VAR }` / `{ file: path }`);
+  SO's `_create_user_secrets` reads each source and creates the k8s Secret,
+  injected as env vars via `envFrom`. Never committed to the repo.
+- **Optional keys**: `{ env: VAR, optional: true }` skips the key when the
+  var is unset/empty instead of failing the deploy (e.g. `SLACK_WEBHOOK_URL`,
+  `IGP_BENEFICIARY_PUBKEY`). Must match the ops `optional_secret_env` allowlist
+  (`stack_deploy` role) — both gates have to agree, or the deploy still fails.
 
 ## Deployment order
 

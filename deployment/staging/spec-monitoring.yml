@@ -42,7 +42,7 @@ secrets:
     keys:
       GF_SECURITY_ADMIN_PASSWORD: { env: GF_SECURITY_ADMIN_PASSWORD }
       SOLANA_RPC_URL:             { env: SOLANA_RPC_URL }
-      SLACK_WEBHOOK_URL:          { env: SLACK_WEBHOOK_URL }
+      SLACK_WEBHOOK_URL:          { env: SLACK_WEBHOOK_URL, optional: true }
 # Optional: override container images (service name → full image ref)
 # image-overrides:
 #   prometheus: prom/prometheus:v2.53.0

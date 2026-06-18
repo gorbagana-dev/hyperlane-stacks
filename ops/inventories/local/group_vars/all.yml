@@ -24,7 +24,7 @@ ansible_user: "{{ deploy_user | default(lookup('env', 'USER')) }}"
 ansible_host: "{{ public_ip | default(inventory_hostname) }}"
 
 # --- laconic-so install (prerequisites_user) ---
-laconic_so_version: "v1.1.0-3c6d2f7-202606100934"
+laconic_so_version: "v1.1.0-a4bfe49-202606181211"
 laconic_so_release_base_url: "https://github.com/cerc-io/stack-orchestrator/releases/download"
 
 # --- Credentials dir ---

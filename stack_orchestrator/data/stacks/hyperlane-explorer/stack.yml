@@ -2,7 +2,7 @@ version: "1.1"
 name: hyperlane-explorer
 description: "Hyperlane Explorer — self-hosted message indexer + search UI (frontend + scraper + Postgres + Hasura)"
 repos:
-  - github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.1
+  - github.com/gorbagana-dev/hyperlane-explorer@v12.0.0-gorbagana.2
   # Scraper is built from the gorbagana monorepo fork (indexing tolerant of
   # pruned slots), pinned to the same release tag as the deployer and agents so
   # it decodes the on-chain programs' Sealevel account layouts consistently.
