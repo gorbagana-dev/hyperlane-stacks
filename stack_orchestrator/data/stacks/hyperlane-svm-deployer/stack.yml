@@ -2,13 +2,14 @@ version: "1.1"
 name: hyperlane-svm-deployer
 description: "Deploys Hyperlane core contracts on Gorchain and Solana SVM chains"
 repos:
-  # Source for the on-chain sealevel programs + client. Tracks upstream Hyperlane
-  # at 16c056a0 (SDK v3.x), mirrored as the fork tag sealevel-gorbagana-v1.0.0.
-  # Built with plain `cargo build-sbf` → SBPFv0, which Solana enables for
-  # deployment (v1/v3 are feature-gated off) and gorchain accepts too. Do NOT add
-  # `--arch`: it forces v1/v3 and Solana rejects the program at deploy. Separate
-  # release line from the agents/scraper, which track vX.Y.Z-gorbagana.N.
-  - github.com/gorbagana-dev/hyperlane-monorepo@sealevel-gorbagana-v1.0.0
+  # Source for the on-chain sealevel programs + client. Tracks the gorbagana fork
+  # of Hyperlane at v2.2.0-gorbagana.4, built with the Agave 4.x toolchain. Solana
+  # moved to Agave 4.x, which gates new program deployment by SBPF version, so
+  # build-programs.sh builds every program for both SBPFv0 and SBPFv3
+  # (target/deploy/{v0,v3}/) and deploy.sh selects per target chain at runtime
+  # (gorchain on Agave 3.x = v0; Solana devnet = v3; Solana mainnet = v0 until it
+  # activates the v3 gate). Same fork line as the agents/scraper.
+  - github.com/gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.4
 # containers is commented out so deploy-start won't kind-load the image;
 # k8s pulls it from the registry instead. Uncomment for local builds.
 # containers:
