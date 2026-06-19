@@ -2,11 +2,11 @@
 # Into a private _-name, never `deploy_dir` itself: a self-referential set_fact
 # (deploy_dir: "{{ deploy_dir | default(...) }}") persists across plays, so the
 # first play freezes it and every later singleton play reuses that stale dir.
-- name: Resolve deploy dir (honor caller override, else derive)
+- name: "[{{ stack_name }}] Resolve deploy dir (honor caller override, else derive)"
   ansible.builtin.set_fact:
     _deploy_dir: "{{ deploy_dir if deploy_dir is defined else (deploy_base ~ '/' ~ stack_name) }}"
 
-- name: Check whether the deployment was already created
+- name: "[{{ stack_name }}] Check whether the deployment was already created"
   ansible.builtin.stat:
     path: "{{ _deploy_dir }}/deployment.yml"
   register: _dep
@@ -16,7 +16,7 @@
 # `{{ other_var }}` indirection (e.g. MINIO_ROOT_USER: "{{ minio_root_user }}"), so on
 # some ansible versions the literal template leaked through to SO. ansible itself
 # recommends the vars lookup over extract-on-vars.
-- name: Assemble secret env from the per-stack map
+- name: "[{{ stack_name }}] Assemble secret env from the per-stack map"
   ansible.builtin.set_fact:
     stack_env: >-
       {{ dict(_secret_env_names | zip(lookup('vars', *_secret_env_names, wantlist=True)))
@@ -34,7 +34,7 @@
 # Envs in optional_secret_env (e.g. IGP_BENEFICIARY_PUBKEY — defaulted by deploy.sh;
 # SLACK_WEBHOOK_URL — empty disables alerts) may be empty, but are still checked for
 # stray {{ }}/REPLACE_WITH placeholders.
-- name: Required secret env values for this stack are set and rendered
+- name: "[{{ stack_name }}] Required secret env values for this stack are set and rendered"
   ansible.builtin.assert:
     that:
       - "item in optional_secret_env or (stack_env[item] | default('', true) | string | length > 0)"
@@ -51,12 +51,12 @@
   loop_control:
     label: "{{ item }}"
 
-- name: Create the deployment from the committed spec (idempotent)
+- name: "[{{ stack_name }}] Create the deployment from the committed spec (idempotent)"
   when:
     - not _dep.stat.exists
     - not ansible_check_mode
   block:
-    - name: Ensure deploy base exists
+    - name: "[{{ stack_name }}] Ensure deploy base exists"
       ansible.builtin.file:
         path: "{{ _deploy_dir | dirname }}"
         state: directory
@@ -64,13 +64,13 @@
 
     # Substitute deploy-time values (tokens, program-ids, external-services) into the
     # on-host spec. Shared with stack_restart so create and restart render identically.
-    - name: Render deploy-time values into the on-host spec
+    - name: "[{{ stack_name }}] Render deploy-time values into the on-host spec"
       ansible.builtin.import_tasks: render_spec.yml
 
     # The committed specs carry a repo-relative `stack:` path, which laconic-so
     # resolves against the process CWD (not the --stack arg). Run from repo_root so
     # it resolves — the same approach SO's own `deployment restart` uses internally.
-    - name: Run deploy create (committed spec — no init; SO reads it directly)
+    - name: "[{{ stack_name }}] Run deploy create (committed spec — no init; SO reads it directly)"
       ansible.builtin.command:
         chdir: "{{ repo_root }}"
         argv:
@@ -86,7 +86,7 @@
       environment: "{{ stack_env }}"
       changed_when: true
 
-    - name: Patch human-readable deployment-id
+    - name: "[{{ stack_name }}] Patch human-readable deployment-id"
       ansible.builtin.replace:
         path: "{{ _deploy_dir }}/deployment.yml"
         regexp: '^(deployment-id:\s*).*$'
@@ -94,7 +94,7 @@
 
 # Restart path: the create block above is skipped because the deploy dir already
 # exists, so render the spec here and let `laconic-so restart` (below) sync from it.
-- name: Restart requires an existing deployment
+- name: "[{{ stack_name }}] Restart requires an existing deployment"
   ansible.builtin.assert:
     that: _dep.stat.exists
     fail_msg: >-
@@ -102,7 +102,7 @@
       updates an existing deployment.
   when: stack_action | default('deploy') == 'restart'
 
-- name: Render deploy-time values into the on-host spec (restart)
+- name: "[{{ stack_name }}] Render deploy-time values into the on-host spec (restart)"
   ansible.builtin.import_tasks: render_spec.yml
   when: stack_action | default('deploy') == 'restart'
 
@@ -113,7 +113,7 @@
 # target the host leave stack_hook_delegate_to unset -> delegate to self (same as no
 # delegation). NOT default(omit): omit is only valid for module arguments — as a task
 # keyword it crashes execution (TypeError: NoneType is not subscriptable).
-- name: Pre-start hook (optional per-stack include)
+- name: "[{{ stack_name }}] Pre-start hook (optional per-stack include)"
   ansible.builtin.include_tasks:
     file: "{{ stack_pre_start_tasks }}"
     apply:
@@ -124,7 +124,7 @@
 
 # start re-resolves the deployment's relative stack path too (SO's restart chdirs
 # around both create and up for this reason), so run it from repo_root as well.
-- name: Start deployment (create-or-reuse cluster + Caddy)
+- name: "[{{ stack_name }}] Start deployment (create-or-reuse cluster + Caddy)"
   ansible.builtin.command:
     chdir: "{{ repo_root }}"
     argv:
@@ -143,7 +143,7 @@
 # Restart syncs the deploy dir from the (re-rendered) spec and rolling-restarts,
 # preserving the cluster + data volumes. --spec-file is repo-relative (SO resolves it
 # from the repo root); --force skips the DNS probe (the hostname is unchanged here).
-- name: Restart deployment (sync from spec, preserve cluster + volumes)
+- name: "[{{ stack_name }}] Restart deployment (sync from spec, preserve cluster + volumes)"
   ansible.builtin.command:
     chdir: "{{ repo_root }}"
     argv:
@@ -166,7 +166,7 @@
 # SO's k8s up ignores force_recreate (its own TODO), so a restart whose only change is
 # ConfigMap content (e.g. warp-ui's warpRoutes.yaml) never rolls the pods. Stamp a
 # rollout explicitly; the availability wait below gates on it completing.
-- name: Roll the Deployments (k8s restart skips unchanged pod specs)
+- name: "[{{ stack_name }}] Roll the Deployments (k8s restart skips unchanged pod specs)"
   ansible.builtin.command:
     argv:
       - kubectl
@@ -189,7 +189,7 @@
 # Logs via `kubectl logs job/<name>` (kubectl resolves the pod from the Job's own
 # selector) — SO labels job pods app={app_name}-job, not {app_name}, so guessing a
 # label selector would miss them.
-- name: Wait for the Job(s) to finish (complete or fail), capturing status + logs
+- name: "[{{ stack_name }}] Wait for the Job(s) to finish (complete or fail), capturing status + logs"
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
@@ -221,7 +221,7 @@
     - _stack_is_job | bool
     - not ansible_check_mode
 
-- name: Fail with the Job's status + logs when it did not complete
+- name: "[{{ stack_name }}] Fail with the Job's status + logs when it did not complete"
   ansible.builtin.fail:
     msg: "{{ _job_wait.stdout }}"
   when:
@@ -234,7 +234,7 @@
 # running, e.g. relayer/validators -> MinIO) only proceeds once this stack's pods are
 # serving. Multi-host has no incidental ordering buffer, so the gate is what enforces
 # the runtime dependency; it also fails fast on a bad image instead of a quiet retry loop.
-- name: Wait for the stack's Deployments to become available (long-running stacks)
+- name: "[{{ stack_name }}] Wait for the stack's Deployments to become available (long-running stacks)"
   ansible.builtin.command:
     argv:
       - kubectl

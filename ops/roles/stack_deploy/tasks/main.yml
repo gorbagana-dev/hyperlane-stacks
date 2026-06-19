@@ -1,9 +1,9 @@
 ---
-- name: Resolve stack metadata
+- name: "[{{ stack_name }}] Resolve stack metadata"
   ansible.builtin.import_tasks: resolve.yml
 
-- name: Preflight checks
+- name: "[{{ stack_name }}] Preflight checks"
   ansible.builtin.import_tasks: preflight.yml
 
-- name: Deploy the stack
+- name: "[{{ stack_name }}] Deploy the stack"
   ansible.builtin.import_tasks: deploy.yml

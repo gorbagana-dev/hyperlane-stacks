@@ -290,6 +290,35 @@ schema, and a worked example are in [warp-routes.md](warp-routes.md).
 > ⚠️ **This stops a live production bridge.** `stop-all` halts message delivery — in-flight
 > transfers are not relayed until the stack is back up.
 
+**Permanently shutting down?** Run the decommission step first (before `stop-all`):
+`wipe_data` deletes the `generated/` state the close reads, and the close needs the
+bridge quiesced with the RPCs reachable. For a routine reset/redeploy, skip to
+*Stop / teardown*.
+
+### Permanent decommission (irreversible — reclaims program rent)
+
+The stop-all teardown below is off-chain and recoverable: the on-chain programs
+stay deployed, holding their ~7/chain rent. To permanently shut the bridge down and
+reclaim that rent to a treasury, close the programs first:
+
+```bash
+# dry-run: simulate + report reclaimable rent
+ansible-playbook -i inventories/prod/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58>
+# irreversible close
+ansible-playbook -i inventories/prod/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58> -e dry_run=false -e confirm_decommission=true
+```
+
+> ⚠️ Closing burns the program IDs and bricks the bridge — only after draining
+> escrowed collateral, letting in-flight messages settle, and running
+> `retire-keys.yml`. Needs `privy_bridge_owner_wallet_id` in the config, and the
+> bridge owner must hold a little SOL on each chain — it signs and pays every
+> close (the 0.5 budgeted in funding-estimate covers the fees). See
+> [funding-estimate.md](funding-estimate.md).
+
+### Stop / teardown
+
 Stop all stacks (cluster and persisted data preserved):
 
 ```bash

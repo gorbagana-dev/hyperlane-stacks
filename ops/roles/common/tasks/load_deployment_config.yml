@@ -6,22 +6,22 @@
 # the file out of -v output.
 # The config file lives on the controller (include_vars also reads it there), so the
 # existence check must run on the controller even when the play targets a remote host.
-- name: Locate the deployment config file
+- name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Locate the deployment config file"
   ansible.builtin.stat:
     path: "{{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }}"
   delegate_to: localhost
   register: _deployment_config_file
-- name: The deployment config file must exist
+- name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}The deployment config file must exist"
   ansible.builtin.assert:
     that: _deployment_config_file.stat.exists
     fail_msg: >-
       {{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }} not found —
       copy deployment-config.example.yml to deployment-config.yml and fill it in.
       (Upgrading from an older checkout: mv the env's secrets.yml to deployment-config.yml.)
-- name: Load the deployment config
+- name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
   ansible.builtin.include_vars: "{{ deployment_config_file | default(inventory_dir ~ '/deployment-config.yml') }}"
   no_log: true
-- name: Require wallet_connect_id (empty disables WalletConnect; missing is a gap)
+- name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Require wallet_connect_id (empty disables WalletConnect; missing is a gap)"
   ansible.builtin.assert:
     that: wallet_connect_id is defined
     fail_msg: >-

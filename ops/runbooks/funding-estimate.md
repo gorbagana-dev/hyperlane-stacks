@@ -106,15 +106,22 @@ small operational reserves on the other signers.
 If you permanently shut the bridge down, the program rent — the ~7.1/chain bulk —
 comes back via:
 
-```
-solana program close <program_id> --recipient <treasury>
+```bash
+ansible-playbook -i inventories/<env>/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58>                       # dry-run: simulate + report
+ansible-playbook -i inventories/<env>/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58> -e dry_run=false -e confirm_decommission=true
 ```
 
 - **Who signs:** the **upgrade authority**, which is the **bridge owner**
-  (`BRIDGE_OWNER_PUBKEY` — the Privy server wallet; `AUiSJK…` on staging). The
-  deployer can't — it handed authority off at deploy. There's no playbook for it
-  (`retire-keys.yml` only drains the hot signer keyfiles), so it's a manual close
-  tx signed through Privy, one per program.
+  (`BRIDGE_OWNER_PUBKEY` — the Privy server wallet; `AUiSJK…` on staging), not the
+  deployer (it handed authority off at deploy). `decommission.yml` signs each close
+  through Privy, running `scripts/decommission-programs.mjs` inside the gas-oracle
+  image on the deployer host (no local tooling needed). It closes the four core
+  programs + every warp route's token program on both chains, sending the reclaimed
+  rent to `treasury_address`. Needs `privy_bridge_owner_wallet_id` (owner.json `id`)
+  in the deployment-config. `retire-keys.yml` (hot keyfile drain) is the separate,
+  earlier step.
 - **Irreversible:** closing burns the program ID (you can't redeploy to it) and
   bricks the bridge — only do it after draining escrowed collateral and letting
   in-flight messages settle.

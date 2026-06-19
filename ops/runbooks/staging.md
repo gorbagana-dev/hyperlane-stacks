@@ -308,6 +308,33 @@ ready to select. Full steps, the route-file schema, and a worked SOL example are
 
 > ⚠️ **`stop-all` halts the bridge** — message delivery stops until the stack is back up.
 
+**Permanently shutting down?** Run the decommission step first (before `stop-all`):
+`wipe_data` deletes the `generated/` state the close reads, and the close needs the
+RPCs reachable. For a routine reset/redeploy, skip to *Stop / teardown*.
+
+### Permanent decommission (irreversible — reclaims program rent)
+
+The stop-all teardown below is off-chain and recoverable; the on-chain programs
+stay deployed. To permanently shut down and reclaim each program's rent to a
+treasury, close them first. On staging this reclaims only free devnet/faucet
+token, so it's mainly for rehearsing the prod procedure:
+
+```bash
+ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58>                       # dry-run: simulate + report
+ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58> -e dry_run=false -e confirm_decommission=true
+```
+
+> ⚠️ Irreversible: burns the program IDs and bricks the bridge. Run only after
+> draining collateral, settling in-flight messages, and `retire-keys.yml`. Needs
+> `privy_bridge_owner_wallet_id` in the config, and the bridge owner (`AUiSJK…`)
+> must hold a little token on each chain — it signs and pays every close, and is
+> unfunded on staging by default, so top it up first (a few thousand lamports
+> covers the fees). See [funding-estimate.md](funding-estimate.md).
+
+### Stop / teardown
+
 Stacks only (cluster, persisted data, and chain all survive):
 
 ```bash

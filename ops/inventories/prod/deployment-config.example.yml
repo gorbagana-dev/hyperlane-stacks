@@ -9,6 +9,7 @@ cloudflare_api_token: ""        # zone-scoped: DNS edit on cloudflare_zone
 privy_app_id: ""                # Privy app (runbooks/privy-wallets.md)
 privy_app_secret: ""
 privy_oracle_wallet_id: ""      # gas-oracle wallet `id` (oracle.json)
+privy_bridge_owner_wallet_id: "" # bridge-owner wallet `id` (owner.json) — upgrade authority; signs program close on decommission (decommission.yml)
 helius_api_key: ""              # Helius MAINNET API key — builds SOLANA_RPC_URL
 ghcr_pat: ""                    # GitHub PAT (packages:read) for private GHCR images
 slack_webhook_url: ""           # Slack incoming-webhook URL; empty disables balance alerts
