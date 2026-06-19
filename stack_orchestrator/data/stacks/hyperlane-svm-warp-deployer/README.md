@@ -14,7 +14,7 @@ Deploys warp route contracts (collateral lock + synthetic mint) across Gorchain 
 laconic-so --stack hyperlane-svm-warp-deployer setup-repositories
 ```
 
-Clones the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.3` (in lockstep with the hyperlane-svm-deployer image it reuses) to `~/cerc/hyperlane-monorepo`.
+Clones the deployer source — the gorbagana fork of Hyperlane at `v2.2.0-gorbagana.4` (in lockstep with the hyperlane-svm-deployer image it reuses) — to `~/cerc/hyperlane-monorepo`.
 
 ## 2. Build container
 

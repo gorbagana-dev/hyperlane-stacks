@@ -4,6 +4,9 @@ node_modules/
 .deployments
 .logs
 .keys
+# Solana keypairs are private keys — never commit (e.g. a deployer-keypair.json
+# left in the tree from a manual deploy/test).
+*-keypair.json
 .venv/
 .backpack-ext/
 ops/collections/

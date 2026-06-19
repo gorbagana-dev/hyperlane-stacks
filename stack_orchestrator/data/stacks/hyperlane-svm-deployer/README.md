@@ -13,7 +13,7 @@ Deploys Hyperlane core contracts (mailbox, IGP, multisig ISM, validator announce
 laconic-so --stack hyperlane-svm-deployer setup-repositories
 ```
 
-Clones the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.3` to `~/cerc/hyperlane-monorepo` (the agents and scraper stay on `.1`; they don't build the on-chain programs). The `.so` programs are built with `cargo build-sbf --arch v0` (SBPFv0): Solana devnet only enables v0 for deployment (v1 and v3 are feature-gated off), and gorchain accepts v0 too, so one build deploys on both chains.
+Clones the deployer source — the gorbagana fork of Hyperlane at `v2.2.0-gorbagana.4` — to `~/cerc/hyperlane-monorepo`. This is the same fork line as the agents/scraper (which track `vX.Y.Z-gorbagana.N`); the deployer additionally builds the on-chain programs. `build-programs.sh` builds every `.so` program for both SBPFv0 and SBPFv3, emitting one set per arch under `target/deploy/{v0,v3}/`. At deploy time `deploy.sh` selects the SBPF version per target chain at runtime by querying that cluster's SBPFv3-deployment feature gate: active → v3, otherwise → v0. Solana devnet now requires SBPFv3; gorchain (Agave 3.0.0) and Solana mainnet still require SBPFv0. So one image serves all three. Program logic and on-chain account layouts are unchanged, so the deployer stays compatible with the scraper/agents.
 
 ## 2. Build container (optional — for development only)
 

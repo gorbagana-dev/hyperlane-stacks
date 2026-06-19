@@ -48,7 +48,7 @@ image-pull-secret:
 # Optional: override container images (service name → full image ref)
 image-overrides:
   # warp-deployer runs the shared svm-deployer image, not a separate build
-  warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v2.2.0-gorbagana.3
+  warp-deployer: ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v2.2.0-gorbagana.4
 resources:
   containers:
     reservations:

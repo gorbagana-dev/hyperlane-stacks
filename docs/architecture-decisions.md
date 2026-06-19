@@ -74,14 +74,14 @@ The patched agent image is used by both the validator and relayer stacks. Publis
 
 #### 2. Sealevel tools (deployer, warp-deployer, ops) — Custom build required
 
-**No existing image.** Built from the gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.3` (the agents and scraper stay on `.1`).
+**No existing image.** Built from the gorbagana Hyperlane fork at `v2.2.0-gorbagana.4` — the same fork line as the agents/scraper (which track `vX.Y.Z-gorbagana.N`); the deployer additionally builds the on-chain programs.
 
 - Base image: Ubuntu 22.04
-- Source: gorbagana `hyperlane-monorepo` fork at `v2.2.0-gorbagana.3`; the `.so` programs are built with `--arch v0` (SBPFv0) so they deploy on Solana devnet (which only enables v0 for deployment — v1/v3 gated off) as well as gorchain. Program logic and account layouts are unchanged, so they stay compatible with the scraper
+- Source: `gorbagana-dev/hyperlane-monorepo@v2.2.0-gorbagana.4`. Solana devnet/mainnet have moved to Agave 4.x, which gates new program deployment by SBPF version: Solana devnet now requires SBPFv3, while gorchain (Agave 3.0.0) and Solana mainnet still require SBPFv0 (mainnet switches to v3 later, when it activates the gate). The old 3.x toolchain could neither build nor deploy v3. So `build-programs.sh` builds every `.so` program for both SBPFv0 and SBPFv3, emitting one set per arch under `target/deploy/{v0,v3}/`, and at deploy time `deploy.sh` selects the SBPF version per target chain at runtime by querying that cluster's SBPFv3-deployment feature gate (feature pubkey `5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC`): active → use the v3 set, otherwise → v0. A single image therefore serves gorchain (v0), Solana devnet (v3), and Solana mainnet (v0 for now). The Dockerfile fails the build unless each program's ELF `e_flags` matches its arch bucket (v0=0x0, v3=0x3). Program logic and account layouts are unchanged, so they stay compatible with the scraper
 - Multi-stage Docker build: builder stage compiles, runtime stage copies binaries
 - Produces: `hyperlane-sealevel-client` binary + `.so` program files (mailbox, IGP, ISM, validator announce, token, token-native, token-collateral)
-- Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 3.0.14
-- **Solana CLI 3.x note:** Program deployment ownership transfer requires the `--skip-new-upgrade-authority-signer-check` flag (added in Solana CLI 2.x+), which bypasses the requirement for the new authority to co-sign the transfer
+- Also includes: `solana-verify` CLI for post-deploy program hash verification (see `supply-chain-security.md`), Solana CLI 4.0.3 (Agave 4.x)
+- **Ownership transfer note:** Program deployment ownership transfer requires the `--skip-new-upgrade-authority-signer-check` flag (added in Solana CLI 2.x+), which bypasses the requirement for the new authority to co-sign the transfer
 - **No patches applied at build time.** The `localnet5.patch` from hyperlane-demo only contains runtime configuration files (agent-config.json, gas-oracle-configs.json, multisig-config.json, metadata.yaml, token-config.json) — all with placeholder values. These are injected at runtime via k8s ConfigMaps.
 
 **Rationale:** Build-time compilation produces a self-contained image with fast startup. Runtime compilation would add 20+ minutes to every container start.
@@ -102,7 +102,7 @@ There is no `fix-numeric-types`/sentinel-everything machinery and no source over
 
 ### Version Pinning
 
-Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-gorbagana.3`** with Solana CLI **3.0.14**, building the `.so` programs with `--arch v0` (SBPFv0) for cross-cluster deploy (Solana devnet only enables v0; gorchain accepts it too). Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
+Deployer image builds from the gorbagana Hyperlane fork at **`v2.2.0-gorbagana.4`** with Solana CLI **4.0.3** (Agave 4.x), building the `.so` programs for both SBPFv0 and SBPFv3; `deploy.sh` selects the arch per target chain at runtime via that cluster's SBPFv3-deployment feature gate (Solana devnet → v3; gorchain and Solana mainnet → v0). Agent images (validator, relayer) use a **custom patched build** from `agents-v2.2.0` (commit `4da9c44`) with KMS endpoint and S3 path-style patches.
 
 **Registry:** `ghcr.io/gorbagana-dev` (GitHub Container Registry)
 
@@ -110,7 +110,7 @@ Deployer image builds from the gorbagana `hyperlane-monorepo` fork at **`v2.2.0-
 |-----------|-------|--------|
 | Validator | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Custom patched build from `agents-v2.2.0` (commit `4da9c44`) |
 | Relayer | `ghcr.io/gorbagana-dev/hyperlane-agent:latest` | Same image as validator |
-| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Build from the gorbagana `hyperlane-monorepo` fork @ `v2.2.0-gorbagana.3`, Solana CLI 3.0.14, programs built `--arch v0` |
+| Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:v2.2.0-gorbagana.4` | Build from the gorbagana Hyperlane fork at `v2.2.0-gorbagana.4`, Solana CLI 4.0.3 (Agave 4.x), `.so` programs built for both SBPFv0 and SBPFv3 |
 | Warp Deployer | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer |
 | Ops jobs | `ghcr.io/gorbagana-dev/hyperlane-svm-deployer:local` | Same image as deployer (has sealevel-client) |
 | KMS Proxy | `ghcr.io/gorbagana-dev/hyperlane-kms-proxy:local` | Custom build — Privy-to-AWS-KMS shim for validator signing |

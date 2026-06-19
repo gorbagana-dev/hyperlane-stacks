@@ -1,6 +1,10 @@
 # hyperlane-svm-deployer
-# Multi-stage build from the gorbagana hyperlane-monorepo fork @ v2.2.0-gorbagana.3
-# Produces: hyperlane-sealevel-client binary, .so program artifacts, solana-verify
+# Multi-stage build from upstream Hyperlane @ 16c056a0 (fork tag sealevel-gorbagana-v1.0.0).
+# Built with the Agave 4.x toolchain (Solana CLI 4.0.3): Solana clusters moved to
+# Agave 4.x, which gates new program deployment by SBPF version. Programs are built
+# for both SBPFv0 and SBPFv3 (target/deploy/{v0,v3}/); the deploy scripts pick per
+# target chain at runtime. Produces: hyperlane-sealevel-client binary, v0+v3 .so
+# program artifacts, solana-verify
 #
 # Build context: ~/cerc/hyperlane-monorepo (cloned by laconic-so setup-repositories)
 # Invoked via: docker build -f <this-file> ~/cerc/hyperlane-monorepo
@@ -11,7 +15,7 @@
 # ============================================================
 FROM ubuntu:22.04 AS builder
 
-ARG SOLANA_CLI_VERSION=3.0.14
+ARG SOLANA_CLI_VERSION=4.0.3
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
@@ -55,8 +59,24 @@ RUN cargo install cargo-audit --locked && \
 RUN cd rust/sealevel \
     && cargo build --release --locked --bin hyperlane-sealevel-client
 
-# Build all .so program artifacts via the monorepo's build script
+# Build all .so program artifacts via the monorepo's build script.
+# build-programs.sh emits one set per SBPF arch under target/deploy/{v0,v3}/
+# (Solana devnet/mainnet on Agave 4.x gate new deploys by SBPF version; gorchain
+# on Agave 3.x needs v0). The deploy scripts select per target chain at runtime.
 RUN cd rust/sealevel/programs && ./build-programs.sh
+
+# Gate: fail the build if any program isn't the SBPF version its directory claims.
+# This is the safeguard that would have caught every wrong image in this lineage.
+RUN set -e; \
+    for f in rust/sealevel/target/deploy/v0/*.so; do \
+      fl=$(readelf -h "$f" | awk -F: '/Flags/{gsub(/ /,"",$2);print $2}'); \
+      case "$fl" in 0x0*) ;; *) echo "FATAL: $f flags=$fl, expected 0x0 (SBPFv0)"; exit 1;; esac; \
+    done; \
+    for f in rust/sealevel/target/deploy/v3/*.so; do \
+      fl=$(readelf -h "$f" | awk -F: '/Flags/{gsub(/ /,"",$2);print $2}'); \
+      case "$fl" in 0x3*) ;; *) echo "FATAL: $f flags=$fl, expected 0x3 (SBPFv3)"; exit 1;; esac; \
+    done; \
+    echo "SBPF version gate OK: v0 set=0x0, v3 set=0x3"
 
 # Pre-install spl-token-cli (hyperlane fork) — the warp-route deploy
 # command calls install_spl_token_cli() which expects rustup at runtime.
@@ -73,7 +93,7 @@ RUN rustup toolchain install 1.76.0 && \
 # ============================================================
 FROM ubuntu:22.04 AS runtime
 
-ARG SOLANA_CLI_VERSION=3.0.14
+ARG SOLANA_CLI_VERSION=4.0.3
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -111,8 +131,11 @@ COPY --from=builder /root/.cargo/bin/spl-token /root/.cargo/bin/spl-token
 RUN printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/rustup && chmod +x /usr/local/bin/rustup && \
     printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/cargo && chmod +x /usr/local/bin/cargo
 
-# Copy .so program artifacts
-COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/deploy/*.so /opt/hyperlane/programs/
+# Copy .so program artifacts, one set per SBPF arch. deploy.sh picks v0 or v3
+# per target chain at runtime (gorchain=v0, Solana devnet=v3, Solana mainnet=v0
+# until it activates the SBPFv3 gate).
+COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/deploy/v0/*.so /opt/hyperlane/programs/v0/
+COPY --from=builder /build/hyperlane-monorepo/rust/sealevel/target/deploy/v3/*.so /opt/hyperlane/programs/v3/
 
 WORKDIR /opt/hyperlane
 
