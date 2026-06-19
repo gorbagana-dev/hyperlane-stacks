@@ -308,6 +308,31 @@ ready to select. Full steps, the route-file schema, and a worked SOL example are
 
 > ⚠️ **`stop-all` halts the bridge** — message delivery stops until the stack is back up.
 
+**Permanently shutting down?** Run the decommission step first (before `stop-all`):
+`wipe_data` deletes the `generated/` state the close reads, and the close needs the
+RPCs reachable. For a routine reset/redeploy, skip to *Stop / teardown*.
+
+### Permanent decommission (irreversible — reclaims program rent)
+
+The stop-all teardown below is off-chain and recoverable; the on-chain programs
+stay deployed. To permanently shut down and reclaim each program's rent to a
+treasury, close them first. On staging this reclaims only free devnet/faucet
+token, so it's mainly for rehearsing the prod procedure:
+
+```bash
+ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58>                       # dry-run: simulate + report
+ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
+  -e treasury_address=<BASE58> -e dry_run=false -e confirm_decommission=true
+```
+
+> ⚠️ Irreversible: burns the program IDs and bricks the bridge. Run only after
+> draining collateral, settling in-flight messages, and `retire-keys.yml`. Needs
+> `privy_bridge_owner_wallet_id` in the config. See
+> [funding-estimate.md](funding-estimate.md).
+
+### Stop / teardown
+
 Stacks only (cluster, persisted data, and chain all survive):
 
 ```bash
@@ -326,25 +351,6 @@ Optional teardown flags (combine as needed):
 The persistent gorchain chain state under `~/chains/gorchain` is **never** touched by any
 playbook (not even `wipe_data`). To reset chain state, remove `~/chains/gorchain` + the
 `gorchain-rpc-caddy` container on staging-gorchain by hand.
-
-### Permanent decommission (irreversible — reclaims program rent)
-
-`stop-all` is off-chain and recoverable; the on-chain programs stay deployed. To
-permanently shut down and reclaim each program's rent to a treasury, close them
-**before** any destroy/wipe. On staging this reclaims only free devnet/faucet
-token, so it's mainly for rehearsing the prod procedure:
-
-```bash
-ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
-  -e treasury_address=<BASE58>                       # dry-run: simulate + report
-ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
-  -e treasury_address=<BASE58> -e dry_run=false -e confirm_decommission=true
-```
-
-> ⚠️ Irreversible: burns the program IDs and bricks the bridge. Run only after
-> draining collateral, settling in-flight messages, and `retire-keys.yml`. Needs
-> `privy_bridge_owner_wallet_id` in the config. See
-> [funding-estimate.md](funding-estimate.md).
 
 Scorched earth — destroy the VMs themselves (chain state and all): see
 [staging-droplets.md → Teardown](staging-droplets.md#teardown).
