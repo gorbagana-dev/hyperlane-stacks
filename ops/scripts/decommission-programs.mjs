@@ -103,10 +103,14 @@ async function privySignTransaction(txBase64) {
   if (!res.ok) {
     throw new Error(`Privy signTransaction ${res.status}: ${await res.text()}`);
   }
-  return (await res.json()).data.signed_transaction;
+  const signed = (await res.json())?.data?.signed_transaction;
+  if (!signed) throw new Error("Privy signTransaction returned no signed_transaction");
+  return signed;
 }
 
 // HTTP-only submit + poll (no WebSocket; the k8s RPCs don't expose the WS port).
+// searchTransactionHistory so a tx that ages out of the status cache near the
+// deadline isn't misreported as failed for an irreversible close.
 async function sendAndConfirm(connection, raw) {
   const sig = await connection.sendRawTransaction(raw, {
     skipPreflight: false,
@@ -114,7 +118,9 @@ async function sendAndConfirm(connection, raw) {
   });
   const start = Date.now();
   while (Date.now() - start < 60000) {
-    const { value } = await connection.getSignatureStatuses([sig]);
+    const { value } = await connection.getSignatureStatuses([sig], {
+      searchTransactionHistory: true,
+    });
     const st = value[0];
     if (st) {
       if (st.err) throw new Error(`tx ${sig} failed: ${JSON.stringify(st.err)}`);
@@ -124,7 +130,15 @@ async function sendAndConfirm(connection, raw) {
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new Error(`tx not confirmed in 60s; check ${sig}`);
+  // Final authoritative check before declaring failure.
+  const { value } = await connection.getSignatureStatuses([sig], {
+    searchTransactionHistory: true,
+  });
+  const st = value[0];
+  if (st && !st.err && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) {
+    return sig;
+  }
+  throw new Error(`tx not confirmed in 60s; verify ${sig} on-chain before re-running`);
 }
 
 // ProgramData layout: u32 tag(=3) | u64 slot | Option<Pubkey> upgrade authority.
@@ -173,14 +187,15 @@ async function closeProgram(connection, { label, id }) {
   tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
 
   if (DRY_RUN) {
+    let simOk = false;
     try {
-      const sim = await connection.simulateTransaction(tx);
-      const ok = !sim.value.err;
-      console.log(`    DRY-RUN simulate: ${ok ? "OK" : "ERR " + JSON.stringify(sim.value.err)}`);
+      const sim = await connection.simulateTransaction(tx, undefined, false);
+      simOk = !sim.value.err;
+      console.log(`    DRY-RUN simulate: ${simOk ? "OK" : "ERR " + JSON.stringify(sim.value.err)}`);
     } catch (e) {
-      console.log(`    DRY-RUN simulate unavailable: ${e.message}`);
+      console.log(`    DRY-RUN simulate could not run (treat as unverified): ${e.message}`);
     }
-    return { label, id, status: "dry-run", reclaimSol };
+    return { label, id, status: "dry-run", reclaimSol, simOk };
   }
 
   const signed = await privySignTransaction(
@@ -196,25 +211,37 @@ async function main() {
     `${DRY_RUN ? "[DRY-RUN] " : ""}Decommission on ${CHAIN} → treasury ${TREASURY.toBase58()}`,
   );
   const programs = collectPrograms();
+  // Both chains always carry the 4 core programs, so an empty set means the state
+  // dir is wrong/missing, not a finished decommission — fail rather than no-op.
   if (programs.length === 0) {
-    console.log("No closeable programs found for this chain.");
-    return;
+    throw new Error(`No programs found in ${STATE_DIR}/program-ids.json for '${CHAIN}'`);
   }
   const connection = new Connection(RPC_URL, "confirmed");
+  // One program failing must not abort the rest (or, via the playbook loop, the
+  // other chain). Record every outcome and decide the exit code from the tally.
   const results = [];
   for (const p of programs) {
-    results.push(await closeProgram(connection, p));
+    try {
+      results.push(await closeProgram(connection, p));
+    } catch (e) {
+      console.log(`  ERROR ${p.label} (${p.id}): ${e.message}`);
+      results.push({ label: p.label, id: p.id, status: "error", error: e.message });
+    }
   }
-  const closed = results.filter((r) => r.status === "closed");
+
+  const by = (s) => results.filter((r) => r.status === s);
   const reclaimed = results
     .filter((r) => r.reclaimSol)
     .reduce((s, r) => s + Number(r.reclaimSol), 0);
+  const simUnverified = DRY_RUN && by("dry-run").some((r) => !r.simOk);
   console.log(
-    `\nSummary (${CHAIN}): ${closed.length}/${programs.length} closed; ` +
-      `~${reclaimed.toFixed(4)} SOL ${DRY_RUN ? "reclaimable" : "reclaimed"}.`,
+    `\nSummary (${CHAIN}): ${by("closed").length} closed, ${by("dry-run").length} dry-run, ` +
+      `${by("skipped").length} skipped, ${by("wrong-authority").length} wrong-authority, ` +
+      `${by("error").length} error; ~${reclaimed.toFixed(4)} SOL ` +
+      `${DRY_RUN ? "reclaimable" : "reclaimed"}${simUnverified ? " (some closes unsimulated)" : ""}.`,
   );
-  if (results.some((r) => r.status === "wrong-authority")) {
-    process.exitCode = 2;
+  if (by("error").length > 0 || by("wrong-authority").length > 0) {
+    process.exitCode = 1;
   }
 }
 

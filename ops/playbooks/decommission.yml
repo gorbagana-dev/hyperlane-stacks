@@ -120,10 +120,22 @@
         label: "{{ item.chain }}"
       register: _decom
       changed_when: not (dry_run | bool)
+      # The chains are independent; don't let one failing abort the other or skip
+      # the output. Capture every result, print it, then fail loudly afterward.
+      failed_when: false
 
     - name: Show the decommission output
       ansible.builtin.debug:
-        msg: "{{ item.stdout_lines }}"
+        msg: "{{ item.stdout_lines + item.stderr_lines }}"
+      loop: "{{ _decom.results }}"
+      loop_control:
+        label: "{{ item.item.chain }}"
+
+    - name: Fail if any chain's decommission run errored
+      ansible.builtin.assert:
+        that: item.rc == 0
+        fail_msg: "decommission on {{ item.item.chain }} exited {{ item.rc }} — see output above."
+        quiet: true
       loop: "{{ _decom.results }}"
       loop_control:
         label: "{{ item.item.chain }}"
