@@ -312,7 +312,9 @@ ansible-playbook -i inventories/prod/hosts.yml playbooks/decommission.yml \
 
 > ⚠️ Closing burns the program IDs and bricks the bridge — only after draining
 > escrowed collateral, letting in-flight messages settle, and running
-> `retire-keys.yml`. Needs `privy_bridge_owner_wallet_id` in the config. See
+> `retire-keys.yml`. Needs `privy_bridge_owner_wallet_id` in the config, and the
+> bridge owner must hold a little SOL on each chain — it signs and pays every
+> close (the 0.5 budgeted in funding-estimate covers the fees). See
 > [funding-estimate.md](funding-estimate.md).
 
 ### Stop / teardown

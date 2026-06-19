@@ -328,8 +328,10 @@ ansible-playbook -i inventories/staging/hosts.yml playbooks/decommission.yml \
 
 > ⚠️ Irreversible: burns the program IDs and bricks the bridge. Run only after
 > draining collateral, settling in-flight messages, and `retire-keys.yml`. Needs
-> `privy_bridge_owner_wallet_id` in the config. See
-> [funding-estimate.md](funding-estimate.md).
+> `privy_bridge_owner_wallet_id` in the config, and the bridge owner (`AUiSJK…`)
+> must hold a little token on each chain — it signs and pays every close, and is
+> unfunded on staging by default, so top it up first (a few thousand lamports
+> covers the fees). See [funding-estimate.md](funding-estimate.md).
 
 ### Stop / teardown
 
