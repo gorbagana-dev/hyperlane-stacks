@@ -12,14 +12,14 @@
 # the default arg is templated eagerly even when the override is set, and warp/validator
 # stack_names (hyperlane-warp-deployer, hyperlane-validator-<label>) are not keys in the
 # stacks map, so the lookup would raise. A skipped task's args are never templated.
-- name: Resolve stack metadata from the stacks map (singletons; no caller override)
+- name: "[{{ stack_name }}] Resolve stack metadata from the stacks map (singletons; no caller override)"
   when: spec_file is not defined
   ansible.builtin.set_fact:
     _spec_file: "{{ deployment_root }}/{{ stacks[stack_name].spec }}"
     _stack_path: "{{ repo_root }}/{{ stacks[stack_name].path }}"
     _stack_is_job: "{{ stacks[stack_name].is_job | default(false) }}"
 
-- name: Honor caller-provided stack metadata (warp/validators pass these)
+- name: "[{{ stack_name }}] Honor caller-provided stack metadata (warp/validators pass these)"
   when: spec_file is defined
   ansible.builtin.set_fact:
     _spec_file: "{{ spec_file }}"
@@ -31,12 +31,12 @@
 # validators (stack hyperlane-validator). A spec may override with a namespace: key
 # (both validators do, so the two hyperlane-validator deployments don't collide in one
 # shared namespace); read it so the wait/job tasks target the namespace SO deploys into.
-- name: "Read the spec to honor any namespace: override"
+- name: "[{{ stack_name }}] Read the spec to honor any namespace: override"
   ansible.builtin.slurp:
     src: "{{ _spec_file }}"
   register: _spec_raw
 
-- name: Derive the k8s namespace
+- name: "[{{ stack_name }}] Derive the k8s namespace"
   ansible.builtin.set_fact:
     _namespace: >-
       {{ (_spec_raw.content | b64decode | from_yaml).namespace

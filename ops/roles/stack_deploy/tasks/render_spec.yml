@@ -5,7 +5,7 @@
 # Operator/runtime tokens (WalletConnect id everywhere; DNS zone + own-chain RPC
 # URLs on local). Gated on spec_token_renders from group_vars; spec_token_renders_extra
 # carries per-invocation tokens (e.g. each validator's privy_wallet_id).
-- name: Render runtime tokens into the spec
+- name: "[{{ stack_name }}] Render runtime tokens into the spec"
   ansible.builtin.replace:
     path: "{{ _spec_file }}"
     regexp: "{{ item.key | regex_escape }}"
@@ -16,15 +16,15 @@
 
 # Mailbox/IGP addresses come from the deployer's published program-ids.json (in the
 # on-host clone next to the spec), rendered in by consumers at deploy time.
-- name: Render published program-id tokens into the spec (consumers only)
+- name: "[{{ stack_name }}] Render published program-id tokens into the spec (consumers only)"
   when: spec_render_generated | default(false)
   block:
-    - name: Read the published program-ids.json
+    - name: "[{{ stack_name }}] Read the published program-ids.json"
       ansible.builtin.slurp:
         src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/program-ids.json"
       register: _pids_render_raw
 
-    - name: Substitute program-id tokens into the on-host spec
+    - name: "[{{ stack_name }}] Substitute program-id tokens into the on-host spec"
       ansible.builtin.replace:
         path: "{{ _spec_file }}"
         regexp: "{{ item.key | regex_escape }}"
@@ -44,17 +44,17 @@
 # The relayer's message whitelist comes from the warp-deployer's relayer-whitelist.json
 # (same on-host clone), rendered in at deploy time like the program-id tokens above. The
 # spec keeps HYP_WHITELIST single-quoted so the substituted JSON (double quotes) is valid YAML.
-- name: Render the relayer whitelist token (relayer only)
+- name: "[{{ stack_name }}] Render the relayer whitelist token (relayer only)"
   when:
     - spec_render_generated | default(false)
     - (stack_env_map_key | default(stack_name)) == 'hyperlane-relayer'
   block:
-    - name: Read the published relayer-whitelist.json
+    - name: "[{{ stack_name }}] Read the published relayer-whitelist.json"
       ansible.builtin.slurp:
         src: "{{ _spec_file | dirname }}/bridges/{{ bridge_name }}/generated/relayer-whitelist.json"
       register: _whitelist_render_raw
 
-    - name: Substitute the relayer whitelist token into the on-host spec
+    - name: "[{{ stack_name }}] Substitute the relayer whitelist token into the on-host spec"
       ansible.builtin.replace:
         path: "{{ _spec_file }}"
         regexp: "{{ '__RELAYER_WHITELIST__' | regex_escape }}"
@@ -63,13 +63,13 @@
 # Single-host reaches host-run chains via external-services ip: -> the kind gateway.
 # Only chain-consumers whose block actually carries __KIND_GATEWAY_IP__ need it (local
 # ip-mode); prod's selector-mode MinIO block has no placeholder, so skip the inspect.
-- name: Detect kind-network gateway IP (single-host chain reachability)
+- name: "[{{ stack_name }}] Detect kind-network gateway IP (single-host chain reachability)"
   when:
     - topology | default('') == 'single'
     - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
     - "'__KIND_GATEWAY_IP__' in (single_host_external_services[stack_env_map_key | default(stack_name)] | default(''))"
   block:
-    - name: Inspect the kind network IPAM config
+    - name: "[{{ stack_name }}] Inspect the kind network IPAM config"
       ansible.builtin.command:
         argv:
           - docker
@@ -81,7 +81,7 @@
       register: _kind_ipam
       changed_when: false
 
-    - name: Set kind_gateway_ip from the first IPv4 gateway
+    - name: "[{{ stack_name }}] Set kind_gateway_ip from the first IPv4 gateway"
       ansible.builtin.set_fact:
         kind_gateway_ip: >-
           {{ _kind_ipam.stdout | from_json
@@ -91,7 +91,7 @@
 
 # Single-host chain-consumers: insert this stack's external-services block, with the
 # detected gateway IP substituted for the literal __KIND_GATEWAY_IP__ placeholder.
-- name: Render the single-host external-services block (single-host consumers)
+- name: "[{{ stack_name }}] Render the single-host external-services block (single-host consumers)"
   ansible.builtin.replace:
     path: "{{ _spec_file }}"
     regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
@@ -104,7 +104,7 @@
     - (stack_env_map_key | default(stack_name)) in (single_host_external_services | default({}))
 
 # Everything else (multi-host, or stacks with no block): strip the marker.
-- name: Strip the single-host external-services marker (multi-host / non-consumers)
+- name: "[{{ stack_name }}] Strip the single-host external-services marker (multi-host / non-consumers)"
   ansible.builtin.replace:
     path: "{{ _spec_file }}"
     regexp: '#\s*__SINGLE_HOST_EXTERNAL_SERVICES__'
@@ -118,13 +118,13 @@
 # substituted above (tokens, program-ids, whitelist, per-validator wallet ids), so
 # any survivor is an unfilled operator value or a broken render. Catch it here with
 # names, not as a half-configured pod at runtime.
-- name: Read back the fully-rendered spec
+- name: "[{{ stack_name }}] Read back the fully-rendered spec"
   ansible.builtin.slurp:
     src: "{{ _spec_file }}"
   register: _rendered_spec_raw
   when: not ansible_check_mode
 
-- name: No unrendered placeholders survive in the spec
+- name: "[{{ stack_name }}] No unrendered placeholders survive in the spec"
   ansible.builtin.assert:
     that: "_leftover | length == 0"
     fail_msg: >-

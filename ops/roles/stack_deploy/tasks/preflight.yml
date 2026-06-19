@@ -1,10 +1,10 @@
 ---
-- name: Verify laconic-so is installed
+- name: "[{{ stack_name }}] Verify laconic-so is installed"
   ansible.builtin.command: laconic-so version
   changed_when: false
   when: not ansible_check_mode
 
-- name: Reject an unfilled public_ip (host_vars not configured)
+- name: "[{{ stack_name }}] Reject an unfilled public_ip (host_vars not configured)"
   ansible.builtin.assert:
     that: "public_ip is not defined or (public_ip is string and 'REPLACE_WITH' not in public_ip)"
     fail_msg: >-
@@ -17,13 +17,13 @@
 
 # The spec lives on the deploy host (fetched clone), so read it there with slurp;
 # lookup('file') would read the controller's filesystem instead.
-- name: Read the spec to derive served hostnames
+- name: "[{{ stack_name }}] Read the spec to derive served hostnames"
   ansible.builtin.slurp:
     src: "{{ _spec_file }}"
   register: _spec_raw
   when: not ansible_check_mode
 
-- name: Derive stack hostnames from the spec http-proxy
+- name: "[{{ stack_name }}] Derive stack hostnames from the spec http-proxy"
   ansible.builtin.set_fact:
     stack_hostnames: >-
       {{ ((_spec_raw.content | b64decode | from_yaml).network['http-proxy'] | default([]))
@@ -33,7 +33,7 @@
 # The committed local specs carry the __BASE_DOMAIN__ token (rendered into the spec
 # file later, in deploy.yml). Render it here too so the resolution check below
 # tests the real hostname. A no-op for prod/staging specs, which bake in real names.
-- name: Render the base-domain token in the derived hostnames
+- name: "[{{ stack_name }}] Render the base-domain token in the derived hostnames"
   ansible.builtin.set_fact:
     stack_hostnames: "{{ stack_hostnames | map('regex_replace', '__BASE_DOMAIN__', base_domain) | list }}"
   when:
@@ -44,7 +44,7 @@
 # Only meaningful where this env manages public DNS (manage_dns): local single-host
 # serves Caddy over loopback with mkcert and has nothing to resolve. Where DNS is
 # managed (prod, staging, local multi-host), A records must point here before deploy.
-- name: Expected hostnames resolve to this host's public IP
+- name: "[{{ stack_name }}] Expected hostnames resolve to this host's public IP"
   ansible.builtin.command: "dig +short {{ item }}"
   register: _dig
   changed_when: false
