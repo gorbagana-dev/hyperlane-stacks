@@ -10,7 +10,7 @@
 # host-specific; discard them here so a later publish-bridge-state `git add` can't sweep
 # them into the branch. Untracked paths (the deployer's generated/) are left untouched.
 # rc is ignored: on the first run the clone doesn't exist yet (the fetch below creates it).
-- name: Discard deploy-time spec renders before fetch (start from the committed branch)
+- name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Discard deploy-time spec renders before fetch (start from the committed branch)"
   ansible.builtin.command:
     chdir: "{{ repo_root }}"
     argv:
@@ -22,7 +22,7 @@
   failed_when: false
   when: not ansible_check_mode
 
-- name: Fetch/update the stack repo on this host
+- name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Fetch/update the stack repo on this host"
   ansible.builtin.command:
     argv:
       - laconic-so

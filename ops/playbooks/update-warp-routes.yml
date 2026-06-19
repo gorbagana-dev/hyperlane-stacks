@@ -19,7 +19,7 @@
   hosts: deployer_hosts
   gather_facts: false
   tasks:
-    - name: A deploy_branch is required
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}A deploy_branch is required"
       ansible.builtin.assert:
         that: deploy_branch is defined
         fail_msg: >-
@@ -38,24 +38,24 @@
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
       when: deployment_subdir == 'deployment'
   tasks:
-    - name: Ship + run the deployer funding gate
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Ship + run the deployer funding gate"
       when: deployment_subdir == 'deployment'
       block:
-        - name: Ensure the setup-scripts dir exists
+        - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Ensure the setup-scripts dir exists"
           ansible.builtin.file:
             path: "{{ scripts_dst }}"
             state: directory
             mode: "0755"
-        - name: Ship the deployer funding-check script
+        - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Ship the deployer funding-check script"
           ansible.builtin.copy:
             src: "../scripts/verify-deployer-funding.sh"
             dest: "{{ scripts_dst }}/verify-deployer-funding.sh"
             mode: "0755"
-        - name: Funding gate (fails the deploy if the deployer is underfunded)
+        - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Funding gate (fails the deploy if the deployer is underfunded)"
           ansible.builtin.command:
             cmd: "{{ scripts_dst }}/verify-deployer-funding.sh"
           environment:
@@ -71,12 +71,12 @@
   hosts: deployer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   roles:
     - fetch_stack
   tasks:
-    - name: Re-run the warp deployer with the spec's WARP_ROUTES (restart syncs the spec)
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Re-run the warp deployer with the spec's WARP_ROUTES (restart syncs the spec)"
       ansible.builtin.include_role:
         name: stack_deploy
       vars:
@@ -95,7 +95,7 @@
   hosts: relayer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
@@ -112,7 +112,7 @@
   hosts: warp_ui_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
@@ -131,7 +131,7 @@
   hosts: explorer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
