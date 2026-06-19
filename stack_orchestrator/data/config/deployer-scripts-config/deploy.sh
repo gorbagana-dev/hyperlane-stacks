@@ -76,6 +76,27 @@ elif [ -f "${REGISTRY_DIR}/metadata.yaml" ]; then
 fi
 
 # -------------------------------------------------------
+# Select the SBPF program set per target chain.
+# Agave 4.x gates new program deployment on feature 5cC3foj77... (SIMD-0178/0189/0377,
+# "enable deployment+execution of SBPFv3"). Active on a cluster => new deploys must be
+# v3; otherwise v0 (the pre-4.x default). gorchain (Agave 3.x) => v0; Solana devnet
+# => v3; Solana mainnet => v0 until it activates the gate. Defaults to v0 if the gate
+# can't be read (a wrong guess fails loudly at deploy, never silently misdeploys).
+# -------------------------------------------------------
+SBPF_V3_DEPLOY_FEATURE="5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC"
+sbpf_dir_for() {  # $1 = rpc url -> prints the built-so dir for that cluster
+  if solana feature status -u "$1" 2>/dev/null \
+       | grep -qE "^${SBPF_V3_DEPLOY_FEATURE} *\| *active"; then
+    echo "/opt/hyperlane/programs/v3"
+  else
+    echo "/opt/hyperlane/programs/v0"
+  fi
+}
+GORCHAIN_SO_DIR=$(sbpf_dir_for "${GORCHAIN_RPC_URL}")
+SOLANA_SO_DIR=$(sbpf_dir_for "${SOLANA_RPC_URL}")
+echo "SBPF program set: gorchain -> ${GORCHAIN_SO_DIR##*/}, solana -> ${SOLANA_SO_DIR##*/}"
+
+# -------------------------------------------------------
 # Deploy core contracts on Gorchain
 # -------------------------------------------------------
 echo ""
@@ -90,7 +111,7 @@ hyperlane-sealevel-client \
   --chain gorchain \
   --remote-domains "${SOLANA_DOMAIN_ID}" \
   --gas-oracle-config-file "${GAS_ORACLE_CONFIG}" \
-  --built-so-dir /opt/hyperlane/programs
+  --built-so-dir "${GORCHAIN_SO_DIR}"
 
 echo ""
 echo "=== Deploying core contracts on Solana (domain ${SOLANA_DOMAIN_ID}) ==="
@@ -104,7 +125,7 @@ hyperlane-sealevel-client \
   --chain solana \
   --remote-domains "${GORCHAIN_DOMAIN_ID}" \
   --gas-oracle-config-file "${GAS_ORACLE_CONFIG}" \
-  --built-so-dir /opt/hyperlane/programs
+  --built-so-dir "${SOLANA_SO_DIR}"
 
 # -------------------------------------------------------
 # Paths to program-ids.json produced by core deploy
@@ -146,16 +167,18 @@ for CHAIN_OUTPUT in gorchain solana; do
   if [ "$CHAIN_OUTPUT" = "gorchain" ]; then
     RPC_URL="${GORCHAIN_RPC_URL}"
     PROGRAMS_FILE="${GORCHAIN_PROGRAMS}"
+    SO_DIR="${GORCHAIN_SO_DIR}"
   else
     RPC_URL="${SOLANA_RPC_URL}"
     PROGRAMS_FILE="${SOLANA_PROGRAMS}"
+    SO_DIR="${SOLANA_SO_DIR}"
   fi
 
   # Map: binary_name:json_key (binary is hyperlane_sealevel_{name}.so, JSON key is the field in program-ids.json)
   for ENTRY in mailbox:mailbox validator_announce:validator_announce interchain_gas_paymaster:igp_program_id multisig_ism_message_id:multisig_ism_message_id; do
     PROGRAM="${ENTRY%%:*}"
     JSON_KEY="${ENTRY##*:}"
-    SO_FILE="/opt/hyperlane/programs/hyperlane_sealevel_${PROGRAM}.so"
+    SO_FILE="${SO_DIR}/hyperlane_sealevel_${PROGRAM}.so"
     if [ ! -f "$SO_FILE" ]; then
       continue
     fi

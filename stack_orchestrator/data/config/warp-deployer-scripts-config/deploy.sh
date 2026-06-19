@@ -30,6 +30,38 @@ chain_var() {  # $1=chain  $2=suffix(RPC_URL|DOMAIN_ID)
   printf '%s' "${!varname:-}"
 }
 
+# Agave 4.x gates new program deployment on SBPF version (feature 5cC3foj77...,
+# SIMD-0178/0189/0377). Pick each program's build per its target chain: gorchain
+# (Agave 3.x) => v0; Solana devnet => v3; Solana mainnet => v0 until it flips.
+SBPF_V3_DEPLOY_FEATURE="5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC"
+sbpf_dir_for() {  # $1 = rpc url -> built-so dir for that cluster
+  if solana feature status -u "$1" 2>/dev/null \
+       | grep -qE "^${SBPF_V3_DEPLOY_FEATURE} *\| *active"; then
+    echo "/opt/hyperlane/programs/v3"
+  else
+    echo "/opt/hyperlane/programs/v0"
+  fi
+}
+so_name_for_type() {  # $1 = token type -> base .so name
+  case "$1" in
+    native) echo "hyperlane_sealevel_token_native" ;;
+    collateral) echo "hyperlane_sealevel_token_collateral" ;;
+    synthetic) echo "hyperlane_sealevel_token" ;;
+    *) echo "" ;;
+  esac
+}
+# Copy one route side's program into ROUTE_SO_DIR at the SBPF version its target
+# chain requires. Reads ROUTE_SO_DIR / WARP_ROUTE_NAME from the calling scope.
+assemble_side() {  # $1=chain $2=type
+  local s_chain="$1" s_type="$2" s_so s_src
+  s_so=$(so_name_for_type "$s_type")
+  [ -n "$s_so" ] || { echo "ERROR: unknown token type '${s_type}' for ${s_chain} (route ${WARP_ROUTE_NAME})"; exit 1; }
+  s_src="$(sbpf_dir_for "$(chain_var "$s_chain" RPC_URL)")/${s_so}.so"
+  [ -f "$s_src" ] || { echo "ERROR: built program ${s_src} not found for ${s_chain} (${s_type})"; exit 1; }
+  cp -f "$s_src" "${ROUTE_SO_DIR}/${s_so}.so"
+  echo "  ${s_chain} (${s_type}) -> ${s_so}.so [$(basename "$(dirname "$s_src")")]"
+}
+
 # -------------------------------------------------------
 # Write deployer keypair to file
 # -------------------------------------------------------
@@ -160,6 +192,17 @@ SOLCFG
   echo "Token config:"; cat "${WORK_DIR}/token-config.json"
 
   # -------------------------------------------------------
+  # Assemble a per-route built-so dir. warp-route deploy uses one --built-so-dir
+  # for both chains, but each chain uses a different .so, so a mixed-version dir is
+  # correct: each side's program at the SBPF version its target chain requires.
+  # -------------------------------------------------------
+  ROUTE_SO_DIR="${WORK_DIR}/built-so/${WARP_ROUTE_NAME}"
+  rm -rf "${ROUTE_SO_DIR}"; mkdir -p "${ROUTE_SO_DIR}"
+  echo "Assembling SBPF program set for route ${WARP_ROUTE_NAME}:"
+  assemble_side "${WARP_ORIGIN_CHAIN}" "${WARP_ORIGIN_TYPE}"
+  assemble_side "${WARP_REMOTE_CHAIN}" "${WARP_REMOTE_TYPE}"
+
+  # -------------------------------------------------------
   # Deploy warp routes (single invocation for all chains)
   # -------------------------------------------------------
   echo ""
@@ -170,7 +213,7 @@ SOLCFG
     warp-route deploy \
     --environment "${ENVIRONMENT}" \
     --environments-dir "${ENVIRONMENTS_DIR}" \
-    --built-so-dir /opt/hyperlane/programs \
+    --built-so-dir "${ROUTE_SO_DIR}" \
     --warp-route-name "${WARP_ROUTE_NAME}" \
     --token-config-file "${WORK_DIR}/token-config.json" \
     --registry "${REGISTRY_DIR}" \
@@ -201,15 +244,14 @@ SOLCFG
   echo "=== Verifying deployed warp route program hashes ==="
   VERIFY_FAILED=0
 
-  for SO_NAME in hyperlane_sealevel_token hyperlane_sealevel_token_native hyperlane_sealevel_token_collateral; do
-    SO_FILE="/opt/hyperlane/programs/${SO_NAME}.so"
+  for SO_FILE in "${ROUTE_SO_DIR}"/*.so; do
     [ -f "$SO_FILE" ] || continue
 
     # Note: We'd need the deployed program addresses from the CLI output
     # to verify hashes. This section is best-effort.
     LOCAL_HASH=$(solana-verify get-executable-hash "$SO_FILE" 2>/dev/null || echo "")
     if [ -n "$LOCAL_HASH" ]; then
-      echo "Local hash for ${SO_NAME}: ${LOCAL_HASH}"
+      echo "Local hash for $(basename "$SO_FILE"): ${LOCAL_HASH}"
     fi
   done
 
