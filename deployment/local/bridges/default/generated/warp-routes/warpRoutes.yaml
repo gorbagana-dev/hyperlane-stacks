@@ -1,0 +1,37 @@
+{
+  "tokens": [
+    {
+      "chainName": "solana",
+      "standard": "SealevelHypCollateral",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "addressOrDenom": "Forj5b5aPmBbFV29zRJuPrA6aDCbvXbH7d3xzStLX8bD",
+      "mailbox": "8HRWjWRrLr6cEQBmRLgoSdGxCPf4HMrnihSzBBpAWZD3",
+      "connections": [
+        {
+          "token": "sealevel|gorchain|SS3jpjXqGaBWFxVq3qEvHLMDc96FBVrA6fVH3Y1TX1s"
+        }
+      ],
+      "collateralAddressOrDenom": "EDEappBGxV8nMRMMcng4DUUH5dUF2ZFiRubS7V9NYF9d",
+      "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+    },
+    {
+      "chainName": "gorchain",
+      "standard": "SealevelHypSynthetic",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "addressOrDenom": "SS3jpjXqGaBWFxVq3qEvHLMDc96FBVrA6fVH3Y1TX1s",
+      "mailbox": "Ez3i8o8ATxuWLdD8eBXv4LDWLxXxSVKnkZ3z7quVmi5t",
+      "connections": [
+        {
+          "token": "sealevel|solana|Forj5b5aPmBbFV29zRJuPrA6aDCbvXbH7d3xzStLX8bD"
+        }
+      ],
+      "collateralAddressOrDenom": "A6RZF4BanusE5QbC4tGZhB2RqB4BzCUeDtg2TnHVbReS",
+      "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+    }
+  ],
+  "options": {}
+}

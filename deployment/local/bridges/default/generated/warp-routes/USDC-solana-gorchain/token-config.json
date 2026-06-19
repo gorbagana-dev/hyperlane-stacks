@@ -1,0 +1,24 @@
+{
+  "warpRoute": {
+    "name": "USDC-solana-gorchain",
+    "solana": {
+      "type": "collateral",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "interchainSecurityModule": "jYxWX3VMmxMTdHo6iSCFeBoFkpQEpqsZZqQQktieEBV",
+      "interchainGasPaymaster": "HRWzGXLRg1HVv3G6HYQ3t6Vs2CJhsjpWumWtq2A8bUbS",
+      "token": "EDEappBGxV8nMRMMcng4DUUH5dUF2ZFiRubS7V9NYF9d"
+    },
+    "gorchain": {
+      "type": "synthetic",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "interchainSecurityModule": "8SWT85o3ey93HRBTEBg2HA3auHUbkT9qwvvD5RdYHh8t",
+      "interchainGasPaymaster": "DTgU9jqfxcrRoge5xwyTpqVAZMtNxWXMbZnTG8svzycJ",
+      "uri": "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/c2c4abdc3d7b05866c00d95379983bca64d864a7/token-metadata.json",
+      "mint": "A6RZF4BanusE5QbC4tGZhB2RqB4BzCUeDtg2TnHVbReS"
+    }
+  }
+}
