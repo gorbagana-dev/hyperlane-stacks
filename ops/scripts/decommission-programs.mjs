@@ -217,8 +217,14 @@ async function main() {
     throw new Error(`No programs found in ${STATE_DIR}/program-ids.json for '${CHAIN}'`);
   }
   const connection = new Connection(RPC_URL, "confirmed");
-  // One program failing must not abort the rest (or, via the playbook loop, the
-  // other chain). Record every outcome and decide the exit code from the tally.
+  // The bridge owner signs and pays each close; an unfunded fee payer makes both
+  // simulate and the real close fail AccountNotFound.
+  if ((await connection.getBalance(BRIDGE_OWNER, "confirmed")) === 0) {
+    console.log(
+      `  WARNING: fee payer ${BRIDGE_OWNER.toBase58()} (bridge owner) has 0 balance on ${CHAIN} — ` +
+        "fund it before a real close, or every tx fails AccountNotFound.",
+    );
+  }
   const results = [];
   for (const p of programs) {
     try {
