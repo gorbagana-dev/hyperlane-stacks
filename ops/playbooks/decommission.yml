@@ -1,0 +1,129 @@
+---
+# Permanently decommission the bridge: close the upgradeable programs on both
+# chains and reclaim each program's rent-exempt deposit to a treasury. The
+# upgrade authority is the Privy bridge-owner wallet, so the close is signed
+# through Privy — run inside the gas-oracle image (Node + @solana/web3.js) on the
+# deployer host, so the operator needs no local tooling. This bind-mounts
+# decommission-programs.mjs and the deployer's generated state into the container.
+#
+# IRREVERSIBLE: closing burns the program IDs and bricks the bridge. Run only
+# after draining escrowed collateral, letting in-flight messages settle, and
+# reclaiming the hot keys (retire-keys.yml). The smaller state/ATA-payer PDAs are
+# not closeable and stay sunk (see runbooks/funding-estimate.md).
+#
+# Dry-run (simulate + report reclaimable rent), the default:
+#   ansible-playbook -i inventories/<env>/hosts.yml playbooks/decommission.yml \
+#     -e treasury_address=<BASE58>
+# Actually close:
+#   ... -e treasury_address=<BASE58> -e dry_run=false -e confirm_decommission=true
+- name: Decommission — close programs and reclaim rent (both chains)
+  hosts: deployer_hosts
+  gather_facts: true
+  vars:
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+    # Deployer's generated/ host-path volume; root-owned, so the container runs --user 0.
+    state_src: "{{ kind_mount_root }}/bridge/generated"
+    decommission_image: "ghcr.io/gorbagana-dev/hyperlane-gas-oracle:latest"
+    dry_run: true
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+    - name: Require an explicit treasury
+      ansible.builtin.assert:
+        that:
+          - treasury_address is defined and (treasury_address | length) > 0
+          - bridge_owner_pubkey is defined and (bridge_owner_pubkey | length) > 0
+          - privy_bridge_owner_wallet_id is defined and (privy_bridge_owner_wallet_id | length) > 0
+        fail_msg: >-
+          Pass -e treasury_address=<BASE58>. The deployment-config must set
+          bridge_owner_pubkey and privy_bridge_owner_wallet_id (owner.json).
+        quiet: true
+    - name: A real close requires explicit confirmation
+      ansible.builtin.assert:
+        that: confirm_decommission | default(false) | bool
+        fail_msg: >-
+          This IRREVERSIBLY closes the programs and bricks the bridge. Re-run with
+          -e dry_run=false -e confirm_decommission=true once collateral is drained
+          and in-flight messages have settled.
+        quiet: true
+      when: not (dry_run | bool)
+  tasks:
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
+    - name: Ship the decommission script
+      ansible.builtin.copy:
+        src: "../scripts/decommission-programs.mjs"
+        dest: "{{ scripts_dst }}/decommission-programs.mjs"
+        mode: "0644"
+
+    # Private image; kind pulls it inside the node, not the host daemon — pull here.
+    - name: Log in to GHCR
+      ansible.builtin.command:
+        cmd: "docker login ghcr.io -u gorbagana-dev --password-stdin"
+        stdin: "{{ ghcr_pat }}"
+      changed_when: false
+      no_log: true
+    - name: Pull the gas-oracle image
+      ansible.builtin.command:
+        cmd: "docker pull {{ decommission_image }}"
+      changed_when: false
+
+    # Secrets pass via the task environment, referenced name-only in docker run -e,
+    # so they never land in the command argv.
+    - name: Run the decommission close per chain
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --user
+          - "0"
+          - --entrypoint
+          - node
+          - -v
+          - "{{ scripts_dst }}/decommission-programs.mjs:/app/decommission-programs.mjs:ro"
+          - -v
+          - "{{ state_src }}:/state:ro"
+          - -e
+          - PRIVY_APP_ID
+          - -e
+          - PRIVY_APP_SECRET
+          - -e
+          - PRIVY_BRIDGE_OWNER_WALLET_ID
+          - -e
+          - RPC_URL
+          - -e
+          - "CHAIN={{ item.chain }}"
+          - -e
+          - "TREASURY_ADDRESS={{ treasury_address }}"
+          - -e
+          - "BRIDGE_OWNER_PUBKEY={{ bridge_owner_pubkey }}"
+          - -e
+          - "STATE_DIR=/state"
+          - -e
+          - "DRY_RUN={{ 'true' if (dry_run | bool) else 'false' }}"
+          - "{{ decommission_image }}"
+          - /app/decommission-programs.mjs
+      environment:
+        DOCKER_CLI_HINTS: "false"
+        PRIVY_APP_ID: "{{ privy_app_id }}"
+        PRIVY_APP_SECRET: "{{ privy_app_secret }}"
+        PRIVY_BRIDGE_OWNER_WALLET_ID: "{{ privy_bridge_owner_wallet_id }}"
+        RPC_URL: "{{ item.rpc }}"
+      loop:
+        - { chain: gorchain, rpc: "{{ gorchain_rpc_url }}" }
+        - { chain: solana, rpc: "{{ SOLANA_RPC_URL }}" }
+      loop_control:
+        label: "{{ item.chain }}"
+      register: _decom
+      changed_when: not (dry_run | bool)
+
+    - name: Show the decommission output
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ _decom.results }}"
+      loop_control:
+        label: "{{ item.item.chain }}"
