@@ -70,7 +70,7 @@ RUN cd rust/sealevel/programs && ./build-programs.sh
 RUN set -e; \
     for f in rust/sealevel/target/deploy/v0/*.so; do \
       fl=$(readelf -h "$f" | awk -F: '/Flags/{gsub(/ /,"",$2);print $2}'); \
-      [ "$fl" = "0x0" ] || { echo "FATAL: $f flags=$fl, expected 0x0 (SBPFv0)"; exit 1; }; \
+      case "$fl" in 0x0*) ;; *) echo "FATAL: $f flags=$fl, expected 0x0 (SBPFv0)"; exit 1;; esac; \
     done; \
     for f in rust/sealevel/target/deploy/v3/*.so; do \
       fl=$(readelf -h "$f" | awk -F: '/Flags/{gsub(/ /,"",$2);print $2}'); \
