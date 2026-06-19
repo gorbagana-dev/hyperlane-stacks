@@ -1,0 +1,24 @@
+{
+  "warpRoute": {
+    "name": "USDC-solana-gorchain",
+    "solana": {
+      "type": "collateral",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "interchainSecurityModule": "FtdnS2THd9QP5w4uSHX5r8DzoeaJ7gVeXRSkz4MMWMRy",
+      "interchainGasPaymaster": "EZ1Eq9QCQaA8s5ECVkdMABvx27MaB5uko8RRtAMx5KpD",
+      "token": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+    },
+    "gorchain": {
+      "type": "synthetic",
+      "name": "USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "interchainSecurityModule": "A7n8xaNU7WSaBHHWXDtDLk1VYTXiz6qyvZGsSs7Zsgbg",
+      "interchainGasPaymaster": "4hf86J8gLL8EgVEw5Z5FVHh7mrrHpoYx23gBAGvEBFtg",
+      "uri": "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/be4bb82fd100f6c141a001ec7bb2047ce263aa76/staging-token-metadata.json",
+      "mint": "692fjCyi6fhECrae7Fhxo4PKkyyjpNkwhpUK2hZdjPoW"
+    }
+  }
+}
