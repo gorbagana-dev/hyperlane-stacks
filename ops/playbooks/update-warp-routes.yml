@@ -27,6 +27,46 @@
           publish-bridge-state pushes to it.
       run_once: true
 
+- name: Deployer funding gate (warp-route deploy)
+  hosts: deployer_hosts
+  gather_facts: true
+  # Prod only (deployment_subdir == 'deployment'). staging/local fund the deployer via
+  # their prepare plays and faucets; this gate guards the no-faucet mainnet path, where
+  # a short deployer fails the route deploy partway and can leave a half-deployed route.
+  vars:
+    solana_bin: "{{ ansible_env.HOME }}/.local/share/solana/install/active_release/bin"
+    tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
+    scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+      when: deployment_subdir == 'deployment'
+  tasks:
+    - name: Ship + run the deployer funding gate
+      when: deployment_subdir == 'deployment'
+      block:
+        - name: Ensure the setup-scripts dir exists
+          ansible.builtin.file:
+            path: "{{ scripts_dst }}"
+            state: directory
+            mode: "0755"
+        - name: Ship the deployer funding-check script
+          ansible.builtin.copy:
+            src: "../scripts/verify-deployer-funding.sh"
+            dest: "{{ scripts_dst }}/verify-deployer-funding.sh"
+            mode: "0755"
+        - name: Funding gate (fails the deploy if the deployer is underfunded)
+          ansible.builtin.command:
+            cmd: "{{ scripts_dst }}/verify-deployer-funding.sh"
+          environment:
+            PATH: "{{ tool_path }}"
+            CRED_DIR: "{{ credentials_dir }}"
+            GORCHAIN_RPC: "{{ gorchain_rpc_url }}"
+            SOLANA_RPC: "{{ SOLANA_RPC_URL }}"
+          register: _deployer_funding
+          changed_when: false
+          failed_when: _deployer_funding.rc != 0
+
 - name: Deploy the warp routes selected by the spec
   hosts: deployer_hosts
   gather_facts: true
