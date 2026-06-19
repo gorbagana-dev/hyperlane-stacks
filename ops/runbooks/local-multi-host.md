@@ -69,7 +69,7 @@ clone this repo there and run it on the box (it isn't ansible-managed):
 # this out-of-band box:
 command -v solana >/dev/null || sh -c "$(curl -sSfL https://release.anza.xyz/v3.1.9/install)"
 # Private gorchain image -> GHCR login (PAT only; user defaults to gorbagana-dev):
-GHCR_PAT=<pat> ops/scripts/setup-chains.sh
+GHCR_PAT=<pat> scripts/setup-chains.sh
 ```
 
 It brings up gorchain (dev-RPC values in the deploy spec's `config:`, **no** hand-written
@@ -217,7 +217,30 @@ single-host runbook's "Try the bridge" section, with two differences:
   `local_solana_rpc_url` domain, **reverse** the `local_gorchain_rpc_url`
   domain.
 
-## 10. Reset between runs
+## 10. Update a stack (apply a committed change)
+
+To apply a committed change to one stack (spec edit, image bump, mounted
+script/config) without a full redeploy — preserving the cluster and data volumes —
+use `restart-stack.yml`. It drives `laconic-so deployment restart`, which re-renders
+the on-host spec from `deploy_branch` and rolling-restarts the pods:
+
+```bash
+BRANCH=<deploy-branch>   # the branch you deployed from
+
+# a singleton stack (name its inventory host group via target_hosts — it resolves
+# to whichever managed host runs that stack):
+ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-explorer -e target_hosts=explorer_hosts -e deploy_branch="$BRANCH"
+
+# both validators (no target_hosts — they run per-entry from validators.yaml):
+ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/restart-stack.yml \
+  -e stack_name=hyperlane-validator -e deploy_branch="$BRANCH"
+```
+
+`deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name`
+values are the keys of the `stacks` map in `inventories/local/group_vars/all.yml`.
+
+## 11. Reset between runs
 
 ```bash
 ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml \
@@ -235,7 +258,7 @@ ansible-playbook -i inventories/local/hosts-multihost.yml playbooks/stop-all.yml
   -e destroy_cluster=true -e wipe_data=true
 ```
 
-## 11. Limitations / notes
+## 12. Limitations / notes
 
 - **DNS propagation gates first access.** A records and LE issuance must settle before the
   hostnames resolve and serve trusted certs; the deploy preflight checks served hostnames

@@ -49,7 +49,7 @@ image-pull-secret:
   token-env: GHCR_PAT
 # Pinned releases; bump deliberately (latest is only for first bring-up).
 image-overrides:
-  explorer: ghcr.io/gorbagana-dev/hyperlane-explorer:v12.0.0-gorbagana.2
+  explorer: ghcr.io/gorbagana-dev/hyperlane-explorer:v12.0.0-gorbagana.3
   scraper: ghcr.io/gorbagana-dev/hyperlane-scraper:v2.2.0-gorbagana.1
 resources:
   containers:

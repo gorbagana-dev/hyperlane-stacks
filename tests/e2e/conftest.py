@@ -1962,6 +1962,7 @@ def explorer_image(request: pytest.FixtureRequest, host_prep: None) -> None:
 def explorer_deployment(
     request: pytest.FixtureRequest,
     deployer_deployment: DeploymentInfo,
+    warp_deployment: dict,
     host_prep: None,
     bridge_state_loader: BridgeStateLoader,
     explorer_image: None,
@@ -1970,6 +1971,8 @@ def explorer_deployment(
 
     The scraper reads the deployer's agent-config.json (mailboxes, domain ids) from
     the agent-config ConfigMap; its entrypoint creates the schema and seeds domains.
+    The frontend reads warpRoutes.yaml from the same ConfigMap to resolve warp transfers,
+    so this depends on warp_deployment having written it.
     """
     skip_cleanup = request.config.getoption("--skip-cleanup")
     skip_explorer = request.config.getoption("--skip-explorer-deploy", default=False)
@@ -1996,7 +1999,8 @@ def explorer_deployment(
         deployment_id="explorer",
     )
 
-    # agent-config.json (mailboxes/domain ids) → the agent-config ConfigMap dir.
+    # agent-config.json (mailboxes/domain ids) + warpRoutes.yaml (warp-route injection)
+    # → the agent-config ConfigMap dir.
     bridge_state_loader.populate("hyperlane-explorer", deploy_info.deploy_dir)
 
     # DB password + Hasura admin secret resolve from the spec's secrets: block.
