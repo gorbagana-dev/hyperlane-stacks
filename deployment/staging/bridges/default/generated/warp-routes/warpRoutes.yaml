@@ -31,6 +31,37 @@
       ],
       "collateralAddressOrDenom": "692fjCyi6fhECrae7Fhxo4PKkyyjpNkwhpUK2hZdjPoW",
       "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+    },
+    {
+      "chainName": "solana",
+      "standard": "SealevelHypNative",
+      "name": "Solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "addressOrDenom": "Eu5BLVQQvaqARZd426F1GNseEN7LuNVRRTD6oo34BCyP",
+      "mailbox": "AHk9xhf8vdpCZuuX2zmrTF7p2vAFuKtx7akqGatCUcsp",
+      "connections": [
+        {
+          "token": "sealevel|gorchain|5Vy1tC3HfZWUiLdHFodpondHyTc7LQzoQSmxc6Y4eY9"
+        }
+      ],
+      "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
+    },
+    {
+      "chainName": "gorchain",
+      "standard": "SealevelHypSynthetic",
+      "name": "Solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "addressOrDenom": "5Vy1tC3HfZWUiLdHFodpondHyTc7LQzoQSmxc6Y4eY9",
+      "mailbox": "AX5MvQYdQujrosV8CeiFFB5Pw5gLD4LzS6cqpoYq2TxK",
+      "connections": [
+        {
+          "token": "sealevel|solana|Eu5BLVQQvaqARZd426F1GNseEN7LuNVRRTD6oo34BCyP"
+        }
+      ],
+      "collateralAddressOrDenom": "DtnUpZJbnPX4LCEWnmYUYoem4rfHJM7r27GP69gjnH5t",
+      "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
     }
   ],
   "options": {}

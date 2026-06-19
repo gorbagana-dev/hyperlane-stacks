@@ -1,0 +1,23 @@
+{
+  "warpRoute": {
+    "name": "SOL-solana-gorchain",
+    "solana": {
+      "type": "native",
+      "name": "Solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "interchainSecurityModule": "FtdnS2THd9QP5w4uSHX5r8DzoeaJ7gVeXRSkz4MMWMRy",
+      "interchainGasPaymaster": "EZ1Eq9QCQaA8s5ECVkdMABvx27MaB5uko8RRtAMx5KpD"
+    },
+    "gorchain": {
+      "type": "synthetic",
+      "name": "Solana",
+      "symbol": "SOL",
+      "decimals": 9,
+      "interchainSecurityModule": "A7n8xaNU7WSaBHHWXDtDLk1VYTXiz6qyvZGsSs7Zsgbg",
+      "interchainGasPaymaster": "4hf86J8gLL8EgVEw5Z5FVHh7mrrHpoYx23gBAGvEBFtg",
+      "uri": "https://gist.githubusercontent.com/prathamesh0/685734f8aac9dd22c9eeb3d1e7f8e407/raw/f8b8de3e2438b891cea8dd15ae699a618e9ee849/sol-token-metadata.json",
+      "mint": "DtnUpZJbnPX4LCEWnmYUYoem4rfHJM7r27GP69gjnH5t"
+    }
+  }
+}
