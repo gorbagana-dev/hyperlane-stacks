@@ -32,8 +32,7 @@ only thing that really changes is fiat: mainnet SOL costs real money.
 | Privy IGP oracle | 0.5 | Periodic gas-oracle posts (fees only). |
 | Privy bridge owner | 0.5 | Receives ownership; pays only occasional admin txs. |
 
-**Per additional warp route: +~3.3 per chain on the deployer** (one warp program
-+ one prefunded ATA-payer PDA). Nothing else changes.
+**Per additional warp route: +~3.3 per chain on the deployer** (one warp program + one prefunded ATA-payer PDA). Nothing else changes.
 
 The deployer target is **route-dependent** (~8 + ~3.3 per warp route) and the key
 is drained back to a treasury after deploy, so over-funding isn't lost. The prod
