@@ -15,7 +15,7 @@ volumes:
   bridge-state: /srv/kind/hyperlane/bridge/generated
   bridge-logs: /srv/kind/hyperlane/bridge/logs
 config:
-  WARP_ROUTES: "usdc"
+  WARP_ROUTES: "usdc, sol"
   # Origin (solana) RPC is SOLANA_RPC_URL (Helius, secret) → see secrets:.
   GORCHAIN_RPC_URL: "https://rpc.staging.gorbagana.wtf"
   GORCHAIN_DOMAIN_ID: "1198486095"
