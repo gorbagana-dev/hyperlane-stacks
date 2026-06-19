@@ -13,7 +13,7 @@
 # Env: WALLET           (required) the test wallet's Solana address
 #      GORCHAIN_RPC     [http://localhost:8899]
 #      SOLANA_RPC       [http://localhost:18899]
-#      GOR_TARGET       [10]   SOL_TARGET [10]   SOL_CHUNK [10]   SOL_RETRIES [5]
+#      GOR_TARGET       [50]   SOL_TARGET [10]   SOL_CHUNK [10]   SOL_RETRIES [5]
 #      USDC_MINT        ['']  the collateral mint address (enables USDC), or
 #      USDC_MINT_FILE   ['']  path to the persisted warp-token-mint
 #      DEPLOYER_KEYPAIR [~/.credentials/hyperlane/deployer-keypair.json]
@@ -23,7 +23,7 @@ set -uo pipefail
 WALLET="${WALLET:?set WALLET to the test wallet address (base58)}"
 GORCHAIN_RPC="${GORCHAIN_RPC:-http://localhost:8899}"
 SOLANA_RPC="${SOLANA_RPC:-http://localhost:18899}"
-GOR_TARGET="${GOR_TARGET:-10}"
+GOR_TARGET="${GOR_TARGET:-50}"
 SOL_TARGET="${SOL_TARGET:-10}"
 SOL_CHUNK="${SOL_CHUNK:-10}"
 SOL_RETRIES="${SOL_RETRIES:-5}"
