@@ -7,14 +7,14 @@
   hosts: controller
   gather_facts: false
   tasks:
-    - name: Assert the env contract
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Assert the env contract"
       ansible.builtin.include_tasks: ../roles/common/tasks/assert_env_contract.yml
 
 - name: Preflight — fleet is provisioned
   hosts: all:!controller
   gather_facts: false
   tasks:
-    - name: A deploy_branch is required
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}A deploy_branch is required"
       ansible.builtin.assert:
         that: deploy_branch is defined
         fail_msg: >-
@@ -22,7 +22,7 @@
           publish-bridge-state pushes to it.
       run_once: true
 
-    - name: Verify laconic-so is present (else run setup-all first)
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Verify laconic-so is present (else run setup-all first)"
       ansible.builtin.command: laconic-so version
       changed_when: false
 
@@ -36,24 +36,24 @@
     tool_path: "{{ ansible_env.HOME }}/bin:{{ solana_bin }}:{{ ansible_env.PATH }}"
     scripts_dst: "{{ ansible_env.HOME }}/.bridge-setup-scripts"
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
       when: deployment_subdir == 'deployment'
   tasks:
-    - name: Ship + run the funding-verification gate
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Ship + run the funding-verification gate"
       when: deployment_subdir == 'deployment'
       block:
-        - name: Ensure the setup-scripts dir exists
+        - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Ensure the setup-scripts dir exists"
           ansible.builtin.file:
             path: "{{ scripts_dst }}"
             state: directory
             mode: "0755"
-        - name: Ship the funding-verification script
+        - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Ship the funding-verification script"
           ansible.builtin.copy:
             src: "../scripts/verify-signer-funding.sh"
             dest: "{{ scripts_dst }}/verify-signer-funding.sh"
             mode: "0755"
-        - name: Funding gate (fails the deploy if any signer is underfunded)
+        - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Funding gate (fails the deploy if any signer is underfunded)"
           ansible.builtin.command:
             cmd: "{{ scripts_dst }}/verify-signer-funding.sh"
           environment:
@@ -76,11 +76,11 @@
     # plays, leaking MinIO's IAM creds into every later stack's secret env.
     stack_env_extra: "{{ _minio_env_extra | default({}) }}"
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
-    - name: Derive validator labels + MINIO_USERS
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Derive validator labels + MINIO_USERS"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
-    - name: Build MinIO env (MINIO_USERS + per-validator IAM)
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Build MinIO env (MINIO_USERS + per-validator IAM)"
       ansible.builtin.set_fact:
         _minio_env_extra: >-
           {{ _minio_env_extra | default({'MINIO_USERS': minio_users}) | combine({
@@ -98,7 +98,7 @@
   hosts: deployer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-svm-deployer
@@ -110,12 +110,12 @@
   hosts: deployer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   roles:
     - fetch_stack
   tasks:
-    - name: Deploy the warp routes selected by the spec's WARP_ROUTES
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Deploy the warp routes selected by the spec's WARP_ROUTES"
       ansible.builtin.include_role:
         name: stack_deploy
       vars:
@@ -133,7 +133,7 @@
   hosts: relayer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-relayer
@@ -153,7 +153,7 @@
   hosts: gas_oracle_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-gas-oracle
@@ -166,7 +166,7 @@
   hosts: warp_ui_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-warp-ui
@@ -185,7 +185,7 @@
   hosts: explorer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-explorer
@@ -206,7 +206,7 @@
   hosts: explorer_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
@@ -226,13 +226,13 @@
   hosts: controller
   gather_facts: false
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   tasks:
-    - name: Load validators
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load validators"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
 
-    - name: Every validator has a wallet id in the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Every validator has a wallet id in the deployment config"
       ansible.builtin.assert:
         that: "(item.privy_wallet_id | default('')) | length > 0"
         fail_msg: >-
@@ -244,7 +244,7 @@
       loop_control:
         label: "{{ item.label }}"
 
-    - name: Gather facts for each validator host (for ansible_env under delegation)
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Gather facts for each validator host (for ansible_env under delegation)"
       ansible.builtin.setup:
       delegate_to: "{{ validator.host }}"
       delegate_facts: true
@@ -253,7 +253,7 @@
         loop_var: validator
         label: "{{ validator.host }}"
 
-    - name: Fetch the stack repo on each validator host
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Fetch the stack repo on each validator host"
       ansible.builtin.include_role:
         name: fetch_stack
         apply:
@@ -268,7 +268,7 @@
     # loop_var: validator (not the default `item`) — stack_deploy has its own `item`
     # loops, and these vars are lazily re-evaluated inside it; sharing `item` rebinds
     # it to a string and breaks `validator.label`.
-    - name: Deploy each validator on its host
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Deploy each validator on its host"
       ansible.builtin.include_role:
         name: stack_deploy
         apply:
@@ -308,7 +308,7 @@
   hosts: monitoring_hosts
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_name: hyperlane-monitoring

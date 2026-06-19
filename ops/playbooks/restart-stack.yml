@@ -19,21 +19,21 @@
   hosts: controller
   gather_facts: false
   tasks:
-    - name: A known stack_name is required
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}A known stack_name is required"
       ansible.builtin.assert:
         that:
           - stack_name is defined
           - stack_name in stacks
         fail_msg: "Provide -e stack_name=<name>; one of: {{ stacks.keys() | list }}"
 
-    - name: Singleton restarts need a target host group
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Singleton restarts need a target host group"
       ansible.builtin.assert:
         that: target_hosts is defined
         fail_msg: >-
           Provide -e target_hosts=<inventory group> (e.g. relayer_hosts) for {{ stack_name }}.
       when: stack_name != 'hyperlane-validator'
 
-    - name: A deploy_branch is required
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}A deploy_branch is required"
       ansible.builtin.assert:
         that: deploy_branch is defined
         fail_msg: >-
@@ -47,7 +47,7 @@
   hosts: "{{ target_hosts | default([]) }}"
   gather_facts: true
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   vars:
     stack_action: restart
@@ -63,24 +63,24 @@
   hosts: "{{ ['controller'] if (stack_name | default('')) == 'hyperlane-validator' else [] }}"
   gather_facts: false
   pre_tasks:
-    - name: Load the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load the deployment config"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
   tasks:
-    - name: Load validators
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Load validators"
       ansible.builtin.include_tasks: ../roles/common/tasks/load_validators.yml
 
-    - name: Select the validators to restart
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Select the validators to restart"
       ansible.builtin.set_fact:
         _restart_validators: >-
           {{ validators if validator_label is not defined
              else (validators | selectattr('label', 'equalto', validator_label) | list) }}
 
-    - name: A matching validator must exist
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}A matching validator must exist"
       ansible.builtin.assert:
         that: _restart_validators | length > 0
         fail_msg: "No validator labelled '{{ validator_label | default('') }}' in validators.yaml"
 
-    - name: Every validator has a wallet id in the deployment config
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Every validator has a wallet id in the deployment config"
       ansible.builtin.assert:
         that: "(item.privy_wallet_id | default('')) | length > 0"
         fail_msg: >-
@@ -92,7 +92,7 @@
       loop_control:
         label: "{{ item.label }}"
 
-    - name: Gather facts for each validator host (for ansible_env under delegation)
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Gather facts for each validator host (for ansible_env under delegation)"
       ansible.builtin.setup:
       delegate_to: "{{ validator.host }}"
       delegate_facts: true
@@ -101,7 +101,7 @@
         loop_var: validator
         label: "{{ validator.host }}"
 
-    - name: Fetch the stack repo on each validator host
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Fetch the stack repo on each validator host"
       ansible.builtin.include_role:
         name: fetch_stack
         apply:
@@ -115,7 +115,7 @@
 
     # loop_var: validator (not item) — stack_deploy has its own item loops; sharing item
     # rebinds it to a string and breaks validator.label.
-    - name: Restart each validator on its host
+    - name: "{{ '[' ~ stack_name ~ '] ' if stack_name is defined else '' }}Restart each validator on its host"
       ansible.builtin.include_role:
         name: stack_deploy
         apply:
