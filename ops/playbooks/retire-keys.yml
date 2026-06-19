@@ -42,6 +42,11 @@
           curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
         executable: /bin/bash
         creates: "{{ solana_bin }}/solana"
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
     - name: Ship the drain script
       ansible.builtin.copy:
         src: "../scripts/drain-key.sh"
@@ -101,6 +106,11 @@
           curl -sSfL "https://release.anza.xyz/{{ solana_version }}/install" | sh
         executable: /bin/bash
         creates: "{{ solana_bin }}/solana"
+    - name: Ensure the setup-scripts dir exists
+      ansible.builtin.file:
+        path: "{{ scripts_dst }}"
+        state: directory
+        mode: "0755"
     - name: Ship the drain script
       ansible.builtin.copy:
         src: "../scripts/drain-key.sh"
