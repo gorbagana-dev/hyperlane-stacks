@@ -76,12 +76,15 @@ elif [ -f "${REGISTRY_DIR}/metadata.yaml" ]; then
 fi
 
 # -------------------------------------------------------
-# Select the SBPF program set per target chain.
-# Agave 4.x gates new program deployment on feature 5cC3foj77... (SIMD-0178/0189/0377,
-# "enable deployment+execution of SBPFv3"). Active on a cluster => new deploys must be
-# v3; otherwise v0 (the pre-4.x default). gorchain (Agave 3.x) => v0; Solana devnet
-# => v3; Solana mainnet => v0 until it activates the gate. Defaults to v0 if the gate
-# can't be read (a wrong guess fails loudly at deploy, never silently misdeploys).
+# Select the SBPF program set per target chain. Agave 4.x gates new deploys by SBPF
+# version; detect via feature 5cC3foj77 (SIMD-0178/0189/0377, "enable v3"): active =>
+# the cluster takes v3, use the v3 set; else v0 (still accepted). Key on this
+# enable-v3 feature, NOT SIMD-0500/B8JJXCy5 (the "disable v0/v1/v2 deploy" gate): the
+# image's Solana 4.0.3 CLI can read 5cC3foj77 but not the newer SIMD-0500, so keying
+# on SIMD-0500 would always read inactive and pick the wrong set. gorchain (Agave 3.x)
+# => v0; Solana devnet => v3; Solana mainnet => v0 until it enables v3 (~early Jul
+# 2026), then auto-switches. Defaults to v0 if unreadable (a wrong guess fails loudly
+# at deploy, never silently misdeploys).
 # -------------------------------------------------------
 SBPF_V3_DEPLOY_FEATURE="5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC"
 sbpf_dir_for() {  # $1 = rpc url -> prints the built-so dir for that cluster

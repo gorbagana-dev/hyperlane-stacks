@@ -30,9 +30,12 @@ chain_var() {  # $1=chain  $2=suffix(RPC_URL|DOMAIN_ID)
   printf '%s' "${!varname:-}"
 }
 
-# Agave 4.x gates new program deployment on SBPF version (feature 5cC3foj77...,
-# SIMD-0178/0189/0377). Pick each program's build per its target chain: gorchain
-# (Agave 3.x) => v0; Solana devnet => v3; Solana mainnet => v0 until it flips.
+# Agave 4.x gates new deploys by SBPF version; detect via feature 5cC3foj77
+# (SIMD-0178/0189/0377, "enable v3"): active => v3, else v0. Key on this enable-v3
+# feature, NOT SIMD-0500/B8JJXCy5 (the "disable v0/v1/v2" gate) — the image's Solana
+# 4.0.3 CLI can read 5cC3foj77 but not the newer SIMD-0500. Pick each program's build
+# per its target chain: gorchain (Agave 3.x) => v0; Solana devnet => v3; Solana
+# mainnet => v0 until it enables v3 (~early Jul 2026), then auto-switches.
 SBPF_V3_DEPLOY_FEATURE="5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC"
 sbpf_dir_for() {  # $1 = rpc url -> built-so dir for that cluster
   if solana feature status -u "$1" 2>/dev/null \
