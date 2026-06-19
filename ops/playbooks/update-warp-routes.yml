@@ -86,3 +86,23 @@
   roles:
     - fetch_stack
     - stack_deploy
+
+- name: Restart the explorer (refreshes warpRoutes.yaml for the frontend warp-route data)
+  hosts: explorer_hosts
+  gather_facts: true
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+  vars:
+    stack_action: restart
+    spec_render_generated: true
+    stack_name: hyperlane-explorer
+    configmap_names: "{{ stacks['hyperlane-explorer'].configmaps }}"
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-explorer"
+    # Source only generated/warp-routes/ so only warpRoutes.yaml refreshes; the
+    # scraper's agent-config.json stays as the explorer deploy left it.
+    generated_subdir: warp-routes
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
+  roles:
+    - fetch_stack
+    - stack_deploy

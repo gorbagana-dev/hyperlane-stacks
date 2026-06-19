@@ -12,6 +12,10 @@
 // blocks (completed for the schema) and displayName/isTestnet. The JSON object
 // keys must match the scraper's domain.name values.
 //
+// Also renders $PUBLIC_DIR/gorbagana-warp-routes.json (see the warp-routes block at
+// the end) so the frontend can resolve warp transfers on our chains — the public
+// registry doesn't carry them.
+//
 // Invoked by entrypoint.sh with AGENT_CONFIG + PUBLIC_DIR set.
 const fs = require("fs");
 const e = process.env;
@@ -60,3 +64,27 @@ out[solana] = render(solana, "Solana", "http://rpc-placeholder.invalid", "SOLANA
 
 fs.writeFileSync(e.PUBLIC_DIR + "/gorbagana-chains.json", JSON.stringify(out, null, 2));
 console.log("Rendered gorbagana-chains.json for:", Object.keys(out).join(", "));
+
+// Warp routes: the deployer writes a WarpCoreConfig ({tokens, options}) to
+// warpRoutes.yaml, distributed into the agent-config ConfigMap (mounted at /config).
+// The frontend expects a WarpRouteConfigs record ({ <id>: WarpCoreConfig }), so wrap
+// it under a single id and write it to /public. Absent only when the image runs without
+// our deployment (upstream/dev) — then we skip and the explorer relies on the registry.
+// A malformed file is logged and skipped rather than crashing the container.
+const warpSrc = e.WARP_ROUTES_SRC || "/config/warpRoutes.yaml";
+if (fs.existsSync(warpSrc)) {
+  try {
+    // The deployer emits JSON (which is valid YAML), so JSON.parse handles it.
+    const warpCoreConfig = JSON.parse(fs.readFileSync(warpSrc, "utf8"));
+    const warpRouteId = e.WARP_ROUTE_ID || "gorbagana";
+    fs.writeFileSync(
+      e.PUBLIC_DIR + "/gorbagana-warp-routes.json",
+      JSON.stringify({ [warpRouteId]: warpCoreConfig }, null, 2),
+    );
+    console.log("Rendered gorbagana-warp-routes.json:", (warpCoreConfig.tokens || []).length, "tokens");
+  } catch (err) {
+    console.error("Skipping warp-route injection — could not parse", warpSrc + ":", err.message);
+  }
+} else {
+  console.log("No warpRoutes.yaml at", warpSrc, "— relying on the registry for warp routes.");
+}

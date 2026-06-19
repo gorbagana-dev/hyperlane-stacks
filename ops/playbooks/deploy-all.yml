@@ -199,6 +199,28 @@
     - fetch_stack
     - stack_deploy
 
+# Add warpRoutes.yaml to the explorer's agent-config ConfigMap so the frontend resolves
+# warp transfers on our chains (the public registry doesn't carry them). A restart appends
+# it to the ConfigMap the Explorer play populated and re-renders the injection file.
+- name: Inject warp routes into the explorer
+  hosts: explorer_hosts
+  gather_facts: true
+  pre_tasks:
+    - name: Load the deployment config
+      ansible.builtin.include_tasks: ../roles/common/tasks/load_deployment_config.yml
+  vars:
+    stack_action: restart
+    spec_render_generated: true
+    stack_name: hyperlane-explorer
+    configmap_names: "{{ stacks['hyperlane-explorer'].configmaps }}"
+    deploy_dir: "{{ ansible_env.HOME }}/deployments/hyperlane-explorer"
+    # Source only generated/warp-routes/ so the ConfigMap gains just warpRoutes.yaml.
+    generated_subdir: warp-routes
+    stack_pre_start_tasks: "{{ playbook_dir }}/../roles/state_distribute/tasks/main.yml"
+  roles:
+    - fetch_stack
+    - stack_deploy
+
 # Validators come from validators.yaml (not inventory), so loop + delegate per host.
 - name: Validators
   hosts: controller
