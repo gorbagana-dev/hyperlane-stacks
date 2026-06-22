@@ -32,7 +32,7 @@ only thing that really changes is fiat: mainnet SOL costs real money.
 | Privy IGP oracle | 0.5 | Periodic gas-oracle posts (fees only). |
 | Privy bridge owner | 0.5 | Receives ownership; pays only occasional admin txs. |
 
-**Per additional warp route: +~3.3 per chain on the deployer** (one warp program + one prefunded ATA-payer PDA). Nothing else changes.
+**Per additional warp route: ~3.3 per chain on the deployer** (one warp program + one prefunded ATA-payer PDA). Nothing else changes.
 
 The deployer target is **route-dependent** (~8 + ~3.3 per warp route) and the key
 is drained back to a treasury after deploy, so over-funding isn't lost. The prod
@@ -156,19 +156,13 @@ Over the staging lifetime (deploy + runtime to date). Confirms the operational
 signers barely move — 1 token each is generous for test traffic; the relayer is
 the only one whose burn scales with volume.
 
-| Account | Address | Solana devnet | gorchain |
-|---|---|--:|--:|
-| deployer | `7XTpUZEh…` | 8.07 consumed (10→1.93) | deploy cost ~8.1¹ |
-| relayer | sol `9mjJKHtJ…` / gor `9GTCDHsd…` | 0.018 | ~0.021 |
-| validator | sol `82VPWyuZ…` / gor `CYNX7MRN…` | 0.0022 | ~0.002 |
-| IGP fee-claim | `C4Rcdc1o…` | 0.0001 | ~0.0001 |
-| Privy IGP oracle | `5VcYt3R4…` | 0.0024 | ~0.002 |
-
-¹ On staging the gorchain deployer was over-funded by the chain's faucet (still
-holds ~222), so its consumption can't be read as funded-minus-current; the ~8.1
-is the deployment cost measured directly from the gorchain program/PDA rents. On
-**prod** gorchain is mainnet with no operator faucet, so budget the deployer the
-same ~10 GOR as the Solana side.
+| Account | Solana devnet | gorchain |
+|---|--:|--:|
+| deployer | 8.07 consumed (10→1.93) | deploy cost ~8.1¹ |
+| relayer | 0.018 | ~0.021 |
+| validator | 0.0022 | ~0.002 |
+| IGP fee-claim | 0.0001 | ~0.0001 |
+| Privy IGP oracle | 0.0024 | ~0.002 |
 
 ## Reproduce
 

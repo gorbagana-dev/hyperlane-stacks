@@ -132,9 +132,9 @@ What CI publishes for each image:
 
 ## 4. Pin the image in the deployment spec
 
-Deployments never follow `latest`. Pin the exact image in the env spec's
-`image-overrides`, for every environment you are updating
-(`deployment/spec-<stack>.yml`, `deployment/staging/spec-<stack>.yml`):
+Deployments never follow `latest`. For every environment you are updating
+(`deployment/spec-<stack>.yml`, `deployment/staging/spec-<stack>.yml`), pin the exact image in the env spec's
+`image-overrides`,  and push to the deploy branch:
 
 ```yaml
 image-overrides:

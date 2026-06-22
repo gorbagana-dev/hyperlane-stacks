@@ -1,6 +1,6 @@
 # Privy server wallets — shared setup
 
-Every environment — `local`, staging, and prod — signs with
+Every environment — local, staging, and prod — signs with
 **Privy server wallets**. This page is the one-time "mint the wallets and record
 the IDs/addresses" procedure; each runbook links here and then says which vars to
 fill. Do it once per bridge.

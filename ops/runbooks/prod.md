@@ -95,8 +95,9 @@ Fill in exactly two things:
    - `privy_oracle_wallet_id` — `oracle.json` `id` from privy-wallets.md
    - `helius_api_key` — **mainnet** key (builds `SOLANA_RPC_URL`)
    - `ghcr_pat` — GitHub PAT (packages:read) for private GHCR images
+   - `slack_webhook_url` — Slack incoming-webhook URL for low balance alerts post deployment
    - `bridge_owner_pubkey`, `igp_oracle_pubkey` — base58 addresses from privy-wallets.md
-   - `igp_beneficiary_pubkey` — optional; defaults to `bridge_owner_pubkey`
+   - `igp_beneficiary_pubkey` — defaults to `bridge_owner_pubkey`, set it to the Laconic treasury address: `FFDx3SdAEeXrp6BTmStB4BDHpctGsaasZq4FFcowRobY`
    - `gorchain_validator_address`, `solana_validator_address` — `0x…` from privy-wallets.md
    - `privy_validator_wallet_ids.gorchain-primary` / `solana-primary` — wallet `id`s
    - `wallet_connect_id` — WalletConnect project id (a dummy value works; Backpack doesn't need it)
@@ -143,7 +144,7 @@ funding gate — prints each signer's address + balance gap and **fails listing 
 | Privy bridge owner | — | — (transfer target + default fee beneficiary) |
 
 Where these numbers come from — measured per-account consumption, the program-rent
-breakdown behind the deployer's spend, and the +~3.3/chain cost of each extra warp
+breakdown behind the deployer's spend, and the additional ~3.3/chain cost of each extra warp
 route — is in [funding-estimate.md](funding-estimate.md).
 
 Fund each listed address from a treasury wallet:
@@ -187,15 +188,15 @@ The deployment serves these endpoints (all under `bridge.gorbagana.wtf`, Let's E
 
 | Service | URL | Credentials / notes |
 |---|---|---|
-| Warp UI (the bridge) | https://bridge.gorbagana.wtf | — |
-| Grafana | https://grafana.bridge.gorbagana.wtf | `admin` / `grafana_admin_password` |
-| Prometheus | https://prometheus.bridge.gorbagana.wtf | — |
-| MinIO console | https://minio-console.bridge.gorbagana.wtf | `minio_root_user` / `minio_root_password` |
-| MinIO S3 API | https://s3.bridge.gorbagana.wtf | validator IAM (per-validator) |
-| Relayer | https://relayer.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
-| Gorchain validator | https://validator-gorchain.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
-| Solana validator | https://validator-solana.bridge.gorbagana.wtf | Prometheus metrics (feeds Grafana) |
-| Explorer | https://explorer.bridge.gorbagana.wtf | Message search UI (Hasura/Postgres stay internal) |
+| Warp UI (the bridge) | <https://bridge.gorbagana.wtf> | — |
+| Grafana | <https://grafana.bridge.gorbagana.wtf> | `admin` / `grafana_admin_password` |
+| Prometheus | <https://prometheus.bridge.gorbagana.wtf> | — |
+| MinIO console | <https://minio-console.bridge.gorbagana.wtf> | `minio_root_user` / `minio_root_password` |
+| MinIO S3 API | <https://s3.bridge.gorbagana.wtf> | validator IAM (per-validator) |
+| Relayer | <https://relayer.bridge.gorbagana.wtf> | Prometheus metrics (feeds Grafana) |
+| Gorchain validator | <https://validator-gorchain.bridge.gorbagana.wtf> | Prometheus metrics (feeds Grafana) |
+| Solana validator | <https://validator-solana.bridge.gorbagana.wtf> | Prometheus metrics (feeds Grafana) |
+| Explorer | <https://explorer.bridge.gorbagana.wtf> | Message search UI (Hasura/Postgres stay internal) |
 
 `grafana_*` / `minio_*` credentials are generated into `deployment-config.yml` by `setup-all`.
 The gorchain RPC (`https://rpc.gorbagana.wtf`) is **external** — not served by this
@@ -210,14 +211,14 @@ deployment.
 Use a throwaway test wallet — never the deployer account.
 
 1. **Backpack** (skip if you already use it): install the extension from
-   https://backpack.app and create a wallet. Copy its Solana address.
+   <https://backpack.app> and create a wallet. Copy its Solana address.
 2. **Fund it** — mainnet SOL on gorchain + mainnet SOL on Solana from a treasury, plus
    mainnet USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) for the transfer
    amount.
 3. **Point Backpack at the ORIGIN chain** (Settings → your wallet → Solana → RPC
    connection):
    - **forward** (solana mainnet → gorchain): **Custom RPC** → your Helius mainnet URL
-     (`https://mainnet.helius-rpc.com/?api-key=<key>`). Avoid the **Mainnet** preset:
+     (`https://mainnet.helius-rpc.com/?api-key=<key>`). Avoid the preset **Mainnet** URL in Backpack:
      Backpack confirms via the preset's WebSocket before answering the dapp, and public
      endpoints can drop the notification — Backpack then hangs at "Confirming
      Transaction" even though the transfer lands.
@@ -229,7 +230,14 @@ Use a throwaway test wallet — never the deployer account.
    the relayer delivers the message. The UI updates on its own and shows a "Recipient
    has received funds" popup at that moment.
 
-## 6. Retire keys (reclaim funds)
+## 6. Adding a warp route
+
+To add a warp route to a running bridge — without a full redeploy — edit
+`WARP_ROUTES` in `deployment/spec-warp-deployer.yml`, commit + push to `main` (prod's
+default deploy branch), and run `update-warp-routes.yml`. Full steps, the route-file
+schema, and a worked example are in [warp-routes.md](warp-routes.md).
+
+## 7. Retire keys (reclaim funds)
 
 Once deployment is complete, reclaim funds from the spent/idle signers back to a treasury:
 
@@ -242,7 +250,7 @@ What it does (confirming each transfer):
 
 - **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains; the
   (now zero-balance) keyfile is **kept** so a later warp-route deploy can re-fund the same
-  address (see [Adding a warp route](#adding-a-warp-route)).
+  address (see [Adding a warp route](#6-adding-a-warp-route)).
 - **Validator announce keys** — idle after the one-time announce (checkpoints are signed via
   the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
   keyfile is **kept** (the running validator re-reads it on restart; a re-announce — e.g. an S3
@@ -253,7 +261,9 @@ deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (alr
 accounts report "nothing to drain").
 
 **Deploying additional warp routes later** needs a funded deployer key again — see
-[Adding a warp route](#adding-a-warp-route).
+[Adding a warp route](#6-adding-a-warp-route).
+
+---
 
 ## Updating a stack
 
@@ -278,14 +288,7 @@ are the keys of the `stacks` map in `inventories/prod/group_vars/all.yml` (e.g.
 `hyperlane-monitoring` → `monitoring_hosts`, `hyperlane-warp-ui` → `warp_ui_hosts`,
 `hyperlane-explorer` → `explorer_hosts`).
 
-## Adding a warp route
-
-To add a warp route to a running bridge — without a full redeploy — edit
-`WARP_ROUTES` in `deployment/spec-warp-deployer.yml`, commit + push to `main` (prod's
-default deploy branch), and run `update-warp-routes.yml`. Full steps, the route-file
-schema, and a worked example are in [warp-routes.md](warp-routes.md).
-
-## 7. Reset
+## Reset
 
 > ⚠️ **This stops a live production bridge.** `stop-all` halts message delivery — in-flight
 > transfers are not relayed until the stack is back up.

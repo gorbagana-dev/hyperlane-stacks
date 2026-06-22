@@ -234,8 +234,7 @@ Use a throwaway test wallet — never the deployer account.
    chain you are sending FROM:
    - **forward** (solana devnet → gorchain): **Custom RPC** → a Helius
      devnet URL (`https://devnet.helius-rpc.com/?api-key=<key>` — your own
-     key; it stays in your local wallet config). Avoid the **Devnet**
-     preset (`api.devnet.solana.com`): Backpack confirms its own
+     key; it stays in your local wallet config). Avoid the preset **Devnet** URL in Backpack (`api.devnet.solana.com`): Backpack confirms its own
      submission via that RPC's WebSocket before answering the dapp, and
      the public endpoint drops the notification — Backpack then hangs at
      "Confirming Transaction" and the UI sticks at "Sign transfer
@@ -251,7 +250,15 @@ Use a throwaway test wallet — never the deployer account.
    "Recipient has received funds" popup at that moment. To see the
    destination balance in Backpack too, switch the RPC per step 3.
 
-## 6. Retire keys (reclaim funds)
+## 6. Adding a warp route
+
+To add a warp route to a running bridge — without a full redeploy — edit
+`WARP_ROUTES` in `deployment/staging/spec-warp-deployer.yml`, commit + push, and run
+`update-warp-routes.yml`. The staging menu already ships a native-SOL route (`sol`)
+ready to select. Full steps, the route-file schema, and a worked SOL example are in
+[warp-routes.md](warp-routes.md).
+
+## 7. Retire keys (reclaim remaining funds)
 
 Exercise this on staging before running it in prod. Once deployment is complete, reclaim funds
 from the spent/idle signers back to a treasury:
@@ -265,7 +272,7 @@ What it does (confirming each transfer):
 
 - **Deployer key** — one-shot (deploy + ownership handoff done): drained on both chains; the
   (now zero-balance) keyfile is **kept** so a later warp-route deploy can re-fund the same
-  address (see [Adding a warp route](#adding-a-warp-route)).
+  address (see [Adding a warp route](#6-adding-a-warp-route)).
 - **Validator announce keys** — idle after the one-time announce (checkpoints are signed via
   the Privy KMS, not an on-chain key): drained on each validator's origin chain, but the
   keyfile is **kept** (the running validator re-reads it on restart; a re-announce — e.g. an S3
@@ -274,7 +281,9 @@ What it does (confirming each transfer):
 Left funded: the **relayer's** per-chain signer keys and the **IGP fee-claim** key — they sign
 deliveries and fee claims for the bridge's lifetime. Re-runs are idempotent (already-drained
 accounts report "nothing to drain"). Deploying additional warp routes later needs a funded
-deployer key again — see [Adding a warp route](#adding-a-warp-route).
+deployer key again — see [Adding a warp route](#6-adding-a-warp-route).
+
+---
 
 ## Updating a stack
 
@@ -296,15 +305,7 @@ ansible-playbook -i inventories/staging/hosts.yml playbooks/restart-stack.yml \
 `deploy_branch` is required (the host re-fetches the repo on it). Valid `stack_name` values
 are the keys of the `stacks` map in `inventories/staging/group_vars/all.yml`.
 
-## Adding a warp route
-
-To add a warp route to a running bridge — without a full redeploy — edit
-`WARP_ROUTES` in `deployment/staging/spec-warp-deployer.yml`, commit + push, and run
-`update-warp-routes.yml`. The staging menu already ships a native-SOL route (`sol`)
-ready to select. Full steps, the route-file schema, and a worked SOL example are in
-[warp-routes.md](warp-routes.md).
-
-## 7. Reset
+## Reset
 
 > ⚠️ **`stop-all` halts the bridge** — message delivery stops until the stack is back up.
 

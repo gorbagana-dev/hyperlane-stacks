@@ -8,11 +8,11 @@ an ansible ops layer.
 
 ## Live endpoints (production)
 
-- Bridge UI — https://bridge.gorbagana.wtf ([how to bridge tokens](docs/using-the-bridge.md))
-- Explorer — https://explorer.bridge.gorbagana.wtf (bridge message search)
-- Grafana — https://grafana.bridge.gorbagana.wtf
-- Prometheus — https://prometheus.bridge.gorbagana.wtf
-- Gorchain RPC — https://rpc.gorbagana.wtf
+- Bridge UI — <https://bridge.gorbagana.wtf> ([how to bridge tokens](docs/using-the-bridge.md))
+- Explorer — <https://explorer.bridge.gorbagana.wtf> (bridge message search)
+- Grafana — <https://grafana.bridge.gorbagana.wtf>
+- Prometheus — <https://prometheus.bridge.gorbagana.wtf>
+- Gorchain RPC — <https://rpc.gorbagana.wtf>
 
 ## Repository layout
 
@@ -89,7 +89,7 @@ Each stack has its own README under `stack_orchestrator/data/stacks/<stack>/`.
 
 State flows from the deployer Jobs (which write JSON to a host `/state` path) into
 each downstream stack's ConfigMaps at deploy time. The mechanics are in
-[docs/architecture-decisions.md](docs/architecture-decisions.md) and `CLAUDE.md`.
+[docs/architecture-decisions.md](docs/architecture-decisions.md).
 
 ## How the components interact
 
@@ -115,8 +115,7 @@ flowchart LR
 
 Gorchain and Solana each run their own validator, and bridging works both ways —
 "source" and "destination" swap with the direction of the transfer. The UI
-submits on Gorchain directly and on Solana through its own server-side RPC proxy,
-and links each transfer to the explorer for status.
+submits tx on Gorchain or Solana, and links each transfer to the explorer for status.
 
 ### 2. Signing and fees
 
@@ -165,8 +164,8 @@ flowchart LR
 ## How deployments work
 
 Deployments are **declarative**. The unit of truth for a deployment is its
-**spec file** under `deployment/` (e.g. `deployment/spec-relayer.yml` for prod,
-`deployment/staging/spec-relayer.yml` for staging). A spec names the stack, the
+**spec file** under `deployment/` (e.g. [`deployment/spec-relayer.yml`](deployment/spec-relayer.yml) for prod,
+[`deployment/staging/spec-relayer.yml`](deployment/staging/spec-relayer.yml) for staging). A spec names the stack, the
 config and secret values, the ConfigMaps, the ingress hosts, and the pinned
 container image. You do not deploy stacks by hand — the ops layer assembles each
 stack's environment and runs `laconic-so` for you.
@@ -193,7 +192,7 @@ with its current config, or `deploy-all.yml` for a full bring-up. Bump a pinned
 image only by editing the spec's `image-overrides` (and the stack's `stack.yml`
 source pin); see the [development guide](docs/development.md).
 
-`ops/README.md` is the mechanics reference behind all of this — read it to
+[ops/README.md](ops/README.md) is the mechanics reference behind all of this — read it to
 understand the configuration model, inventory/topology, and exactly what each
 playbook does.
 
@@ -210,24 +209,18 @@ copy-runnable guide:
 
 Operational tasks have their own runbooks:
 
-- **Monitoring & alerts** — [ops/runbooks/monitoring.md](ops/runbooks/monitoring.md):
-  Grafana dashboards (links above) and the balance monitor that posts low-balance
-  alerts to Slack (set `slack_webhook_url` in `deployment-config.yml`).
-- **Warp routes** — [ops/runbooks/warp-routes.md](ops/runbooks/warp-routes.md):
-  adding/selecting token routes from the checked-in menu.
-- **Funding** — [ops/runbooks/funding-estimate.md](ops/runbooks/funding-estimate.md):
-  what each signer needs and how to fund it.
-- **Privy wallets** — [ops/runbooks/privy-wallets.md](ops/runbooks/privy-wallets.md):
-  the server-wallet signing model.
+- **Privy wallets** — [ops/runbooks/privy-wallets.md](ops/runbooks/privy-wallets.md): the server-wallet signing model.
+- **Funding** — [ops/runbooks/funding-estimate.md](ops/runbooks/funding-estimate.md): what each signer needs and how to fund it.
+- **Warp routes** — [ops/runbooks/warp-routes.md](ops/runbooks/warp-routes.md): adding/selecting token routes from the checked-in menu.
+- **Monitoring & alerts** — [ops/runbooks/monitoring.md](ops/runbooks/monitoring.md): Grafana dashboards (links above) and the balance monitor that posts low-balance alerts to Slack (set `slack_webhook_url` in `deployment-config.yml`).
 
 ## Documentation
 
 - [Using the bridge](docs/using-the-bridge.md) — end-user guide to bridging tokens in the UI
 - [Operator runbooks](ops/runbooks/) — from-zero deployment guides per environment
+- [Development guide](docs/development.md) — changing, releasing, and publishing the app/agent images (warp UI, explorer, agents) and rolling them into deployments
 - [ops/ deploy layer](ops/README.md) — ansible mechanics reference
-- [Development guide](docs/development.md) — changing, releasing, and publishing
-  the app/agent images (warp UI, explorer, agents) and rolling them into deployments
 - [Stack specifications](docs/stack-specifications.md) — detailed per-stack specs
 - [Architecture decisions](docs/architecture-decisions.md) — design rationale and state flow
 - [Ops decisions](docs/ops-decisions.md) — ops-layer design rationale
-- [CLAUDE.md](CLAUDE.md) — repo map and keep-in-sync rules (read first when editing with an AI assistant)
+- [CLAUDE.md](CLAUDE.md) — repo map and keep-in-sync rules

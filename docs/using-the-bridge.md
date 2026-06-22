@@ -15,7 +15,7 @@ you send a token on one chain and receive it on the other.
 
 > **Important:** Backpack signs, submits, and confirms each transaction against
 > its *own* configured RPC. That RPC must match the chain you are **sending from**,
-> or Backpack will hang on "Confirming Transaction". You re-point it whenever you
+> or Backpack will run into an error "RPC sendTransaction failed". You re-point it whenever you
 > change direction — see step 4.
 
 ## Step by step
@@ -59,7 +59,7 @@ you send a token on one chain and receive it on the other.
 
 ## Tips & troubleshooting
 
-- **Stuck on "Confirming Transaction"** — Backpack's RPC doesn't match the chain
+- **Stuck on "Confirming Transaction" or "Error RPC sendTransaction failed"** — Backpack's RPC doesn't match the chain
   you're sending from. Set it to the source chain's RPC (step 4) and retry. The
   transfer often still lands on-chain even when the wallet hangs, so check the
   explorer before resending.
